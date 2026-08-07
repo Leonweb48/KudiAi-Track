@@ -1,11 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const PAYSTACK_SECRET = Deno.env.get("PAYSTACK_SECRET_KEY") || "";
-const SUPABASE_URL    = Deno.env.get("SUPABASE_URL")        || "";
-const SERVICE_KEY     = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-
-// Tier 2 savings threshold: ₦500,000 in kobo
-const TIER2_SAVINGS_THRESHOLD = 500_000_00;
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")                || "";
+const SERVICE_KEY  = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")   || "";
 
 const cors = {
   "Access-Control-Allow-Origin":  "*",
@@ -14,66 +10,6 @@ const cors = {
 
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { ...cors, "Content-Type": "application/json" } });
-
-// ── Name similarity (Jaccard-style token overlap) ─────────────────────────────
-
-function normalise(t: string): string {
-  return t.toLowerCase().replace(/[^a-z]/g, "");
-}
-
-function nameSimilarity(a: string, b: string): number {
-  const tokA = a.split(/\s+/).map(normalise).filter(t => t.length > 1);
-  const tokB = b.split(/\s+/).map(normalise).filter(t => t.length > 1);
-  if (!tokA.length || !tokB.length) return 0;
-  const [shorter, longer] = tokA.length <= tokB.length ? [tokA, tokB] : [tokB, tokA];
-  const matches = shorter.filter(t => longer.some(u => u === t || u.includes(t) || t.includes(u))).length;
-  return Math.round((matches / shorter.length) * 100);
-}
-
-// ── Paystack Identity: NIN verification ──────────────────────────────────────
-
-async function verifyNINPaystack(nin: string): Promise<{
-  success: boolean;
-  verifiedName?: string;
-  raw?: unknown;
-  error?: string;
-}> {
-  if (!PAYSTACK_SECRET) return { success: false, error: "Identity verification not configured." };
-  try {
-    const res = await fetch("https://api.paystack.co/identity/verify", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${PAYSTACK_SECRET}`,
-        "Content-Type":  "application/json",
-      },
-      body: JSON.stringify({ type: "nin", value: nin }),
-    });
-
-    // Read as text first — avoids opaque "Unexpected end of JSON input" when
-    // Paystack returns an empty or non-JSON body (e.g. 404, 403, 204).
-    const text = await res.text();
-    if (!text.trim()) {
-      return { success: false, error: `Identity provider returned no response (HTTP ${res.status}). Contact support.` };
-    }
-
-    let body: { status: boolean; message?: string; data?: { first_name?: string; last_name?: string; middle_name?: string } };
-    try {
-      body = JSON.parse(text) as typeof body;
-    } catch {
-      return { success: false, error: `Identity provider error (HTTP ${res.status}): ${text.slice(0, 120)}`, raw: text };
-    }
-
-    if (!body.status || !body.data) {
-      return { success: false, error: body.message || "NIN not found or invalid.", raw: body };
-    }
-    const { first_name = "", last_name = "", middle_name = "" } = body.data;
-    const verifiedName = [first_name, middle_name, last_name].filter(Boolean).join(" ").trim();
-    return { success: true, verifiedName, raw: body };
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : "Network error contacting identity provider.";
-    return { success: false, error: msg };
-  }
-}
 
 // ── Notify user (fire-and-forget) ─────────────────────────────────────────────
 
@@ -136,105 +72,38 @@ Deno.serve(async (req: Request) => {
       const nin = String(body.nin || "").replace(/\D/g, "");
       if (nin.length !== 11) return json({ error: "NIN must be 11 digits." }, 400);
 
-      // Idempotent guard — already verified?
+      // Idempotent guard
       const { data: p } = await admin
         .from("profiles")
-        .select("verification_status, full_name, settlement_account_name")
+        .select("verification_status")
         .eq("id", userId)
         .maybeSingle();
 
-      if (p?.verification_status === "tier1_verified" || p?.verification_status === "tier2_verified") {
-        return json({ already_verified: true, status: p.verification_status });
+      const current = p?.verification_status as string | undefined;
+      if (current === "tier1_verified" || current === "tier2_verified") {
+        return json({ already_verified: true, status: current });
+      }
+      if (current === "tier1_pending") {
+        return json({ success: true, status: "tier1_pending", already_submitted: true });
       }
 
-      const settlementName = (p?.settlement_account_name || p?.full_name || "") as string;
-
-      // Call Paystack Identity API
-      const result = await verifyNINPaystack(nin);
-
-      if (!result.success) {
-        await admin.from("verification_submissions").insert({
-          user_id: userId, tier: 1, status: "failed",
-          nin, rejection_reason: result.error,
-          provider_response: result.raw,
-        });
-        await admin.from("profiles").update({
-          verification_status: "tier1_failed",
-          verification_submitted_at: new Date().toISOString(),
-          verification_rejected_reason: result.error,
-        }).eq("id", userId);
-        return json({ success: false, error: result.error });
-      }
-
-      const score = settlementName
-        ? nameSimilarity(result.verifiedName!, settlementName)
-        : 100; // No settlement name on file → skip match
-
-      const nameMatched = score >= 60;
-
-      if (!nameMatched) {
-        const reason = `Identity name "${result.verifiedName}" does not sufficiently match your settlement account name "${settlementName}" (match: ${score}%). Please update your settlement account to match your legal name, or contact support.`;
-        await admin.from("verification_submissions").insert({
-          user_id: userId, tier: 1, status: "failed",
-          nin, submitted_name: settlementName,
-          verified_name: result.verifiedName, name_match_score: score,
-          rejection_reason: reason, provider_response: result.raw,
-        });
-        await admin.from("profiles").update({
-          verification_status: "tier1_failed",
-          verification_submitted_at: new Date().toISOString(),
-          verified_name: result.verifiedName,
-          verification_rejected_reason: reason,
-        }).eq("id", userId);
-        await notifyUser(userId, "Verification Incomplete", reason, "verification_tier1_failed");
-        return json({ success: false, error: reason, score, verifiedName: result.verifiedName });
-      }
-
-      // ── Passed Tier 1 — check if Tier 2 is required ──────────────────────
-      const { data: savingsRow } = await admin
-        .from("aso_clients")
-        .select("balance")
-        .eq("owner_id", userId);
-
-      const totalSavings = (savingsRow || []).reduce((s: number, r: { balance?: number }) => s + (r.balance ?? 0), 0);
-      const tier2Required = totalSavings > TIER2_SAVINGS_THRESHOLD;
-      const tier2Trigger  = tier2Required ? "savings_threshold" : undefined;
-      const tier2Detail   = tier2Required
-        ? `Total held client savings ₦${(totalSavings / 100).toLocaleString("en-NG")} exceeds the ₦500,000 threshold.`
-        : undefined;
-
-      const finalStatus = tier2Required ? "tier2_required" : "tier1_verified";
-
+      // Store NIN for manual admin review (no external API call)
       await admin.from("verification_submissions").insert({
-        user_id: userId, tier: 1, status: "approved",
-        nin, submitted_name: settlementName,
-        verified_name: result.verifiedName, name_match_score: score,
-        nin_verified: true, provider_response: result.raw,
+        user_id: userId, tier: 1, status: "pending", nin,
       });
       await admin.from("profiles").update({
-        verification_status: finalStatus,
-        nin_verified: true,
-        verified_name: result.verifiedName,
+        verification_status: "tier1_pending",
         verification_submitted_at: new Date().toISOString(),
         verification_rejected_reason: null,
-        tier2_trigger: tier2Trigger ?? null,
-        tier2_trigger_detail: tier2Detail ?? null,
       }).eq("id", userId);
 
-      if (finalStatus === "tier1_verified") {
-        await notifyUser(userId, "Identity Verified ✓",
-          `Your NIN has been verified (${result.verifiedName}). Your account is now verified.`,
-          "verification_tier1_passed");
-      }
+      await notifyUser(userId,
+        "NIN submitted for review",
+        "Your NIN has been received and is being reviewed. Expect a decision within 1–2 business days.",
+        "verification_tier1_submitted",
+      );
 
-      return json({
-        success: true,
-        status: finalStatus,
-        verifiedName: result.verifiedName,
-        score,
-        tier2Required,
-        tier2Detail,
-      });
+      return json({ success: true, status: "tier1_pending" });
     }
 
     // ── tier2_submit ──────────────────────────────────────────────────────────

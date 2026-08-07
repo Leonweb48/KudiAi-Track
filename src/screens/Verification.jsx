@@ -5,13 +5,14 @@ import { supabase } from "../utils/supabase";
 // ── Status config ─────────────────────────────────────────────────────────────
 
 const STATUS = {
-  unverified:    { label: "Not verified",        color: "#9ca3af", bg: "#f9fafb",     icon: "○" },
-  tier1_failed:  { label: "Verification failed", color: "#ef4444", bg: "#fef2f2",     icon: "✕" },
-  tier1_verified:{ label: "Identity verified",   color: "#16a34a", bg: "#f0fdf4",     icon: "✓" },
+  unverified:    { label: "Not verified",              color: "#9ca3af", bg: "#f9fafb",  icon: "○"  },
+  tier1_failed:  { label: "Verification failed",       color: "#ef4444", bg: "#fef2f2",  icon: "✕"  },
+  tier1_pending: { label: "NIN under review",          color: "#2563eb", bg: "#eff6ff",  icon: "⏳" },
+  tier1_verified:{ label: "Identity verified",         color: "#16a34a", bg: "#f0fdf4",  icon: "✓"  },
   tier2_required:{ label: "Enhanced verification required", color: "#d97706", bg: "#fffbeb", icon: "⚠" },
-  tier2_pending: { label: "Under admin review",  color: "#2563eb", bg: "#eff6ff",     icon: "⏳" },
-  tier2_verified:{ label: "Fully verified",      color: "#16a34a", bg: "#f0fdf4",     icon: "✓✓" },
-  tier2_rejected:{ label: "Documents rejected",  color: "#ef4444", bg: "#fef2f2",     icon: "✕" },
+  tier2_pending: { label: "Under admin review",        color: "#2563eb", bg: "#eff6ff",  icon: "⏳" },
+  tier2_verified:{ label: "Fully verified",            color: "#16a34a", bg: "#f0fdf4",  icon: "✓✓" },
+  tier2_rejected:{ label: "Documents rejected",        color: "#ef4444", bg: "#fef2f2",  icon: "✕"  },
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -356,6 +357,11 @@ function StatusCard({ dark, status, profile, submission }) {
           <div style={{ fontWeight: 700, fontSize: 14, color: cfg.color }}>
             {cfg.label}
           </div>
+          {status === "tier1_pending" && (
+            <div style={{ fontSize: 12, color: dark ? "#93c5fd" : "#1d4ed8", marginTop: 4, lineHeight: 1.5 }}>
+              Your NIN has been received and is being reviewed. Expect a decision within 1–2 business days. You will be notified when approved.
+            </div>
+          )}
           {status === "tier2_pending" && (
             <div style={{ fontSize: 12, color: dark ? "#9ca3af" : "#6b7280", marginTop: 4, lineHeight: 1.5 }}>
               Your documents are being reviewed. Expect a decision within 2–3 business days. You will be notified when done.
@@ -414,9 +420,11 @@ export default function Verification({ store }) {
 
   function handleTier1Success(data) {
     setStatus(data.status);
-    if (data.verifiedName) {
-      store.setProfile(prev => ({ ...prev, verified_name: data.verifiedName, verification_status: data.status }));
-    }
+    store.setProfile(prev => ({
+      ...prev,
+      verification_status: data.status,
+      ...(data.verifiedName ? { verified_name: data.verifiedName } : {}),
+    }));
   }
 
   function handleTier2Success(data) {
@@ -426,6 +434,7 @@ export default function Verification({ store }) {
 
   const showTier1Form    = status === "unverified" || status === "tier1_failed";
   const showTier1Result  = ["tier1_verified","tier2_required","tier2_pending","tier2_verified","tier2_rejected"].includes(status);
+  const showTier1Pending = status === "tier1_pending";
   const showTier2Form    = (status === "tier2_required" || status === "tier2_rejected") && status !== "tier2_pending" && status !== "tier2_verified";
   const showTier2Status  = ["tier2_pending","tier2_verified","tier2_rejected"].includes(status);
 
@@ -480,6 +489,16 @@ export default function Verification({ store }) {
           {showTier1Result && (
             <Tier1Result dark={dark} status={status} profile={profile} />
           )}
+          {showTier1Pending && (
+            <Card dark={dark} style={{ background: dark ? "#0f1a2a" : "#eff6ff", border: `1.5px solid ${dark ? "#1a2a3a" : "#bfdbfe"}` }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: dark ? "#93c5fd" : "#1d4ed8", marginBottom: 6 }}>
+                ⏳ NIN submitted — under review
+              </div>
+              <div style={{ fontSize: 12, color: dark ? "#93c5fd" : "#3b82f6", lineHeight: 1.6 }}>
+                Your NIN has been securely received. A KudiTrack admin will review and approve your identity within 1–2 business days. You will be notified by app notification when the decision is made.
+              </div>
+            </Card>
+          )}
           {showTier1Form && (
             <Tier1Form dark={dark} status={status} profile={profile} onSuccess={handleTier1Success} />
           )}
@@ -504,9 +523,9 @@ export default function Verification({ store }) {
           <Card dark={dark} style={{ background: dark ? "#0a0a0a" : "#f8fafc", padding: "12px 16px" }}>
             <div style={{ fontSize: 11, color: dark ? "#4b5563" : "#9ca3af", lineHeight: 1.7 }}>
               <strong style={{ color: dark ? "#6b7280" : "#6b7280" }}>About review times:</strong>{" "}
-              Step 1 (NIN check) is fully automated — instant, no human involved.
-              Step 2 (documents + guarantors) requires a KudiTrack admin to review manually.
-              Each review takes approximately 15–20 minutes. We review Monday–Friday during business hours.
+              Step 1 (NIN) is reviewed manually within 1–2 business days.
+              Step 2 (documents + guarantors) also requires admin review — typically 2–3 business days.
+              Reviews happen Monday–Friday during business hours.
             </div>
           </Card>
         </div>
