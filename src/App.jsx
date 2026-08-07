@@ -65,6 +65,12 @@ import { useBranches }       from "./hooks/useBranches";
 import { usePermissions }    from "./hooks/usePermissions";
 import { useNotifications }  from "./hooks/useNotifications";
 import { canDo }             from "./utils/plans";
+import {
+  isPaidPlan, isPaidCompliant, getMissingPaidFields, getPaidGraceInfo,
+  recordPaidSince, clearPaidSince,
+  isComplianceIntroShown, markComplianceIntroShown,
+  isFeatureLocked,
+} from "./utils/paidCompliance";
 import { buildContext }      from "./utils/buildContext";
 import LanguageSelector      from "./screens/LanguageSelector";
 import { hasChosenLang, setLang, markLangChosen } from "./utils/i18n";
@@ -120,6 +126,7 @@ export default function App() {
   const [coopOrg,      setCoopOrg]      = useState(null);
   const [aiQuery,      setAiQuery]      = useState("");
   const [branchReport, setBranchReport] = useState(null);
+  const [showComplianceIntro, setShowComplianceIntro] = useState(false);
 
   // eslint-disable-next-line no-unused-vars
   const { status, session, plan, setReady, refetch, retryAuth, upgradeAvailable, plansVersion, staff, ajoClient, orgMember, adminUser, marketer, org } = useAuth();
@@ -329,6 +336,32 @@ export default function App() {
   const closeUpgrade  = () => setShowUpgrade(false);
   const finishUpgrade = (planId) => { setReady(planId); setShowUpgrade(false); };
 
+  // ── Paid-plan compliance tracking ───────────────────────────────────────────
+  // Record when the owner first hits a paid plan (sets grace period start once).
+  // Show a one-time explanation modal for new and existing paid users who are
+  // not yet compliant, so they know what changed and why.
+  useEffect(() => {
+    if (!userId || store.loading) return;
+    if (!isPaidPlan(plan)) {
+      // Plan dropped to free — reset so a future re-upgrade gets a fresh grace period.
+      clearPaidSince(userId);
+      return;
+    }
+    recordPaidSince(userId);
+    if (!isComplianceIntroShown(userId) && !isPaidCompliant(store.profile || {})) {
+      setShowComplianceIntro(true);
+      markComplianceIntroShown(userId);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, plan, store.loading]);
+
+  // Compliance state — recomputed from live profile on every render.
+  const paidPlan       = isPaidPlan(plan);
+  const paidCompliant  = isPaidCompliant(store.profile || {});
+  const { inGrace, graceDaysLeft } = getPaidGraceInfo(userId || "");
+  const complianceCtx  = { isPaid: paidPlan, isCompliant: paidCompliant, inGrace };
+  const missingPaidFields = paidPlan && !paidCompliant ? getMissingPaidFields(store.profile || {}) : [];
+
   // Allow slot CTAs (promo_code action) to open the upgrade screen from anywhere
   useEffect(() => {
     const handler = () => setShowUpgrade(true);
@@ -438,10 +471,13 @@ export default function App() {
                     store={store}
                     inventory={inventory}
                     invoiceHook={invoiceHook}
+                    plan={plan}
                     setTab={setTab}
                     onQuickAction={triggerQuickAction}
                     onVoiceOpen={() => setVoiceOpen(true)}
-                    onAIOpen={() => setShowAI(true)} />,
+                    onAIOpen={() => setShowAI(true)}
+                    onGoVerification={() => navigate("/verification")}
+                    onGoSettings={() => navigate("/settings")} />,
     transactions: <Transactions
                     store={{ ...store, addTransaction: addTransactionWithLoyalty }}
                     plan={plan}
@@ -608,8 +644,18 @@ export default function App() {
         </div>
       </div>
 
-      {/* Report generator — full-screen overlay, z-60 */}
-      {showReports && <Reports store={store} onClose={() => setShowReports(false)} />}
+      {/* Report generator — full-screen overlay, z-60
+           Compliance lock: blocked after grace expires for non-compliant paid owners. */}
+      {showReports && !isFeatureLocked("pdfExport", complianceCtx) && (
+        <Reports store={store} onClose={() => setShowReports(false)} />
+      )}
+      {showReports && isFeatureLocked("pdfExport", complianceCtx) && (
+        <ComplianceLockModal
+          feature="PDF Reports"
+          onClose={() => setShowReports(false)}
+          onCompleteProfile={() => { setShowReports(false); navigate("/"); }}
+        />
+      )}
 
       {/* Branch report — wrapped at z-[80] so it appears above BranchDetail (z-70) */}
       {branchReport && (
@@ -643,8 +689,8 @@ export default function App() {
         </div>
       )}
 
-      {/* AI Business Assistant — full-screen overlay, z-50 (gated to aiChatbot feature) */}
-      {showAI && canDo(plan, "aiChatbot") && (
+      {/* AI Business Assistant — full-screen overlay, z-50 (gated to aiChatbot feature + compliance) */}
+      {showAI && canDo(plan, "aiChatbot") && !isFeatureLocked("aiChatbot", complianceCtx) && (
         <AIAssistant
           store={store}
           inventory={inventory}
@@ -654,9 +700,16 @@ export default function App() {
           onClose={() => setShowAI(false)}
         />
       )}
+      {showAI && canDo(plan, "aiChatbot") && isFeatureLocked("aiChatbot", complianceCtx) && (
+        <ComplianceLockModal
+          feature="AI Assistant"
+          onClose={() => setShowAI(false)}
+          onCompleteProfile={() => { setShowAI(false); navigate("/"); }}
+        />
+      )}
 
       {/* Floating AI Chat Widget — visible on all screens when full-screen AI is closed */}
-      {!showAI && canDo(plan, "aiChatbot") && (
+      {!showAI && canDo(plan, "aiChatbot") && !isFeatureLocked("aiChatbot", complianceCtx) && (
         <AIChatWidget store={store} inventory={inventory} branches={branchesHook.branches} />
       )}
 
@@ -678,7 +731,132 @@ export default function App() {
       )}
 
       {/* PIN lock screen removed — now handled as full-page gate above */}
+
+      {/* ── Compliance intro modal — shown once per paid user when not yet compliant ── */}
+      {showComplianceIntro && (
+        <ComplianceIntroModal
+          missingFields={missingPaidFields}
+          graceDaysLeft={graceDaysLeft}
+          onClose={() => setShowComplianceIntro(false)}
+          onComplete={() => { setShowComplianceIntro(false); navigate("/"); }}
+        />
+      )}
+
     </div>
     </ToastProvider>
+  );
+}
+
+// ── Compliance Intro Modal ────────────────────────────────────────────────────
+// Shown once per paid user explaining the new profile requirement.
+function ComplianceIntroModal({ missingFields, graceDaysLeft, onClose, onComplete }) {
+  const groups = [...new Set((missingFields || []).map(f => f.group))];
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 900,
+      background: "rgba(0,0,0,0.65)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      padding: "0 16px",
+    }}>
+      <div style={{
+        background: "#fff",
+        borderRadius: 20,
+        padding: "28px 22px",
+        width: "100%", maxWidth: 400,
+        boxShadow: "0 24px 64px rgba(0,0,0,0.3)",
+      }}>
+        <div style={{ fontSize: 36, textAlign: "center", marginBottom: 12 }}>📋</div>
+        <h2 style={{ fontSize: 17, fontWeight: 800, textAlign: "center", color: "#111827", margin: "0 0 8px" }}>
+          Profile requirements for paid plans
+        </h2>
+        <p style={{ fontSize: 13, color: "#4b5563", lineHeight: 1.6, textAlign: "center", margin: "0 0 16px" }}>
+          To support future lending partnerships, paid-plan owners now need a complete, verified profile. You have{" "}
+          <strong>{graceDaysLeft} days</strong> to complete it — all features work normally during this period.
+        </p>
+        <p style={{ fontSize: 12, color: "#6b7280", fontWeight: 600, margin: "0 0 8px" }}>What&apos;s needed:</p>
+        <ul style={{ margin: "0 0 20px", padding: "0 0 0 18px" }}>
+          {groups.map(g => (
+            <li key={g} style={{ fontSize: 13, color: "#374151", lineHeight: 1.8 }}>{g}</li>
+          ))}
+          <li style={{ fontSize: 13, color: "#374151", lineHeight: 1.8 }}>Identity verified via NIN</li>
+          <li style={{ fontSize: 13, color: "#374151", lineHeight: 1.8 }}>Settlement bank account linked</li>
+        </ul>
+        <button
+          onClick={onComplete}
+          style={{
+            width: "100%", padding: "13px",
+            background: "linear-gradient(135deg,#b45309 0%,#92400e 100%)",
+            color: "#fff", border: "none", borderRadius: 12,
+            fontWeight: 700, fontSize: 14, cursor: "pointer", marginBottom: 10,
+          }}
+        >
+          Start completing my profile
+        </button>
+        <button
+          onClick={onClose}
+          style={{
+            width: "100%", padding: "10px",
+            background: "none", color: "#9ca3af",
+            border: "none", fontSize: 13, cursor: "pointer",
+          }}
+        >
+          I&apos;ll do it later
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Compliance Lock Modal ─────────────────────────────────────────────────────
+// Shown when a non-compliant paid owner (past grace period) tries to open a
+// restricted premium feature. Core money functions are always accessible.
+function ComplianceLockModal({ feature, onClose, onCompleteProfile }) {
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 900,
+      background: "rgba(0,0,0,0.65)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      padding: "0 16px",
+    }}>
+      <div style={{
+        background: "#fff",
+        borderRadius: 20,
+        padding: "28px 22px",
+        width: "100%", maxWidth: 360,
+        boxShadow: "0 24px 64px rgba(0,0,0,0.3)",
+      }}>
+        <div style={{ fontSize: 36, textAlign: "center", marginBottom: 12 }}>🔒</div>
+        <h2 style={{ fontSize: 16, fontWeight: 800, textAlign: "center", color: "#111827", margin: "0 0 8px" }}>
+          {feature} requires a complete profile
+        </h2>
+        <p style={{ fontSize: 13, color: "#4b5563", lineHeight: 1.6, textAlign: "center", margin: "0 0 6px" }}>
+          Complete your profile and verify your identity to continue using this feature.
+        </p>
+        <p style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5, textAlign: "center", margin: "0 0 20px" }}>
+          All core functions — recording sales, managing savings clients, paying bills, and viewing transaction history — are always available.
+        </p>
+        <button
+          onClick={onCompleteProfile}
+          style={{
+            width: "100%", padding: "13px",
+            background: "linear-gradient(135deg,#b91c1c 0%,#991b1b 100%)",
+            color: "#fff", border: "none", borderRadius: 12,
+            fontWeight: 700, fontSize: 14, cursor: "pointer", marginBottom: 10,
+          }}
+        >
+          Complete my profile
+        </button>
+        <button
+          onClick={onClose}
+          style={{
+            width: "100%", padding: "10px",
+            background: "none", color: "#9ca3af",
+            border: "none", fontSize: 13, cursor: "pointer",
+          }}
+        >
+          Go back
+        </button>
+      </div>
+    </div>
   );
 }

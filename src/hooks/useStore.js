@@ -355,6 +355,10 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
         verified_name:                 p.verified_name                 || "",
         tier2_trigger:                 p.tier2_trigger                 || "",
         verification_rejected_reason:  p.verification_rejected_reason  || "",
+        settlement_account_number:     p.settlement_account_number     || "",
+        settlement_account_name:       p.settlement_account_name       || "",
+        settlement_bank_name:          p.settlement_bank_name          || "",
+        paystack_subaccount_code:      p.paystack_subaccount_code      || "",
       }));
     }
 

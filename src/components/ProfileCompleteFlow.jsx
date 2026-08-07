@@ -142,7 +142,8 @@ function Section({ section, profile, dark, onSave }) {
     }
   }
 
-  const lgas = fields.business_state ? getLGAs(fields.business_state) : [];
+  const lgas         = fields.business_state ? getLGAs(fields.business_state) : [];
+  const personalLgas = fields.state ? getLGAs(fields.state) : [];
 
   return (
     <div style={{
@@ -196,7 +197,7 @@ function Section({ section, profile, dark, onSave }) {
 
           {/* Fields */}
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {renderFields(section, fields, set, dark, logoPreview, setLogoPreview, setLogoFile, docFileName, setDocFileName, setDocFile, lgas)}
+            {renderFields(section, fields, set, dark, logoPreview, setLogoPreview, setLogoFile, docFileName, setDocFileName, setDocFile, lgas, personalLgas)}
           </div>
 
           {error && (
@@ -234,7 +235,7 @@ function Section({ section, profile, dark, onSave }) {
 
 // ── Field renderers by section ────────────────────────────────────────────────
 
-function renderFields(section, fields, set, dark, logoPreview, setLogoPreview, setLogoFile, docFileName, setDocFileName, setDocFile, lgas) {
+function renderFields(section, fields, set, dark, logoPreview, setLogoPreview, setLogoFile, docFileName, setDocFileName, setDocFile, lgas, personalLgas) {
   const inp = inputStyle(dark);
 
   if (section.id === "about") {
@@ -257,6 +258,21 @@ function renderFields(section, fields, set, dark, logoPreview, setLogoPreview, s
           <Label dark={dark}>Home address</Label>
           <input value={fields.address} onChange={e => set("address", e.target.value)}
             placeholder="12 Elm Street, Lagos" style={inp} />
+        </div>
+        <div>
+          <Label dark={dark}>State of residence</Label>
+          <select value={fields.state} onChange={e => { set("state", e.target.value); set("lga", ""); }} style={inp}>
+            <option value="">Select state…</option>
+            {STATES.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+        <div>
+          <Label dark={dark}>LGA of residence</Label>
+          <select value={fields.lga} onChange={e => set("lga", e.target.value)}
+            disabled={!fields.state} style={{ ...inp, opacity: fields.state ? 1 : 0.5 }}>
+            <option value="">{fields.state ? "Select LGA…" : "Select state first"}</option>
+            {personalLgas.map(l => <option key={l} value={l}>{l}</option>)}
+          </select>
         </div>
         <div>
           <Label dark={dark}>National ID Number (NIN)</Label>
@@ -293,6 +309,22 @@ function renderFields(section, fields, set, dark, logoPreview, setLogoPreview, s
           </div>
         </div>
         <div>
+          <Label dark={dark}>Business type</Label>
+          <select value={fields.business_type} onChange={e => set("business_type", e.target.value)} style={inp}>
+            <option value="">Select type…</option>
+            {BUSINESS_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+        <div>
+          <Label dark={dark}>Registration status</Label>
+          <select value={fields.reg_status} onChange={e => set("reg_status", e.target.value)} style={inp}>
+            <option value="">Select…</option>
+            {["Registered (CAC)", "Registered (Other)", "Not yet registered", "Exempt (informal)"].map(r => (
+              <option key={r} value={r}>{r}</option>
+            ))}
+          </select>
+        </div>
+        <div>
           <Label dark={dark}>Industry / Category</Label>
           <select value={fields.industry} onChange={e => set("industry", e.target.value)} style={inp}>
             <option value="">Select category…</option>
@@ -300,11 +332,18 @@ function renderFields(section, fields, set, dark, logoPreview, setLogoPreview, s
           </select>
         </div>
         <div>
-          <Label dark={dark}>Business type</Label>
-          <select value={fields.business_type} onChange={e => set("business_type", e.target.value)} style={inp}>
-            <option value="">Select type…</option>
-            {BUSINESS_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+          <Label dark={dark}>Business size</Label>
+          <select value={fields.business_size} onChange={e => set("business_size", e.target.value)} style={inp}>
+            <option value="">Select…</option>
+            {["Solo / 1 person", "2–5 people", "6–20 people", "21–50 people", "51+ people"].map(s => (
+              <option key={s} value={s}>{s}</option>
+            ))}
           </select>
+        </div>
+        <div>
+          <Label dark={dark}>Products / services sold</Label>
+          <input value={fields.products_services_type} onChange={e => set("products_services_type", e.target.value)}
+            placeholder="e.g. Electronics, ready-to-wear fashion" style={inp} />
         </div>
         <div>
           <Label dark={dark}>Operating model</Label>

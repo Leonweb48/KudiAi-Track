@@ -18,7 +18,9 @@ import OffersSection from "../components/slots/OffersSection";
 import AnnouncementBarSlot from "../components/slots/AnnouncementBarSlot";
 import ReferralCard from "../components/ReferralCard";
 import ProfileCompletionBanner from "../components/ProfileCompletionBanner";
+import PaidProfileBanner from "../components/PaidProfileBanner";
 import ProfileCompleteFlow from "../components/ProfileCompleteFlow";
+import { isPaidPlan } from "../utils/paidCompliance";
 import TransactionDetailModal from "../components/shared/TransactionDetailModal";
 import { buildTransactionReceipt } from "../utils/receiptConfig";
 
@@ -105,7 +107,7 @@ function SalesForecastCard({ prediction, t, balanceHidden }) {
 }
 
 /* ── Main ────────────────────────────────────────────────────────── */
-export default function Home({ store, inventory, invoiceHook, plan, setTab, onQuickAction, onVoiceOpen, onAIOpen }) {
+export default function Home({ store, inventory, invoiceHook, plan, setTab, onQuickAction, onVoiceOpen, onAIOpen, onGoVerification, onGoSettings }) {
   const { transactions, credits, asoClients, debtPayments, profile, loading } = store;
   const t = useT();
 
@@ -189,8 +191,19 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
       {/* ── Announcement bar slot ────────────────────────────────── */}
       <AnnouncementBarSlot campaigns={annBars} loading={camLoading} recordEvent={recordEvent} />
 
-      {/* ── Profile completion banner ─────────────────────────────── */}
-      <ProfileCompletionBanner profile={profile} onOpen={() => setShowCompleteFlow(true)} />
+      {/* ── Profile completion / compliance banner ───────────────────
+           Paid owners: persistent non-dismissible PaidProfileBanner.
+           Free owners: dismissible 3-day snooze ProfileCompletionBanner.
+      ──────────────────────────────────────────────────────────────── */}
+      {isPaidPlan(plan)
+        ? <PaidProfileBanner
+            profile={profile}
+            onOpen={() => setShowCompleteFlow(true)}
+            onGoVerification={onGoVerification}
+            onGoSettings={onGoSettings}
+          />
+        : <ProfileCompletionBanner profile={profile} onOpen={() => setShowCompleteFlow(true)} />
+      }
 
       {/* ── Hero card — brand navy ─────────────────────────────────── */}
       <div className="rounded-3xl px-5 pt-5 pb-6 text-white relative overflow-hidden shadow-hero"
