@@ -5,7 +5,7 @@ import { logAudit } from "../utils/auditLog";
 import { sendEmailTrigger } from "../utils/emailTrigger";
 import { computeCapital } from "../lib/profitEngine";
 import { notify, notifyBranchManager } from "../lib/notifyEngine";
-import { savePendingOp, getPendingCount } from "../utils/offlineDb";
+import { savePendingOp, getPendingCount, getPendingOps } from "../utils/offlineDb";
 import { syncPending } from "../utils/syncManager";
 
 const fireEmailTrigger = sendEmailTrigger;
@@ -42,6 +42,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
   const [rtConnected, setRtConnected] = useState(false);
   const [syncing,      setSyncing]     = useState(false);
   const [syncResult,   setSyncResult]  = useState(null);
+  const [syncFailed,   setSyncFailed]  = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
   const [lastSyncTime, setLastSyncTime] = useState(() => {
     const v = localStorage.getItem(`kt_last_sync_${userId || ""}`);
@@ -54,7 +55,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
   const loadDataRef     = useRef(null);
 
   // ── Load all data ──────────────────────────────────────────────
-  const loadData = useCallback(async (silent = false) => {
+  const loadData = useCallback(async (silent = false, keepPendingIds = null) => {
     if (!userId) return;
     if (!silent) { setLoading(true); setLoadError(null); setFromCache(false); }
 
@@ -128,7 +129,24 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     ]);
     authEmailRef.current = sessRes?.data?.session?.user?.email || "";
 
-    if (txRes.data)  setTransactions(txRes.data);
+    if (txRes.data) {
+      if (keepPendingIds && keepPendingIds.size > 0) {
+        // Called from doSync: some ops failed — merge their _pending rows back in
+        // so they stay visible and can be retried, rather than disappearing silently.
+        setTransactions(prev => {
+          const serverData      = txRes.data;
+          const serverClientIds = new Set(serverData.map(tx => tx.client_txn_id).filter(Boolean));
+          const surviving       = prev.filter(tx =>
+            tx._pending &&
+            keepPendingIds.has(tx.client_txn_id) &&
+            !serverClientIds.has(tx.client_txn_id)
+          );
+          return surviving.length ? [...surviving, ...serverData] : serverData;
+        });
+      } else {
+        setTransactions(txRes.data);
+      }
+    }
     if (crRes.data)  setCredits(crRes.data);
     if (asoRes.data) setAsoClients(asoRes.data);
     if (dpRes.data)  setDebtPayments(dpRes.data);
@@ -490,24 +508,49 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     const doSync = async () => {
       setSyncing(true);
       setSyncResult(null);
+      setSyncFailed(false);
       try {
         const before = await getPendingCount(userId).catch(() => 0);
+        let result = { synced: 0, failed: 0, total: 0, errors: [] };
+
         if (before > 0) {
-          const result = await syncPending(supabase, userId);
-          if (result.synced > 0) {
-            setTransactions(prev => prev.filter(tx => !tx._pending));
-          }
+          result = await syncPending(supabase, userId);
         }
-        await loadDataRef.current?.(true);
-        const after = await getPendingCount(userId).catch(() => 0);
-        setPendingCount(after);
-        const syncedCount = before - after;
-        setSyncResult(syncedCount > 0
-          ? `Synced ${syncedCount} offline transaction${syncedCount === 1 ? "" : "s"}`
-          : "Up to date"
+
+        // IDB now reflects true sync state — fetch which ops are still pending (failed).
+        // Pass their client_txn_ids to loadData so it can merge those _pending rows back
+        // in rather than silently dropping them when it replaces state with server rows.
+        const stillPendingOps      = await getPendingOps(userId).catch(() => []);
+        const stillPendingClientIds = new Set(
+          stillPendingOps.map(op => op.data?.client_txn_id).filter(Boolean)
         );
-        setTimeout(() => setSyncResult(null), 5000);
-      } catch { /* best-effort */ }
+
+        // Refresh from server, preserving rows that are genuinely still pending.
+        await loadDataRef.current?.(true, stillPendingClientIds);
+
+        setPendingCount(stillPendingOps.length);
+
+        // Honest result messaging — never claim success when ops failed.
+        if (result.synced > 0 && result.failed === 0) {
+          setSyncFailed(false);
+          setSyncResult(`Synced ${result.synced} offline transaction${result.synced === 1 ? "" : "s"}`);
+          setTimeout(() => setSyncResult(null), 5000);
+        } else if (result.synced > 0 && result.failed > 0) {
+          setSyncFailed(true);
+          setSyncResult(`${result.synced} of ${result.total} synced — ${result.failed} failed: ${result.errors[0] || "Unknown error"}. Will retry.`);
+          setTimeout(() => setSyncResult(null), 8000);
+        } else if (result.failed > 0) {
+          setSyncFailed(true);
+          setSyncResult(`Sync failed (${result.failed} item${result.failed === 1 ? "" : "s"}): ${result.errors[0] || "Unknown error"}. Will retry.`);
+          setTimeout(() => setSyncResult(null), 8000);
+        }
+        // No message when nothing was pending — avoid noisy "Up to date" on every reconnect
+      } catch (err) {
+        console.error("[doSync]", err);
+        setSyncFailed(true);
+        setSyncResult("Sync error — data preserved, will retry on reconnect.");
+        setTimeout(() => setSyncResult(null), 8000);
+      }
       setSyncing(false);
     };
 
@@ -1141,7 +1184,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     setProfile, isOnline, loading, rtConnected,
     dbError, clearDbError: () => setDbError(null),
     loadError, clearLoadError: () => setLoadError(null), reloadData: loadData, silentRefresh: () => loadData(true),
-    fromCache, lastSyncTime, syncing, syncResult, pendingCount,
+    fromCache, lastSyncTime, syncing, syncResult, syncFailed, pendingCount,
     addTransaction,
     patchTransactionNote,
     // Staff cannot delete transactions — only business owners (no staffId) can

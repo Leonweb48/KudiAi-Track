@@ -583,6 +583,7 @@ export default function App() {
             lastSyncTime={store.lastSyncTime}
             syncing={store.syncing}
             syncResult={store.syncResult}
+            syncFailed={store.syncFailed}
             pendingCount={store.pendingCount}
           />
 

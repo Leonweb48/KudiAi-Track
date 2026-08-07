@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import Icon from "./Icon";
 import { formatSyncTime } from "../utils/offlineCache";
 
-export default function SyncBar({ isOnline, fromCache, dbError, loadError, lastSyncTime, syncing, syncResult, pendingCount = 0 }) {
+export default function SyncBar({ isOnline, fromCache, dbError, loadError, lastSyncTime, syncing, syncResult, syncFailed = false, pendingCount = 0 }) {
   const [showResult, setShowResult] = useState(false);
 
   useEffect(() => {
@@ -50,6 +50,12 @@ export default function SyncBar({ isOnline, fromCache, dbError, loadError, lastS
         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
       </svg>
       <span className="text-[11px] font-semibold text-blue-700 dark:text-blue-300">Back online — syncing…</span>
+    </div>
+  );
+  if (showResult && syncResult && syncFailed) return (
+    <div className="flex-none flex items-center gap-2 px-4 py-2 bg-red-50 dark:bg-red-900/20 border-b border-red-100 dark:border-red-800/30">
+      <Icon name="warn" size={13} className="text-red-500 flex-shrink-0" />
+      <span className="text-[11px] font-semibold text-red-700 dark:text-red-300">{syncResult}</span>
     </div>
   );
   if (showResult && syncResult) return (
