@@ -1,0 +1,45 @@
+name: Apply Verification Schema
+
+on:
+  workflow_dispatch:
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link Supabase project
+        run: supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      # Mark old local-only migrations as already applied so db push skips them.
+      # These were applied directly (not via CLI) and are missing from the history table.
+      - name: Mark old migrations as applied in history
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          for v in \
+            20260718000003 \
+            20260727100000 \
+            20260727100001 \
+            20260727100002 \
+            20260727_login_audit_enhancements \
+            20260806000007 \
+            20260806000008 \
+            20261027000001 \
+            20261100000001 \
+          ; do
+            supabase migration repair --status applied "$v" 2>/dev/null || true
+          done
+
+      # Now push — only untracked migrations (the verification schema) will be applied.
+      - name: Push verification schema migration
+        run: supabase db push --linked
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
