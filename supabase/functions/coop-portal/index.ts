@@ -569,6 +569,12 @@ serve(async (req) => {
       if (error) return json({ error: error.message }, 400);
       await sb.from("organizations").update({ member_count: (count || 0) + 1 }).eq("id", b.org_id);
 
+      // Hash the default PIN for the new member
+      const { data: defaultHash } = await sb.rpc("hash_member_pin", { p_pin: "0000" });
+      if (defaultHash) {
+        await sb.from("org_members").update({ portal_pin_hash: defaultHash, portal_pin: null }).eq("id", member.id);
+      }
+
       // Create Supabase Auth account. email_confirm: true lets member sign in immediately
       // with the temp password. member_otp_verified: false (our custom flag, never auto-set
       // by Supabase) controls the in-app OTP step — avoids collision with email_confirm.
@@ -793,7 +799,7 @@ serve(async (req) => {
       const allowed = ["full_name","email","phone","role","status","address","occupation",
                        "gender","date_of_birth","joined_date","next_of_kin","next_of_kin_phone",
                        "suspension_reason","privacy_balance","privacy_contributions",
-                       "privacy_activities","portal_pin"];
+                       "privacy_activities"];
       const update: Record<string, unknown> = {};
       for (const k of allowed) if (fields[k] !== undefined) update[k] = fields[k];
       if (update.status === "suspended") update.suspended_at = new Date().toISOString();
@@ -814,8 +820,9 @@ serve(async (req) => {
       const { member_id, org_id } = body as { member_id: string; org_id: string };
       if (!member_id || !org_id) return json({ error: "member_id and org_id required" }, 400);
       const new_pin = String(Math.floor(1000 + Math.random() * 9000));
+      const { data: newHash } = await sb.rpc("hash_member_pin", { p_pin: new_pin });
       await sb.from("org_members")
-        .update({ portal_pin: new_pin })
+        .update({ portal_pin_hash: newHash, portal_pin: null })
         .eq("id", member_id).eq("org_id", org_id);
       return json({ new_pin });
     }
@@ -1824,7 +1831,7 @@ serve(async (req) => {
       if (!membership_id || !pin) return json({ error: "Membership ID and PIN required" }, 400);
       // Step 1: fetch auth state without revealing full member PII on failure
       let authQ = sb.from("org_members")
-        .select("id, status, portal_pin, portal_pin_attempts, portal_pin_locked_until")
+        .select("id, status, portal_pin_hash, portal_pin_attempts, portal_pin_locked_until")
         .eq("membership_id", membership_id.toUpperCase().trim());
       if (org_id) authQ = authQ.eq("org_id", org_id);
       const { data: authRow } = await authQ.maybeSingle();
@@ -1836,8 +1843,9 @@ serve(async (req) => {
         const until = new Date(authRow.portal_pin_locked_until).toLocaleTimeString("en-NG");
         return json({ error: `Too many incorrect PINs — try again after ${until}` }, 429);
       }
-      // Verify PIN
-      if (authRow.portal_pin !== pin.trim()) {
+      // Verify PIN via bcrypt — never compare hashes client-side
+      const { data: pinOk } = await sb.rpc("verify_member_pin", { p_member_id: authRow.id, p_pin: pin.trim() });
+      if (!pinOk) {
         const attempts = (authRow.portal_pin_attempts || 0) + 1;
         const upd: Record<string, unknown> = { portal_pin_attempts: attempts };
         if (attempts >= 5) upd.portal_pin_locked_until = new Date(Date.now() + 15 * 60 * 1000).toISOString();
@@ -1875,9 +1883,10 @@ serve(async (req) => {
       if (new_pin.length < 4) return json({ error: "PIN must be at least 4 digits" }, 400);
       const _cpDenied = await requireMemberAccess(member_id, (body as Record<string,string>).session_token);
       if (_cpDenied) return _cpDenied;
-      const { data: m } = await sb.from("org_members").select("portal_pin").eq("id", member_id).single();
-      if (!m || m.portal_pin !== current_pin.trim()) return json({ error: "Current PIN is incorrect" }, 401);
-      await sb.from("org_members").update({ portal_pin: new_pin, must_change_pin: false }).eq("id", member_id);
+      const { data: pinOk } = await sb.rpc("verify_member_pin", { p_member_id: member_id, p_pin: current_pin.trim() });
+      if (!pinOk) return json({ error: "Current PIN is incorrect" }, 401);
+      const { data: newHash } = await sb.rpc("hash_member_pin", { p_pin: new_pin });
+      await sb.from("org_members").update({ portal_pin_hash: newHash, portal_pin: null, must_change_pin: false }).eq("id", member_id);
       return json({ success: true });
     }
 
