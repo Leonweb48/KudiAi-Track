@@ -2351,7 +2351,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
       // Write full bill intent to DB so the webhook can fulfill if user never returns.
       supabase.from("pending_bills").insert({
-        reference: ref, user_id: userId, cat: selectedCat,
+        reference: ref, user_id: profile?.id || null, cat: selectedCat,
         form_data: { ...form }, paid_amount: finalAmount,
         verify_name: verifyName, meter_address: meterAddress || "",
       }).catch(() => {});
