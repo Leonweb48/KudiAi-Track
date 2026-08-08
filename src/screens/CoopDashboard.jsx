@@ -3361,17 +3361,25 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
   const [showMore,      setShowMore]      = useState(false);
   const [billsAutoSvc,  setBillsAutoSvc]  = useState(null);
 
+  // true when the org has delegated its operations to the portal admin and the
+  // viewer is the business owner (not the org portal itself)
+  const isDelegated = !isOrgPortal && !!org.governance_delegated;
+
   const loadAll = useCallback(() => {
     const orgId = org.id;
     const safe = fn => fn.catch(() => ({}));
+    const skip = Promise.resolve({});
+    // When governance is delegated the owner may only call provisioning actions;
+    // skip operational fetches to avoid 423 errors and unnecessary network traffic.
+    const delegated = !isOrgPortal && !!org.governance_delegated;
     Promise.all([
       coopFn("get-org",           { org_id: orgId }),
-      coopFn("get-members",       { org_id: orgId }),
+      delegated ? skip : coopFn("get-members",       { org_id: orgId }),
       coopFn("get-wallet",        { org_id: orgId }),
-      coopFn("get-programs",      { org_id: orgId }),
-      coopFn("get-announcements", { org_id: orgId }),
-      safe(coopFn("get-loans",    { org_id: orgId })),
-      safe(coopFn("get-withdrawal-requests-admin", { org_id: orgId })),
+      delegated ? skip : coopFn("get-programs",      { org_id: orgId }),
+      delegated ? skip : coopFn("get-announcements", { org_id: orgId }),
+      delegated ? skip : safe(coopFn("get-loans",    { org_id: orgId })),
+      delegated ? skip : safe(coopFn("get-withdrawal-requests-admin", { org_id: orgId })),
     ]).then(([orgR, memR, walR, progR, annR, loanR, wdR]) => {
       setOrg(prev => orgR.org || prev);
       setMembers(memR.members || []);
@@ -3381,9 +3389,16 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
       setLoans(loanR.loans || []);
       setWdRequests(wdR.requests || wdR.withdrawals || []);
     }).catch(console.error).finally(() => setLoading(false));
-  }, [org.id]);
+  }, [org.id, org.governance_delegated, isOrgPortal]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
+
+  // Reset to a provisioning-safe tab when delegation is toggled on
+  useEffect(() => {
+    if (isDelegated && !["overview","settings","support","profile"].includes(tab)) {
+      setTab("overview");
+    }
+  }, [isDelegated, tab]);
 
   const navigateTo = useCallback((tabId) => {
     setTab(tabId);
@@ -3656,7 +3671,7 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
         {/* ── Twitter-style text-only tab bar ── */}
         <div className="bg-white dark:bg-[#0f1117] border-b border-slate-100 dark:border-slate-800 overflow-x-auto flex-shrink-0">
           <div className="flex min-w-max">
-            {TABS.filter(t => !t.orgOnly).map(t => (
+            {TABS.filter(t => !t.orgOnly && (!isDelegated || ["overview","settings"].includes(t.id))).map(t => (
               <button key={t.id} onClick={() => setTab(t.id)}
                 className={`px-4 py-3.5 border-b-2 transition-colors whitespace-nowrap text-sm leading-none ${
                   tab === t.id
@@ -3670,6 +3685,15 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
         </div>
 
         <main className="flex-1 overflow-y-auto">
+          {isDelegated && (
+            <div className="mx-4 mt-4 mb-1 flex items-start gap-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-xl px-4 py-3">
+              <span className="text-base mt-0.5">🤝</span>
+              <div>
+                <p className="text-xs font-bold text-amber-800 dark:text-amber-300">This cooperative manages its own operations</p>
+                <p className="text-[11px] text-amber-700 dark:text-amber-500 mt-0.5 leading-relaxed">Member management, savings, loans, and meetings are handled by the cooperative's portal administrator. You retain access to provisioning settings below.</p>
+              </div>
+            </div>
+          )}
           {tabContent[tab]}
         </main>
       </div>

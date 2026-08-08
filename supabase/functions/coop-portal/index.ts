@@ -56,7 +56,7 @@ const ORG_SELECT = `id, owner_id, portal_user_id, name, type, reg_number, descri
   social_instagram, social_facebook, social_twitter, date_established, registration_fee,
   wallet_balance, total_savings, total_loans_out, interest_earned, member_count, status, created_at,
   bank_code, account_number, account_name, paystack_subaccount_code, paystack_subaccount_id, percentage_charge,
-  pending_archive, archived_at, archived_by`;
+  pending_archive, archived_at, archived_by, governance_delegated`;
 
 const MEMBER_SELECT = `id, org_id, membership_id, full_name, email, phone, role, status,
   profile_image_url, address, occupation, gender, date_of_birth, joined_date,
@@ -156,14 +156,15 @@ serve(async (req) => {
     return json({ error: "Unauthorised" }, 401);
   }
 
-  // Returns null if the caller is the org owner or their active staff; Response if denied
+  // Returns null if the caller is the org owner, their active staff, or the org portal admin; Response if denied
   async function requireOrgOwner(org_id: string): Promise<Response | null> {
     if (!org_id) return json({ error: "org_id required" }, 400);
     if (!callerId) return json({ error: "Unauthorised" }, 401);
     const { data: o } = await sb.from("organizations")
-      .select("id, owner_id").eq("id", org_id).maybeSingle();
+      .select("id, owner_id, portal_user_id").eq("id", org_id).maybeSingle();
     if (!o) return json({ error: "Organisation not found" }, 404);
     if (o.owner_id === callerId) return null;
+    if (o.portal_user_id && o.portal_user_id === callerId) return null;
     const { data: st } = await sb.from("staff").select("id")
       .eq("user_id", callerId).eq("owner_id", o.owner_id).eq("status", "active").maybeSingle();
     return st ? null : json({ error: "Forbidden" }, 403);
@@ -255,6 +256,45 @@ serve(async (req) => {
     return null;
   }
 
+  // Operational actions blocked for the org owner when governance_delegated = true.
+  // Provisioning actions (setup-org-portal, get-org, update-org, get-wallet, etc.) are not listed here
+  // and always pass through regardless of delegation state.
+  const DELEGATED_OPERATIONAL_ACTIONS = new Set([
+    "get-leaders","add-leader","update-leader","delete-leader",
+    "add-member","get-members","get-member","update-member",
+    "reset-member-pin","reset-member-password","delete-member","get-member-directory",
+    "get-programs","add-program","update-program","delete-program",
+    "record-saving","get-savings",
+    "create-withdrawal","get-withdrawals","get-withdrawal-items",
+    "apply-loan","update-loan","record-repayment","get-loans","get-repayments",
+    "update-loan-settings","check-overdue-loans",
+    "create-meeting","update-meeting","get-meetings","bulk-attendance","get-attendance",
+    "set-rsvp","get-rsvp",
+    "send-announcement","get-announcements","pin-announcement","delete-announcement",
+    "get-member-bills","add-member-bill","get-org-bills","add-org-bill",
+    "create-event","get-events","delete-event",
+    "create-poll","get-polls","delete-poll",
+    "get-member-reactivation-requests","reject-member-reactivation","resend-member-reactivation",
+    "get-withdrawal-requests-admin","handle-withdrawal-request",
+    "initialize-loan-payment","confirm-loan-payment",
+    "initialize-member-payment","confirm-member-payment",
+    "request-member-withdrawal","get-member-withdrawal-requests",
+  ]);
+
+  // Returns 423 if the org has delegated governance and the caller is the owner.
+  // Portal admin (portal_user_id), staff, and members are never blocked by this check.
+  async function checkGovernanceDelegation(org_id: string, op: string): Promise<Response | null> {
+    if (!DELEGATED_OPERATIONAL_ACTIONS.has(op)) return null;
+    const { data: org } = await sb.from("organizations")
+      .select("owner_id, governance_delegated").eq("id", org_id).maybeSingle();
+    if (!org?.governance_delegated) return null;
+    if (callerId !== org.owner_id) return null;
+    return json({
+      error: "This cooperative manages its own operations. Operational actions are handled by the portal administrator.",
+      delegated: true,
+    }, 423);
+  }
+
   // All actions that operate on a specific org and require org ownership
   const ORG_OWNER_ACTIONS = new Set([
     "setup-org-portal","delete-org","get-org","update-org",
@@ -285,6 +325,8 @@ serve(async (req) => {
       const { org_id } = body as { org_id?: string };
       const denied = await requireOrgOwner(org_id ?? "");
       if (denied) return denied;
+      const govDenied = await checkGovernanceDelegation(org_id ?? "", action as string);
+      if (govDenied) return govDenied;
     }
 
     // ══════════════════════════════════════════════════
@@ -423,6 +465,23 @@ serve(async (req) => {
       }).catch(() => null);
 
       return json({ success: true });
+    }
+
+    // Toggle governance delegation — only the portal admin can call this; owner cannot.
+    if (action === "set-governance-delegation") {
+      const { org_id, delegated } = body as { org_id: string; delegated: boolean };
+      if (!org_id) return json({ error: "org_id required" }, 400);
+      if (!callerId) return json({ error: "Unauthorised" }, 401);
+      const { data: orgRow } = await sb.from("organizations")
+        .select("portal_user_id").eq("id", org_id).maybeSingle();
+      if (!orgRow) return json({ error: "Organisation not found" }, 404);
+      if (!orgRow.portal_user_id) return json({ error: "No portal administrator configured for this organisation" }, 400);
+      if (callerId !== orgRow.portal_user_id) {
+        return json({ error: "Only the portal administrator can change governance delegation settings" }, 403);
+      }
+      await sb.from("organizations")
+        .update({ governance_delegated: !!delegated }).eq("id", org_id);
+      return json({ ok: true, governance_delegated: !!delegated });
     }
 
     if (action === "delete-org") {
