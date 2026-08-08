@@ -38,7 +38,9 @@ UPDATE public.platform_sessions SET latitude = NULL, longitude = NULL
 
 -- 5. Helper: count anomaly logins by user (useful for ad-hoc queries)
 CREATE OR REPLACE FUNCTION public.anomaly_login_count(p_user_id UUID)
-RETURNS BIGINT LANGUAGE SQL STABLE AS $$
+RETURNS BIGINT LANGUAGE SQL STABLE
+SET search_path TO 'public', 'pg_temp'
+AS $$
   SELECT COUNT(*) FROM public.platform_sessions
   WHERE user_id = p_user_id
     AND (is_new_device = TRUE OR is_new_location = TRUE)
