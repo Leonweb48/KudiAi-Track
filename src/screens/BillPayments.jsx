@@ -2354,7 +2354,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         reference: ref, user_id: profile?.id || null, cat: selectedCat,
         form_data: { ...form }, paid_amount: finalAmount,
         verify_name: verifyName, meter_address: meterAddress || "",
-      }).catch(() => {});
+      }).then(() => {}, () => {});
 
       // Initialize Paystack — prefer owner profile email, fall back to staff email
       const email = profile?.email || staffEmail || "";
