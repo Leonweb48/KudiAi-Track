@@ -593,14 +593,15 @@ function PayOrgModal({ member, org, preProgram, history, onClose }) {
 // ═══════════════════════════════════════════════════
 function RequestWithdrawalModal({ member, org, onClose, onSuccess }) {
   const t = useT();
-  const [amount,     setAmount]     = useState("");
-  const [reason,     setReason]     = useState("");
-  const [saving,     setSaving]     = useState(false);
-  const [error,      setError]      = useState("");
-  const [done,       setDone]       = useState(false);
-  const [txnPin,     setTxnPin]     = useState(null);
-  const [feePreview, setFeePreview] = useState(null); // { gross_amount, transaction_charge, net_amount }
-  const [feeLoading, setFeeLoading] = useState(false);
+  const [amount,        setAmount]        = useState("");
+  const [reason,        setReason]        = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("cash"); // "cash" | "bank_transfer"
+  const [saving,        setSaving]        = useState(false);
+  const [error,         setError]         = useState("");
+  const [done,          setDone]          = useState(false);
+  const [txnPin,        setTxnPin]        = useState(null);
+  const [feePreview,    setFeePreview]    = useState(null); // { gross_amount, transaction_charge, net_amount, payment_method }
+  const [feeLoading,    setFeeLoading]    = useState(false);
 
   const handleSubmit = async () => {
     const amt = parseFloat(amount);
@@ -608,7 +609,9 @@ function RequestWithdrawalModal({ member, org, onClose, onSuccess }) {
     if (amt > (member.savings_balance || 0)) { setError(t("error.somethingWrong")); return; }
     setSaving(true); setError("");
     try {
-      await coopFn("request-member-withdrawal", { member_id: member.id, org_id: org.id, amount: amt, reason });
+      await coopFn("request-member-withdrawal", {
+        member_id: member.id, org_id: org.id, amount: amt, reason, payment_method: paymentMethod,
+      });
       setDone(true);
       onSuccess?.();
     } catch (e) { setError(e.message || t("error.saveFailed")); }
@@ -621,22 +624,26 @@ function RequestWithdrawalModal({ member, org, onClose, onSuccess }) {
     if (amt > (member.savings_balance || 0)) { setError(t("error.somethingWrong")); return; }
     setError(""); setFeeLoading(true);
     try {
-      const preview = await coopFn("get-withdrawal-fee-preview", { org_id: org.id, amount: amt });
+      const preview = await coopFn("get-withdrawal-fee-preview", {
+        org_id: org.id, amount: amt, payment_method: paymentMethod,
+      });
       setFeePreview(preview);
     } catch {
-      setFeePreview({ gross_amount: amt, transaction_charge: 0, net_amount: amt, fee_applied: false });
+      setFeePreview({ gross_amount: amt, transaction_charge: 0, net_amount: amt, fee_applied: false, payment_method: paymentMethod });
     } finally { setFeeLoading(false); }
   };
 
   const confirmWithPin = () => {
     const amt = feePreview?.gross_amount || parseFloat(amount);
+    const isBankTransfer = (feePreview?.payment_method ?? paymentMethod) === "bank_transfer";
+    const chargeDesc = feePreview?.transaction_charge > 0
+      ? `You'll receive ₦${Number(feePreview.net_amount).toLocaleString("en-NG")} · ₦${Number(feePreview.transaction_charge).toFixed(2)} ${isBankTransfer ? "bank transfer fee" : "organisation fee"}`
+      : "Savings withdrawal request";
     setTxnPin({
       title: "Request Withdrawal",
       amount: Math.round(amt * 100),
       recipient: org.name,
-      description: feePreview?.transaction_charge > 0
-        ? `You'll receive ₦${Number(feePreview.net_amount).toLocaleString("en-NG")} · ₦${Number(feePreview.transaction_charge).toFixed(2)} transaction charge (covers bank and processing fees)`
-        : "Savings withdrawal request",
+      description: chargeDesc,
       onApprove: () => { setTxnPin(null); handleSubmit(); },
     });
   };
@@ -663,9 +670,17 @@ function RequestWithdrawalModal({ member, org, onClose, onSuccess }) {
                 <span className="text-slate-500 dark:text-slate-400">Requested</span>
                 <span className="font-bold text-slate-800 dark:text-white">{fmt(feePreview.gross_amount)}</span>
               </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-500 dark:text-slate-400">Method</span>
+                <span className="font-semibold text-slate-600 dark:text-slate-300">
+                  {(feePreview.payment_method ?? paymentMethod) === "bank_transfer" ? "Bank transfer" : "Cash"}
+                </span>
+              </div>
               {feePreview.transaction_charge > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-500 dark:text-slate-400">Transaction charge</span>
+                  <span className="text-slate-500 dark:text-slate-400">
+                    {(feePreview.payment_method ?? paymentMethod) === "bank_transfer" ? "Bank transfer fee" : "Organisation fee"}
+                  </span>
                   <span className="font-bold text-red-500">−{fmt(feePreview.transaction_charge)}</span>
                 </div>
               )}
@@ -676,8 +691,10 @@ function RequestWithdrawalModal({ member, org, onClose, onSuccess }) {
             </div>
             {feePreview.transaction_charge > 0 && (
               <p className="text-[10px] text-slate-400 dark:text-slate-500 mb-4 leading-relaxed">
-                The ₦{Number(feePreview.transaction_charge).toFixed(2)} charge covers bank transfer and processing fees.
-                It is deducted from your withdrawal, not added on top.
+                {(feePreview.payment_method ?? paymentMethod) === "bank_transfer"
+                  ? `The ₦${Number(feePreview.transaction_charge).toFixed(2)} fee covers bank transfer and processing costs. It is deducted from your withdrawal, not added on top.`
+                  : `The ₦${Number(feePreview.transaction_charge).toFixed(2)} is an organisation processing fee. It is deducted from your withdrawal, not added on top.`
+                }
               </p>
             )}
             <div className="flex gap-2">
@@ -702,6 +719,25 @@ function RequestWithdrawalModal({ member, org, onClose, onSuccess }) {
                 <input type="number" value={amount} onChange={e => { setAmount(e.target.value); setError(""); }}
                   placeholder={t("bill.enterAmount")}
                   className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">How would you like to receive this?</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { value: "cash", label: "Cash", icon: "💵" },
+                    { value: "bank_transfer", label: "Bank Transfer", icon: "🏦" },
+                  ].map(opt => (
+                    <button key={opt.value} type="button"
+                      onClick={() => setPaymentMethod(opt.value)}
+                      className={`py-2.5 rounded-xl border text-sm font-semibold flex items-center justify-center gap-1.5 transition-colors ${
+                        paymentMethod === opt.value
+                          ? "border-green-500 bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300"
+                          : "border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400"
+                      }`}>
+                      <span>{opt.icon}</span>{opt.label}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div>
                 <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("fin.notesOptional")}</label>

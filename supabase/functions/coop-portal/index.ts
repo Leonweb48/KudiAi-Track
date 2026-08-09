@@ -51,10 +51,13 @@ function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { ...CORS, "Content-Type": "application/json" } });
 }
 
-function computeWithdrawalFee(amount: number, pct: number, min: number, cap: number): number {
+// isBankTransfer: true only for Paystack bank-transfer withdrawals.
+// The minimum floor (withdrawal_fee_min) covers real Paystack transfer costs and must NOT
+// apply to cash withdrawals, which cost the platform nothing per-transaction.
+function computeWithdrawalFee(amount: number, pct: number, min: number, cap: number, isBankTransfer = false): number {
   if (pct === 0 && min === 0) return 0;
   const raw = amount * (pct / 100);
-  const fee = min > 0 ? Math.max(raw, min) : raw;
+  const fee = (isBankTransfer && min > 0) ? Math.max(raw, min) : raw;
   return cap > 0 ? Math.min(fee, cap) : fee;
 }
 
@@ -644,6 +647,7 @@ serve(async (req) => {
 
       if (!payerEmail) {
         return json({ org, payment_required: true, payment_url: null,
+          payment_amount_ngn: PLATFORM_REG_FEE_NGN,
           payment_error: "Owner email not found — pay from the org list" });
       }
 
@@ -675,6 +679,7 @@ serve(async (req) => {
 
       if (!psData.status || !psDataInner.authorization_url) {
         return json({ org, payment_required: true, payment_url: null,
+          payment_amount_ngn: PLATFORM_REG_FEE_NGN,
           payment_error: (psData.message as string) || "Payment initialization failed" });
       }
 
@@ -1389,7 +1394,7 @@ serve(async (req) => {
 
     if (action === "create-withdrawal") {
       const { org_id, purpose, method, authorized_by, notes, program_id,
-              per_member_amount, individual_items } =
+              per_member_amount, individual_items, payment_method: wdPaymentMethod = "cash" } =
         body as Record<string, unknown>;
       if (!org_id || !purpose) return json({ error: "org_id and purpose required" }, 400);
       const { data: _orgGrdCW } = await sb.from("organizations").select("pending_archive, status").eq("id", String(org_id)).maybeSingle();
@@ -1406,10 +1411,11 @@ serve(async (req) => {
 
       let affectedMembers: Array<{ id: string; full_name: string; savings_balance: number; amount: number; fee: number; net: number }> = [];
 
+      const isBankTransferBulk = wdPaymentMethod === "bank_transfer";
       if (method === "equal") {
         const amt = parseFloat(String(per_member_amount || 0));
         if (!amt) return json({ error: "per_member_amount required for equal method" }, 400);
-        const memberFee = computeWithdrawalFee(amt, feePct, feeMin, feeCap);
+        const memberFee = computeWithdrawalFee(amt, feePct, feeMin, feeCap, isBankTransferBulk);
         const { data: mems } = await sb.from("org_members")
           .select("id,full_name,savings_balance").eq("org_id", org_id).eq("status", "active");
         affectedMembers = (mems || []).map((m: { id: string; full_name: string; savings_balance: number }) =>
@@ -1421,7 +1427,7 @@ serve(async (req) => {
             .select("id,full_name,savings_balance").eq("id", item.member_id).single();
           if (m) {
             const memberAmt = parseFloat(String(item.amount));
-            const memberFee = computeWithdrawalFee(memberAmt, feePct, feeMin, feeCap);
+            const memberFee = computeWithdrawalFee(memberAmt, feePct, feeMin, feeCap, isBankTransferBulk);
             affectedMembers.push({ id: m.id, full_name: m.full_name, savings_balance: m.savings_balance,
               amount: memberAmt, fee: memberFee, net: memberAmt - memberFee });
           }
@@ -2794,8 +2800,8 @@ serve(async (req) => {
 
     // ── Member submits a withdrawal request ───────────────────────────────
     if (action === "request-member-withdrawal") {
-      const { member_id, org_id, amount, reason } = body as {
-        member_id: string; org_id: string; amount: number; reason?: string;
+      const { member_id, org_id, amount, reason, payment_method = "cash" } = body as {
+        member_id: string; org_id: string; amount: number; reason?: string; payment_method?: string;
       };
       const amt = parseFloat(String(amount));
       if (!member_id || !org_id || !amt) return json({ error: "member_id, org_id, amount required" }, 400);
@@ -2806,7 +2812,8 @@ serve(async (req) => {
       if ((mem.savings_balance || 0) < amt) return json({ error: "Insufficient savings balance" }, 400);
 
       const { data: req, error: reqErr } = await sb.from("org_member_withdrawal_requests")
-        .insert({ org_id, member_id, amount: amt, reason: reason || null })
+        .insert({ org_id, member_id, amount: amt, reason: reason || null,
+          payment_method: payment_method === "bank_transfer" ? "bank_transfer" : "cash" })
         .select("*").single();
       if (reqErr) return json({ error: reqErr.message }, 400);
       // In-app: notify org of withdrawal request
@@ -2866,18 +2873,20 @@ serve(async (req) => {
     }
 
     if (action === "get-withdrawal-fee-preview") {
-      const { org_id, amount } = body as { org_id: string; amount: number };
+      const { org_id, amount, payment_method = "cash" } = body as { org_id: string; amount: number; payment_method?: string };
       if (!org_id || !amount) return json({ error: "org_id and amount required" }, 400);
       const { data: orgFee } = await sb.from("organizations")
         .select("withdrawal_fee_pct, withdrawal_fee_min, withdrawal_fee_cap")
         .eq("id", org_id).maybeSingle();
+      const isBankTransfer = payment_method === "bank_transfer";
       const fee = computeWithdrawalFee(
         Number(amount),
         Number((orgFee as Record<string, unknown> | null)?.withdrawal_fee_pct || 0),
         Number((orgFee as Record<string, unknown> | null)?.withdrawal_fee_min || 0),
         Number((orgFee as Record<string, unknown> | null)?.withdrawal_fee_cap || 0),
+        isBankTransfer,
       );
-      return json({ gross_amount: Number(amount), transaction_charge: fee, net_amount: Number(amount) - fee, fee_applied: fee > 0 });
+      return json({ gross_amount: Number(amount), transaction_charge: fee, net_amount: Number(amount) - fee, fee_applied: fee > 0, payment_method });
     }
 
     // ── Admin approves or rejects a withdrawal request ─────────────────────
@@ -2905,11 +2914,13 @@ serve(async (req) => {
           .select("wallet_balance, total_savings, withdrawal_fee_pct, withdrawal_fee_min, withdrawal_fee_cap, platform_fees_accrued")
           .eq("id", req.org_id).single();
         grossAmount = Number(req.amount);
+        const isBankTransferApproval = (req as Record<string, unknown>).payment_method === "bank_transfer";
         txFee = computeWithdrawalFee(
           grossAmount,
           Number((orgFeeRow as Record<string, unknown> | null)?.withdrawal_fee_pct || 0),
           Number((orgFeeRow as Record<string, unknown> | null)?.withdrawal_fee_min || 0),
           Number((orgFeeRow as Record<string, unknown> | null)?.withdrawal_fee_cap || 0),
+          isBankTransferApproval,
         );
         netAmount = grossAmount - txFee;
 
