@@ -593,12 +593,14 @@ function PayOrgModal({ member, org, preProgram, history, onClose }) {
 // ═══════════════════════════════════════════════════
 function RequestWithdrawalModal({ member, org, onClose, onSuccess }) {
   const t = useT();
-  const [amount,  setAmount]  = useState("");
-  const [reason,  setReason]  = useState("");
-  const [saving,  setSaving]  = useState(false);
-  const [error,   setError]   = useState("");
-  const [done,    setDone]    = useState(false);
-  const [txnPin,  setTxnPin]  = useState(null);
+  const [amount,     setAmount]     = useState("");
+  const [reason,     setReason]     = useState("");
+  const [saving,     setSaving]     = useState(false);
+  const [error,      setError]      = useState("");
+  const [done,       setDone]       = useState(false);
+  const [txnPin,     setTxnPin]     = useState(null);
+  const [feePreview, setFeePreview] = useState(null); // { gross_amount, transaction_charge, net_amount }
+  const [feeLoading, setFeeLoading] = useState(false);
 
   const handleSubmit = async () => {
     const amt = parseFloat(amount);
@@ -611,6 +613,32 @@ function RequestWithdrawalModal({ member, org, onClose, onSuccess }) {
       onSuccess?.();
     } catch (e) { setError(e.message || t("error.saveFailed")); }
     finally { setSaving(false); }
+  };
+
+  const handleContinue = async () => {
+    const amt = parseFloat(amount);
+    if (!amt || amt <= 0) { setError(t("error.somethingWrong")); return; }
+    if (amt > (member.savings_balance || 0)) { setError(t("error.somethingWrong")); return; }
+    setError(""); setFeeLoading(true);
+    try {
+      const preview = await coopFn("get-withdrawal-fee-preview", { org_id: org.id, amount: amt });
+      setFeePreview(preview);
+    } catch {
+      setFeePreview({ gross_amount: amt, transaction_charge: 0, net_amount: amt, fee_applied: false });
+    } finally { setFeeLoading(false); }
+  };
+
+  const confirmWithPin = () => {
+    const amt = feePreview?.gross_amount || parseFloat(amount);
+    setTxnPin({
+      title: "Request Withdrawal",
+      amount: Math.round(amt * 100),
+      recipient: org.name,
+      description: feePreview?.transaction_charge > 0
+        ? `You'll receive ₦${Number(feePreview.net_amount).toLocaleString("en-NG")} · ₦${Number(feePreview.transaction_charge).toFixed(2)} transaction charge (covers bank and processing fees)`
+        : "Savings withdrawal request",
+      onApprove: () => { setTxnPin(null); handleSubmit(); },
+    });
   };
 
   return (
@@ -627,6 +655,42 @@ function RequestWithdrawalModal({ member, org, onClose, onSuccess }) {
             <p className="text-xs text-slate-400 mb-6">{t("coopMem.reqPendingDesc")} from {org.name}.</p>
             <button onClick={onClose} className="w-full py-3 bg-green-600 text-white font-bold rounded-2xl text-sm">{t("bp.done")}</button>
           </div>
+        ) : feePreview ? (
+          <>
+            <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-4">Confirm Withdrawal</h3>
+            <div className="bg-slate-50 dark:bg-slate-700/60 rounded-2xl px-4 py-4 mb-4 flex flex-col gap-2.5">
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-500 dark:text-slate-400">Requested</span>
+                <span className="font-bold text-slate-800 dark:text-white">{fmt(feePreview.gross_amount)}</span>
+              </div>
+              {feePreview.transaction_charge > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-500 dark:text-slate-400">Transaction charge</span>
+                  <span className="font-bold text-red-500">−{fmt(feePreview.transaction_charge)}</span>
+                </div>
+              )}
+              <div className="border-t border-slate-200 dark:border-slate-600 pt-2.5 flex justify-between">
+                <span className="text-sm font-bold text-slate-700 dark:text-slate-200">You'll receive</span>
+                <span className="text-base font-black text-green-600">{fmt(feePreview.net_amount)}</span>
+              </div>
+            </div>
+            {feePreview.transaction_charge > 0 && (
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 mb-4 leading-relaxed">
+                The ₦{Number(feePreview.transaction_charge).toFixed(2)} charge covers bank transfer and processing fees.
+                It is deducted from your withdrawal, not added on top.
+              </p>
+            )}
+            <div className="flex gap-2">
+              <button onClick={() => setFeePreview(null)} disabled={saving}
+                className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">
+                ← Back
+              </button>
+              <button onClick={confirmWithPin} disabled={saving}
+                className="flex-1 py-3 bg-amber-500 text-white rounded-xl font-bold text-sm disabled:opacity-50">
+                Confirm
+              </button>
+            </div>
+          </>
         ) : (
           <>
             <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">{t("coopMem.reqWithdrawal")}</h3>
@@ -646,21 +710,10 @@ function RequestWithdrawalModal({ member, org, onClose, onSuccess }) {
               </div>
             </div>
             <div className="flex gap-2 mt-4">
-              <button onClick={onClose} disabled={saving} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">{t("common.cancel")}</button>
-              <button onClick={() => {
-                const amt = parseFloat(amount);
-                if (!amt || amt <= 0) { setError(t("error.somethingWrong")); return; }
-                if (amt > (member.savings_balance || 0)) { setError(t("error.somethingWrong")); return; }
-                setTxnPin({
-                  title: "Request Withdrawal",
-                  amount: Math.round(amt * 100),
-                  recipient: org.name,
-                  description: "Savings withdrawal request",
-                  onApprove: () => { setTxnPin(null); handleSubmit(); },
-                });
-              }} disabled={saving || !amount}
+              <button onClick={onClose} disabled={saving || feeLoading} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">{t("common.cancel")}</button>
+              <button onClick={handleContinue} disabled={saving || feeLoading || !amount}
                 className="flex-1 py-3 bg-amber-500 text-white rounded-xl font-bold text-sm disabled:opacity-50">
-                {saving ? t("loan.submitting") : t("loan.submitBtn")}
+                {feeLoading ? "Checking…" : t("loan.submitBtn")}
               </button>
             </div>
           </>

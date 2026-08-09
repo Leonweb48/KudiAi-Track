@@ -112,6 +112,11 @@ serve(async (req) => {
     return ok("bill processed");
   }
 
+  if (paymentType === "org_registration") {
+    await handleOrgRegistrationPayment(sb, meta, paidAt);
+    return ok("org registration processed");
+  }
+
   // ── 4. Find the pending contribution record (Ajo) ────────────────────────
   const { data: contrib, error: contribErr } = await sb
     .from("ajo_contributions")
@@ -406,6 +411,41 @@ async function handleSubscriptionPayment(
   }
 
   console.log(`[paystack-webhook] subscription activated: user=${userId} plan=${planSlug} ref=${reference}`);
+}
+
+async function handleOrgRegistrationPayment(
+  sb: ReturnType<typeof createClient>,
+  meta: Record<string, unknown>,
+  paidAt: string,
+) {
+  const orgId = meta.org_id as string | undefined;
+  if (!orgId) {
+    console.warn("[paystack-webhook] org_registration missing org_id in metadata:", meta);
+    return;
+  }
+
+  const { data: org, error } = await sb
+    .from("organizations")
+    .select("id, name, status, owner_id")
+    .eq("id", orgId)
+    .maybeSingle();
+
+  if (error || !org) {
+    console.warn(`[paystack-webhook] org_registration: org ${orgId} not found`);
+    return;
+  }
+
+  if (org.status !== "pending_payment") {
+    console.log(`[paystack-webhook] org_registration: org ${orgId} already active (idempotent skip)`);
+    return;
+  }
+
+  await sb.from("organizations").update({
+    status:                    "active",
+    registration_fee_paid_at:  paidAt,
+  }).eq("id", orgId).eq("status", "pending_payment");
+
+  console.log(`[paystack-webhook] org_registration: activated org ${orgId} (${org.name})`);
 }
 
 async function fireContributionEmail(

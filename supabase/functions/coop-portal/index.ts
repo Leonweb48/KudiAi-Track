@@ -51,12 +51,21 @@ function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { ...CORS, "Content-Type": "application/json" } });
 }
 
+function computeWithdrawalFee(amount: number, pct: number, min: number, cap: number): number {
+  if (pct === 0 && min === 0) return 0;
+  const raw = amount * (pct / 100);
+  const fee = min > 0 ? Math.max(raw, min) : raw;
+  return cap > 0 ? Math.min(fee, cap) : fee;
+}
+
 const ORG_SELECT = `id, owner_id, portal_user_id, name, type, reg_number, description, purpose, vision, mission,
   address, state_name, lga, phone, email, website, logo_url,
   social_instagram, social_facebook, social_twitter, date_established, registration_fee,
   wallet_balance, total_savings, total_loans_out, interest_earned, member_count, status, created_at,
   bank_code, account_number, account_name, paystack_subaccount_code, paystack_subaccount_id, percentage_charge,
-  pending_archive, archived_at, archived_by, governance_delegated`;
+  pending_archive, archived_at, archived_by, governance_delegated,
+  registration_fee_paid_at, platform_reg_fee_amount,
+  withdrawal_fee_pct, withdrawal_fee_min, withdrawal_fee_cap, platform_fees_accrued`;
 
 const MEMBER_SELECT = `id, org_id, membership_id, full_name, email, phone, role, status,
   profile_image_url, address, occupation, gender, date_of_birth, joined_date,
@@ -419,10 +428,12 @@ serve(async (req) => {
       if (!org_id || !owner_id) return json({ error: "org_id and owner_id required" }, 400);
 
       const { data: org } = await sb.from("organizations")
-        .select("id, name, email, owner_id, portal_user_id, reg_number, type")
+        .select("id, name, email, owner_id, portal_user_id, reg_number, type, status")
         .eq("id", org_id).maybeSingle();
       if (!org) return json({ error: "Organisation not found" }, 404);
       if (org.owner_id !== owner_id) return json({ error: "Unauthorized" }, 403);
+      if ((org as Record<string, unknown>).status === "pending_payment")
+        return json({ error: "Registration fee must be paid before setting up the organisation portal." }, 402);
       if (!org.email) return json({ error: "Please add an organisation email in Settings first" }, 400);
 
       const tempPwd = genTempPassword();
@@ -601,6 +612,10 @@ serve(async (req) => {
         professional_association:"PRO", savings_club:"SCL",
       };
       const reg_number = `${PREFIX[b.type] || "ORG"}-${Date.now().toString(36).toUpperCase().slice(-6)}`;
+
+      const PLATFORM_REG_FEE_KOBO = Number(Deno.env.get("PLATFORM_ORG_REG_FEE_KOBO") || "200000");
+      const PLATFORM_REG_FEE_NGN  = PLATFORM_REG_FEE_KOBO / 100;
+
       const { data: org, error } = await sb.from("organizations")
         .insert({ owner_id: callerId!, name: b.name, type: b.type, reg_number,
           description: b.description, purpose: b.purpose, vision: b.vision, mission: b.mission,
@@ -608,11 +623,123 @@ serve(async (req) => {
           phone: b.phone, email: b.email, website: b.website,
           date_established: b.date_established || null,
           registration_fee: parseFloat(b.registration_fee || "0") || 0,
-          status: "active",
+          status: "pending_payment",
+          platform_reg_fee_amount: PLATFORM_REG_FEE_NGN,
         })
         .select(ORG_SELECT).single();
       if (error) return json({ error: error.message }, 400);
-      return json({ org });
+
+      // Initialize Paystack registration-fee payment (100% to platform — no subaccount)
+      const PS_KEY = Deno.env.get("PAYSTACK_SECRET_KEY") ?? "";
+      const PS_PUB = Deno.env.get("PAYSTACK_PUBLIC_KEY") ?? "";
+      if (!PS_KEY) {
+        return json({ org, payment_required: false });
+      }
+
+      // Use owner's profile email for payment
+      const { data: ownerProfile } = await sb.from("profiles")
+        .select("email").eq("id", callerId!).maybeSingle();
+      const payerEmail = (ownerProfile as Record<string, unknown> | null)?.email as string | undefined
+        || b.email || "";
+
+      if (!payerEmail) {
+        return json({ org, payment_required: true, payment_url: null,
+          payment_error: "Owner email not found — pay from the org list" });
+      }
+
+      const regRef = `REG-${org.id.slice(0, 8).toUpperCase()}-${Date.now().toString(36).toUpperCase().slice(-4)}`;
+      const psRes = await fetch("https://api.paystack.co/transaction/initialize", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${PS_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email:       payerEmail,
+          amount:      PLATFORM_REG_FEE_KOBO,
+          reference:   regRef,
+          callback_url: `https://kudiai.app/`,
+          channels:    ["card", "bank", "ussd", "mobile_money", "bank_transfer"],
+          metadata: {
+            payment_type: "org_registration",
+            org_id:       org.id,
+            owner_id:     callerId,
+            org_name:     org.name,
+            reg_number:   org.reg_number,
+          },
+          custom_fields: [
+            { display_name: "Organisation", variable_name: "org_name",  value: org.name },
+            { display_name: "Reg Number",   variable_name: "reg_number", value: org.reg_number },
+          ],
+        }),
+      });
+      const psData = await psRes.json() as Record<string, unknown>;
+      const psDataInner = (psData.data || {}) as Record<string, unknown>;
+
+      if (!psData.status || !psDataInner.authorization_url) {
+        return json({ org, payment_required: true, payment_url: null,
+          payment_error: (psData.message as string) || "Payment initialization failed" });
+      }
+
+      return json({
+        org,
+        payment_required:   true,
+        payment_url:        psDataInner.authorization_url as string,
+        payment_reference:  regRef,
+        payment_amount_ngn: PLATFORM_REG_FEE_NGN,
+        public_key:         PS_PUB,
+      });
+    }
+
+    if (action === "resend-registration-payment") {
+      const { org_id } = body as { org_id: string };
+      if (!org_id) return json({ error: "org_id required" }, 400);
+      const { data: org } = await sb.from("organizations")
+        .select("id, name, reg_number, email, owner_id, status, platform_reg_fee_amount")
+        .eq("id", org_id).maybeSingle();
+      if (!org) return json({ error: "Organisation not found" }, 404);
+      if (org.owner_id !== callerId) return json({ error: "Unauthorized" }, 403);
+      if (org.status !== "pending_payment")
+        return json({ error: "Organisation is already active or in a different state" }, 400);
+
+      const PS_KEY = Deno.env.get("PAYSTACK_SECRET_KEY") ?? "";
+      const PS_PUB = Deno.env.get("PAYSTACK_PUBLIC_KEY") ?? "";
+      if (!PS_KEY) return json({ error: "Paystack not configured" }, 503);
+
+      const { data: ownerProfile } = await sb.from("profiles")
+        .select("email").eq("id", callerId!).maybeSingle();
+      const payerEmail = (ownerProfile as Record<string, unknown> | null)?.email as string | undefined
+        || (org as Record<string, unknown>).email as string | undefined || "";
+      if (!payerEmail) return json({ error: "Owner email not found" }, 400);
+
+      const feeKobo = Math.round(((org as Record<string, unknown>).platform_reg_fee_amount as number || 2000) * 100);
+      const regRef  = `REG-${org.id.slice(0, 8).toUpperCase()}-${Date.now().toString(36).toUpperCase().slice(-4)}`;
+      const psRes   = await fetch("https://api.paystack.co/transaction/initialize", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${PS_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: payerEmail, amount: feeKobo, reference: regRef,
+          callback_url: "https://kudiai.app/",
+          channels: ["card", "bank", "ussd", "mobile_money", "bank_transfer"],
+          metadata: {
+            payment_type: "org_registration",
+            org_id: org.id, owner_id: callerId,
+            org_name: org.name, reg_number: org.reg_number,
+          },
+          custom_fields: [
+            { display_name: "Organisation", variable_name: "org_name",   value: org.name },
+            { display_name: "Reg Number",   variable_name: "reg_number", value: org.reg_number },
+          ],
+        }),
+      });
+      const psData = await psRes.json() as Record<string, unknown>;
+      const psDataInner = (psData.data || {}) as Record<string, unknown>;
+      if (!psData.status || !psDataInner.authorization_url)
+        return json({ error: (psData.message as string) || "Payment initialization failed" }, 422);
+
+      return json({
+        payment_url:        psDataInner.authorization_url as string,
+        payment_reference:  regRef,
+        payment_amount_ngn: feeKobo / 100,
+        public_key:         PS_PUB,
+      });
     }
 
     if (action === "get-orgs") {
@@ -686,6 +813,7 @@ serve(async (req) => {
       if (!b.org_id || !b.full_name || !b.email) return json({ error: "org_id, full_name and email required" }, 400);
       // Guard: block write operations while archive is pending or org is already archived
       const { data: _orgGrdAM } = await sb.from("organizations").select("pending_archive, status").eq("id", b.org_id).maybeSingle();
+      if (_orgGrdAM?.status === "pending_payment") return json({ error: "Registration fee must be paid before adding members." }, 402);
       if (_orgGrdAM?.status === "archived") return json({ error: "This organisation has been archived." }, 409);
       if (_orgGrdAM?.pending_archive) return json({ error: "This organisation has a pending archive request — no new members can be added while under review." }, 409);
       // Count ALL members (including removed) so removed IDs are never reused
@@ -1268,36 +1396,65 @@ serve(async (req) => {
       if (_orgGrdCW?.status === "archived") return json({ error: "This organisation has been archived." }, 409);
       if (_orgGrdCW?.pending_archive) return json({ error: "This organisation has a pending archive request — withdrawals are not allowed while under review." }, 409);
 
-      let affectedMembers: Array<{ id: string; full_name: string; savings_balance: number; amount: number }> = [];
+      // Load org fee config
+      const { data: orgFeeConf } = await sb.from("organizations")
+        .select("withdrawal_fee_pct, withdrawal_fee_min, withdrawal_fee_cap, platform_fees_accrued")
+        .eq("id", String(org_id)).maybeSingle();
+      const feePct = Number((orgFeeConf as Record<string, unknown> | null)?.withdrawal_fee_pct || 0);
+      const feeMin = Number((orgFeeConf as Record<string, unknown> | null)?.withdrawal_fee_min || 0);
+      const feeCap = Number((orgFeeConf as Record<string, unknown> | null)?.withdrawal_fee_cap || 0);
+
+      let affectedMembers: Array<{ id: string; full_name: string; savings_balance: number; amount: number; fee: number; net: number }> = [];
 
       if (method === "equal") {
         const amt = parseFloat(String(per_member_amount || 0));
         if (!amt) return json({ error: "per_member_amount required for equal method" }, 400);
+        const memberFee = computeWithdrawalFee(amt, feePct, feeMin, feeCap);
         const { data: mems } = await sb.from("org_members")
           .select("id,full_name,savings_balance").eq("org_id", org_id).eq("status", "active");
         affectedMembers = (mems || []).map((m: { id: string; full_name: string; savings_balance: number }) =>
-          ({ ...m, amount: amt }));
+          ({ ...m, amount: amt, fee: memberFee, net: amt - memberFee }));
       } else {
         const items = (individual_items || []) as Array<{ member_id: string; amount: number }>;
         for (const item of items) {
           const { data: m } = await sb.from("org_members")
             .select("id,full_name,savings_balance").eq("id", item.member_id).single();
-          if (m) affectedMembers.push({ id: m.id, full_name: m.full_name, savings_balance: m.savings_balance, amount: parseFloat(String(item.amount)) });
+          if (m) {
+            const memberAmt = parseFloat(String(item.amount));
+            const memberFee = computeWithdrawalFee(memberAmt, feePct, feeMin, feeCap);
+            affectedMembers.push({ id: m.id, full_name: m.full_name, savings_balance: m.savings_balance,
+              amount: memberAmt, fee: memberFee, net: memberAmt - memberFee });
+          }
         }
       }
 
-      const totalAmount = affectedMembers.reduce((s, m) => s + m.amount, 0);
+      const totalGross  = affectedMembers.reduce((s, m) => s + m.amount, 0);
+      const totalFee    = affectedMembers.reduce((s, m) => s + m.fee, 0);
+      const totalNet    = totalGross - totalFee;
+      // Keep totalAmount as an alias for backward compat
+      const totalAmount = totalGross;
+      // per-member values for equal method
+      const firstMember = affectedMembers[0];
+      const perMemberGross = method === "equal" && firstMember ? firstMember.amount : null;
+      const perMemberFee   = method === "equal" && firstMember ? firstMember.fee   : null;
+      const perMemberNet   = method === "equal" && firstMember ? firstMember.net   : null;
 
       const authorizerDisplay = callerMemberRow
         ? `${String(callerMemberRow.full_name)} (${String(callerMemberRow.role)})`
         : (authorized_by ? String(authorized_by) : null);
       const { data: wd, error: wdErr } = await sb.from("org_withdrawals")
-        .insert({ org_id, purpose, total_amount: totalAmount, method: method || "equal",
+        .insert({ org_id, purpose, total_amount: totalGross, method: method || "equal",
           authorized_by_display:    authorizerDisplay,
           authorized_by_member_id:  callerMemberRow?.id ?? null,
           authorizer_role:          callerMemberRow?.role ?? null,
           notes: notes || null,
           program_id: program_id || null, member_count: affectedMembers.length,
+          gross_amount:       totalGross,
+          transaction_charge: totalFee,
+          net_amount:         totalNet,
+          per_member_gross:   perMemberGross,
+          per_member_fee:     perMemberFee,
+          per_member_net:     perMemberNet,
         }).select("id").single();
       if (wdErr) return json({ error: wdErr.message }, 400);
 
@@ -1312,26 +1469,28 @@ serve(async (req) => {
         await sb.from("org_withdrawal_items").insert({
           withdrawal_id: wd.id, member_id: m.id, member_name: m.full_name, amount: m.amount,
         });
-        // Push notification to each affected member
+        const deductBody = m.fee > 0
+          ? `₦${m.amount.toLocaleString("en-NG")} deducted (₦${m.fee.toFixed(2)} fee, ₦${m.net.toLocaleString("en-NG")} net) — balance: ₦${newBal.toLocaleString("en-NG")}`
+          : `₦${m.amount.toLocaleString("en-NG")} deducted from your savings — balance: ₦${newBal.toLocaleString("en-NG")}`;
         const wdMemUid = await resolveMemberUserId(sb, m.id);
         notifyUser(wdMemUid, {
-          type:     "savings_debited",
-          title:    "Savings Deducted",
-          body:     `₦${m.amount.toLocaleString("en-NG")} deducted from your savings — balance: ₦${newBal.toLocaleString("en-NG")}`,
-          priority: "normal",
-          deepLink: { tab: "savings" },
-          category: "savings",
+          type: "savings_debited", title: "Savings Deducted",
+          body: deductBody, priority: "normal", deepLink: { tab: "savings" }, category: "savings",
         });
       }
 
       const { data: orgRow } = await sb.from("organizations")
-        .select("wallet_balance,total_savings").eq("id", org_id).single();
-      const newWal = Math.max(0, (orgRow?.wallet_balance || 0) - totalAmount);
-      const newSav = Math.max(0, (orgRow?.total_savings || 0) - totalAmount);
-      await sb.from("organizations").update({ wallet_balance: newWal, total_savings: newSav }).eq("id", org_id);
+        .select("wallet_balance, total_savings, platform_fees_accrued").eq("id", org_id).single();
+      const newWal  = Math.max(0, (Number(orgRow?.wallet_balance) || 0) - totalGross);
+      const newSav  = Math.max(0, (Number(orgRow?.total_savings)  || 0) - totalGross);
+      const newFees = (Number(orgRow?.platform_fees_accrued) || 0) + totalFee;
+      await sb.from("organizations").update({
+        wallet_balance: newWal, total_savings: newSav, platform_fees_accrued: newFees,
+      }).eq("id", org_id);
       await sb.from("org_wallet_txns").insert({
-        org_id, type: "org_withdrawal", amount: totalAmount,
-        description: `Org withdrawal: ${purpose}`, reference_id: wd.id, balance_after: newWal,
+        org_id, type: "org_withdrawal", amount: totalGross,
+        description: `Org withdrawal: ${purpose}${totalFee > 0 ? ` (fee ₦${totalFee.toFixed(2)})` : ""}`,
+        reference_id: wd.id, balance_after: newWal,
       });
 
       // Fire withdrawal email notifications
@@ -1374,7 +1533,10 @@ serve(async (req) => {
         }).catch(() => null);
       }
 
-      return json({ withdrawal_id: wd.id, total_amount: totalAmount, member_count: affectedMembers.length });
+      return json({
+        withdrawal_id: wd.id, total_amount: totalGross, member_count: affectedMembers.length,
+        gross_amount: totalGross, transaction_charge: totalFee, net_amount: totalNet,
+      });
     }
 
     if (action === "get-withdrawals") {
@@ -2703,6 +2865,21 @@ serve(async (req) => {
       return json({ requests: requests || [] });
     }
 
+    if (action === "get-withdrawal-fee-preview") {
+      const { org_id, amount } = body as { org_id: string; amount: number };
+      if (!org_id || !amount) return json({ error: "org_id and amount required" }, 400);
+      const { data: orgFee } = await sb.from("organizations")
+        .select("withdrawal_fee_pct, withdrawal_fee_min, withdrawal_fee_cap")
+        .eq("id", org_id).maybeSingle();
+      const fee = computeWithdrawalFee(
+        Number(amount),
+        Number((orgFee as Record<string, unknown> | null)?.withdrawal_fee_pct || 0),
+        Number((orgFee as Record<string, unknown> | null)?.withdrawal_fee_min || 0),
+        Number((orgFee as Record<string, unknown> | null)?.withdrawal_fee_cap || 0),
+      );
+      return json({ gross_amount: Number(amount), transaction_charge: fee, net_amount: Number(amount) - fee, fee_applied: fee > 0 });
+    }
+
     // ── Admin approves or rejects a withdrawal request ─────────────────────
     if (action === "handle-withdrawal-request") {
       const { request_id, decision, admin_notes, reviewed_by } = body as {
@@ -2715,38 +2892,57 @@ serve(async (req) => {
       if (!req) return json({ error: "Request not found" }, 404);
       if (req.status !== "pending") return json({ error: "Request has already been handled" }, 400);
 
+      let grossAmount = 0, txFee = 0, netAmount = 0;
+
       if (decision === "approve") {
         const { data: mem } = await sb.from("org_members")
           .select("savings_balance, full_name, email").eq("id", req.member_id).single();
         if (!mem || (mem.savings_balance || 0) < req.amount)
           return json({ error: "Member has insufficient savings balance" }, 400);
 
-        const newBal = (mem.savings_balance || 0) - req.amount;
+        // Compute withdrawal fee from org config
+        const { data: orgFeeRow } = await sb.from("organizations")
+          .select("wallet_balance, total_savings, withdrawal_fee_pct, withdrawal_fee_min, withdrawal_fee_cap, platform_fees_accrued")
+          .eq("id", req.org_id).single();
+        grossAmount = Number(req.amount);
+        txFee = computeWithdrawalFee(
+          grossAmount,
+          Number((orgFeeRow as Record<string, unknown> | null)?.withdrawal_fee_pct || 0),
+          Number((orgFeeRow as Record<string, unknown> | null)?.withdrawal_fee_min || 0),
+          Number((orgFeeRow as Record<string, unknown> | null)?.withdrawal_fee_cap || 0),
+        );
+        netAmount = grossAmount - txFee;
+
+        // Member's recorded balance decreases by gross amount
+        const newBal = (mem.savings_balance || 0) - grossAmount;
         await sb.from("org_members").update({ savings_balance: newBal }).eq("id", req.member_id);
 
         const { data: saving } = await sb.from("org_savings").insert({
-          org_id: req.org_id, member_id: req.member_id, amount: req.amount,
+          org_id: req.org_id, member_id: req.member_id, amount: grossAmount,
           type: "withdrawal", payment_method: "withdrawal_request",
           notes: req.reason || "Withdrawal request approved", balance_after: newBal,
         }).select("id").single();
 
-        const { data: orgRow } = await sb.from("organizations")
-          .select("wallet_balance, total_savings").eq("id", req.org_id).single();
-        const newWal = Math.max(0, (orgRow?.wallet_balance || 0) - req.amount);
-        const newSav = Math.max(0, (orgRow?.total_savings  || 0) - req.amount);
-        await sb.from("organizations")
-          .update({ wallet_balance: newWal, total_savings: newSav }).eq("id", req.org_id);
+        const newWal  = Math.max(0, (Number((orgFeeRow as Record<string, unknown> | null)?.wallet_balance) || 0) - grossAmount);
+        const newSav  = Math.max(0, (Number((orgFeeRow as Record<string, unknown> | null)?.total_savings)  || 0) - grossAmount);
+        const newFees = (Number((orgFeeRow as Record<string, unknown> | null)?.platform_fees_accrued) || 0) + txFee;
+        await sb.from("organizations").update({
+          wallet_balance: newWal, total_savings: newSav, platform_fees_accrued: newFees,
+        }).eq("id", req.org_id);
 
         await sb.from("org_wallet_txns").insert({
-          org_id: req.org_id, type: "savings_withdrawal", amount: req.amount,
-          description: `Member withdrawal approved — ${req.member_id}`,
+          org_id: req.org_id, type: "savings_withdrawal", amount: grossAmount,
+          description: `Member withdrawal approved — ${req.member_id}${txFee > 0 ? ` (fee ₦${txFee.toFixed(2)})` : ""}`,
           reference_id: saving?.id, balance_after: newWal,
         });
 
-        // In-app: notify member approved
+        // In-app: notify member approved — show net amount they receive
+        const approvedAmtDisplay = txFee > 0
+          ? `₦${netAmount.toLocaleString("en-NG")} (after ₦${txFee.toFixed(2)} fee)`
+          : `₦${grossAmount.toLocaleString("en-NG")}`;
         insertNotif(req.org_id, "member", "success", "finance",
           "Withdrawal Approved ✅",
-          `Your withdrawal request of ₦${Number(req.amount).toLocaleString("en-NG")} has been approved${admin_notes ? ". " + String(admin_notes).slice(0, 60) : ""}`,
+          `Your withdrawal of ${approvedAmtDisplay} has been approved${admin_notes ? ". " + String(admin_notes).slice(0, 60) : ""}`,
           "contributions", req.member_id);
         if (mem.email) {
           await fetch("https://admin.kudiai.app/api/public/email-trigger", {
@@ -2755,11 +2951,13 @@ serve(async (req) => {
             body: JSON.stringify({
               event: "org_withdrawal_approved",
               data: {
-                member_name:  mem.full_name || "",
-                member_email: mem.email,
-                amount:       req.amount,
-                admin_notes:  admin_notes || "",
-                date:         new Date().toLocaleDateString("en-NG"),
+                member_name:        mem.full_name || "",
+                member_email:       mem.email,
+                amount:             grossAmount,
+                transaction_charge: txFee,
+                net_amount:         netAmount,
+                admin_notes:        admin_notes || "",
+                date:               new Date().toLocaleDateString("en-NG"),
               },
             }),
           }).catch(() => null);
@@ -2795,16 +2993,23 @@ serve(async (req) => {
       const reviewerDisplay = callerMemberRow
         ? `${String(callerMemberRow.full_name)} (${String(callerMemberRow.role)})`
         : (reviewed_by || null);
-      await sb.from("org_member_withdrawal_requests").update({
+
+      const wdUpdate: Record<string, unknown> = {
         status:                decision === "approve" ? "approved" : "rejected",
         admin_notes:           admin_notes || null,
         reviewed_by_display:   reviewerDisplay,
         reviewed_by_member_id: callerMemberRow?.id ?? null,
         reviewer_role:         callerMemberRow?.role ?? null,
         reviewed_at:           new Date().toISOString(),
-      }).eq("id", request_id);
+      };
+      if (decision === "approve") {
+        wdUpdate.gross_amount       = grossAmount;
+        wdUpdate.transaction_charge = txFee;
+        wdUpdate.net_amount         = netAmount;
+      }
+      await sb.from("org_member_withdrawal_requests").update(wdUpdate).eq("id", request_id);
 
-      return json({ success: true });
+      return json({ success: true, gross_amount: grossAmount, transaction_charge: txFee, net_amount: netAmount });
     }
 
     // ══════════════════════════════════════════════════

@@ -32,12 +32,15 @@ const fmt = n => "₦" + Number(n || 0).toLocaleString("en-NG", { minimumFractio
 
 // ── Registration Modal ─────────────────────────────────────────────────────────
 function RegisterModal({ onClose, onCreated, userId }) {
-  const [step,    setStep]    = useState(1);
-  const [type,    setType]    = useState("");
-  const [form,    setForm]    = useState({ name: "", description: "", address: "", state_name: "", lga: "", phone: "", email: "" });
-  const [profile, setProfile] = useState({ purpose: "", vision: "", mission: "", website: "", social_instagram: "", social_facebook: "", social_twitter: "", date_established: "" });
-  const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState("");
+  const [step,       setStep]       = useState(1);
+  const [type,       setType]       = useState("");
+  const [form,       setForm]       = useState({ name: "", description: "", address: "", state_name: "", lga: "", phone: "", email: "" });
+  const [profile,    setProfile]    = useState({ purpose: "", vision: "", mission: "", website: "", social_instagram: "", social_facebook: "", social_twitter: "", date_established: "" });
+  const [loading,    setLoading]    = useState(false);
+  const [error,      setError]      = useState("");
+  const [createdOrg, setCreatedOrg] = useState(null);
+  const [paymentUrl, setPaymentUrl] = useState(null);
+  const [paymentAmt, setPaymentAmt] = useState(2000);
 
   const set  = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
   const setP = k => e => setProfile(p => ({ ...p, [k]: e.target.value }));
@@ -45,8 +48,15 @@ function RegisterModal({ onClose, onCreated, userId }) {
   const handleCreate = async () => {
     setLoading(true); setError("");
     try {
-      const { org } = await coopFn("create-org", { owner_id: userId, type, ...form, ...profile });
-      onCreated(org);
+      const result = await coopFn("create-org", { owner_id: userId, type, ...form, ...profile });
+      if (result.payment_required && result.payment_url) {
+        setCreatedOrg(result.org);
+        setPaymentUrl(result.payment_url);
+        setPaymentAmt(result.payment_amount_ngn || 2000);
+        setStep(4);
+      } else {
+        onCreated(result.org);
+      }
     } catch (e) { setError(e.message || "Failed to create"); }
     finally { setLoading(false); }
   };
@@ -71,16 +81,20 @@ function RegisterModal({ onClose, onCreated, userId }) {
             </button>
             <h3 className="font-black text-slate-900 dark:text-white text-base">Register Organisation</h3>
             {/* Step dots */}
+            {step < 4 && (
             <div className="flex gap-1.5">
               {[1, 2, 3].map(s => (
                 <div key={s} className={`w-5 h-1 rounded-full transition-colors ${s <= step ? "bg-brand-500" : "bg-slate-200 dark:bg-slate-700"}`} />
               ))}
             </div>
+          )}
+          {step === 4 && <div className="w-6 h-6" />}
           </div>
           <p className="text-xs text-slate-400 dark:text-slate-500 text-center mt-2">
             {step === 1 && "Choose organisation type"}
             {step === 2 && "Basic information"}
             {step === 3 && "Profile details (optional)"}
+            {step === 4 && "Complete registration"}
           </p>
         </div>
 
@@ -211,7 +225,76 @@ function RegisterModal({ onClose, onCreated, userId }) {
               </div>
             </>
           )}
+          {step === 4 && createdOrg && (
+            <div className="py-2">
+              <div className="flex flex-col items-center text-center mb-6">
+                <div className="w-16 h-16 rounded-full flex items-center justify-center text-3xl mb-4 bg-brand-500/10">
+                  🏛️
+                </div>
+                <h3 className="text-base font-black text-slate-900 dark:text-white mb-1">{createdOrg.name} created!</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">{createdOrg.reg_number}</p>
+              </div>
+              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-2xl px-4 py-4 mb-5">
+                <p className="text-xs font-bold text-amber-700 dark:text-amber-400 mb-1">Registration fee required</p>
+                <p className="text-xl font-black text-amber-800 dark:text-amber-300 mb-2">₦{Number(paymentAmt).toLocaleString("en-NG")}</p>
+                <p className="text-[11px] text-amber-600 dark:text-amber-500 leading-relaxed">
+                  Pay the one-time platform fee to activate your organisation. Your org will remain inactive and no members can be added until payment is confirmed.
+                </p>
+              </div>
+              <button
+                onClick={() => { window.open(paymentUrl, "_blank"); }}
+                className="w-full py-3.5 rounded-full font-extrabold text-sm text-white bg-brand-500 mb-3">
+                Pay ₦{Number(paymentAmt).toLocaleString("en-NG")} Now →
+              </button>
+              <button
+                onClick={() => onCreated(createdOrg)}
+                className="w-full py-3 rounded-full font-bold text-sm text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                I'll pay later
+              </button>
+            </div>
+          )}
           <div style={{ height: "env(safe-area-inset-bottom, 12px)" }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Pending Payment Banner ─────────────────────────────────────────────────────
+function PendingPaymentBanner({ org, onPaid }) {
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState("");
+
+  const handleResend = async () => {
+    setLoading(true); setError("");
+    try {
+      const result = await coopFn("resend-registration-payment", { org_id: org.id });
+      if (result.payment_url) {
+        window.open(result.payment_url, "_blank");
+      }
+    } catch (e) { setError(e.message || "Failed to generate payment link"); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <div className="px-4 py-3 bg-amber-50 dark:bg-amber-900/10 border-b border-amber-200 dark:border-amber-800/30">
+      <div className="flex items-start gap-3">
+        <div className="text-amber-500 mt-0.5 flex-shrink-0">
+          <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+            <path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+          </svg>
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-[11px] font-bold text-amber-700 dark:text-amber-400 mb-0.5">Registration payment pending</p>
+          <p className="text-[10px] text-amber-600 dark:text-amber-500 mb-2">
+            Pay ₦{Number(org.platform_reg_fee_amount || 2000).toLocaleString("en-NG")} to activate this organisation.
+            Portal setup and member management are blocked until payment is confirmed.
+          </p>
+          {error && <p className="text-[10px] text-red-500 mb-1">{error}</p>}
+          <button onClick={handleResend} disabled={loading}
+            className="text-[10px] font-extrabold text-amber-700 dark:text-amber-300 underline disabled:opacity-50">
+            {loading ? "Getting link…" : "Get payment link →"}
+          </button>
         </div>
       </div>
     </div>
@@ -316,9 +399,13 @@ export default function CoopList({ userId, onOpen, onClose, embedded }) {
               {(showArchived ? orgs : orgs.filter(o => o.status !== "archived")).map((org, idx) => {
                 const displayOrgs = showArchived ? orgs : orgs.filter(o => o.status !== "archived");
                 const typeInfo = ORG_TYPES.find(t => t.value === org.type);
+                const isPending = org.status === "pending_payment";
                 return (
-                  <button key={org.id} onClick={() => onOpen(org)}
-                    className={`w-full flex items-start gap-3 px-4 py-4 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 active:bg-slate-100 dark:active:bg-slate-800 transition-colors ${idx < displayOrgs.length - 1 ? "border-b border-slate-100 dark:border-slate-800" : ""}`}>
+                  <div key={org.id} className={idx < displayOrgs.length - 1 ? "border-b border-slate-100 dark:border-slate-800" : ""}>
+                  {isPending && <PendingPaymentBanner org={org} onPaid={load} />}
+                  <button onClick={() => !isPending && onOpen(org)}
+                    disabled={isPending}
+                    className={`w-full flex items-start gap-3 px-4 py-4 text-left transition-colors ${!isPending ? "hover:bg-slate-50 dark:hover:bg-slate-800/50 active:bg-slate-100 dark:active:bg-slate-800" : "opacity-60 cursor-not-allowed"}`}>
 
                     {/* Avatar */}
                     <div className="w-11 h-11 rounded-full flex items-center justify-center text-2xl flex-shrink-0 shadow-sm bg-gradient-to-br from-brand-500 to-emerald-900">
@@ -334,7 +421,12 @@ export default function CoopList({ userId, onOpen, onClose, embedded }) {
                             Archive pending
                           </span>
                         )}
-                        {!org.pending_archive && org.status !== "active" && (
+                        {!org.pending_archive && org.status === "pending_payment" && (
+                          <span className="text-[9px] bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 font-bold px-1.5 py-0.5 rounded-full flex-shrink-0">
+                            Payment pending
+                          </span>
+                        )}
+                        {!org.pending_archive && org.status !== "active" && org.status !== "pending_payment" && (
                           <span className="text-[9px] bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-bold px-1.5 py-0.5 rounded-full capitalize flex-shrink-0">
                             {org.status}
                           </span>
@@ -355,6 +447,7 @@ export default function CoopList({ userId, onOpen, onClose, embedded }) {
                       </svg>
                     </div>
                   </button>
+                  </div>
                 );
               })}
               {/* Per-org reactivation CTA for archived orgs */}
