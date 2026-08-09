@@ -1631,6 +1631,7 @@ serve(async (req) => {
       if (status)           update.status = status;
       if (amount_approved)  update.amount_approved = parseFloat(String(amount_approved));
       if (notes !== undefined) update.notes = notes;
+      if (rejection_reason)    update.rejection_reason = String(rejection_reason);
       // Verifiable attribution: written on approve / reject / disburse
       if (status === "approved" || status === "rejected" || status === "disbursed") {
         update.approved_by_display = callerMemberRow

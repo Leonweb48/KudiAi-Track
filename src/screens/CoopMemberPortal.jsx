@@ -331,7 +331,7 @@ function HomeTab({ member, org, announcements, polls = [], events = [], loans = 
             <div className="w-10 h-10 rounded-xl bg-green-50 dark:bg-green-900/20 flex items-center justify-center text-lg">
               {ORG_TYPE_ICONS[org.type] || "🏢"}
             </div>
-            <div>
+            <div className="flex-1 min-w-0">
               <p className="text-sm font-extrabold text-slate-800 dark:text-white">{org.name}</p>
               <p className="text-[10px] text-slate-400 capitalize">{org.type?.replace(/_/g," ")} · {org.member_count || 0} {t("coopDash.membersLabel")}</p>
             </div>
@@ -345,6 +345,25 @@ function HomeTab({ member, org, announcements, polls = [], events = [], loans = 
               <span className="text-sm font-extrabold" style={{ color: c }}>{v}</span>
             </div>
           ))}
+          {/* ── Cooperative identity ── */}
+          {(org.reg_number || org.date_established) && (
+            <div className="px-4 py-3 border-t border-slate-50 dark:border-slate-700/30 flex flex-wrap gap-x-5 gap-y-1">
+              {org.reg_number && (
+                <div>
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">{t("coopMem.regNo")}</p>
+                  <p className="text-[11px] font-mono font-bold text-slate-600 dark:text-slate-300">{org.reg_number}</p>
+                </div>
+              )}
+              {org.date_established && (
+                <div>
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">{t("coopMem.founded")}</p>
+                  <p className="text-[11px] font-bold text-slate-600 dark:text-slate-300">
+                    {new Date(org.date_established).getFullYear()}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -637,7 +656,7 @@ function RequestWithdrawalModal({ member, org, onClose, onSuccess }) {
     const amt = feePreview?.gross_amount || parseFloat(amount);
     const isBankTransfer = (feePreview?.payment_method ?? paymentMethod) === "bank_transfer";
     const chargeDesc = feePreview?.transaction_charge > 0
-      ? `You'll receive ₦${Number(feePreview.net_amount).toLocaleString("en-NG")} · ₦${Number(feePreview.transaction_charge).toFixed(2)} ${isBankTransfer ? "bank transfer fee" : "organisation fee"}`
+      ? `You'll receive ₦${Number(feePreview.net_amount).toLocaleString("en-NG")} · ₦${Number(feePreview.transaction_charge).toFixed(2)} ${isBankTransfer ? "transfer & processing fee" : "cooperative processing charge"}`
       : "Savings withdrawal request";
     setTxnPin({
       title: "Request Withdrawal",
@@ -679,7 +698,7 @@ function RequestWithdrawalModal({ member, org, onClose, onSuccess }) {
               {feePreview.transaction_charge > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-500 dark:text-slate-400">
-                    {(feePreview.payment_method ?? paymentMethod) === "bank_transfer" ? "Bank transfer fee" : "Organisation fee"}
+                    {(feePreview.payment_method ?? paymentMethod) === "bank_transfer" ? t("coopMem.transferFee") : t("coopMem.coopFee")}
                   </span>
                   <span className="font-bold text-red-500">−{fmt(feePreview.transaction_charge)}</span>
                 </div>
@@ -692,8 +711,8 @@ function RequestWithdrawalModal({ member, org, onClose, onSuccess }) {
             {feePreview.transaction_charge > 0 && (
               <p className="text-[10px] text-slate-400 dark:text-slate-500 mb-4 leading-relaxed">
                 {(feePreview.payment_method ?? paymentMethod) === "bank_transfer"
-                  ? `The ₦${Number(feePreview.transaction_charge).toFixed(2)} fee covers bank transfer and processing costs. It is deducted from your withdrawal, not added on top.`
-                  : `The ₦${Number(feePreview.transaction_charge).toFixed(2)} is an organisation processing fee. It is deducted from your withdrawal, not added on top.`
+                  ? `The ₦${Number(feePreview.transaction_charge).toFixed(2)} covers your bank transfer and processing costs. It is deducted from your withdrawal.`
+                  : `The ₦${Number(feePreview.transaction_charge).toFixed(2)} is a cooperative processing charge. It is deducted from your withdrawal.`
                 }
               </p>
             )}
@@ -814,9 +833,17 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
     const totD = history.filter(h => h.type === "withdrawal").reduce((s, h) => s + (parseFloat(h.amount) || 0), 0);
     const totC = history.filter(h => h.type !== "withdrawal").reduce((s, h) => s + (parseFloat(h.amount) || 0), 0);
     const lastBal = history.length > 0 ? (parseFloat(history[history.length - 1].balance_after) || 0) : 0;
+    const firstRow = sorted[0];
+    const openingBalance = firstRow
+      ? (firstRow.type === "withdrawal"
+          ? (parseFloat(firstRow.balance_after) || 0) + (parseFloat(firstRow.amount) || 0)
+          : (parseFloat(firstRow.balance_after) || 0) - (parseFloat(firstRow.amount) || 0))
+      : 0;
+    const dateFrom = sorted.length > 0 ? pdfFmtDate(sorted[0].created_at) : "";
+    const dateTo   = sorted.length > 0 ? pdfFmtDate(sorted[sorted.length - 1].created_at) : "";
     const pdf = await createReportPdf({
       title: "Savings Statement", businessName: org.name || "Coop",
-      period: member.full_name,
+      period: dateFrom && dateTo ? `${dateFrom} – ${dateTo}` : "All time",
       headerRight: [
         { value: org.name || "Coop" },
         { value: member.full_name, sub: true },
@@ -837,7 +864,7 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
       { label: "Net Savings",     value: pdfFmt(member.savings_balance || lastBal) },
       { label: "Records",         value: String(history.length) },
     ]);
-    pdf.addStatement(rows, { openingBalance: 0, totalDebits: totD, totalCredits: totC });
+    pdf.addStatement(rows, { openingBalance, totalDebits: totD, totalCredits: totC });
     await pdf.save(`Savings_Statement_${member.full_name.replace(/\s+/g, "_")}.pdf`);
   };
   const pendingWd = wdRequests.filter(r => r.status === "pending").length;
@@ -1166,15 +1193,23 @@ function LoansTab({ member, org }) {
                   <p className="text-sm font-extrabold text-slate-800 dark:text-white">{l.loan_purpose || t("loan.generalLabel")}</p>
                   <p className="text-[10px] text-slate-400">{fmtDate(l.applied_at)}</p>
                   <div className="flex items-center gap-2 mt-0.5">
-                    <span className={`text-xs font-bold capitalize ${LOAN_STATUS_COL[l.status] || "text-slate-500"}`}>● {l.status}</span>
+                    <span className={`text-xs font-bold capitalize ${LOAN_STATUS_COL[l.status] || "text-slate-500"}`}>
+                      ● {l.status === "rejected" ? t("coopMem.loanDeclined") : l.status}
+                    </span>
                     {isOverdue && <span className="text-[9px] font-black text-red-500 bg-red-50 px-1.5 py-0.5 rounded-full">{t("loan.overdueLabel")}</span>}
                   </div>
                 </div>
                 <div className="text-right">
                   <p className="text-sm font-extrabold text-amber-600">{fmt(l.amount_requested)}</p>
-                  {l.outstanding_balance > 0 && <p className="text-xs text-red-500 font-bold">Owed: {fmt(l.outstanding_balance)}</p>}
+                  {l.outstanding_balance > 0 && <p className="text-xs text-red-500 font-bold">{t("coop.loanBalance") || "Owed"}: {fmt(l.outstanding_balance)}</p>}
                 </div>
               </div>
+              {l.status === "rejected" && l.rejection_reason && (
+                <div className="mb-2 bg-red-50 dark:bg-red-900/20 rounded-xl px-3 py-2">
+                  <p className="text-[10px] font-bold text-red-400 uppercase tracking-wide mb-0.5">{t("coopMem.decisionReason")}</p>
+                  <p className="text-xs text-red-600 dark:text-red-400">{l.rejection_reason}</p>
+                </div>
+              )}
               <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100 dark:border-slate-700">
                 {[["Interest", `${l.interest_rate}%`], ["Monthly", fmt(l.monthly_installment || 0)], ["Due", fmtDate(l.due_date)]].map(([k, v]) => (
                   <div key={k}><p className="text-[10px] text-slate-400">{k}</p><p className="text-xs font-bold text-slate-700 dark:text-slate-200">{v || "—"}</p></div>
@@ -2334,8 +2369,9 @@ export default function CoopMemberPortal({ member: initialMember }) {
   const [wdRequests,    setWdRequests]    = useState([]);
   const [polls,         setPolls]         = useState([]);
   const [events,        setEvents]        = useState([]);
-  const [showMore,      setShowMore]      = useState(false);
-  const [showProfile,   setShowProfile]   = useState(false);
+  const [showMore,             setShowMore]             = useState(false);
+  const [showProfile,          setShowProfile]          = useState(false);
+  const [pendingOfficerCount,  setPendingOfficerCount]  = useState(0);
   const [billsAutoSvc,  setBillsAutoSvc]  = useState(null);
   const [processingPayment, setProcessingPayment] = useState(() => {
     const params = new URLSearchParams(window.location.search);
@@ -2512,6 +2548,23 @@ export default function CoopMemberPortal({ member: initialMember }) {
       setLastSyncTime(Date.now());
     }).catch(console.error);
   }, [member?.id, org?.id, coopReloadKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Officer pending badge — pending loan approvals + pending withdrawal requests
+  useEffect(() => {
+    const role = member?.role;
+    if (!member?.id || !org?.id || !OFFICER_ROLES.includes(role)) return;
+    const canApproveLoan = EXEC_ROLES.includes(role);
+    const canApproveWd   = TREASURER_ROLES.includes(role);
+    const safe = p => p.catch(() => ({}));
+    Promise.all([
+      canApproveLoan ? safe(coopFn("get-loans",                    { org_id: org.id })) : Promise.resolve({}),
+      canApproveWd   ? safe(coopFn("get-withdrawal-requests-admin", { org_id: org.id })) : Promise.resolve({}),
+    ]).then(([loanRes, wdRes]) => {
+      const n = (loanRes.loans   || []).filter(l => l.status === "pending").length
+              + (wdRes.requests  || []).filter(r => r.status === "pending").length;
+      setPendingOfficerCount(n);
+    }).catch(() => {});
+  }, [member?.id, org?.id, member?.role, coopReloadKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Resume-on-foreground — 10 s debounce catches missed changes after backgrounding.
   const lastCoopResumeRef = useRef(0);
@@ -2699,8 +2752,10 @@ export default function CoopMemberPortal({ member: initialMember }) {
                   stroke={isMoreTab || showMore ? "#3DA829" : "#94a3b8"} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                   <path d="M4 6h16M4 12h16M4 18h16" />
                 </svg>
-                {emergencyCount > 0 && !showMore && (
-                  <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full" />
+                {(emergencyCount > 0 || pendingOfficerCount > 0) && !showMore && (
+                  pendingOfficerCount > 0
+                    ? <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-[3px] flex items-center justify-center rounded-full bg-amber-500 text-[8px] font-black text-white">{pendingOfficerCount}</span>
+                    : <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full" />
                 )}
               </div>
               <span className={`text-[8px] font-bold uppercase tracking-wide leading-none ${isMoreTab || showMore ? "text-[#3DA829] dark:text-green-400" : "text-slate-400 dark:text-slate-500"}`}>

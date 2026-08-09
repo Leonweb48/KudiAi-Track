@@ -160,11 +160,12 @@ function OverviewTab({ org, wallet, programs, announcements, members = [], loans
         <div className="absolute -bottom-14 -left-10 w-48 h-48 rounded-full bg-white/5 pointer-events-none" />
         <div className="absolute top-6 right-24 w-14 h-14 rounded-full bg-white/5 pointer-events-none" />
         <div className="relative">
-          <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest">Organisation Wallet</p>
-          <AmountDisplay amount={org.wallet_balance} size="hero" align="left" className="text-white mt-1.5 mb-5" />
+          <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest">{t("cd.platformWallet")}</p>
+          <AmountDisplay amount={org.wallet_balance} size="hero" align="left" className="text-white mt-1.5" />
+          <p className="text-[10px] text-white/45 mt-1 mb-4">{t("cd.walletNote")}</p>
           <div className="flex gap-4 flex-wrap">
             <div className="min-w-0">
-              <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">Total Savings</p>
+              <p className="text-[10px] font-semibold text-white/60 uppercase tracking-widest mb-0.5">{t("cd.memberSavingsPool")}</p>
               <AmountDisplay amount={org.total_savings} size="row" align="left" className="text-white font-bold" />
             </div>
             <div className="w-px bg-white/20 self-stretch" />
