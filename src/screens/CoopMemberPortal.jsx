@@ -2488,11 +2488,9 @@ export default function CoopMemberPortal({ member: initialMember }) {
     setMember(prev => ({ ...prev, ...updatedMember }));
   };
 
-  if (!member) return null;
+  const isOfficerMember = OFFICER_ROLES.includes(member?.role);
 
-  const isOfficerMember = OFFICER_ROLES.includes(member.role);
-
-  // Inject officer tab into MORE for qualifying roles
+  // Inject officer tab into MORE for qualifying roles — must stay before early return
   const effectiveMoreTabs = useMemo(() => {
     if (!isOfficerMember) return MORE_TABS;
     return [
@@ -2502,6 +2500,8 @@ export default function CoopMemberPortal({ member: initialMember }) {
     ];
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [MORE_TABS, isOfficerMember]);
+
+  if (!member) return null;
 
   const tabContent = {
     home:          <HomeTab member={member} org={org} announcements={announcements} polls={polls} events={events} loans={loans} wdRequests={wdRequests} onQuickService={openQuickService} onNavigate={navigateTo} userEmail={member.email} />,
