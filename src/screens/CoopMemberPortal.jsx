@@ -1844,9 +1844,9 @@ function OfficerTab({ member, org }) {
     const load = async () => {
       setLoading(true); setError("");
       try {
-        if (isExec && !loansLoaded) {
+        if ((isExec || isTreasurer) && !loansLoaded) {
           const res = await coopFn("get-loans", { org_id: org.id });
-          setLoans((res.loans || []).filter(l => l.status === "pending" || l.status === "approved"));
+          setLoans(res.loans || []);
           setLoansLoaded(true);
         }
         if (isTreasurer && !wdReqsLoaded) {
@@ -1933,6 +1933,16 @@ function OfficerTab({ member, org }) {
   const inputClass = "w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2.5 text-sm text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-[#3DA829]/40";
   const btnGreen = "flex-1 bg-[#3DA829] active:bg-[#2d8020] text-white text-xs font-bold py-2 rounded-xl disabled:opacity-40 transition-colors";
   const btnRed = "flex-1 bg-red-500 active:bg-red-600 text-white text-xs font-bold py-2 rounded-xl disabled:opacity-40 transition-colors";
+
+  const decidedLoans = (isAuditor ? (auditData?.loans || []) : loans)
+    .filter(l => ["approved","rejected","disbursed"].includes(l.status))
+    .sort((a, b) => {
+      const ta = a.disbursed_at || a.approved_at || a.updated_at || "";
+      const tb = b.disbursed_at || b.approved_at || b.updated_at || "";
+      return tb.localeCompare(ta);
+    });
+
+  const DECISION_STATUS_COL = { approved: "text-green-600 dark:text-green-400", rejected: "text-red-500", disbursed: "text-blue-600 dark:text-blue-400" };
 
   return (
     <div className="px-4 pt-4 pb-8">
@@ -2044,6 +2054,43 @@ function OfficerTab({ member, org }) {
               {loading ? "Recording…" : "Record Saving"}
             </button>
           </div>
+        </div>
+      )}
+
+      {/* ── DECISION LOG: decided loans — exec, treasurer, auditor ── */}
+      {(isExec || isTreasurer || (isAuditor && auditData)) && decidedLoans.length > 0 && (
+        <div className={sectionClass}>
+          <p className={hClass}>Decision Log</p>
+          {decidedLoans.map(loan => {
+            const decidedAt = loan.disbursed_at || loan.approved_at || loan.updated_at;
+            const actionLabel = loan.status === "disbursed" ? "Disbursed by" : loan.status === "approved" ? "Approved by" : "Declined by";
+            return (
+              <div key={loan.id} className={rowClass}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-bold text-slate-800 dark:text-white truncate">
+                      {loan.org_members?.full_name || "Member"}
+                    </p>
+                    <p className="text-[10px] text-slate-400 truncate">{loan.loan_purpose || "—"}</p>
+                    {loan.approved_by_display && (
+                      <p className="text-[10px] text-slate-400 mt-0.5">
+                        {actionLabel}: {loan.approved_by_display}{decidedAt ? ` · ${fmtDate(decidedAt)}` : ""}
+                      </p>
+                    )}
+                    {loan.rejection_reason && (
+                      <p className="text-[10px] italic text-red-400 mt-0.5">"{loan.rejection_reason}"</p>
+                    )}
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="text-xs font-extrabold text-slate-800 dark:text-white">{fmt(loan.amount_approved || loan.amount_requested)}</p>
+                    <span className={`text-[9px] font-bold uppercase tracking-wide capitalize ${DECISION_STATUS_COL[loan.status] || "text-slate-400"}`}>
+                      {loan.status}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
