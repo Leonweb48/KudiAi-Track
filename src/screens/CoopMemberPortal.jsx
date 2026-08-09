@@ -68,6 +68,12 @@ const ANN_ICONS = { announcement: "📢", notice: "📋", circular: "📄", emer
 const FREQ_LABELS = { daily:"Daily", weekly:"Weekly", monthly:"Monthly", quarterly:"Quarterly", annual:"Annual", one_time:"One-time" };
 const ORG_TYPE_ICONS = { cooperative:"🤝", market_association:"🏪", church:"⛪", ngo:"🌍", youth_group:"👥", savings_group:"💰", community_group:"🏘️", professional_association:"💼", savings_club:"🏦" };
 
+const AUTO_LOCK_OPTIONS = [
+  { label: "30 seconds", secs: 30 }, { label: "1 minute", secs: 60 },
+  { label: "5 minutes", secs: 300 }, { label: "15 minutes", secs: 900 },
+  { label: "30 minutes", secs: 1800 }, { label: "Never", secs: 0 },
+];
+
 // ═══════════════════════════════════════════════════
 //  FIRST LOGIN — set password (same pattern as staff/ajo)
 // ═══════════════════════════════════════════════════
@@ -425,6 +431,146 @@ function HomeTab({ member, org, announcements, polls = [], events = [], loans = 
 }
 
 // ═══════════════════════════════════════════════════
+//  MANUAL SAVINGS CLAIM MODAL  ("I sent money")
+// ═══════════════════════════════════════════════════
+function ManualClaimModal({ member, org, programs, onClose, onSuccess }) {
+  const t = useT();
+  const [amount,      setAmount]      = useState("");
+  const [programId,   setProgramId]   = useState("");
+  const [payerName,   setPayerName]   = useState("");
+  const [notes,       setNotes]       = useState("");
+  const [proofUrl,    setProofUrl]    = useState("");
+  const [uploading,   setUploading]   = useState(false);
+  const [saving,      setSaving]      = useState(false);
+  const [error,       setError]       = useState("");
+  const [done,        setDone]        = useState(false);
+  const [txnPin,      setTxnPin]      = useState(null);
+  const fileRef = useRef(null);
+
+  const handleUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setUploading(true);
+    try {
+      const ext  = file.name.split(".").pop() || "jpg";
+      const path = `coop-claims/${org.id}/${member.id}/${Date.now()}.${ext}`;
+      const { data, error: upErr } = await supabase.storage.from("org-coop-proofs").upload(path, file, { upsert: true });
+      if (upErr) throw upErr;
+      const { data: { publicUrl } } = supabase.storage.from("org-coop-proofs").getPublicUrl(data.path);
+      setProofUrl(publicUrl);
+    } catch (err) { setError(err.message || "Upload failed"); }
+    finally { setUploading(false); }
+  };
+
+  const handleSubmit = async () => {
+    const amt = parseFloat(amount);
+    if (!amt || amt <= 0) { setError("Enter a valid amount"); return; }
+    setSaving(true); setError("");
+    try {
+      await coopFn("submit-member-saving-claim", {
+        member_id: member.id, org_id: org.id, amount: amt,
+        payer_name: payerName.trim() || undefined,
+        notes: notes.trim() || undefined,
+        proof_url: proofUrl || undefined,
+        program_id: programId || undefined,
+      });
+      setDone(true);
+      onSuccess?.();
+    } catch (e) { setError(e.message || "Submission failed"); }
+    finally { setSaving(false); }
+  };
+
+  const confirmWithPin = () => {
+    const amt = parseFloat(amount);
+    setTxnPin({
+      title: "Submit Deposit Claim",
+      amount: Math.round(amt * 100),
+      recipient: org.name,
+      description: "Manual cash deposit for officer confirmation",
+      onApprove: () => { setTxnPin(null); handleSubmit(); },
+    });
+  };
+
+  const activePrograms = programs.filter(p => p.status === "active");
+
+  return (
+    <div className="fixed inset-0 z-[80] bg-black/60 flex items-end justify-center" onClick={e => { if (e.target === e.currentTarget && !saving) onClose(); }}>
+      <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-t-3xl px-5 py-6 max-h-[90vh] overflow-y-auto">
+        <div className="w-10 h-1 bg-slate-200 dark:bg-slate-600 rounded-full mx-auto mb-5" />
+        {done ? (
+          <div className="text-center py-6">
+            <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8 text-amber-600" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            </div>
+            <p className="text-base font-extrabold text-slate-800 dark:text-white mb-1">Claim Submitted</p>
+            <p className="text-xs text-slate-400 mb-6">Your deposit claim is pending officer confirmation. You'll be notified once it's reviewed.</p>
+            <button onClick={onClose} className="w-full py-3 bg-green-600 text-white font-bold rounded-2xl text-sm">Done</button>
+          </div>
+        ) : (
+          <>
+            <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">I Sent Money</h3>
+            <p className="text-xs text-slate-400 mb-4">Submit a deposit claim — an officer will confirm and credit your savings.</p>
+            {error && <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-3 text-xs text-red-600">{error}</div>}
+            <div className="flex flex-col gap-3">
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Amount (₦)</label>
+                <input type="number" inputMode="decimal" value={amount} onChange={e => { setAmount(e.target.value); setError(""); }}
+                  placeholder="Enter amount"
+                  className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
+              </div>
+              {activePrograms.length > 0 && (
+                <div>
+                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Contribution Program (optional)</label>
+                  <select value={programId} onChange={e => setProgramId(e.target.value)}
+                    className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-green-400">
+                    <option value="">General savings</option>
+                    {activePrograms.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </div>
+              )}
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Proof of Payment (optional)</label>
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
+                    className="flex-1 py-2.5 rounded-xl border border-dashed border-slate-300 dark:border-slate-600 text-xs font-semibold text-slate-500 dark:text-slate-400 active:bg-slate-50 dark:active:bg-slate-700 transition disabled:opacity-50">
+                    {uploading ? "Uploading…" : proofUrl ? "✓ Photo attached" : "📷 Attach receipt photo"}
+                  </button>
+                  {proofUrl && (
+                    <button type="button" onClick={() => setProofUrl("")} className="text-[11px] text-red-500 font-semibold">Remove</button>
+                  )}
+                </div>
+                <input ref={fileRef} type="file" accept="image/*" onChange={handleUpload} className="hidden" />
+              </div>
+              <details className="group">
+                <summary className="text-[11px] font-bold text-slate-400 uppercase tracking-wider cursor-pointer list-none flex items-center gap-1 mb-1">
+                  <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3 text-slate-400 group-open:rotate-90 transition-transform" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
+                  Additional details
+                </summary>
+                <div className="mt-2 flex flex-col gap-2">
+                  <input value={payerName} onChange={e => setPayerName(e.target.value)} placeholder="Payer name (if different)"
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
+                  <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Notes (bank, transfer ref, etc.)"
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-green-400" />
+                </div>
+              </details>
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button onClick={onClose} disabled={saving} className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">Cancel</button>
+              <button onClick={confirmWithPin} disabled={saving || uploading || !amount}
+                className="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-50">
+                {saving ? "Submitting…" : "Submit Claim"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+      {txnPin && <TransactionPinModal {...txnPin} onCancel={() => setTxnPin(null)} />}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════
 //  PAY VIA PAYSTACK MODAL  (redirect-based)
 // ═══════════════════════════════════════════════════
 function PayOrgModal({ member, org, preProgram, history, onClose }) {
@@ -619,15 +765,58 @@ function RequestWithdrawalModal({ member, org, onClose, onSuccess }) {
   const [error,         setError]         = useState("");
   const [done,          setDone]          = useState(false);
   const [txnPin,        setTxnPin]        = useState(null);
-  const [feePreview,    setFeePreview]    = useState(null); // { gross_amount, transaction_charge, net_amount, payment_method }
+  const [feePreview,    setFeePreview]    = useState(null);
   const [feeLoading,    setFeeLoading]    = useState(false);
+  // Bank account state
+  const [banks,         setBanks]         = useState([]);
+  const [acctForm,      setAcctForm]      = useState({
+    bank_code:      member.withdrawal_bank_code      || "",
+    account_number: member.withdrawal_account_number || "",
+    account_name:   member.withdrawal_account_name   || "",
+    bank_name:      member.withdrawal_bank_name      || "",
+  });
+  const [acctVerified,  setAcctVerified]  = useState(!!(member.withdrawal_account_name));
+  const [acctVerifying, setAcctVerifying] = useState(false);
+  const [acctError,     setAcctError]     = useState("");
+  const [editingAcct,   setEditingAcct]   = useState(!member.withdrawal_account_name);
+
+  useEffect(() => {
+    coopFn("list-banks", {}).then(d => setBanks(d.banks || d.data || [])).catch(() => {});
+  }, []);
+
+  const resolveAcct = async () => {
+    if (!acctForm.bank_code || acctForm.account_number.length !== 10) {
+      setAcctError("Select a bank and enter a 10-digit account number"); return;
+    }
+    setAcctVerifying(true); setAcctError(""); setAcctVerified(false);
+    try {
+      const d = await coopFn("resolve-bank-account", { bank_code: acctForm.bank_code, account_number: acctForm.account_number });
+      if (!d?.account_name) { setAcctError("Could not verify account. Check the details and retry."); return; }
+      const bankName = banks.find(b => b.code === acctForm.bank_code)?.name || acctForm.bank_name;
+      setAcctForm(p => ({ ...p, account_name: d.account_name, bank_name: bankName }));
+      setAcctVerified(true);
+    } catch (e) { setAcctError(e.message || "Verification failed. Try again."); }
+    finally { setAcctVerifying(false); }
+  };
 
   const handleSubmit = async () => {
     const amt = parseFloat(amount);
     if (!amt || amt <= 0) { setError(t("error.somethingWrong")); return; }
     if (amt > (member.savings_balance || 0)) { setError(t("error.somethingWrong")); return; }
+    if (paymentMethod === "bank_transfer" && !acctForm.account_name) {
+      setError("Add and verify your payout bank account before requesting a bank transfer."); return;
+    }
     setSaving(true); setError("");
     try {
+      const bankChanged = acctForm.account_number !== (member.withdrawal_account_number || "") ||
+                          acctForm.bank_code !== (member.withdrawal_bank_code || "");
+      if (paymentMethod === "bank_transfer" && bankChanged && acctVerified) {
+        await coopFn("save-member-bank", {
+          member_id: member.id,
+          bank_code: acctForm.bank_code, bank_name: acctForm.bank_name,
+          account_number: acctForm.account_number, account_name: acctForm.account_name,
+        });
+      }
       await coopFn("request-member-withdrawal", {
         member_id: member.id, org_id: org.id, amount: amt, reason, payment_method: paymentMethod,
       });
@@ -758,6 +947,54 @@ function RequestWithdrawalModal({ member, org, onClose, onSuccess }) {
                   ))}
                 </div>
               </div>
+              {/* Bank account widget — only for bank_transfer */}
+              {paymentMethod === "bank_transfer" && (
+                <div className="bg-slate-50 dark:bg-slate-700/40 border border-slate-200 dark:border-slate-600 rounded-2xl px-4 py-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Payout Account</p>
+                    {!editingAcct && acctForm.account_name && (
+                      <button type="button" onClick={() => { setEditingAcct(true); setAcctVerified(false); }}
+                        className="text-[11px] font-bold text-green-600 dark:text-green-400">Change</button>
+                    )}
+                  </div>
+                  {!editingAcct && acctForm.account_name ? (
+                    <div>
+                      <p className="text-sm font-extrabold text-slate-700 dark:text-slate-200">{acctForm.account_name}</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">{acctForm.bank_name} · ****{acctForm.account_number.slice(-4)}</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5">
+                      <select value={acctForm.bank_code} onChange={e => {
+                        const sel = banks.find(b => b.code === e.target.value);
+                        setAcctForm(p => ({ ...p, bank_code: e.target.value, bank_name: sel?.name || "", account_name: "" }));
+                        setAcctVerified(false);
+                      }} className="w-full h-10 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 text-sm font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-green-400/40">
+                        <option value="">Select bank…</option>
+                        {banks.map(b => <option key={b.code} value={b.code}>{b.name}</option>)}
+                      </select>
+                      <div className="flex gap-2">
+                        <input type="text" inputMode="numeric" maxLength={10} placeholder="10-digit account number"
+                          value={acctForm.account_number}
+                          onChange={e => { setAcctForm(p => ({ ...p, account_number: e.target.value.replace(/\D/g, "").slice(0, 10), account_name: "" })); setAcctVerified(false); }}
+                          className="flex-1 h-10 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 text-sm font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-green-400/40" />
+                        <button type="button" onClick={resolveAcct}
+                          disabled={acctVerifying || !acctForm.bank_code || acctForm.account_number.length !== 10}
+                          className="h-10 px-3.5 rounded-xl bg-green-600 text-white text-xs font-bold disabled:opacity-40 flex-shrink-0 active:scale-95 transition">
+                          {acctVerifying ? "…" : "Verify"}
+                        </button>
+                      </div>
+                      {acctVerified && acctForm.account_name && (
+                        <div className="flex items-center gap-2 px-3 py-2 bg-green-50 dark:bg-green-900/20 rounded-xl">
+                          <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-green-600 flex-shrink-0" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                          <p className="text-[12px] font-bold text-green-700 dark:text-green-400">{acctForm.account_name}</p>
+                        </div>
+                      )}
+                      {acctError && <p className="text-xs text-red-500">{acctError}</p>}
+                    </div>
+                  )}
+                  <p className="text-[10px] text-slate-400 mt-2">This is where your withdrawal will be sent — used only for payouts.</p>
+                </div>
+              )}
               <div>
                 <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("fin.notesOptional")}</label>
                 <textarea value={reason} onChange={e => setReason(e.target.value)} rows={2} placeholder={t("coopMem.wdReasonPH")}
@@ -784,16 +1021,18 @@ function RequestWithdrawalModal({ member, org, onClose, onSuccess }) {
 // ═══════════════════════════════════════════════════
 function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
   const t = useT();
-  const [member,          setMember]          = useState(initialMember);
-  const [programs,        setPrograms]        = useState([]);
-  const [history,         setHistory]         = useState([]);
-  const [wdRequests,      setWdRequests]      = useState([]);
-  const [loading,         setLoading]         = useState(true);
-  const [showPay,         setShowPay]         = useState(false);
-  const [payProgram,      setPayProgram]      = useState(null);
-  const [showWdReq,       setShowWdReq]       = useState(false);
-  const [selectedHistory, setSelectedHistory] = useState(null);
-  const [selectedRequest, setSelectedRequest] = useState(null);
+  const [member,           setMember]          = useState(initialMember);
+  const [programs,         setPrograms]        = useState([]);
+  const [history,          setHistory]         = useState([]);
+  const [wdRequests,       setWdRequests]      = useState([]);
+  const [manualClaims,     setManualClaims]    = useState([]);
+  const [loading,          setLoading]         = useState(true);
+  const [showPay,          setShowPay]         = useState(false);
+  const [payProgram,       setPayProgram]      = useState(null);
+  const [showWdReq,        setShowWdReq]       = useState(false);
+  const [showManualClaim,  setShowManualClaim] = useState(false);
+  const [selectedHistory,  setSelectedHistory] = useState(null);
+  const [selectedRequest,  setSelectedRequest] = useState(null);
 
   useEffect(() => { setMember(initialMember); }, [initialMember]);
 
@@ -803,10 +1042,12 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
       coopFn("member-get-programs",            { member_id: member.id, org_id: org.id }),
       coopFn("member-get-savings",             { member_id: member.id }),
       coopFn("get-member-withdrawal-requests", { member_id: member.id }),
-    ]).then(([pr, sr, rr]) => {
+      coopFn("get-member-saving-claims",       { member_id: member.id, org_id: org.id }),
+    ]).then(([pr, sr, rr, cr]) => {
       setPrograms(pr.programs || []);
       setHistory(sr.savings || []);
       setWdRequests(rr.requests || []);
+      setManualClaims(cr.claims || []);
     }).finally(() => setLoading(false));
   }, [member.id, org.id]);
   useEffect(() => { load(); }, [load]);
@@ -815,6 +1056,7 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
 
   const totalContributed = history.filter(h => h.type === "deposit").reduce((sum, h) => sum + Number(h.amount), 0);
   const hasPaystack = !!org.paystack_subaccount_code;
+  const pendingClaimsCount = manualClaims.filter(c => c.status === "pending").length;
 
   const handleExportSavingsPdf = async () => {
     const sorted = [...history].sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
@@ -890,18 +1132,29 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
       </div>
 
       {/* Action Buttons */}
-      <div className="flex gap-2">
-        {hasPaystack && (
+      <div className="flex gap-2 flex-wrap">
+        {hasPaystack ? (
           <button onClick={() => setShowPay(true)}
-            className="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5">
+            className="flex-1 min-w-[100px] py-3 bg-green-600 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5">
             <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
               <path d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
             </svg>
             {t("coopMem.payPaystack")}
           </button>
+        ) : (
+          <div className="flex-1 min-w-[100px] py-3 bg-slate-50 dark:bg-slate-700/40 border border-slate-200 dark:border-slate-600 rounded-xl text-xs text-slate-400 flex items-center justify-center gap-1.5">
+            <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
+            Online pay unavailable
+          </div>
         )}
+        <button onClick={() => setShowManualClaim(true)}
+          className="flex-1 min-w-[100px] py-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 text-blue-700 dark:text-blue-400 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 relative">
+          <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+          I Sent Money
+          {pendingClaimsCount > 0 && <span className="ml-1 w-4 h-4 rounded-full bg-amber-500 text-white text-[9px] font-black flex items-center justify-center">{pendingClaimsCount}</span>}
+        </button>
         <button onClick={() => setShowWdReq(true)}
-          className={`${hasPaystack ? "flex-1" : "w-full"} py-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 text-amber-700 dark:text-amber-400 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5`}>
+          className="flex-1 min-w-[100px] py-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 text-amber-700 dark:text-amber-400 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5">
           <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
             <path d="M12 19V5M5 12l7-7 7 7" />
           </svg>
@@ -909,6 +1162,25 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
           {pendingWd > 0 && <span className="ml-1 w-4 h-4 rounded-full bg-amber-500 text-white text-[9px] font-black flex items-center justify-center">{pendingWd}</span>}
         </button>
       </div>
+
+      {/* Pending manual claims */}
+      {manualClaims.filter(c => c.status === "pending").length > 0 && (
+        <div>
+          <p className="text-[11px] font-bold text-amber-500 dark:text-amber-400 uppercase tracking-wider mb-2">Pending Deposit Claims</p>
+          <div className="flex flex-col gap-2">
+            {manualClaims.filter(c => c.status === "pending").map(c => (
+              <div key={c.id} className="bg-amber-50 dark:bg-amber-900/20 rounded-xl px-3 py-2.5 border border-amber-200 dark:border-amber-700 flex justify-between items-center">
+                <div>
+                  <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{fmt(c.amount)}</p>
+                  {c.notes && <p className="text-[10px] text-slate-400 line-clamp-1">{c.notes}</p>}
+                  <p className="text-[10px] text-slate-400">{fmtDate(c.created_at)} · Awaiting confirmation</p>
+                </div>
+                <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/40 px-2 py-0.5 rounded-full">Pending</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {programs.filter(p => p.status === "active").length > 0 && (
         <div>
@@ -1031,6 +1303,13 @@ function ContributionsTab({ member: initialMember, org, onMemberUpdate }) {
           preProgram={payProgram}
           history={history}
           onClose={() => { setShowPay(false); setPayProgram(null); }}
+        />
+      )}
+      {showManualClaim && (
+        <ManualClaimModal
+          member={member} org={org} programs={programs}
+          onClose={() => setShowManualClaim(false)}
+          onSuccess={() => { setShowManualClaim(false); load(); }}
         />
       )}
       {showWdReq && (
@@ -1825,6 +2104,10 @@ function OfficerTab({ member, org }) {
   const [wdReqs,       setWdReqs]       = useState([]);
   const [wdReqsLoaded, setWdReqsLoaded] = useState(false);
 
+  // ── Manual savings claims (treasurer) ──
+  const [manOfficerClaims, setManOfficerClaims] = useState([]);
+  const [manClaimsLoaded,  setManClaimsLoaded]  = useState(false);
+
   // ── Save recording (treasurer) ──
   const [savForm, setSavForm] = useState({ member_id: "", amount: "", type: "deposit", notes: "" });
   const [members, setMembers] = useState([]);
@@ -1857,6 +2140,11 @@ function OfficerTab({ member, org }) {
           const res = await coopFn("get-withdrawal-requests-admin", { org_id: org.id });
           setWdReqs((res.requests || []).filter(r => r.status === "pending"));
           setWdReqsLoaded(true);
+        }
+        if (isTreasurer && !manClaimsLoaded) {
+          const res = await coopFn("get-member-saving-claims", { org_id: org.id, member_id: "", view: "officer" });
+          setManOfficerClaims(res.claims || []);
+          setManClaimsLoaded(true);
         }
         if (isTreasurer && members.length === 0) {
           const res = await coopFn("get-members", { org_id: org.id });
@@ -1894,6 +2182,20 @@ function OfficerTab({ member, org }) {
       await coopFn("handle-withdrawal-request", { request_id: req.id, decision, org_id: org.id });
       setWdReqs(prev => prev.filter(r => r.id !== req.id));
       toast(`Withdrawal ${decision === "approve" ? "approved" : "rejected"}`);
+    } catch (e) { setError(e.message || "Action failed"); }
+  };
+
+  const handleManualClaim = async (claim, action) => {
+    setError(""); setSuccess("");
+    try {
+      if (action === "confirm") {
+        await coopFn("confirm-member-saving-claim", { claim_id: claim.id, org_id: org.id });
+        toast("Deposit claim confirmed — savings credited");
+      } else {
+        await coopFn("reject-member-saving-claim", { claim_id: claim.id, org_id: org.id });
+        toast("Deposit claim rejected");
+      }
+      setManOfficerClaims(prev => prev.filter(c => c.id !== claim.id));
     } catch (e) { setError(e.message || "Action failed"); }
   };
 
@@ -2010,6 +2312,37 @@ function OfficerTab({ member, org }) {
               ))}
             </>
           )}
+        </div>
+      )}
+
+      {/* ── TREASURER: Manual Savings Claims ── */}
+      {isTreasurer && (
+        <div className={sectionClass}>
+          <p className={hClass}>Manual Deposit Claims</p>
+          {manOfficerClaims.length === 0 ? (
+            <p className="px-4 pb-4 text-xs text-slate-400">No pending deposit claims</p>
+          ) : manOfficerClaims.map(claim => (
+            <div key={claim.id} className={rowClass}>
+              <div className="flex items-start justify-between mb-1">
+                <div>
+                  <p className="text-sm font-bold text-slate-800 dark:text-white">{claim.org_members?.full_name || "Member"}</p>
+                  {claim.payer_name && <p className="text-[10px] text-slate-400">Paid by: {claim.payer_name}</p>}
+                  {claim.notes && <p className="text-[10px] text-slate-400 line-clamp-1">{claim.notes}</p>}
+                  <p className="text-[10px] text-slate-400">{fmtDate(claim.created_at)}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-extrabold text-slate-800 dark:text-white">{fmt(claim.amount)}</p>
+                  {claim.proof_url && (
+                    <a href={claim.proof_url} target="_blank" rel="noreferrer" className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold">View proof</a>
+                  )}
+                </div>
+              </div>
+              <div className="flex gap-2 mt-2">
+                <button className={btnGreen} onClick={() => handleManualClaim(claim, "confirm")}>Confirm deposit</button>
+                <button className={btnRed}   onClick={() => handleManualClaim(claim, "reject")}>Reject</button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
@@ -2212,6 +2545,351 @@ function makeMoreTabsMember(t) {
   ];
 }
 
+// ─── Member Security Sheet ────────────────────────────────────────────────────
+function MemberSecuritySheet({ member, pinLock, onClose }) {
+  // "menu" | "portal-pin" | "forgot-pin"
+  const [view,         setView]         = useState("menu");
+  // Portal PIN change (3-step)
+  const [ppStep,       setPpStep]       = useState(1); // 1=current, 2=new, 3=confirm
+  const [ppCurrent,    setPpCurrent]    = useState("");
+  const [ppNew,        setPpNew]        = useState("");
+  const [ppConfirm,    setPpConfirm]    = useState("");
+  const [ppError,      setPpError]      = useState("");
+  const [ppBusy,       setPpBusy]       = useState(false);
+  const [ppDone,       setPpDone]       = useState(false);
+  // Forgot PIN OTP flow
+  const [fpStep,       setFpStep]       = useState(1); // 1=send, 2=enter otp+new pin
+  const [fpOtp,        setFpOtp]        = useState("");
+  const [fpNew,        setFpNew]        = useState("");
+  const [fpConfirm,    setFpConfirm]    = useState("");
+  const [fpError,      setFpError]      = useState("");
+  const [fpBusy,       setFpBusy]       = useState(false);
+  const [fpEmailHint,  setFpEmailHint]  = useState("");
+  // App Lock
+  const [lockBusy,     setLockBusy]     = useState(false);
+  const [showPinSetup, setShowPinSetup] = useState(false);
+  const [showLockPick, setShowLockPick] = useState(false);
+  // App PIN change inline state
+  const [apView,       setApView]       = useState(""); // "" | "change" | "setup"
+  const [apStep,       setApStep]       = useState(1);
+  const [apCurr,       setApCurr]       = useState("");
+  const [apNew,        setApNew]        = useState("");
+  const [apConf,       setApConf]       = useState("");
+  const [apErr,        setApErr]        = useState("");
+  const [apBusy,       setApBusy]       = useState(false);
+
+  const autoLabel = !pinLock ? "—" : (pinLock.autoLockTimeout === 0 ? "Never" : (AUTO_LOCK_OPTIONS.find(o => o.secs === pinLock.autoLockTimeout)?.label || `${pinLock.autoLockTimeout}s`));
+
+  const resetPortalPin = () => { setPpStep(1); setPpCurrent(""); setPpNew(""); setPpConfirm(""); setPpError(""); setPpDone(false); };
+
+  const handlePortalPinChange = async () => {
+    if (ppStep === 1) {
+      if (!ppCurrent.trim()) { setPpError("Enter your current portal PIN"); return; }
+      setPpStep(2); setPpError("");
+    } else if (ppStep === 2) {
+      if (ppNew.length < 4) { setPpError("PIN must be at least 4 digits"); return; }
+      setPpStep(3); setPpError("");
+    } else {
+      if (ppConfirm !== ppNew) { setPpError("PINs do not match"); return; }
+      setPpBusy(true); setPpError("");
+      try {
+        await coopFn("change-member-pin", { member_id: member.id, current_pin: ppCurrent, new_pin: ppNew });
+        setPpDone(true);
+      } catch (e) { setPpError(e.message || "Failed to change PIN"); }
+      finally { setPpBusy(false); }
+    }
+  };
+
+  const handleSendOtp = async () => {
+    setFpBusy(true); setFpError("");
+    try {
+      const r = await coopFn("send-member-pin-otp", { member_id: member.id });
+      setFpEmailHint(r.email_hint || "");
+      setFpStep(2);
+    } catch (e) { setFpError(e.message || "Failed to send OTP"); }
+    finally { setFpBusy(false); }
+  };
+
+  const handleVerifyOtp = async () => {
+    if (!fpOtp.trim() || fpOtp.length < 6) { setFpError("Enter the 6-digit code"); return; }
+    if (fpNew.length < 4) { setFpError("New PIN must be at least 4 digits"); return; }
+    if (fpConfirm !== fpNew) { setFpError("PINs do not match"); return; }
+    setFpBusy(true); setFpError("");
+    try {
+      await coopFn("verify-member-pin-otp", { member_id: member.id, otp: fpOtp, new_pin: fpNew });
+      setView("menu");
+    } catch (e) { setFpError(e.message || "Failed"); }
+    finally { setFpBusy(false); }
+  };
+
+  const handleAppPinAction = async () => {
+    if (apView === "setup") {
+      if (apStep === 1) {
+        if (apNew.length < 6) { setApErr("PIN must be 6 digits"); return; }
+        setApStep(2); setApErr("");
+      } else {
+        if (apConf !== apNew) { setApErr("PINs do not match"); return; }
+        setApBusy(true); setApErr("");
+        try { await pinLock.setupAppPin(apNew); setApView(""); } catch (e) { setApErr(e.message || "Failed"); }
+        finally { setApBusy(false); }
+      }
+    } else {
+      if (apStep === 1) {
+        if (!apCurr.trim()) { setApErr("Enter current PIN"); return; }
+        setApStep(2); setApErr("");
+      } else if (apStep === 2) {
+        if (apNew.length < 6) { setApErr("PIN must be 6 digits"); return; }
+        setApStep(3); setApErr("");
+      } else {
+        if (apConf !== apNew) { setApErr("PINs do not match"); return; }
+        setApBusy(true); setApErr("");
+        try { await pinLock.changeAppPin(apCurr, apNew); setApView(""); } catch (e) { setApErr(e.message || "Failed"); }
+        finally { setApBusy(false); }
+      }
+    }
+  };
+
+  const pinInput = (val, setVal, ph, autoFocus = false) => (
+    <input type="password" inputMode="numeric" maxLength={10} placeholder={ph}
+      value={val} onChange={e => setVal(e.target.value.replace(/\D/g, ""))}
+      autoFocus={autoFocus}
+      className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm tracking-[0.3em] text-center focus:outline-none focus:ring-2 focus:ring-green-400 font-mono" />
+  );
+
+  const sBtn = "w-full py-3 bg-green-600 text-white font-bold rounded-2xl text-sm disabled:opacity-50";
+  const cBtn = "w-full py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm mt-2";
+
+  const renderMenu = () => (
+    <div className="flex flex-col gap-1 py-2">
+      {/* Portal PIN */}
+      <button onClick={() => { setView("portal-pin"); resetPortalPin(); }}
+        className="w-full flex items-center gap-4 px-4 py-3.5 text-left active:bg-slate-50 dark:active:bg-slate-800/60 rounded-xl transition-colors">
+        <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center flex-shrink-0">
+          <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="#3b82f6" strokeWidth={2} strokeLinecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Portal PIN</p>
+          <p className="text-[11px] text-slate-400">Change your cooperative portal PIN</p>
+        </div>
+        <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-300 flex-shrink-0" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
+      </button>
+      <button onClick={() => { setView("forgot-pin"); setFpStep(1); setFpOtp(""); setFpNew(""); setFpConfirm(""); setFpError(""); }}
+        className="w-full flex items-center gap-4 px-4 py-3.5 text-left active:bg-slate-50 dark:active:bg-slate-800/60 rounded-xl transition-colors">
+        <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center flex-shrink-0">
+          <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="#f59e0b" strokeWidth={2} strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Forgot Portal PIN</p>
+          <p className="text-[11px] text-slate-400">Reset via email OTP</p>
+        </div>
+        <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-300 flex-shrink-0" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
+      </button>
+      {pinLock && (
+        <>
+          <div className="mx-1 my-1 border-t border-slate-100 dark:border-slate-700" />
+          {/* App Lock PIN */}
+          <button onClick={() => { setApView(pinLock.appPinSet ? "change" : "setup"); setApStep(1); setApCurr(""); setApNew(""); setApConf(""); setApErr(""); }}
+            className="w-full flex items-center gap-4 px-4 py-3.5 text-left active:bg-slate-50 dark:active:bg-slate-800/60 rounded-xl transition-colors">
+            <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center flex-shrink-0">
+              <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="#3b82f6" strokeWidth={2} strokeLinecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">App Lock PIN</p>
+              <p className="text-[11px] text-slate-400">{pinLock.appPinSet ? "Change your 6-digit unlock PIN" : "Set a 6-digit PIN to lock this app"}</p>
+            </div>
+            <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-300 flex-shrink-0" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
+          </button>
+          {/* Biometric */}
+          {pinLock.biometricAvailable && (
+            <div className="flex items-center gap-4 px-4 py-3.5">
+              <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center flex-shrink-0">
+                <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="#3b82f6" strokeWidth={2} strokeLinecap="round"><path d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 008 4.07M3 15.364c.64-1.319 1-2.8 1-4.364 0-1.457.39-2.823 1.07-4"/></svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Biometric Unlock</p>
+                <p className="text-[11px] text-slate-400">{pinLock.biometricEnabled ? "Fingerprint / Face ID enabled" : "Use fingerprint or face to unlock"}</p>
+              </div>
+              <button
+                onClick={async () => {
+                  if (!pinLock.appPinSet) { setShowPinSetup(true); return; }
+                  setLockBusy(true);
+                  try { pinLock.biometricEnabled ? await pinLock.disableBiometric() : await pinLock.registerBiometric(); } catch {} finally { setLockBusy(false); }
+                }}
+                className={`w-12 h-6 rounded-full transition-colors duration-200 relative flex-shrink-0 ${pinLock.biometricEnabled ? "bg-green-500" : "bg-slate-200 dark:bg-slate-600"}`}>
+                {lockBusy
+                  ? <span className="absolute inset-0 flex items-center justify-center"><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /></span>
+                  : <span className="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all duration-200" style={{ left: pinLock.biometricEnabled ? "calc(100% - 22px)" : "2px" }} />
+                }
+              </button>
+            </div>
+          )}
+          {/* Auto Lock */}
+          <button onClick={() => setShowLockPick(true)}
+            className="w-full flex items-center gap-4 px-4 py-3.5 text-left active:bg-slate-50 dark:active:bg-slate-800/60 rounded-xl transition-colors">
+            <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center flex-shrink-0">
+              <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="#3b82f6" strokeWidth={2} strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Auto Lock</p>
+              <p className="text-[11px] text-slate-400">{pinLock.autoLockTimeout === 0 ? "Auto lock is disabled" : `Locks after ${autoLabel}`}</p>
+            </div>
+            <span className="text-[11px] text-slate-400 flex-shrink-0">{autoLabel}</span>
+          </button>
+        </>
+      )}
+    </div>
+  );
+
+  const renderPortalPin = () => (
+    <div className="flex flex-col gap-4 py-2">
+      {ppDone ? (
+        <div className="text-center py-4">
+          <div className="w-14 h-14 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-3">
+            <svg viewBox="0 0 24 24" fill="none" className="w-7 h-7 text-green-600" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+          </div>
+          <p className="text-sm font-extrabold text-slate-800 dark:text-white mb-1">Portal PIN changed</p>
+          <p className="text-xs text-slate-400 mb-4">Use your new PIN next time you log in.</p>
+          <button onClick={() => setView("menu")} className={sBtn}>Done</button>
+        </div>
+      ) : (
+        <>
+          <div className="text-center">
+            <p className="text-xs text-slate-400 mb-1">Step {ppStep} of 3</p>
+            <p className="text-sm font-bold text-slate-700 dark:text-slate-200">
+              {ppStep === 1 ? "Enter current portal PIN" : ppStep === 2 ? "Enter new portal PIN" : "Confirm new portal PIN"}
+            </p>
+          </div>
+          {ppError && <p className="text-xs text-red-500 text-center">{ppError}</p>}
+          {ppStep === 1 && pinInput(ppCurrent, setPpCurrent, "Current PIN", true)}
+          {ppStep === 2 && pinInput(ppNew, setPpNew, "New PIN (min 4 digits)", true)}
+          {ppStep === 3 && pinInput(ppConfirm, setPpConfirm, "Confirm new PIN", true)}
+          <button onClick={handlePortalPinChange} disabled={ppBusy} className={sBtn}>
+            {ppBusy ? "Saving…" : ppStep < 3 ? "Next" : "Change PIN"}
+          </button>
+          <button onClick={() => { if (ppStep > 1) { ppStep === 2 ? setPpStep(1) : setPpStep(2); setPpError(""); } else setView("menu"); }} className={cBtn}>
+            {ppStep > 1 ? "Back" : "Cancel"}
+          </button>
+          {ppStep === 1 && (
+            <button onClick={() => { setView("forgot-pin"); setFpStep(1); setFpError(""); }} className="text-[11px] text-green-600 dark:text-green-400 font-semibold text-center mt-1">
+              Forgot portal PIN?
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  );
+
+  const renderForgotPin = () => (
+    <div className="flex flex-col gap-4 py-2">
+      {fpStep === 1 ? (
+        <>
+          <div className="text-center">
+            <p className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-1">Reset Portal PIN</p>
+            <p className="text-xs text-slate-400">We'll send a one-time code to your email on file.</p>
+          </div>
+          {fpError && <p className="text-xs text-red-500 text-center">{fpError}</p>}
+          <button onClick={handleSendOtp} disabled={fpBusy} className={sBtn}>
+            {fpBusy ? "Sending…" : "Send Reset Code"}
+          </button>
+          <button onClick={() => setView("menu")} className={cBtn}>Cancel</button>
+        </>
+      ) : (
+        <>
+          <div className="text-center">
+            <p className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-1">Enter Reset Code</p>
+            <p className="text-xs text-slate-400">Code sent to {fpEmailHint}. Expires in 15 minutes.</p>
+          </div>
+          {fpError && <p className="text-xs text-red-500 text-center">{fpError}</p>}
+          <input type="text" inputMode="numeric" maxLength={6} placeholder="6-digit code"
+            value={fpOtp} onChange={e => setFpOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            autoFocus
+            className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm tracking-[0.5em] text-center focus:outline-none focus:ring-2 focus:ring-green-400 font-mono" />
+          <div>
+            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">New Portal PIN</label>
+            {pinInput(fpNew, setFpNew, "New PIN (min 4 digits)")}
+          </div>
+          <div>
+            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Confirm New PIN</label>
+            {pinInput(fpConfirm, setFpConfirm, "Confirm PIN")}
+          </div>
+          <button onClick={handleVerifyOtp} disabled={fpBusy} className={sBtn}>
+            {fpBusy ? "Verifying…" : "Reset PIN"}
+          </button>
+          <button onClick={() => setFpStep(1)} className={cBtn}>Back</button>
+        </>
+      )}
+    </div>
+  );
+
+  const renderAppPin = () => (
+    <div className="flex flex-col gap-4 py-2">
+      <div className="text-center">
+        <p className="text-xs text-slate-400 mb-1">{apView === "setup" ? `Step ${apStep} of 2` : `Step ${apStep} of 3`}</p>
+        <p className="text-sm font-bold text-slate-700 dark:text-slate-200">
+          {apView === "setup"
+            ? (apStep === 1 ? "Choose a 6-digit unlock PIN" : "Confirm your PIN")
+            : (apStep === 1 ? "Enter current unlock PIN" : apStep === 2 ? "Enter new 6-digit PIN" : "Confirm new PIN")
+          }
+        </p>
+      </div>
+      {apErr && <p className="text-xs text-red-500 text-center">{apErr}</p>}
+      {apView === "setup" && apStep === 1 && pinInput(apNew, setApNew, "6-digit PIN", true)}
+      {apView === "setup" && apStep === 2 && pinInput(apConf, setApConf, "Confirm PIN", true)}
+      {apView === "change" && apStep === 1 && pinInput(apCurr, setApCurr, "Current PIN", true)}
+      {apView === "change" && apStep === 2 && pinInput(apNew, setApNew, "New PIN", true)}
+      {apView === "change" && apStep === 3 && pinInput(apConf, setApConf, "Confirm PIN", true)}
+      <button onClick={handleAppPinAction} disabled={apBusy} className={sBtn}>
+        {apBusy ? "Saving…" : (apView === "setup" ? (apStep === 1 ? "Next" : "Set PIN") : (apStep < 3 ? "Next" : "Change PIN"))}
+      </button>
+      <button onClick={() => { if ((apView === "setup" && apStep > 1) || (apView === "change" && apStep > 1)) { setApStep(s => s - 1); setApErr(""); } else { setApView(""); } }} className={cBtn}>
+        {(apView === "setup" && apStep > 1) || (apView === "change" && apStep > 1) ? "Back" : "Cancel"}
+      </button>
+    </div>
+  );
+
+  return (
+    <div className="fixed inset-0 z-[90] bg-black/60 flex items-end justify-center" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-t-3xl px-5 py-6 max-h-[90vh] overflow-y-auto">
+        <div className="w-10 h-1 bg-slate-200 dark:bg-slate-600 rounded-full mx-auto mb-2" />
+        <div className="flex items-center justify-between mb-4">
+          {(view !== "menu" || apView) ? (
+            <button onClick={() => { if (apView) { setApView(""); } else { setView("menu"); } }}
+              className="flex items-center gap-1 text-sm font-semibold text-green-600 dark:text-green-400">
+              <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+              Back
+            </button>
+          ) : <div />}
+          <h3 className="text-base font-extrabold text-slate-800 dark:text-white">Security</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors">
+            <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+
+        {apView ? renderAppPin() : view === "menu" ? renderMenu() : view === "portal-pin" ? renderPortalPin() : renderForgotPin()}
+
+        {/* Auto-lock picker overlay */}
+        {showLockPick && pinLock && (
+          <div className="fixed inset-0 z-[100] bg-black/60 flex items-end justify-center" onClick={e => { if (e.target === e.currentTarget) setShowLockPick(false); }}>
+            <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-t-3xl px-5 py-6">
+              <div className="w-10 h-1 bg-slate-200 dark:bg-slate-600 rounded-full mx-auto mb-4" />
+              <p className="text-sm font-extrabold text-slate-800 dark:text-white mb-4">Auto Lock</p>
+              <div className="flex flex-col gap-1">
+                {AUTO_LOCK_OPTIONS.map(opt => (
+                  <button key={opt.secs} onClick={async () => { await pinLock.setAutoLock(opt.secs); setShowLockPick(false); }}
+                    className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-semibold transition-colors ${pinLock.autoLockTimeout === opt.secs ? "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300" : "text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700/40"}`}>
+                    {opt.label}
+                    {pinLock.autoLockTimeout === opt.secs && <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-green-600" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Member Profile Sheet ─────────────────────────────────────────────────────
 function ProfileSheet({ member, onClose, onSave }) {
   const t = useT();
@@ -2381,7 +3059,7 @@ function ProfileSheet({ member, onClose, onSave }) {
   );
 }
 
-export default function CoopMemberPortal({ member: initialMember }) {
+export default function CoopMemberPortal({ member: initialMember, pinLock }) {
   const t = useT();
   const toast = useToast();
   const MAIN_TABS = useMemo(() => makeMainTabsMember(t), [t]);
@@ -2422,6 +3100,7 @@ export default function CoopMemberPortal({ member: initialMember }) {
   const [events,        setEvents]        = useState([]);
   const [showMore,             setShowMore]             = useState(false);
   const [showProfile,          setShowProfile]          = useState(false);
+  const [showSecurity,         setShowSecurity]         = useState(false);
   const [pendingOfficerCount,  setPendingOfficerCount]  = useState(0);
   const [billsAutoSvc,  setBillsAutoSvc]  = useState(null);
   const [processingPayment, setProcessingPayment] = useState(() => {
@@ -2913,6 +3592,16 @@ export default function CoopMemberPortal({ member: initialMember }) {
                   <span className="text-sm font-semibold flex-1 text-left">Language</span>
                   <span className="text-xs text-slate-400">{LANGUAGES.find(l => l.code === lang)?.native || "English"}</span>
                 </button>
+                {/* Security */}
+                <button onClick={() => { setShowSecurity(true); setShowMore(false); }}
+                  className="w-full flex items-center gap-4 px-5 py-3.5 text-slate-700 dark:text-slate-200 transition-colors">
+                  <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 bg-blue-50 dark:bg-blue-900/20">
+                    <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" stroke="#3b82f6">
+                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    </svg>
+                  </div>
+                  <span className="text-sm font-semibold">Security</span>
+                </button>
               </div>
 
               {/* Sign out */}
@@ -2937,6 +3626,15 @@ export default function CoopMemberPortal({ member: initialMember }) {
           member={member}
           onClose={() => setShowProfile(false)}
           onSave={updates => setMember(prev => ({ ...prev, ...updates }))}
+        />
+      )}
+
+      {/* ── Security sheet ── */}
+      {showSecurity && (
+        <MemberSecuritySheet
+          member={member}
+          pinLock={pinLock}
+          onClose={() => setShowSecurity(false)}
         />
       )}
 

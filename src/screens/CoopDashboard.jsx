@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { usePinLock } from "../hooks/usePinLock";
 import { supabase } from "../utils/supabase";
 import { useTheme } from "../hooks/useTheme";
 import { useT } from "../contexts/LanguageContext";
@@ -2641,6 +2642,144 @@ function OrgSupportSection({ org }) {
   );
 }
 
+const AUTO_LOCK_OPTS = [
+  { label: "30 seconds", secs: 30 }, { label: "1 minute", secs: 60 },
+  { label: "5 minutes", secs: 300 }, { label: "15 minutes", secs: 900 },
+  { label: "30 minutes", secs: 1800 }, { label: "Never", secs: 0 },
+];
+
+function OrgAdminSecuritySection({ orgOwnerId }) {
+  const pinLock = usePinLock(orgOwnerId);
+  const [lockBusy,     setLockBusy]     = useState(false);
+  const [showLockPick, setShowLockPick] = useState(false);
+  const [secView,      setSecView]      = useState(""); // "" | "app-pin"
+  const [apStep,       setApStep]       = useState(1);
+  const [apCurr,       setApCurr]       = useState("");
+  const [apNew,        setApNew]        = useState("");
+  const [apConf,       setApConf]       = useState("");
+  const [apErr,        setApErr]        = useState("");
+  const [apBusy,       setApBusy]       = useState(false);
+
+  const autoLabel = pinLock.autoLockTimeout === 0 ? "Never" : (AUTO_LOCK_OPTS.find(o => o.secs === pinLock.autoLockTimeout)?.label || `${pinLock.autoLockTimeout}s`);
+  const pinRow = "flex items-center justify-between px-4 py-3.5";
+  const rowIcon = (d, color) => (
+    <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: color + "18" }}>
+      <svg viewBox="0 0 24 24" fill="none" className="w-4.5 h-4.5" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+        {d.split("|").map((p,i) => <path key={i} d={p} />)}
+      </svg>
+    </div>
+  );
+
+  const handleAppPin = async () => {
+    if (pinLock.appPinSet) {
+      if (apStep === 1) { if (!apCurr.trim()) { setApErr("Enter current PIN"); return; } setApStep(2); setApErr(""); return; }
+      if (apStep === 2) { if (apNew.length < 6) { setApErr("Must be 6 digits"); return; } setApStep(3); setApErr(""); return; }
+      if (apConf !== apNew) { setApErr("PINs don't match"); return; }
+      setApBusy(true); setApErr("");
+      try { await pinLock.changeAppPin(apCurr, apNew); setSecView(""); }
+      catch (e) { setApErr(e.message || "Failed"); }
+      finally { setApBusy(false); }
+    } else {
+      if (apStep === 1) { if (apNew.length < 6) { setApErr("Must be 6 digits"); return; } setApStep(2); setApErr(""); return; }
+      if (apConf !== apNew) { setApErr("PINs don't match"); return; }
+      setApBusy(true); setApErr("");
+      try { await pinLock.setupAppPin(apNew); setSecView(""); }
+      catch (e) { setApErr(e.message || "Failed"); }
+      finally { setApBusy(false); }
+    }
+  };
+
+  return (
+    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 overflow-hidden">
+      <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-4 pt-4 pb-2">Security</p>
+
+      {secView === "app-pin" ? (
+        <div className="px-4 pb-4 flex flex-col gap-3">
+          <button onClick={() => { setSecView(""); setApStep(1); setApCurr(""); setApNew(""); setApConf(""); setApErr(""); }} className="flex items-center gap-1 text-sm font-semibold text-green-600 self-start mb-1">
+            <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>Back
+          </button>
+          <p className="text-sm font-bold text-slate-700 dark:text-slate-200 text-center">
+            {pinLock.appPinSet
+              ? (apStep === 1 ? "Enter current PIN" : apStep === 2 ? "Enter new 6-digit PIN" : "Confirm new PIN")
+              : (apStep === 1 ? "Choose a 6-digit PIN" : "Confirm your PIN")}
+          </p>
+          {apErr && <p className="text-xs text-red-500 text-center">{apErr}</p>}
+          {pinLock.appPinSet && apStep === 1 && <input type="password" inputMode="numeric" maxLength={10} placeholder="Current PIN" value={apCurr} onChange={e => setApCurr(e.target.value.replace(/\D/g, ""))} autoFocus className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm tracking-[0.3em] text-center focus:outline-none focus:ring-2 focus:ring-green-400 font-mono" />}
+          {((pinLock.appPinSet && apStep === 2) || (!pinLock.appPinSet && apStep === 1)) && <input type="password" inputMode="numeric" maxLength={6} placeholder="6-digit PIN" value={apNew} onChange={e => setApNew(e.target.value.replace(/\D/g, "").slice(0, 6))} autoFocus={!pinLock.appPinSet || apStep === 2} className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm tracking-[0.3em] text-center focus:outline-none focus:ring-2 focus:ring-green-400 font-mono" />}
+          {((pinLock.appPinSet && apStep === 3) || (!pinLock.appPinSet && apStep === 2)) && <input type="password" inputMode="numeric" maxLength={6} placeholder="Confirm PIN" value={apConf} onChange={e => setApConf(e.target.value.replace(/\D/g, "").slice(0, 6))} autoFocus className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm tracking-[0.3em] text-center focus:outline-none focus:ring-2 focus:ring-green-400 font-mono" />}
+          <button onClick={handleAppPin} disabled={apBusy} className="w-full py-3 bg-green-600 text-white font-bold rounded-xl text-sm disabled:opacity-50">
+            {apBusy ? "Saving…" : ((pinLock.appPinSet && apStep === 3) || (!pinLock.appPinSet && apStep === 2)) ? (pinLock.appPinSet ? "Change PIN" : "Set PIN") : "Next"}
+          </button>
+        </div>
+      ) : (
+        <>
+          {/* App Lock PIN */}
+          <button className={pinRow + " w-full text-left active:bg-slate-50 dark:active:bg-slate-700/40 transition-colors"}
+            onClick={() => { setSecView("app-pin"); setApStep(1); setApCurr(""); setApNew(""); setApConf(""); setApErr(""); }}>
+            {rowIcon("M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z", "#3b82f6")}
+            <div className="flex-1 ml-4 min-w-0">
+              <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">App Lock PIN</p>
+              <p className="text-[11px] text-slate-400">{pinLock.appPinSet ? "Change your 6-digit unlock PIN" : "Set a PIN to lock this app"}</p>
+            </div>
+            <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-300 flex-shrink-0" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
+          </button>
+
+          {/* Biometric */}
+          {pinLock.biometricAvailable && (
+            <div className={pinRow}>
+              {rowIcon("M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 008 4.07M3 15.364c.64-1.319 1-2.8 1-4.364 0-1.457.39-2.823 1.07-4", "#3b82f6")}
+              <div className="flex-1 ml-4 min-w-0">
+                <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Biometric Unlock</p>
+                <p className="text-[11px] text-slate-400">{pinLock.biometricEnabled ? "Enabled" : "Use fingerprint or face to unlock"}</p>
+              </div>
+              <button
+                onClick={async () => {
+                  if (!pinLock.appPinSet) return;
+                  setLockBusy(true);
+                  try { pinLock.biometricEnabled ? await pinLock.disableBiometric() : await pinLock.registerBiometric(); } catch {} finally { setLockBusy(false); }
+                }}
+                className={`w-12 h-6 rounded-full transition-colors duration-200 relative flex-shrink-0 ${pinLock.biometricEnabled ? "bg-green-500" : "bg-slate-200 dark:bg-slate-600"}`}>
+                {lockBusy
+                  ? <span className="absolute inset-0 flex items-center justify-center"><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /></span>
+                  : <span className="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all" style={{ left: pinLock.biometricEnabled ? "calc(100% - 22px)" : "2px" }} />}
+              </button>
+            </div>
+          )}
+
+          {/* Auto Lock */}
+          <button className={pinRow + " w-full text-left active:bg-slate-50 dark:active:bg-slate-700/40 transition-colors border-b-0"}
+            onClick={() => setShowLockPick(true)}>
+            {rowIcon("M12 2a10 10 0 100 20A10 10 0 0012 2z|M12 6v6l4 2", "#3b82f6")}
+            <div className="flex-1 ml-4 min-w-0">
+              <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Auto Lock</p>
+              <p className="text-[11px] text-slate-400">{pinLock.autoLockTimeout === 0 ? "Disabled" : `Locks after ${autoLabel}`}</p>
+            </div>
+            <span className="text-[11px] text-slate-400 flex-shrink-0">{autoLabel}</span>
+          </button>
+        </>
+      )}
+
+      {showLockPick && (
+        <div className="fixed inset-0 z-[100] bg-black/60 flex items-end justify-center" onClick={e => { if (e.target === e.currentTarget) setShowLockPick(false); }}>
+          <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-t-3xl px-5 py-6">
+            <div className="w-10 h-1 bg-slate-200 dark:bg-slate-600 rounded-full mx-auto mb-4" />
+            <p className="text-sm font-extrabold text-slate-800 dark:text-white mb-4">Auto Lock</p>
+            <div className="flex flex-col gap-1">
+              {AUTO_LOCK_OPTS.map(opt => (
+                <button key={opt.secs} onClick={async () => { await pinLock.setAutoLock(opt.secs); setShowLockPick(false); }}
+                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-semibold transition-colors ${pinLock.autoLockTimeout === opt.secs ? "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300" : "text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700/40"}`}>
+                  {opt.label}
+                  {pinLock.autoLockTimeout === opt.secs && <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-green-600" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SettingsTab({ org, onRefresh, onOrgUpdate, onBack, isOrgPortal = false, isDark = false, onToggleDark }) {
   const t = useT();
   const [leaders,       setLeaders]       = useState([]);
@@ -2935,6 +3074,9 @@ function SettingsTab({ org, onRefresh, onOrgUpdate, onBack, isOrgPortal = false,
 
       {/* Paystack Bank Account */}
       <OrgBankSetupSection org={org} onRefresh={onRefresh} />
+
+      {/* Security — App Lock, Biometric, Auto Lock (org admin is a main app user) */}
+      <OrgAdminSecuritySection orgOwnerId={org.owner_id} />
 
       {/* Support & FAQ */}
       <OrgSupportSection org={org} />

@@ -75,7 +75,8 @@ const MEMBER_SELECT = `id, org_id, membership_id, full_name, email, phone, role,
   next_of_kin, next_of_kin_phone, user_id,
   privacy_balance, privacy_contributions, privacy_activities,
   suspended_at, suspension_reason, savings_balance, created_at,
-  portal_active, archived_at`;
+  portal_active, archived_at,
+  withdrawal_bank_code, withdrawal_bank_name, withdrawal_account_number, withdrawal_account_name`;
 
 function genTempPassword(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
@@ -3856,6 +3857,202 @@ serve(async (req) => {
       });
 
       return json({ ok: true, disbursement: disb });
+    }
+
+    // ── Member submits a manual savings claim (cash/bank evidence) ──────────
+    if (action === "submit-member-saving-claim") {
+      const { member_id, org_id, amount, payer_name, notes, proof_url, program_id } = body as {
+        member_id: string; org_id: string; amount: number;
+        payer_name?: string; notes?: string; proof_url?: string; program_id?: string;
+      };
+      if (!member_id || !org_id || !amount) return json({ error: "member_id, org_id, amount required" }, 400);
+      const _scDenied = await requireMemberAccess(member_id);
+      if (_scDenied) return _scDenied;
+      const amt = parseFloat(String(amount));
+      if (isNaN(amt) || amt <= 0) return json({ error: "Invalid amount" }, 400);
+      const { data: claim, error: claimErr } = await sb.from("org_manual_savings_claims").insert({
+        org_id, member_id, amount: amt,
+        payer_name: payer_name || null, notes: notes || null,
+        proof_url: proof_url || null, program_id: program_id || null,
+      }).select("*").single();
+      if (claimErr) return json({ error: claimErr.message }, 400);
+      insertNotif(String(org_id), "org", "info", "savings",
+        "Manual Savings Claim",
+        `A member submitted a ₦${amt.toLocaleString("en-NG")} cash deposit claim for confirmation`,
+        "finance");
+      return json({ claim });
+    }
+
+    // ── Get manual savings claims (member: own; officer: all pending) ─────────
+    if (action === "get-member-saving-claims") {
+      const { member_id, org_id, view } = body as { member_id: string; org_id: string; view?: string };
+      if (!member_id && !org_id) return json({ error: "member_id or org_id required" }, 400);
+      if (view === "officer") {
+        if (!org_id) return json({ error: "org_id required" }, 400);
+        const denied = await requireOrgOwner(org_id);
+        if (denied) {
+          const { data: memRow } = await sb.from("org_members").select("id, role, org_id").eq("user_id", callerId!).eq("org_id", org_id).maybeSingle();
+          if (!memRow) return json({ error: "Forbidden" }, 403);
+        }
+        const { data: claims } = await sb.from("org_manual_savings_claims")
+          .select("*, org_members!member_id(full_name, membership_id)")
+          .eq("org_id", org_id).eq("status", "pending")
+          .order("created_at", { ascending: false }).limit(50);
+        return json({ claims: claims || [] });
+      }
+      // Member: own claims
+      if (!member_id) return json({ error: "member_id required" }, 400);
+      const _gcDenied = await requireMemberAccess(member_id);
+      if (_gcDenied) return _gcDenied;
+      const { data: claims } = await sb.from("org_manual_savings_claims")
+        .select("*").eq("member_id", member_id)
+        .order("created_at", { ascending: false }).limit(30);
+      return json({ claims: claims || [] });
+    }
+
+    // ── Officer confirms a manual savings claim → credits member savings ──────
+    if (action === "confirm-member-saving-claim") {
+      const { claim_id, org_id, officer_member_id } = body as { claim_id: string; org_id: string; officer_member_id: string };
+      if (!claim_id || !org_id) return json({ error: "claim_id, org_id required" }, 400);
+      const denied = await requireOrgOwner(org_id);
+      if (denied) {
+        const { data: off } = await sb.from("org_members").select("id, role").eq("user_id", callerId!).eq("org_id", org_id).maybeSingle();
+        if (!off) return json({ error: "Forbidden" }, 403);
+        const OFFICER_ROLES_LIST = ["admin","president","chairman","vice_chairman","treasurer","secretary","officer","welfare_officer","auditor"];
+        if (!OFFICER_ROLES_LIST.includes(off.role)) return json({ error: "Forbidden" }, 403);
+      }
+      const { data: claim } = await sb.from("org_manual_savings_claims")
+        .select("*, org_members!member_id(savings_balance, full_name)").eq("id", claim_id).maybeSingle();
+      if (!claim) return json({ error: "Claim not found" }, 404);
+      if ((claim as Record<string,unknown>).status !== "pending") return json({ error: "Claim already decided" }, 409);
+
+      const claimData = claim as Record<string,unknown>;
+      const amt = parseFloat(String(claimData.amount));
+      const memberId = String(claimData.member_id);
+      const memRow = (claimData.org_members as Record<string,unknown>) || {};
+      const balBefore = parseFloat(String(memRow.savings_balance || 0));
+      const balAfter  = balBefore + amt;
+
+      const { data: saving } = await sb.from("org_savings").insert({
+        org_id, member_id: memberId, amount: amt, type: "deposit",
+        payment_method: "manual_claim", balance_after: balAfter,
+        program_id: claimData.program_id as string || null,
+        notes: claimData.notes as string || null,
+      }).select("id").single();
+
+      await sb.from("org_members").update({ savings_balance: balAfter }).eq("id", memberId);
+
+      const { data: orgRow } = await sb.from("organizations")
+        .select("wallet_balance, total_savings").eq("id", org_id).single();
+      await sb.from("organizations").update({
+        wallet_balance: (parseFloat(String((orgRow as Record<string,unknown>)?.wallet_balance || 0))) + amt,
+        total_savings:  (parseFloat(String((orgRow as Record<string,unknown>)?.total_savings  || 0))) + amt,
+      }).eq("id", org_id);
+
+      await sb.from("org_manual_savings_claims").update({
+        status: "confirmed", decided_by: officer_member_id || null,
+        decided_at: new Date().toISOString(),
+        savings_id: (saving as Record<string,unknown>)?.id || null,
+      }).eq("id", claim_id);
+
+      insertNotif(org_id, "member", "success", "savings",
+        "Deposit Confirmed ✓",
+        `Your ₦${amt.toLocaleString("en-NG")} cash deposit claim has been confirmed`,
+        "contributions", memberId);
+
+      return json({ success: true, balance_after: balAfter });
+    }
+
+    // ── Officer rejects a manual savings claim ───────────────────────────────
+    if (action === "reject-member-saving-claim") {
+      const { claim_id, org_id, officer_member_id, decision_notes } = body as {
+        claim_id: string; org_id: string; officer_member_id?: string; decision_notes?: string;
+      };
+      if (!claim_id || !org_id) return json({ error: "claim_id, org_id required" }, 400);
+      const rDenied = await requireOrgOwner(org_id);
+      if (rDenied) {
+        const { data: off } = await sb.from("org_members").select("id, role").eq("user_id", callerId!).eq("org_id", org_id).maybeSingle();
+        if (!off) return json({ error: "Forbidden" }, 403);
+      }
+      const { data: claim } = await sb.from("org_manual_savings_claims").select("*").eq("id", claim_id).maybeSingle();
+      if (!claim) return json({ error: "Claim not found" }, 404);
+      if ((claim as Record<string,unknown>).status !== "pending") return json({ error: "Claim already decided" }, 409);
+      await sb.from("org_manual_savings_claims").update({
+        status: "rejected", decided_by: officer_member_id || null,
+        decided_at: new Date().toISOString(), decision_notes: decision_notes || null,
+      }).eq("id", claim_id);
+      const claimData = claim as Record<string,unknown>;
+      insertNotif(String(org_id), "member", "warning", "savings",
+        "Deposit Claim Rejected",
+        `Your ₦${parseFloat(String(claimData.amount)).toLocaleString("en-NG")} cash deposit claim was not confirmed${decision_notes ? `: ${decision_notes}` : ""}`,
+        "contributions", String(claimData.member_id));
+      return json({ success: true });
+    }
+
+    // ── Member saves payout bank details ─────────────────────────────────────
+    if (action === "save-member-bank") {
+      const { member_id, bank_code, bank_name, account_number, account_name } = body as {
+        member_id: string; bank_code: string; bank_name: string; account_number: string; account_name: string;
+      };
+      if (!member_id || !bank_code || !account_number || !account_name)
+        return json({ error: "member_id, bank_code, account_number, account_name required" }, 400);
+      const _sbDenied = await requireMemberAccess(member_id);
+      if (_sbDenied) return _sbDenied;
+      await sb.from("org_members").update({
+        withdrawal_bank_code: bank_code,
+        withdrawal_bank_name: bank_name || null,
+        withdrawal_account_number: account_number,
+        withdrawal_account_name: account_name,
+      }).eq("id", member_id);
+      return json({ success: true });
+    }
+
+    // ── Send OTP to member email for portal PIN reset ─────────────────────────
+    if (action === "send-member-pin-otp") {
+      const { member_id } = body as { member_id: string };
+      if (!member_id) return json({ error: "member_id required" }, 400);
+      const _otpDenied = await requireMemberAccess(member_id);
+      if (_otpDenied) return _otpDenied;
+      const { data: mem } = await sb.from("org_members").select("email, full_name").eq("id", member_id).maybeSingle();
+      if (!mem?.email) return json({ error: "No email on file — contact your organisation" }, 404);
+      const otp = String(Math.floor(100000 + Math.random() * 900000));
+      const exp = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+      const salt = crypto.getRandomValues(new Uint8Array(16));
+      const key  = await crypto.subtle.importKey("raw", new TextEncoder().encode(otp), "PBKDF2", false, ["deriveBits"]);
+      const derived = await crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations: 100_000, hash: "SHA-256" }, key, 256);
+      const hash = `pbkdf2$${btoa(String.fromCharCode(...salt))}$${btoa(String.fromCharCode(...new Uint8Array(derived)))}`;
+      await sb.from("org_members").update({ pin_reset_otp_hash: hash, pin_reset_otp_exp: exp }).eq("id", member_id);
+      await fetch("https://admin.kudiai.app/api/public/email-trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
+        body: JSON.stringify({
+          event: "org_member_pin_reset_otp",
+          data: { member_name: mem.full_name || "", member_email: mem.email, otp, expires_minutes: 15 },
+        }),
+      }).catch(() => null);
+      return json({ success: true, email_hint: mem.email.replace(/(.{2}).+(@.+)/, "$1***$2") });
+    }
+
+    // ── Verify OTP and reset portal PIN ───────────────────────────────────────
+    if (action === "verify-member-pin-otp") {
+      const { member_id, otp, new_pin } = body as { member_id: string; otp: string; new_pin: string };
+      if (!member_id || !otp || !new_pin) return json({ error: "member_id, otp, new_pin required" }, 400);
+      if (new_pin.length < 4) return json({ error: "PIN must be at least 4 digits" }, 400);
+      const _vpDenied = await requireMemberAccess(member_id);
+      if (_vpDenied) return _vpDenied;
+      const { data: mem } = await sb.from("org_members")
+        .select("pin_reset_otp_hash, pin_reset_otp_exp").eq("id", member_id).maybeSingle();
+      if (!mem?.pin_reset_otp_hash) return json({ error: "No reset OTP found — request a new one" }, 404);
+      if (!mem.pin_reset_otp_exp || new Date(mem.pin_reset_otp_exp) < new Date())
+        return json({ error: "OTP has expired — request a new one" }, 401);
+      const verified = await verifyPinHash(otp.trim(), mem.pin_reset_otp_hash);
+      if (!verified) return json({ error: "Incorrect OTP" }, 401);
+      const { data: newHash } = await sb.rpc("hash_member_pin", { p_pin: new_pin });
+      await sb.from("org_members").update({
+        portal_pin_hash: newHash, portal_pin: null, must_change_pin: false,
+        pin_reset_otp_hash: null, pin_reset_otp_exp: null,
+      }).eq("id", member_id);
+      return json({ success: true });
     }
 
     return json({ error: `Unknown action: ${action}` }, 400);
