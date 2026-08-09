@@ -683,16 +683,16 @@ function RequestWithdrawalModal({ member, org, onClose, onSuccess }) {
           </div>
         ) : feePreview ? (
           <>
-            <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-4">Confirm Withdrawal</h3>
+            <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-4">{t("coopMem.wdConfirmTitle")}</h3>
             <div className="bg-slate-50 dark:bg-slate-700/60 rounded-2xl px-4 py-4 mb-4 flex flex-col gap-2.5">
               <div className="flex justify-between text-sm">
-                <span className="text-slate-500 dark:text-slate-400">Requested</span>
+                <span className="text-slate-500 dark:text-slate-400">{t("coopMem.wdRequested")}</span>
                 <span className="font-bold text-slate-800 dark:text-white">{fmt(feePreview.gross_amount)}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-slate-500 dark:text-slate-400">Method</span>
+                <span className="text-slate-500 dark:text-slate-400">{t("coopMem.wdMethod")}</span>
                 <span className="font-semibold text-slate-600 dark:text-slate-300">
-                  {(feePreview.payment_method ?? paymentMethod) === "bank_transfer" ? "Bank transfer" : "Cash"}
+                  {(feePreview.payment_method ?? paymentMethod) === "bank_transfer" ? t("coopMem.wdBankTransfer") : t("coopMem.wdCash")}
                 </span>
               </div>
               {feePreview.transaction_charge > 0 && (
@@ -704,7 +704,7 @@ function RequestWithdrawalModal({ member, org, onClose, onSuccess }) {
                 </div>
               )}
               <div className="border-t border-slate-200 dark:border-slate-600 pt-2.5 flex justify-between">
-                <span className="text-sm font-bold text-slate-700 dark:text-slate-200">You'll receive</span>
+                <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{t("coopMem.wdReceive")}</span>
                 <span className="text-base font-black text-green-600">{fmt(feePreview.net_amount)}</span>
               </div>
             </div>
@@ -719,18 +719,18 @@ function RequestWithdrawalModal({ member, org, onClose, onSuccess }) {
             <div className="flex gap-2">
               <button onClick={() => setFeePreview(null)} disabled={saving}
                 className="flex-1 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm">
-                ← Back
+                {t("coopMem.wdBack")}
               </button>
               <button onClick={confirmWithPin} disabled={saving}
                 className="flex-1 py-3 bg-amber-500 text-white rounded-xl font-bold text-sm disabled:opacity-50">
-                Confirm
+                {t("coopMem.wdConfirmBtn")}
               </button>
             </div>
           </>
         ) : (
           <>
             <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-1">{t("coopMem.reqWithdrawal")}</h3>
-            <p className="text-xs text-slate-400 mb-4">Available balance: <strong className="text-green-600">{fmt(member.savings_balance)}</strong></p>
+            <p className="text-xs text-slate-400 mb-4">{t("coopMem.wdAvailBal")} <strong className="text-green-600">{fmt(member.savings_balance)}</strong></p>
             {error && <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-3 text-xs text-red-600">{error}</div>}
             <div className="flex flex-col gap-3">
               <div>
@@ -740,11 +740,11 @@ function RequestWithdrawalModal({ member, org, onClose, onSuccess }) {
                   className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
               </div>
               <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">How would you like to receive this?</label>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">{t("coopMem.wdMethodLabel")}</label>
                 <div className="grid grid-cols-2 gap-2">
                   {[
-                    { value: "cash", label: "Cash", icon: "💵" },
-                    { value: "bank_transfer", label: "Bank Transfer", icon: "🏦" },
+                    { value: "cash",          label: t("coopMem.wdCash"),         icon: "💵" },
+                    { value: "bank_transfer", label: t("coopMem.wdBankTransfer"), icon: "🏦" },
                   ].map(opt => (
                     <button key={opt.value} type="button"
                       onClick={() => setPaymentMethod(opt.value)}
@@ -760,7 +760,7 @@ function RequestWithdrawalModal({ member, org, onClose, onSuccess }) {
               </div>
               <div>
                 <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">{t("fin.notesOptional")}</label>
-                <textarea value={reason} onChange={e => setReason(e.target.value)} rows={2} placeholder="Why do you need this withdrawal?"
+                <textarea value={reason} onChange={e => setReason(e.target.value)} rows={2} placeholder={t("coopMem.wdReasonPH")}
                   className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-green-400" />
               </div>
             </div>
@@ -1211,8 +1211,12 @@ function LoansTab({ member, org }) {
                 </div>
               )}
               <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100 dark:border-slate-700">
-                {[["Interest", `${l.interest_rate}%`], ["Monthly", fmt(l.monthly_installment || 0)], ["Due", fmtDate(l.due_date)]].map(([k, v]) => (
-                  <div key={k}><p className="text-[10px] text-slate-400">{k}</p><p className="text-xs font-bold text-slate-700 dark:text-slate-200">{v || "—"}</p></div>
+                {[
+                  { k: "interest", label: t("loan.interestLabel"), v: `${l.interest_rate}%` },
+                  { k: "monthly",  label: t("loan.monthlyLabel"),  v: fmt(l.monthly_installment || 0) },
+                  { k: "due",      label: t("loan.dueDate"),       v: fmtDate(l.due_date) },
+                ].map(({ k, label, v }) => (
+                  <div key={k}><p className="text-[10px] text-slate-400">{label}</p><p className="text-xs font-bold text-slate-700 dark:text-slate-200">{v || "—"}</p></div>
                 ))}
               </div>
             </button>
@@ -1284,7 +1288,7 @@ function LoansTab({ member, org }) {
               {[
                 [t("loan.amountField"), fmt(selected.amount_requested)],
                 [t("loan.interestLabel"), `${selected.interest_rate}%`],
-                ["Total Repayable", fmt(selected.total_repayable || selected.amount_requested)],
+                [t("loan.totalRepayable"), fmt(selected.total_repayable || selected.amount_requested)],
                 [t("loan.monthlyInstall"), fmt(selected.monthly_installment || 0)],
                 [t("loan.outstanding"), fmt(selected.outstanding_balance)],
                 [t("loan.dueDate"), fmtDate(selected.due_date)],
