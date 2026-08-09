@@ -434,7 +434,6 @@ function HomeTab({ member, org, announcements, polls = [], events = [], loans = 
 //  MANUAL SAVINGS CLAIM MODAL  ("I sent money")
 // ═══════════════════════════════════════════════════
 function ManualClaimModal({ member, org, programs, onClose, onSuccess }) {
-  const t = useT();
   const [amount,      setAmount]      = useState("");
   const [programId,   setProgramId]   = useState("");
   const [payerName,   setPayerName]   = useState("");
@@ -2567,7 +2566,6 @@ function MemberSecuritySheet({ member, pinLock, onClose }) {
   const [fpEmailHint,  setFpEmailHint]  = useState("");
   // App Lock
   const [lockBusy,     setLockBusy]     = useState(false);
-  const [showPinSetup, setShowPinSetup] = useState(false);
   const [showLockPick, setShowLockPick] = useState(false);
   // App PIN change inline state
   const [apView,       setApView]       = useState(""); // "" | "change" | "setup"
@@ -2711,7 +2709,7 @@ function MemberSecuritySheet({ member, pinLock, onClose }) {
               </div>
               <button
                 onClick={async () => {
-                  if (!pinLock.appPinSet) { setShowPinSetup(true); return; }
+                  if (!pinLock.appPinSet) { setApView("setup"); return; }
                   setLockBusy(true);
                   try { pinLock.biometricEnabled ? await pinLock.disableBiometric() : await pinLock.registerBiometric(); } catch {} finally { setLockBusy(false); }
                 }}
