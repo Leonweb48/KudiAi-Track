@@ -295,6 +295,74 @@ serve(async (req) => {
     }, 423);
   }
 
+  // Maps ORG_OWNER_ACTIONS to the org_members.role values that may call them
+  // when the caller is NOT the org owner / portal-admin / staff.
+  // Roles are cumulative: admin/president/chairman/vice_chairman can do everything below.
+  const ACTION_ROLE_GATES: Record<string, string[]> = {
+    // ── Admin / President / Chairman / Vice-Chairman ──────────────────────────
+    "update-loan":                   ["admin","president","chairman","vice_chairman"],
+    "create-withdrawal":             ["admin","president","chairman","vice_chairman"],
+    "get-withdrawal-items":          ["admin","president","chairman","vice_chairman","treasurer","auditor"],
+    "add-program":                   ["admin","president","chairman","vice_chairman"],
+    "update-program":                ["admin","president","chairman","vice_chairman"],
+    "delete-program":                ["admin","president","chairman","vice_chairman"],
+    // ── Treasurer (+ all ranks above) ─────────────────────────────────────────
+    "handle-withdrawal-request":     ["admin","president","chairman","vice_chairman","treasurer"],
+    "get-withdrawal-requests-admin": ["admin","president","chairman","vice_chairman","treasurer"],
+    "record-saving":                 ["admin","president","chairman","vice_chairman","treasurer"],
+    // ── Auditor — read-only finance ────────────────────────────────────────────
+    "get-wallet":    ["admin","president","chairman","vice_chairman","treasurer","auditor"],
+    "get-savings":   ["admin","president","chairman","vice_chairman","treasurer","auditor"],
+    "get-withdrawals":["admin","president","chairman","vice_chairman","treasurer","auditor"],
+    "get-loans":     ["admin","president","chairman","vice_chairman","treasurer","auditor"],
+    "get-repayments":["admin","president","chairman","vice_chairman","treasurer","auditor"],
+    // ── Secretary / Officer ────────────────────────────────────────────────────
+    "create-meeting":  ["admin","president","chairman","vice_chairman","secretary","officer"],
+    "update-meeting":  ["admin","president","chairman","vice_chairman","secretary","officer"],
+    "bulk-attendance": ["admin","president","chairman","vice_chairman","secretary","officer"],
+    "get-attendance":  ["admin","president","chairman","vice_chairman","secretary","officer","auditor"],
+    "send-announcement":["admin","president","chairman","vice_chairman","secretary","officer"],
+    // ── Read access for all officers ───────────────────────────────────────────
+    "get-programs":    ["admin","president","chairman","vice_chairman","secretary","treasurer","officer","welfare_officer","auditor"],
+    "get-meetings":    ["admin","president","chairman","vice_chairman","secretary","officer","welfare_officer","auditor","treasurer"],
+    "get-announcements":["admin","president","chairman","vice_chairman","secretary","officer","welfare_officer","auditor","treasurer"],
+  };
+
+  // Returns the caller's org_members row if their role permits the action,
+  // or a Response (403/401) if not.  Works for both JWT callers and PIN-auth callers.
+  async function requireOfficerForAction(
+    org_id: string,
+    op: string,
+    session_token?: string,
+  ): Promise<Record<string, unknown> | Response> {
+    const allowed = ACTION_ROLE_GATES[op];
+    if (!allowed) return json({ error: "Forbidden" }, 403);
+
+    let memberRow: Record<string, unknown> | null = null;
+
+    if (callerId) {
+      const { data: m } = await sb.from("org_members")
+        .select("id, full_name, role, status, org_id")
+        .eq("user_id", callerId).eq("org_id", org_id).maybeSingle();
+      memberRow = m as Record<string, unknown> | null;
+    } else if (session_token) {
+      const { data: m } = await sb.from("org_members")
+        .select("id, full_name, role, status, org_id, member_session_token, member_session_expires_at")
+        .eq("member_session_token", session_token).eq("org_id", org_id).maybeSingle();
+      if (m && m.member_session_expires_at &&
+          new Date(String(m.member_session_expires_at)) < new Date())
+        return json({ error: "Session expired" }, 401);
+      memberRow = m as Record<string, unknown> | null;
+    }
+
+    if (!memberRow) return json({ error: "Forbidden" }, 403);
+    if (memberRow.status !== "active") return json({ error: "Account suspended or inactive" }, 403);
+    if (!allowed.includes(String(memberRow.role)))
+      return json({ error: `Action requires one of these roles: ${allowed.join(", ")}` }, 403);
+
+    return memberRow;
+  }
+
   // All actions that operate on a specific org and require org ownership
   const ORG_OWNER_ACTIONS = new Set([
     "setup-org-portal","delete-org","get-org","update-org",
@@ -321,10 +389,22 @@ serve(async (req) => {
   ]);
 
   try {
+    // Set when an org-member officer (not owner/portal-admin/staff) is the caller.
+    // Used by handlers to write verifiable attribution (approved_by_member_id, etc.).
+    let callerMemberRow: Record<string, unknown> | null = null;
+
     if (ORG_OWNER_ACTIONS.has(action as string)) {
       const { org_id } = body as { org_id?: string };
-      const denied = await requireOrgOwner(org_id ?? "");
-      if (denied) return denied;
+      const ownerDenied = await requireOrgOwner(org_id ?? "");
+      if (ownerDenied) {
+        // Not org owner / portal-admin / staff — check officer role gate
+        const officerResult = await requireOfficerForAction(
+          org_id ?? "", action as string,
+          (body as Record<string, unknown>).session_token as string | undefined,
+        );
+        if (officerResult instanceof Response) return officerResult;
+        callerMemberRow = officerResult;
+      }
       const govDenied = await checkGovernanceDelegation(org_id ?? "", action as string);
       if (govDenied) return govDenied;
     }
@@ -1208,9 +1288,15 @@ serve(async (req) => {
 
       const totalAmount = affectedMembers.reduce((s, m) => s + m.amount, 0);
 
+      const authorizerDisplay = callerMemberRow
+        ? `${String(callerMemberRow.full_name)} (${String(callerMemberRow.role)})`
+        : (authorized_by ? String(authorized_by) : null);
       const { data: wd, error: wdErr } = await sb.from("org_withdrawals")
         .insert({ org_id, purpose, total_amount: totalAmount, method: method || "equal",
-          authorized_by: authorized_by || null, notes: notes || null,
+          authorized_by_display:    authorizerDisplay,
+          authorized_by_member_id:  callerMemberRow?.id ?? null,
+          authorizer_role:          callerMemberRow?.role ?? null,
+          notes: notes || null,
           program_id: program_id || null, member_count: affectedMembers.length,
         }).select("id").single();
       if (wdErr) return json({ error: wdErr.message }, 400);
@@ -1342,7 +1428,7 @@ serve(async (req) => {
           monthly_installment: monthlyInstallment,
           applied_by: String(applied_by || "admin"),
         })
-        .select("*, org_members(full_name,membership_id)").single();
+        .select("*, org_members!member_id(full_name,membership_id)").single();
       if (error) return json({ error: error.message }, 400);
       // In-app: notify org about new loan request
       insertNotif(String(org_id), "org", "info", "loan",
@@ -1376,11 +1462,20 @@ serve(async (req) => {
       const update: Record<string, unknown> = {};
       if (status)           update.status = status;
       if (amount_approved)  update.amount_approved = parseFloat(String(amount_approved));
-      if (approved_by_name) update.approved_by_name = approved_by_name;
       if (notes !== undefined) update.notes = notes;
+      // Verifiable attribution: written on approve / reject / disburse
+      if (status === "approved" || status === "rejected" || status === "disbursed") {
+        update.approved_by_display = callerMemberRow
+          ? `${String(callerMemberRow.full_name)} (${String(callerMemberRow.role)})`
+          : (approved_by_name ? String(approved_by_name) : "Admin");
+        update.approved_by_member_id = callerMemberRow?.id ?? null;
+        update.approver_role         = callerMemberRow?.role ?? null;
+      } else if (approved_by_name) {
+        update.approved_by_display = String(approved_by_name);
+      }
 
       const { data: existingLoan } = await sb.from("org_loans")
-        .select("*, org_members(full_name,email,membership_id)")
+        .select("*, org_members!member_id(full_name,email,membership_id)")
         .eq("id", loan_id).maybeSingle();
       if (!existingLoan) return json({ error: "Loan not found" }, 404);
 
@@ -1488,7 +1583,7 @@ serve(async (req) => {
       }
 
       const { data: loan, error } = await sb.from("org_loans").update(update)
-        .eq("id", loan_id).select("*, org_members(full_name,membership_id,email)").single();
+        .eq("id", loan_id).select("*, org_members!member_id(full_name,membership_id,email)").single();
       if (error) return json({ error: error.message }, 400);
       return json({ loan });
     }
@@ -1500,7 +1595,7 @@ serve(async (req) => {
       const amt = parseFloat(String(amount));
       if (!loan_id || !amt) return json({ error: "loan_id and amount required" }, 400);
       const { data: loan } = await sb.from("org_loans")
-        .select("outstanding_balance,total_repayable,total_interest,amount_approved,amount_requested,org_id,member_id,repayment_months,loan_purpose,org_members(full_name,email)")
+        .select("outstanding_balance,total_repayable,total_interest,amount_approved,amount_requested,org_id,member_id,repayment_months,loan_purpose,org_members!member_id(full_name,email)")
         .eq("id", loan_id).single();
       if (!loan) return json({ error: "Loan not found" }, 404);
       const newOutstanding = Math.max(0, (loan.outstanding_balance || 0) - amt);
@@ -1580,7 +1675,7 @@ serve(async (req) => {
 
     if (action === "get-loans") {
       const { org_id, member_id } = body as { org_id?: string; member_id?: string };
-      let q = sb.from("org_loans").select("*, org_members(full_name,membership_id,email)");
+      let q = sb.from("org_loans").select("*, org_members!member_id(full_name,membership_id,email)");
       if (org_id)    q = q.eq("org_id", org_id);
       if (member_id) q = q.eq("member_id", member_id);
       const { data: loans } = await q.order("created_at", { ascending: false });
@@ -1610,7 +1705,7 @@ serve(async (req) => {
       const { org_id } = body as { org_id: string };
       const today = new Date().toISOString().slice(0, 10);
       const { data: overdueLoans } = await sb.from("org_loans")
-        .select("*, org_members(full_name,email)")
+        .select("*, org_members!member_id(full_name,email)")
         .eq("org_id", org_id).eq("status", "disbursed")
         .lt("due_date", today);
       if (!overdueLoans?.length) return json({ overdue: 0 });
@@ -2601,7 +2696,7 @@ serve(async (req) => {
       const { org_id, status } = body as { org_id: string; status?: string };
       if (!org_id) return json({ error: "org_id required" }, 400);
       let q = sb.from("org_member_withdrawal_requests")
-        .select("*, org_members(full_name, membership_id, savings_balance, email)")
+        .select("*, org_members!member_id(full_name, membership_id, savings_balance, email)")
         .eq("org_id", org_id);
       if (status) q = q.eq("status", status);
       const { data: requests } = await q.order("created_at", { ascending: false }).limit(50);
@@ -2697,11 +2792,16 @@ serve(async (req) => {
         }
       }
 
+      const reviewerDisplay = callerMemberRow
+        ? `${String(callerMemberRow.full_name)} (${String(callerMemberRow.role)})`
+        : (reviewed_by || null);
       await sb.from("org_member_withdrawal_requests").update({
-        status:      decision === "approve" ? "approved" : "rejected",
-        admin_notes: admin_notes || null,
-        reviewed_by: reviewed_by || null,
-        reviewed_at: new Date().toISOString(),
+        status:                decision === "approve" ? "approved" : "rejected",
+        admin_notes:           admin_notes || null,
+        reviewed_by_display:   reviewerDisplay,
+        reviewed_by_member_id: callerMemberRow?.id ?? null,
+        reviewer_role:         callerMemberRow?.role ?? null,
+        reviewed_at:           new Date().toISOString(),
       }).eq("id", request_id);
 
       return json({ success: true });

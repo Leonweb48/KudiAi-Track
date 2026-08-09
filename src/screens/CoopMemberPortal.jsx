@@ -1666,6 +1666,358 @@ function MemberBillsTab({ member, org, autoService = null, onAutoOpened = null }
 }
 
 // ═══════════════════════════════════════════════════
+//  OFFICER TAB — role-gated operational surface
+// ═══════════════════════════════════════════════════
+const OFFICER_ROLES      = ["admin","president","chairman","vice_chairman","treasurer","secretary","officer","welfare_officer","auditor"];
+const EXEC_ROLES         = ["admin","president","chairman","vice_chairman"];
+const TREASURER_ROLES    = ["admin","president","chairman","vice_chairman","treasurer"];
+const SECRETARY_ROLES    = ["admin","president","chairman","vice_chairman","secretary","officer"];
+const AUDITOR_ONLY_ROLE  = "auditor";
+
+function OfficerTab({ member, org }) {
+  const role = member.role;
+  const isExec      = EXEC_ROLES.includes(role);
+  const isTreasurer = TREASURER_ROLES.includes(role);
+  const isSecretary = SECRETARY_ROLES.includes(role);
+  const isAuditor   = role === AUDITOR_ONLY_ROLE;
+
+  const fmt     = n => "₦" + Number(n || 0).toLocaleString("en-NG", { minimumFractionDigits: 0 });
+  const fmtDate = d => d ? new Date(d).toLocaleDateString("en-NG", { day:"numeric", month:"short", year:"numeric" }) : "—";
+
+  // ── Shared state ──
+  const [loading,   setLoading]   = useState(false);
+  const [error,     setError]     = useState("");
+  const [success,   setSuccess]   = useState("");
+
+  // ── Loan approval (exec) ──
+  const [loans,       setLoans]       = useState([]);
+  const [loansLoaded, setLoansLoaded] = useState(false);
+
+  // ── Withdrawal request approval (treasurer) ──
+  const [wdReqs,       setWdReqs]       = useState([]);
+  const [wdReqsLoaded, setWdReqsLoaded] = useState(false);
+
+  // ── Save recording (treasurer) ──
+  const [savForm, setSavForm] = useState({ member_id: "", amount: "", type: "deposit", notes: "" });
+  const [members, setMembers] = useState([]);
+
+  // ── Meeting creation (secretary) ──
+  const [mtgForm,   setMtgForm]   = useState({ title: "", scheduled_at: "", format: "physical", location: "", description: "" });
+  const [mtgBusy,   setMtgBusy]   = useState(false);
+
+  // ── Announcement (secretary) ──
+  const [annForm,   setAnnForm]   = useState({ message: "", type: "announcement" });
+  const [annBusy,   setAnnBusy]   = useState(false);
+
+  // ── Auditor financials ──
+  const [auditData, setAuditData] = useState(null);
+
+  const toast = msg => { setSuccess(msg); setTimeout(() => setSuccess(""), 4000); };
+
+  // Load data based on role
+  useEffect(() => {
+    if (!org?.id) return;
+    const load = async () => {
+      setLoading(true); setError("");
+      try {
+        if (isExec && !loansLoaded) {
+          const res = await coopFn("get-loans", { org_id: org.id });
+          setLoans((res.loans || []).filter(l => l.status === "pending" || l.status === "approved"));
+          setLoansLoaded(true);
+        }
+        if (isTreasurer && !wdReqsLoaded) {
+          const res = await coopFn("get-withdrawal-requests-admin", { org_id: org.id });
+          setWdReqs((res.requests || []).filter(r => r.status === "pending"));
+          setWdReqsLoaded(true);
+        }
+        if (isTreasurer && members.length === 0) {
+          const res = await coopFn("get-members", { org_id: org.id });
+          setMembers(res.members || []);
+        }
+        if (isAuditor && !auditData) {
+          const [sav, loans, wds, wallet] = await Promise.all([
+            coopFn("get-savings",    { org_id: org.id }),
+            coopFn("get-loans",      { org_id: org.id }),
+            coopFn("get-withdrawals",{ org_id: org.id }),
+            coopFn("get-wallet",     { org_id: org.id }),
+          ]);
+          setAuditData({ savings: sav.savings || [], loans: loans.loans || [], withdrawals: wds.withdrawals || [], wallet: wallet.transactions || [] });
+        }
+      } catch (e) { setError(e.message || "Load failed"); }
+      finally { setLoading(false); }
+    };
+    load();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [org?.id]);
+
+  const handleLoanAction = async (loan, newStatus) => {
+    setError(""); setSuccess("");
+    try {
+      await coopFn("update-loan", { loan_id: loan.id, org_id: org.id, status: newStatus,
+        amount_approved: loan.amount_approved || loan.amount_requested });
+      setLoans(prev => prev.map(l => l.id === loan.id ? { ...l, status: newStatus } : l));
+      toast(`Loan ${newStatus}`);
+    } catch (e) { setError(e.message || "Action failed"); }
+  };
+
+  const handleWdReq = async (req, decision) => {
+    setError(""); setSuccess("");
+    try {
+      await coopFn("handle-withdrawal-request", { request_id: req.id, decision, org_id: org.id });
+      setWdReqs(prev => prev.filter(r => r.id !== req.id));
+      toast(`Withdrawal ${decision === "approve" ? "approved" : "rejected"}`);
+    } catch (e) { setError(e.message || "Action failed"); }
+  };
+
+  const handleRecordSaving = async () => {
+    if (!savForm.member_id || !savForm.amount) { setError("Member and amount are required"); return; }
+    setLoading(true); setError("");
+    try {
+      await coopFn("record-saving", { org_id: org.id, member_id: savForm.member_id,
+        amount: parseFloat(savForm.amount), type: savForm.type, notes: savForm.notes || undefined });
+      setSavForm({ member_id: "", amount: "", type: "deposit", notes: "" });
+      toast("Saving recorded");
+    } catch (e) { setError(e.message || "Failed"); }
+    finally { setLoading(false); }
+  };
+
+  const handleCreateMeeting = async () => {
+    if (!mtgForm.title || !mtgForm.scheduled_at) { setError("Title and date are required"); return; }
+    setMtgBusy(true); setError("");
+    try {
+      await coopFn("create-meeting", { org_id: org.id, ...mtgForm });
+      setMtgForm({ title: "", scheduled_at: "", format: "physical", location: "", description: "" });
+      toast("Meeting created");
+    } catch (e) { setError(e.message || "Failed"); }
+    finally { setMtgBusy(false); }
+  };
+
+  const handleSendAnn = async () => {
+    if (!annForm.message.trim()) { setError("Message required"); return; }
+    setAnnBusy(true); setError("");
+    try {
+      await coopFn("send-announcement", { org_id: org.id, message: annForm.message.trim(), type: annForm.type });
+      setAnnForm({ message: "", type: "announcement" });
+      toast("Announcement sent");
+    } catch (e) { setError(e.message || "Failed"); }
+    finally { setAnnBusy(false); }
+  };
+
+  const sectionClass = "mb-5 bg-white dark:bg-slate-800 rounded-2xl shadow-sm overflow-hidden";
+  const hClass = "px-4 pt-4 pb-2 text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest";
+  const rowClass = "px-4 py-3 border-b border-slate-50 dark:border-slate-700/50 last:border-0";
+  const inputClass = "w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2.5 text-sm text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-[#3DA829]/40";
+  const btnGreen = "flex-1 bg-[#3DA829] active:bg-[#2d8020] text-white text-xs font-bold py-2 rounded-xl disabled:opacity-40 transition-colors";
+  const btnRed = "flex-1 bg-red-500 active:bg-red-600 text-white text-xs font-bold py-2 rounded-xl disabled:opacity-40 transition-colors";
+
+  return (
+    <div className="px-4 pt-4 pb-8">
+      {/* Role badge */}
+      <div className="mb-4 flex items-center gap-2">
+        <span className="px-3 py-1 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-[11px] font-bold uppercase tracking-wider border border-blue-100 dark:border-blue-800/50 capitalize">
+          {role}
+        </span>
+        <span className="text-[11px] text-slate-400">Officer access · {org.name}</span>
+      </div>
+
+      {error && (
+        <div className="mb-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 text-red-700 dark:text-red-400 text-xs rounded-xl px-4 py-3">{error}</div>
+      )}
+      {success && (
+        <div className="mb-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/50 text-green-700 dark:text-green-400 text-xs rounded-xl px-4 py-3">{success}</div>
+      )}
+
+      {loading && !loansLoaded && !wdReqsLoaded && !auditData && (
+        <div className="flex justify-center py-12"><div className="w-8 h-8 rounded-full border-2 border-[#3DA829] border-t-transparent animate-spin" /></div>
+      )}
+
+      {/* ── EXEC: Loan Approvals ── */}
+      {isExec && (
+        <div className={sectionClass}>
+          <p className={hClass}>Pending Loans</p>
+          {loans.filter(l => l.status === "pending").length === 0 ? (
+            <p className="px-4 pb-4 text-xs text-slate-400">No pending loan applications</p>
+          ) : loans.filter(l => l.status === "pending").map(loan => (
+            <div key={loan.id} className={rowClass}>
+              <div className="flex items-start justify-between mb-2">
+                <div>
+                  <p className="text-sm font-bold text-slate-800 dark:text-white">{loan.org_members?.full_name || "Member"}</p>
+                  <p className="text-[11px] text-slate-400">{loan.loan_purpose || "—"} · {fmtDate(loan.applied_at)}</p>
+                </div>
+                <p className="text-sm font-extrabold text-slate-800 dark:text-white">{fmt(loan.amount_requested)}</p>
+              </div>
+              <div className="flex gap-2">
+                <button className={btnGreen} onClick={() => handleLoanAction(loan, "approved")}>Approve</button>
+                <button className={btnRed}   onClick={() => handleLoanAction(loan, "rejected")}>Reject</button>
+              </div>
+            </div>
+          ))}
+          {loans.filter(l => l.status === "approved").length > 0 && (
+            <>
+              <p className="px-4 pt-2 pb-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Approved — Awaiting Disbursal</p>
+              {loans.filter(l => l.status === "approved").map(loan => (
+                <div key={loan.id} className={rowClass}>
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <p className="text-sm font-bold text-slate-800 dark:text-white">{loan.org_members?.full_name || "Member"}</p>
+                      <p className="text-[11px] text-slate-400">{fmtDate(loan.approved_at)}</p>
+                    </div>
+                    <p className="text-sm font-extrabold text-slate-800 dark:text-white">{fmt(loan.amount_approved || loan.amount_requested)}</p>
+                  </div>
+                  {loan.approved_by_display && (
+                    <p className="text-[10px] text-slate-400 mb-2">Approved by: {loan.approved_by_display}</p>
+                  )}
+                  <button className={btnGreen} onClick={() => handleLoanAction(loan, "disbursed")}>Disburse</button>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── TREASURER: Withdrawal Request Approvals ── */}
+      {isTreasurer && (
+        <div className={sectionClass}>
+          <p className={hClass}>Withdrawal Requests</p>
+          {wdReqs.length === 0 ? (
+            <p className="px-4 pb-4 text-xs text-slate-400">No pending withdrawal requests</p>
+          ) : wdReqs.map(req => (
+            <div key={req.id} className={rowClass}>
+              <div className="flex items-start justify-between mb-1">
+                <div>
+                  <p className="text-sm font-bold text-slate-800 dark:text-white">{req.org_members?.full_name || "Member"}</p>
+                  <p className="text-[11px] text-slate-400">{req.reason || "No reason"} · {fmtDate(req.created_at)}</p>
+                </div>
+                <p className="text-sm font-extrabold text-slate-800 dark:text-white">{fmt(req.amount)}</p>
+              </div>
+              <div className="flex gap-2 mt-2">
+                <button className={btnGreen} onClick={() => handleWdReq(req, "approve")}>Approve</button>
+                <button className={btnRed}   onClick={() => handleWdReq(req, "reject")}>Reject</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── TREASURER: Record Saving ── */}
+      {isTreasurer && (
+        <div className={sectionClass}>
+          <p className={hClass}>Record Saving</p>
+          <div className="px-4 pb-4 space-y-3">
+            <select className={inputClass} value={savForm.member_id} onChange={e => setSavForm(p => ({ ...p, member_id: e.target.value }))}>
+              <option value="">Select member…</option>
+              {members.map(m => <option key={m.id} value={m.id}>{m.full_name} ({m.membership_id})</option>)}
+            </select>
+            <div className="flex gap-2">
+              <input className={inputClass} type="number" placeholder="Amount (₦)" value={savForm.amount} onChange={e => setSavForm(p => ({ ...p, amount: e.target.value }))} />
+              <select className={`${inputClass} flex-shrink-0 w-32`} value={savForm.type} onChange={e => setSavForm(p => ({ ...p, type: e.target.value }))}>
+                <option value="deposit">Deposit</option>
+                <option value="withdrawal">Withdraw</option>
+              </select>
+            </div>
+            <input className={inputClass} placeholder="Notes (optional)" value={savForm.notes} onChange={e => setSavForm(p => ({ ...p, notes: e.target.value }))} />
+            <button className={btnGreen} disabled={loading} onClick={handleRecordSaving}>
+              {loading ? "Recording…" : "Record Saving"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── SECRETARY: Create Meeting ── */}
+      {isSecretary && (
+        <div className={sectionClass}>
+          <p className={hClass}>Create Meeting</p>
+          <div className="px-4 pb-4 space-y-3">
+            <input className={inputClass} placeholder="Meeting title" value={mtgForm.title} onChange={e => setMtgForm(p => ({ ...p, title: e.target.value }))} />
+            <input className={inputClass} type="datetime-local" value={mtgForm.scheduled_at} onChange={e => setMtgForm(p => ({ ...p, scheduled_at: e.target.value }))} />
+            <select className={inputClass} value={mtgForm.format} onChange={e => setMtgForm(p => ({ ...p, format: e.target.value }))}>
+              <option value="physical">In-person</option>
+              <option value="virtual">Virtual</option>
+              <option value="hybrid">Hybrid</option>
+            </select>
+            <input className={inputClass} placeholder="Location / link (optional)" value={mtgForm.location} onChange={e => setMtgForm(p => ({ ...p, location: e.target.value }))} />
+            <input className={inputClass} placeholder="Description (optional)" value={mtgForm.description} onChange={e => setMtgForm(p => ({ ...p, description: e.target.value }))} />
+            <button className={btnGreen} disabled={mtgBusy} onClick={handleCreateMeeting}>
+              {mtgBusy ? "Creating…" : "Create Meeting"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── SECRETARY: Send Announcement ── */}
+      {isSecretary && (
+        <div className={sectionClass}>
+          <p className={hClass}>Send Announcement</p>
+          <div className="px-4 pb-4 space-y-3">
+            <select className={inputClass} value={annForm.type} onChange={e => setAnnForm(p => ({ ...p, type: e.target.value }))}>
+              <option value="announcement">Announcement</option>
+              <option value="notice">Notice</option>
+              <option value="circular">Circular</option>
+              <option value="emergency">Emergency</option>
+            </select>
+            <textarea className={`${inputClass} resize-none`} rows={3} placeholder="Message…" value={annForm.message} onChange={e => setAnnForm(p => ({ ...p, message: e.target.value }))} />
+            <button className={btnGreen} disabled={annBusy} onClick={handleSendAnn}>
+              {annBusy ? "Sending…" : "Send"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── AUDITOR: Read-only Financial View ── */}
+      {isAuditor && auditData && (
+        <>
+          <div className={sectionClass}>
+            <p className={hClass}>Savings Ledger</p>
+            {auditData.savings.slice(0, 20).map(s => (
+              <div key={s.id} className={`${rowClass} flex items-center justify-between`}>
+                <div>
+                  <p className="text-xs font-semibold text-slate-800 dark:text-white capitalize">{s.type} · {s.payment_method?.replace(/_/g," ")}</p>
+                  <p className="text-[10px] text-slate-400">{fmtDate(s.created_at)}</p>
+                </div>
+                <p className={`text-sm font-bold ${s.type === "deposit" ? "text-green-600" : "text-red-500"}`}>
+                  {s.type === "deposit" ? "+" : "-"}{fmt(s.amount)}
+                </p>
+              </div>
+            ))}
+            {auditData.savings.length === 0 && <p className="px-4 pb-4 text-xs text-slate-400">No savings records</p>}
+          </div>
+
+          <div className={sectionClass}>
+            <p className={hClass}>Loans</p>
+            {auditData.loans.slice(0, 20).map(l => (
+              <div key={l.id} className={`${rowClass} flex items-center justify-between`}>
+                <div>
+                  <p className="text-xs font-semibold text-slate-800 dark:text-white capitalize">{l.status}</p>
+                  <p className="text-[10px] text-slate-400">{fmtDate(l.applied_at)}</p>
+                  {l.approved_by_display && <p className="text-[10px] text-slate-400">By: {l.approved_by_display}</p>}
+                </div>
+                <p className="text-sm font-bold text-slate-800 dark:text-white">{fmt(l.amount_requested)}</p>
+              </div>
+            ))}
+            {auditData.loans.length === 0 && <p className="px-4 pb-4 text-xs text-slate-400">No loans</p>}
+          </div>
+
+          <div className={sectionClass}>
+            <p className={hClass}>Org Withdrawals</p>
+            {auditData.withdrawals.slice(0, 20).map(w => (
+              <div key={w.id} className={`${rowClass} flex items-center justify-between`}>
+                <div>
+                  <p className="text-xs font-semibold text-slate-800 dark:text-white">{w.purpose}</p>
+                  <p className="text-[10px] text-slate-400">{fmtDate(w.created_at)}</p>
+                  {w.authorized_by_display && <p className="text-[10px] text-slate-400">Auth: {w.authorized_by_display}</p>}
+                </div>
+                <p className="text-sm font-bold text-red-500">-{fmt(w.total_amount)}</p>
+              </div>
+            ))}
+            {auditData.withdrawals.length === 0 && <p className="px-4 pb-4 text-xs text-slate-400">No withdrawals</p>}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════
 //  MAIN PORTAL
 // ═══════════════════════════════════════════════════
 function makeMainTabsMember(t) {
@@ -2122,7 +2474,7 @@ export default function CoopMemberPortal({ member: initialMember }) {
 
   usePushNotifications(member?.user_id ?? null, (dl) => {
     if (!dl?.tab) return;
-    const COOP_MEMBER_TABS = ["home","contributions","loans","messages","bills","broadcast","support"];
+    const COOP_MEMBER_TABS = ["home","contributions","loans","messages","bills","broadcast","support","officer"];
     navigateTo(COOP_MEMBER_TABS.includes(dl.tab) ? dl.tab : "home");
   });
 
@@ -2138,6 +2490,19 @@ export default function CoopMemberPortal({ member: initialMember }) {
 
   if (!member) return null;
 
+  const isOfficerMember = OFFICER_ROLES.includes(member.role);
+
+  // Inject officer tab into MORE for qualifying roles
+  const effectiveMoreTabs = useMemo(() => {
+    if (!isOfficerMember) return MORE_TABS;
+    return [
+      ...MORE_TABS,
+      { id: "officer", label: "Officer", color: "#1e40af",
+        icon: "M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" },
+    ];
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [MORE_TABS, isOfficerMember]);
+
   const tabContent = {
     home:          <HomeTab member={member} org={org} announcements={announcements} polls={polls} events={events} loans={loans} wdRequests={wdRequests} onQuickService={openQuickService} onNavigate={navigateTo} userEmail={member.email} />,
     contributions: <ContributionsTab member={member} org={org} onMemberUpdate={handleMemberUpdate} />,
@@ -2146,9 +2511,10 @@ export default function CoopMemberPortal({ member: initialMember }) {
     broadcast:     <MemberBroadcastTab member={member} org={org} />,
     support:       <SupportTab member={member} org={org} />,
     messages:      <GroupChat orgId={org.id} myName={member.full_name} myRole="member" orgName={org.name} org={org} onBack={() => navigateTo("home")} />,
+    officer:       isOfficerMember ? <OfficerTab member={member} org={org} /> : null,
   };
 
-  const isMoreTab = MORE_TABS.some(t => t.id === tab);
+  const isMoreTab = effectiveMoreTabs.some(t => t.id === tab);
   const emergencyCount = announcements.filter(a => a.type === "emergency").length;
 
   return (
@@ -2163,7 +2529,7 @@ export default function CoopMemberPortal({ member: initialMember }) {
                 userId={member?.user_id ?? null}
                 onNavigate={(dl) => {
                   if (!dl?.tab) return;
-                  const COOP_MEMBER_TABS = ["home","contributions","loans","messages","bills","broadcast","support"];
+                  const COOP_MEMBER_TABS = ["home","contributions","loans","messages","bills","broadcast","support","officer"];
                   navigateTo(COOP_MEMBER_TABS.includes(dl.tab) ? dl.tab : "home");
                 }}
                 toast={toast}
@@ -2297,7 +2663,7 @@ export default function CoopMemberPortal({ member: initialMember }) {
                   );
                 })}
                 <div className="mx-5 my-2 border-t border-slate-100 dark:border-slate-800" />
-                {MORE_TABS.map(t => {
+                {effectiveMoreTabs.map(t => {
                   const active = tab === t.id;
                   return (
                     <button key={t.id} onClick={() => navigateTo(t.id)}
