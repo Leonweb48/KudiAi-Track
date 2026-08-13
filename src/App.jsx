@@ -36,6 +36,8 @@ import AjoMemberPortal       from "./screens/AjoMemberPortal";
 import CoopList              from "./screens/CoopList";
 import CoopDashboard         from "./screens/CoopDashboard";
 import CoopMemberPortal, { CoopMemberFirstLogin, OrgMemberArchivedScreen } from "./screens/CoopMemberPortal";
+import CoopComingSoon        from "./screens/CoopComingSoon";
+import { usePlatformConfig } from "./hooks/usePlatformConfig";
 import PaymentReturn         from "./screens/PaymentReturn";
 import { Browser }           from "@capacitor/browser";
 import { StatusBar, Style }  from "@capacitor/status-bar";
@@ -156,6 +158,9 @@ export default function App() {
 
   // Two-tier PIN lock (server-side via pin-manager edge function)
   const pinLock = usePinLock(userId);
+
+  // Feature flags — fetched once per session from platform_config table, no rebuild to toggle
+  const { coopEnabled, configLoading } = usePlatformConfig();
 
   // Notification engine — owner portal only. Pass null for ajo_client to prevent a
   // ghost realtime subscription when AjoMemberPortal's NotificationCenter is live.
@@ -375,10 +380,15 @@ export default function App() {
 
   const portalStatuses = ["ready", "staff", "branch_manager", "marketer", "organisation", "org_member", "ajo_client"];
 
-  // Single loading gate: covers both the auth resolution window and the pin-manager
-  // check_status call that follows. Collapsing them into one return keeps the same
-  // Spinner instance mounted the whole time so no animation restart / blink occurs.
-  if (status === "loading" || (portalStatuses.includes(status) && pinLock.loading)) return <Spinner />;
+  // Single loading gate: covers auth resolution, pin-manager check_status, and platform config.
+  // Coop statuses also wait for configLoading so we never flash the portal when the flag is off.
+  const isCoopStatus = ["organisation","org_otp","org_setup","org_member","org_member_otp","org_member_setup","org_member_archived"].includes(status);
+  if (status === "loading" || (portalStatuses.includes(status) && pinLock.loading) || (isCoopStatus && configLoading)) return <Spinner />;
+
+  // Cooperative module gate — show Coming Soon for ALL coop/org statuses when flag is off.
+  // Behaviour: existing accounts see Coming Soon + sign-out; no broken screens.
+  // To restore full access: set platform_config.coop_module_enabled = 'true' in Supabase — no rebuild.
+  if (isCoopStatus && !coopEnabled) return <CoopComingSoon />;
 
   // Super Admin — full command center
   if (status === "admin") return <AdminDashboard session={session} adminUser={adminUser} />;
@@ -715,14 +725,30 @@ export default function App() {
       )}
 
       {/* Cooperative / Community Org system — z-60 */}
-      {showCoop && !coopOrg && (
+      {showCoop && !coopEnabled && (
+        <div className="fixed inset-0 z-[60] bg-black/60 flex items-end justify-center" onClick={() => setShowCoop(false)}>
+          <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-t-3xl px-7 py-8 text-center" onClick={e => e.stopPropagation()}>
+            <div className="w-14 h-14 rounded-2xl bg-green-100 dark:bg-green-900/30 flex items-center justify-center mx-auto mb-5">
+              <svg viewBox="0 0 24 24" fill="none" className="w-7 h-7 text-green-600 dark:text-green-400" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+              </svg>
+            </div>
+            <h2 className="text-lg font-extrabold text-slate-800 dark:text-white mb-2 tracking-tight">Cooperative Management</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed mb-6">
+              Coming soon — we'll let you know when it's ready.
+            </p>
+            <button onClick={() => setShowCoop(false)} className="w-full py-3 bg-green-600 text-white font-bold rounded-xl text-sm">Got it</button>
+          </div>
+        </div>
+      )}
+      {showCoop && coopEnabled && !coopOrg && (
         <CoopList
           userId={userId}
           onOpen={org => setCoopOrg(org)}
           onClose={() => setShowCoop(false)}
         />
       )}
-      {coopOrg && (
+      {coopEnabled && coopOrg && (
         <CoopDashboard
           org={coopOrg}
           onBack={() => { setCoopOrg(null); }}
