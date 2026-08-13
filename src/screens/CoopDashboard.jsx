@@ -3076,7 +3076,7 @@ function SettingsTab({ org, onRefresh, onOrgUpdate, onBack, isOrgPortal = false,
       <OrgBankSetupSection org={org} onRefresh={onRefresh} />
 
       {/* Security — App Lock, Biometric, Auto Lock (org admin is a main app user) */}
-      <OrgAdminSecuritySection orgOwnerId={org.owner_id} />
+      <OrgAdminSecuritySection orgOwnerId={org.portal_user_id || org.owner_id} />
 
       {/* Support & FAQ */}
       <OrgSupportSection org={org} />
