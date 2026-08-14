@@ -3336,8 +3336,8 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             body: { action: "execute_commission", cycle_id: cyc.id, amount, pin },
           });
           if (error || !data?.ok) {
-            setHistoryErr(data?.error || friendlyError(error, "Commission execution failed."));
-            return;
+            // Throw so ContributionCard's try/catch shows failure, not the unconditional success path.
+            throw new Error(data?.error || friendlyError(error, "Commission execution failed."));
           }
           const { data: freshContribs } = await supabase
             .from("ajo_contributions")
