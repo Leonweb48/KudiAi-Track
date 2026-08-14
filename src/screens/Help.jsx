@@ -383,6 +383,23 @@ function CreateTicket({ userId, profile, session, onBack, onCreated }) {
     }).select().single();
 
     if (err) { setError(friendlyError(err)); setSaving(false); return; }
+
+    // Notify support admins via edge function proxy (secret stays server-side)
+    supabase.functions.invoke("notify-admin", {
+      body: {
+        event: "support_ticket_admin_notify",
+        data: {
+          ticket_id:   ticket?.id             || "",
+          ticket_no:   ticket?.ticket_number  || ticket?.ticket_no || "",
+          subject:     ticket?.subject        || form.subject.trim(),
+          priority:    ticket?.priority       || form.priority,
+          description: form.description.trim(),
+          user_name:   profile?.owner_name    || profile?.business_name || "",
+          user_email:  session?.user?.email   || "",
+        },
+      },
+    }).catch(() => null);
+
     onCreated(ticket);
   };
 

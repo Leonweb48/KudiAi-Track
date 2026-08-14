@@ -396,6 +396,23 @@ function CreateTicket({ userId, staffName, staffEmail, onBack, onCreated }) {
       status:      "open",
     }).select().single();
     if (err) { setError(friendlyError(err)); setSaving(false); return; }
+
+    // Notify support admins via edge function proxy (secret stays server-side)
+    supabase.functions.invoke("notify-admin", {
+      body: {
+        event: "support_ticket_admin_notify",
+        data: {
+          ticket_id:   ticket?.id            || "",
+          ticket_no:   ticket?.ticket_number || ticket?.ticket_no || "",
+          subject:     form.subject.trim(),
+          priority:    form.priority,
+          description: form.description.trim(),
+          user_name:   staffName             || "Staff",
+          user_email:  staffEmail            || "",
+        },
+      },
+    }).catch(() => null);
+
     onCreated(ticket);
   };
 

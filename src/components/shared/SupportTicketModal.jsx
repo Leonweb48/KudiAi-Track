@@ -64,7 +64,7 @@ export default function SupportTicketModal({
       userName = biz?.owner_name || biz?.business_name || "";
     }
 
-    const { error: err } = await supabase.from("support_tickets").insert({
+    const { data: ticket, error: err } = await supabase.from("support_tickets").insert({
       user_id:     authUser?.id    || null,
       user_email:  authUser?.email || "",
       user_name:   userName,
@@ -73,10 +73,27 @@ export default function SupportTicketModal({
       type:        form.type,
       priority:    form.priority,
       status:      "open",
-    });
+    }).select().single();
 
     setSaving(false);
     if (err) { setError(friendlyError(err)); return; }
+
+    // Notify support admins via edge function proxy (secret stays server-side)
+    supabase.functions.invoke("notify-admin", {
+      body: {
+        event: "support_ticket_admin_notify",
+        data: {
+          ticket_id:   ticket?.id            || "",
+          ticket_no:   ticket?.ticket_number || ticket?.ticket_no || "",
+          subject:     form.subject.trim(),
+          priority:    form.priority,
+          description: form.description.trim(),
+          user_name:   userName,
+          user_email:  authUser?.email       || "",
+        },
+      },
+    }).catch(() => null);
+
     setDone(true);
   }
 

@@ -1,7 +1,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL")                || "";
-const SERVICE_KEY  = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")   || "";
+const SUPABASE_URL         = Deno.env.get("SUPABASE_URL")               || "";
+const SERVICE_KEY          = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")  || "";
+const EMAIL_TRIGGER_SECRET = Deno.env.get("EMAIL_TRIGGER_SECRET")       || "";
 
 const cors = {
   "Access-Control-Allow-Origin":  "*",
@@ -130,15 +131,34 @@ Deno.serve(async (req: Request) => {
         return json({ error: "Both guarantors must provide at least a name and phone number." }, 400);
       }
 
-      await admin.from("verification_submissions").insert({
+      const { data: submission } = await admin.from("verification_submissions").insert({
         user_id: userId, tier: 2, status: "pending",
         doc_url: docUrl,
         guarantor1_name: g1Name, guarantor1_phone: g1Phone,
         guarantor1_email: g1Email, guarantor1_address: g1Address, guarantor1_nin: g1Nin,
         guarantor2_name: g2Name, guarantor2_phone: g2Phone,
         guarantor2_email: g2Email, guarantor2_address: g2Address, guarantor2_nin: g2Nin,
-      });
+      }).select("id, submitted_name").single();
+
+      // Fetch the user's name for the notification
+      const { data: prof } = await admin.from("profiles").select("owner_name").eq("id", userId).maybeSingle();
+
       await admin.from("profiles").update({ verification_status: "tier2_pending" }).eq("id", userId);
+
+      // Notify compliance admins via email (non-blocking; in-app row written by DB trigger)
+      if (EMAIL_TRIGGER_SECRET) fetch("https://admin.kudiai.app/api/public/email-trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
+        body: JSON.stringify({
+          event: "verification_submitted",
+          data: {
+            submission_id:  submission?.id || "",
+            submitted_name: prof?.owner_name || "",
+            tier: 2,
+          },
+        }),
+      }).catch(() => null);
+
       return json({ success: true, status: "tier2_pending" });
     }
 
