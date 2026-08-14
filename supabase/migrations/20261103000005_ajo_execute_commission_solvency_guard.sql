@@ -68,8 +68,8 @@ BEGIN
       'ok',    false,
       'error', format(
         'Insufficient balance — commission of ₦%s exceeds client balance of ₦%s',
-        to_char(p_amount,  'FM999,999,999.00'),
-        to_char(v_cur_bal, 'FM999,999,999.00')
+        to_char(p_amount,  'FM999,999,990.00'),
+        to_char(v_cur_bal, 'FM999,999,990.00')
       )
     );
   END IF;
