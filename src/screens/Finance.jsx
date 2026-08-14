@@ -1059,7 +1059,7 @@ export default function Finance({
       <div className="flex flex-col min-h-full">
         <SectionHeader title={SECTION_LABELS[section]} onBack={() => setSection(null)} />
 
-        {section === "credit"  && <Credit store={store} plan={plan} autoOpen={false} onAutoOpened={null} onUpgrade={onUpgrade} embedded />}
+        {section === "credit"  && <Credit store={store} plan={plan} autoOpen={false} onAutoOpened={null} onUpgrade={onUpgrade} embedded inventory={inventory} />}
         {section === "ajo"     && <Aso    store={store} plan={plan} autoOpen={false} onAutoOpened={null} onUpgrade={onUpgrade} embedded />}
         {section === "loan"    && (
           <LoanTab isEnterprise={isEnterprise} accountCreatedAt={session?.user?.created_at}

@@ -296,7 +296,12 @@ If asked about business-wide figures (total business revenue, all staff performa
           />
         )}
         {voiceOpen && (
-          <VoiceModal onClose={() => setVoiceOpen(false)} onSave={handleVoiceSave} />
+          <VoiceModal
+            onClose={() => setVoiceOpen(false)}
+            onSave={handleVoiceSave}
+            products={inventory?.products || []}
+            inventory={inventory}
+          />
         )}
         {/* Staff morning brief — scoped to this staff member's own data */}
         <DailyVoice
@@ -304,6 +309,7 @@ If asked about business-wide figures (total business revenue, all staff performa
           context={store.loading ? "" : staffPortalContext}
           fallback={`Good morning${staff?.full_name ? ", " + staff.full_name.split(" ")[0] : ""}! Focus on today's transactions and follow up on any pending items — you've got this!`}
           dataLoading={store.loading}
+          userType="staff"
         />
 
         {/* D11: Staff-aware AI assistant — staff-scoped context, no business-wide data */}

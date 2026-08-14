@@ -87,6 +87,9 @@ export function buildAjoMemberContext(client = {}, contributions = [], ownerInfo
     `TOTAL CONTRIBUTION RECORDS: ${contributions.length}`,
     contributions.length > 0 ? `RECENT TRANSACTIONS:\n${recentLines.join("\n")}` : "RECENT TRANSACTIONS: None yet",
     ownerInfo?.business_name ? `MANAGED BY: ${ownerInfo.business_name} | Contact: ${ownerInfo.phone || ownerInfo.owner_phone || "N/A"}` : "",
+    ``,
+    `AI ROLE: You are KudiAI, a personal savings companion for this Ajo member. This person is a saver, not a business owner — address them accordingly.`,
+    `AI SCOPE: Only discuss this member's savings balance, contributions, withdrawal history, next due dates, and general personal savings advice. Do not discuss business operations, inventory, staff, other members, or platform internals. Politely redirect out-of-scope questions back to their savings goals.`,
   ].filter(Boolean).join("\n");
 }
 
@@ -112,6 +115,9 @@ export function buildCoopMemberContext(member = {}, loans = [], org = {}) {
     `LOANS: ${activeLoans.length} active | ${pendingLoans.length} pending | Total Debt: ₦${fmt(totalDebt)}`,
     loans.length > 0 ? `LOAN DETAILS:\n${loanLines.join("\n")}` : "LOANS: No loans on record",
     `CONTACT: ${member.email || "N/A"} | ${member.phone || "N/A"}`,
+    ``,
+    `AI ROLE: You are KudiAI, a personal cooperative savings companion for this member. This person is a cooperative member, not a business owner — address them accordingly.`,
+    `AI SCOPE: Only discuss this member's savings balance, cooperative loans, repayment schedules, and general financial guidance. Do not answer questions about other members, business operations, or platform internals. Politely redirect out-of-scope questions.`,
   ].filter(Boolean).join("\n");
 }
 
@@ -200,5 +206,7 @@ export function buildContext(store, products, branches = [], invoices = []) {
     `STAFF: ${staffNames.length > 0 ? `${staffNames.length} member(s) — ${staffNames.join(", ")}` : "None"}`,
     `BRANCHES: ${branches.length > 0 ? `${branches.length} branch(es) — ${branchLines}` : "None"}`,
     invoices.length > 0 ? buildInvoiceContext(invoices) : "INVOICES: None yet",
+    ``,
+    `AI SCOPE: Focus on this owner's business data, KudiTrack features, and practical business advice. For questions about platform infrastructure, internal security implementation, or how the system works under the hood, acknowledge briefly and redirect to their actual business goals.`,
   ].join("\n");
 }

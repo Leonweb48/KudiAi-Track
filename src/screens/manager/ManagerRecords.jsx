@@ -49,7 +49,7 @@ export default function ManagerRecords({ store, staff, livePerms, initialSub, pl
       <div className="flex-1 overflow-hidden">
         {sub === "credit" && (
           allowed.includes("credit")
-            ? <div className="h-full overflow-y-auto pb-4"><Credit store={store} plan={plan} /></div>
+            ? <div className="h-full overflow-y-auto pb-4"><Credit store={store} plan={plan} inventory={inventory} /></div>
             : <PermBlock msg="Credit not enabled" hint="Contact the business owner to enable the credit module." />
         )}
 

@@ -641,6 +641,8 @@ export default function App() {
             <VoiceModal
               onClose={() => setVoiceOpen(false)}
               onSave={txn => { addTransactionWithLoyalty(txn); setVoiceOpen(false); }}
+              products={inventory?.products || []}
+              inventory={inventory}
             />
           )}
 

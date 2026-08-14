@@ -45,7 +45,7 @@ export default function StaffRecords({ store, staff, livePerms, initialSub, plan
       <div className="flex-1 overflow-hidden">
         {sub === "credit" && (
           allowed.includes("credit")
-            ? <div className="h-full overflow-y-auto pb-4"><Credit store={store} plan={plan} /></div>
+            ? <div className="h-full overflow-y-auto pb-4"><Credit store={store} plan={plan} inventory={inventory} /></div>
             : <PermBlock msg="Credit not enabled" hint="Contact your manager to enable the credit module." />
         )}
         {sub === "ajo" && !ajoOnPlan && (

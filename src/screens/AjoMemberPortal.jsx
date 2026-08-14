@@ -5613,6 +5613,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
           context={loadingData ? "" : buildAjoMemberContext(client, contributions, ownerInfo)}
           fallback={`Keep it up${client?.full_name ? ", " + client.full_name.split(" ")[0] : ""}! Every contribution you make brings you one step closer to your savings goal — stay consistent and you'll get there!`}
           dataLoading={loadingData}
+          userType="ajo_member"
         />
       )}
 

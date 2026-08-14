@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useVoiceTx } from "../hooks/useVoiceTx";
 import { today } from "../utils/helpers";
 import { AmountDisplay } from "./shared/AmountDisplay";
@@ -30,6 +31,23 @@ const CATEGORY_COLORS = {
   other:            "bg-slate-100  dark:bg-slate-800     text-slate-600  dark:text-slate-300",
 };
 
+function fuzzyMatch(query, target) {
+  const a = (query  || "").toLowerCase().replace(/\s+/g, " ").trim();
+  const b = (target || "").toLowerCase().replace(/\s+/g, " ").trim();
+  if (!a || a.length < 3) return false;
+  if (a === b) return true;
+  if (b.includes(a) || a.includes(b)) return true;
+  const min = Math.min(a.length, b.length);
+  return min >= 4 && a.slice(0, 4) === b.slice(0, 4);
+}
+
+function getTopMatches(itemName, products, max = 3) {
+  if (!itemName || !products?.length) return [];
+  return products
+    .filter(p => fuzzyMatch(itemName, p.product_name))
+    .slice(0, max);
+}
+
 function ParsedCard({ parsed }) {
   const isIn   = parsed.type === "in";
   const catCls = CATEGORY_COLORS[parsed.category] || CATEGORY_COLORS.other;
@@ -61,20 +79,38 @@ function ParsedCard({ parsed }) {
   );
 }
 
-export default function VoiceModal({ onClose, onSave }) {
+export default function VoiceModal({ onClose, onSave, products = [], inventory = null }) {
   const {
     isRecording, status, parsed, error,
     lang, setLang, startRecording, stopAndProcess, reset,
     recordingSeconds,
   } = useVoiceTx();
 
+  const [matchedProduct, setMatchedProduct] = useState(null);
+  const [matchDismissed, setMatchDismissed] = useState(false);
+
+  const matches = status === "done" && parsed && !matchDismissed
+    ? getTopMatches(parsed.item_name, products)
+    : [];
+
   const handleSave = () => {
     if (!parsed) return;
+    const qty = parseInt(parsed.quantity) || 1;
+    if (matchedProduct && inventory?.recordMovement) {
+      inventory.recordMovement({
+        product_id: matchedProduct.id,
+        type:       "sale",
+        quantity:   qty,
+        unit_price: parseFloat(parsed.amount) / qty || 0,
+        notes:      parsed.customer_name ? `Sale to ${parsed.customer_name}` : "Auto-synced from voice transaction",
+      });
+    }
     onSave({
       ...parsed,
-      amount:   parseFloat(parsed.amount) || 0,
-      quantity: parseInt(parsed.quantity) || 1,
+      amount:       parseFloat(parsed.amount) || 0,
+      quantity:     qty,
       transaction_date: today(),
+      ...(matchedProduct ? { linked_product_id: matchedProduct.id, product_name: matchedProduct.product_name } : {}),
     });
     onClose();
   };
@@ -193,6 +229,46 @@ export default function VoiceModal({ onClose, onSave }) {
             Parsed Transaction
           </p>
           <ParsedCard parsed={parsed} />
+
+          {/* Product match suggestions */}
+          {matches.length > 0 && (
+            <div className="mt-3 mb-1 bg-amber-50 dark:bg-amber-900/15 border border-amber-200 dark:border-amber-800/40 rounded-xl p-3">
+              <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wide mb-2">
+                Match catalogue product?
+              </p>
+              <div className="space-y-1.5">
+                {matches.map(p => (
+                  <button
+                    key={p.id}
+                    onClick={() => setMatchedProduct(prev => prev?.id === p.id ? null : p)}
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-all border ${
+                      matchedProduct?.id === p.id
+                        ? "bg-brand-600 border-brand-600 text-white"
+                        : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-brand-400"
+                    }`}
+                  >
+                    <span className="font-medium truncate">{p.product_name}</span>
+                    <span className={`text-xs ml-2 flex-shrink-0 ${matchedProduct?.id === p.id ? "text-brand-100" : "text-slate-400 dark:text-slate-500"}`}>
+                      {p.quantity ?? 0} in stock
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => { setMatchDismissed(true); setMatchedProduct(null); }}
+                className="mt-2 text-[11px] text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 underline"
+              >
+                No, save as-is
+              </button>
+            </div>
+          )}
+
+          {matchedProduct && (
+            <p className="text-[11px] text-brand-600 dark:text-brand-400 mt-1 mb-1 text-center font-medium">
+              Stock will be deducted from "{matchedProduct.product_name}"
+            </p>
+          )}
+
           <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-2 mb-4 text-center">
             Review the details above before saving
           </p>

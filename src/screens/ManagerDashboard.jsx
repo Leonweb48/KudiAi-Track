@@ -344,6 +344,7 @@ IMPORTANT: Net profit, cost prices, and business-wide figures are owner-private 
           context={store.loading ? "" : managerPortalContext}
           fallback={`Good morning${staff?.full_name ? ", " + staff.full_name.split(" ")[0] : ""}! Check in on your branch activity today and stay on top of any overdue credit follow-ups — your branch is counting on your leadership!`}
           dataLoading={store.loading}
+          userType="manager"
         />
 
         {/* Floating KudiAI Chat Widget */}
@@ -351,7 +352,12 @@ IMPORTANT: Net profit, cost prices, and business-wide figures are owner-private 
 
         {/* Voice Modal */}
         {voiceOpen && (
-          <VoiceModal onClose={() => setVoiceOpen(false)} onSave={handleVoiceSave} />
+          <VoiceModal
+            onClose={() => setVoiceOpen(false)}
+            onSave={handleVoiceSave}
+            products={inventory?.products || []}
+            inventory={inventory}
+          />
         )}
 
       </div>

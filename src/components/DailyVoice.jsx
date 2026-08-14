@@ -11,10 +11,27 @@ const BRIEF_CACHE_KEY   = (uid, date) => `kt_brief_cache_${uid}_${date}`;
 
 function todayKey() { return new Date().toISOString().slice(0, 10); }
 
-function buildBriefPrompt(lang) {
-  const base = `Using the context provided, write exactly 3 complete sentences as a morning greeting for the user.
+function getGreetingWord() {
+  const h = new Date().getHours();
+  if (h < 12) return "morning";
+  if (h < 17) return "afternoon";
+  return "evening";
+}
+
+const ROLE_FRAMING = {
+  ajo_member:  "Speak as their personal savings companion who knows their savings journey well",
+  coop_member: "Speak as their personal cooperative savings companion who knows their savings and loan situation well",
+  staff:       "Speak as their supportive business assistant who knows their daily work context well",
+  manager:     "Speak as their supportive branch management assistant who knows their branch metrics well",
+  owner:       "Speak as their personal business companion who knows their business situation well",
+};
+
+function buildBriefPrompt(lang, userType = "owner") {
+  const tod     = getGreetingWord();
+  const framing = ROLE_FRAMING[userType] || ROLE_FRAMING.owner;
+  const base = `Using the context provided, write exactly 3 complete sentences as a ${tod} greeting for the user.
 Address them by their first name — it is in the context.
-Speak as their personal business companion who knows their situation well: warm, direct, specific to what their actual numbers show right now — not generic encouragement.
+${framing}: warm, direct, specific to what their actual numbers show right now — not generic encouragement.
 End with one genuine sentence that fits their role and what today's data actually suggests.
 Absolutely no asterisks, no bold, no dashes, no bullet points, no markdown of any kind — plain sentences only.
 Write all 3 sentences in full before stopping.`;
@@ -54,7 +71,7 @@ function WaveBars() {
  *   fallback    — plain-text sentence shown if the AI call fails
  *   dataLoading — true while the portal's data is still being fetched; brief is delayed until false
  */
-export default function DailyVoice({ userId, context, fallback, dataLoading }) {
+export default function DailyVoice({ userId, context, fallback, dataLoading, userType = "owner" }) {
   const [visible,    setVisible]    = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [needsTap,   setNeedsTap]   = useState(false);
@@ -172,7 +189,7 @@ export default function DailyVoice({ userId, context, fallback, dataLoading }) {
 
       try {
         const lang = getLang();
-        const raw   = await askGemini({ message: buildBriefPrompt(lang), lang, context, timeout: 20000, maxAttempts: 1 });
+        const raw   = await askGemini({ message: buildBriefPrompt(lang, userType), lang, context, timeout: 20000, maxAttempts: 1 });
         const clean = stripMarkdown(raw?.trim() || fallback);
         setBrief(clean);
         spokenRef.current = clean;
@@ -202,10 +219,10 @@ export default function DailyVoice({ userId, context, fallback, dataLoading }) {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide leading-none mb-0.5">
-              KudiAI Morning Brief
+              KudiAI Daily Brief
             </p>
             <p className="text-[11px] text-slate-400 leading-none">
-              {isSpeaking ? "Speaking…" : brief === null ? "Generating…" : "Your morning summary"}
+              {isSpeaking ? "Speaking…" : brief === null ? "Generating…" : "Your daily summary"}
             </p>
           </div>
           <div className="flex items-center gap-1 flex-shrink-0">
