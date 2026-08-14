@@ -1216,29 +1216,41 @@ serve(async (req) => {
     if (action === "get-txn-pin-status") {
       const { client_id } = body as { client_id: string };
       if (!client_id) return json({ error: "client_id required" }, 400);
-      const { data: cl } = await sb.from("aso_clients").select("portal_pin").eq("id", client_id).maybeSingle();
-      return json({ pin_set: !!cl?.portal_pin });
+      const { data: cl } = await sb.from("aso_clients").select("portal_pin, portal_pin_hash").eq("id", client_id).maybeSingle();
+      return json({ pin_set: !!(cl?.portal_pin_hash || cl?.portal_pin) });
     }
 
     if (action === "set-txn-pin") {
       const { client_id, old_pin, new_pin } = body as { client_id: string; old_pin?: string | null; new_pin: string };
       if (!new_pin || !/^\d{4}$/.test(new_pin)) return json({ error: "PIN must be exactly 4 digits" }, 400);
       if (!client_id) return json({ error: "client_id required" }, 400);
-      const { data: cl } = await sb.from("aso_clients").select("portal_pin").eq("id", client_id).maybeSingle();
+      const { data: cl } = await sb.from("aso_clients").select("portal_pin, portal_pin_hash").eq("id", client_id).maybeSingle();
       if (!cl) return json({ error: "Client not found" }, 404);
-      if (cl.portal_pin) {
+      if (cl.portal_pin_hash) {
+        // Verify existing bcrypt hash
+        const { data: valid } = await sb.rpc("verify_bcrypt_pin", { p_pin: String(old_pin ?? ""), p_hash: cl.portal_pin_hash });
+        if (!valid) return json({ error: old_pin ? "Current PIN is incorrect" : "Current PIN is required" }, 401);
+      } else if (cl.portal_pin) {
+        // Legacy plaintext fallback (pre-migration clients)
         if (!old_pin || String(old_pin).trim() !== cl.portal_pin) return json({ error: "Current PIN is incorrect" }, 401);
       }
-      await sb.from("aso_clients").update({ portal_pin: new_pin, portal_pin_changed_at: new Date().toISOString() }).eq("id", client_id);
+      const { data: newHash } = await sb.rpc("hash_member_pin", { p_pin: new_pin });
+      await sb.from("aso_clients").update({ portal_pin_hash: newHash, portal_pin: null, portal_pin_changed_at: new Date().toISOString() }).eq("id", client_id);
       return json({ success: true });
     }
 
-    // ── Verify portal transaction PIN (checks aso_clients.portal_pin) ─────────
+    // ── Verify portal transaction PIN ──────────────────────────────────────────
     if (action === "verify-txn-pin") {
       const { client_id, pin } = body as { client_id: string; pin: string };
       if (!client_id || !pin) return json({ error: "client_id and pin required" }, 400);
-      const { data: cl } = await sb.from("aso_clients").select("portal_pin").eq("id", client_id).maybeSingle();
+      const { data: cl } = await sb.from("aso_clients").select("portal_pin, portal_pin_hash").eq("id", client_id).maybeSingle();
       if (!cl) return json({ error: "Client not found" }, 404);
+      if (cl.portal_pin_hash) {
+        const { data: valid } = await sb.rpc("verify_bcrypt_pin", { p_pin: pin, p_hash: cl.portal_pin_hash });
+        if (!valid) return json({ ok: false, error: "Incorrect PIN" });
+        return json({ ok: true });
+      }
+      // Legacy: only plaintext portal_pin set (no hash yet)
       if (!cl.portal_pin) return json({ ok: true, no_pin: true });
       if (cl.portal_pin !== pin) return json({ ok: false, error: "Incorrect PIN" });
       return json({ ok: true });
