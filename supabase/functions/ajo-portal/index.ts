@@ -561,6 +561,32 @@ serve(async (req) => {
         }
       }
 
+      // ── Block: personal savings requires an active savings card ─────────────
+      if (contribution_context === "personal_savings" && !callerCycleId) {
+        return json({ error: "You don't have an active savings plan — ask your savings agent to set one up" }, 400);
+      }
+
+      // ── Cap check: reject if this cycle's target is already met ──────────────
+      if (contribution_context === "personal_savings" && callerCycleId) {
+        const { data: capCy } = await sb.from("ajo_cycles")
+          .select("length_periods, expected_amount_per_period")
+          .eq("id", callerCycleId).maybeSingle();
+        const capTarget = Number((capCy as Record<string, unknown>)?.length_periods || 0) *
+                          Number((capCy as Record<string, unknown>)?.expected_amount_per_period || 0);
+        if (capTarget > 0) {
+          const { data: capRows } = await sb.from("ajo_contributions")
+            .select("amount").eq("aso_client_id", client_id).eq("cycle_id", callerCycleId)
+            .eq("type", "contribution").eq("status", "completed");
+          const capSaved = ((capRows || []) as Array<{ amount: number }>)
+            .reduce((s, r) => s + Number(r.amount || 0), 0);
+          if (capSaved >= capTarget) {
+            return json({
+              error: `This savings plan has reached its ₦${capTarget.toLocaleString("en-NG")} target — your agent will close and renew it`,
+            }, 400);
+          }
+        }
+      }
+
       const { data: rpcResult } = await sb.rpc("ajo_submit_manual_claim", {
         p_client_id:             client_id,
         p_owner_id:              owner_id,
@@ -771,6 +797,32 @@ serve(async (req) => {
             .limit(1)
             .maybeSingle();
           psCycleId = psCycle?.id || null;
+        }
+      }
+
+      // ── Block: personal savings requires an active savings card ─────────────
+      if (contribution_context === "personal_savings" && !psCycleId) {
+        return json({ error: "You don't have an active savings plan — ask your savings agent to set one up" }, 422);
+      }
+
+      // ── Cap check: reject if this cycle's target is already met ──────────────
+      if (psCycleId) {
+        const { data: capCy } = await sb.from("ajo_cycles")
+          .select("length_periods, expected_amount_per_period")
+          .eq("id", psCycleId).maybeSingle();
+        const capTarget = Number((capCy as Record<string, unknown>)?.length_periods || 0) *
+                          Number((capCy as Record<string, unknown>)?.expected_amount_per_period || 0);
+        if (capTarget > 0) {
+          const { data: capRows } = await sb.from("ajo_contributions")
+            .select("amount").eq("aso_client_id", client_id).eq("cycle_id", psCycleId)
+            .eq("type", "contribution").eq("status", "completed");
+          const capSaved = ((capRows || []) as Array<{ amount: number }>)
+            .reduce((s, r) => s + Number(r.amount || 0), 0);
+          if (capSaved >= capTarget) {
+            return json({
+              error: `This savings plan has reached its ₦${capTarget.toLocaleString("en-NG")} target — your agent will close and renew it`,
+            }, 422);
+          }
         }
       }
 

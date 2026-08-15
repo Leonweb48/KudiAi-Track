@@ -471,6 +471,28 @@ serve(async (req: Request) => {
       }
     }
 
+    // ── Cap check: reject if this cycle's target is already met ──────────────
+    if (cycleId && (!contribution_context || contribution_context === "personal_savings")) {
+      const { data: capCy } = await sb.from("ajo_cycles")
+        .select("length_periods, expected_amount_per_period")
+        .eq("id", cycleId).maybeSingle();
+      const capTarget = Number((capCy as Record<string, unknown>)?.length_periods || 0) *
+                        Number((capCy as Record<string, unknown>)?.expected_amount_per_period || 0);
+      if (capTarget > 0) {
+        const { data: capRows } = await sb.from("ajo_contributions")
+          .select("amount").eq("aso_client_id", client_id).eq("cycle_id", cycleId)
+          .eq("type", "contribution").eq("status", "completed");
+        const capSaved = ((capRows || []) as Array<{ amount: number }>)
+          .reduce((s, r) => s + Number(r.amount || 0), 0);
+        if (capSaved >= capTarget) {
+          return json({
+            ok: false,
+            error: `This savings plan has reached its ₦${capTarget.toLocaleString("en-NG")} target — close and renew the cycle to accept more contributions`,
+          }, 400);
+        }
+      }
+    }
+
     const { data, error } = await sb.rpc("ajo_record_contribution", {
       p_client_id:             client_id,
       p_owner_id:              ownerId,

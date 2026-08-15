@@ -1052,7 +1052,7 @@ function MoneyEsusuSimpleCard({ group, selected, onSelect, children }) {
   );
 }
 
-function PayContributionModal({ client, clientGroups = [], cycles = [], onClose, onSuccess }) {
+function PayContributionModal({ client, clientGroups = [], cycles = [], contributions = [], onClose, onSuccess }) {
   const t = useT();
   // ── Core state (unchanged from original) ──────────────────────────────────
   const [status,          setStatus]         = useState("idle");
@@ -1072,10 +1072,20 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], onClose,
   const [mainTab,        setMainTab]        = useState("personal");
   const [personalSubTab, setPersonalSubTab] = useState("first_period");
 
+  // ── Per-cycle fullness helper ─────────────────────────────────────────────
+  const isCycleFull = (cy) => {
+    const target = Number(cy.length_periods || 0) * Number(cy.expected_amount_per_period || 0);
+    if (!target) return false;
+    const saved = contributions
+      .filter(c => c.cycle_id === cy.id && c.type === "contribution" && c.status === "completed")
+      .reduce((s, c) => s + Number(c.amount || 0), 0);
+    return saved >= target;
+  };
+
   // ── Category derivations — re-derive from props each render (realtime-safe)
   const activeCycles  = cycles.filter(cy => cy.status === "active");
-  const fpCycles      = activeCycles.filter(cy => cy.commission_model === "first_period");
-  const pctCycles     = activeCycles.filter(cy => cy.commission_model !== "first_period");
+  const fpCycles      = activeCycles.filter(cy => cy.commission_model === "first_period" && !isCycleFull(cy));
+  const pctCycles     = activeCycles.filter(cy => cy.commission_model !== "first_period" && !isCycleFull(cy));
   const savingsGroups = clientGroups.filter(m => m.group?.group_mode === "savings").map(m => m.group).filter(Boolean);
   const esusuGroups   = clientGroups.filter(m => m.group?.group_mode === "esusu").map(m => m.group).filter(Boolean);
 
@@ -1547,7 +1557,7 @@ function ChangePasswordModal({ onClose }) {
 }
 
 
-function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo, onClose, onSuccess }) {
+function ManualDepositModal({ client, clientGroups = [], cycles = [], contributions = [], ownerInfo, onClose, onSuccess }) {
   const t = useT();
   // ── Core state (unchanged from original) ──────────────────────────────────
   const [amount,         setAmount]        = useState("");
@@ -1570,10 +1580,20 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], ownerInfo,
   const [mainTab,        setMainTab]        = useState("personal");
   const [personalSubTab, setPersonalSubTab] = useState("first_period");
 
+  // ── Per-cycle fullness helper ─────────────────────────────────────────────
+  const isCycleFull = (cy) => {
+    const target = Number(cy.length_periods || 0) * Number(cy.expected_amount_per_period || 0);
+    if (!target) return false;
+    const saved = contributions
+      .filter(c => c.cycle_id === cy.id && c.type === "contribution" && c.status === "completed")
+      .reduce((s, c) => s + Number(c.amount || 0), 0);
+    return saved >= target;
+  };
+
   // ── Category derivations — re-derive from props each render (realtime-safe)
   const activeCycles  = cycles.filter(cy => cy.status === "active");
-  const fpCycles      = activeCycles.filter(cy => cy.commission_model === "first_period");
-  const pctCycles     = activeCycles.filter(cy => cy.commission_model !== "first_period");
+  const fpCycles      = activeCycles.filter(cy => cy.commission_model === "first_period" && !isCycleFull(cy));
+  const pctCycles     = activeCycles.filter(cy => cy.commission_model !== "first_period" && !isCycleFull(cy));
   const savingsGroups = clientGroups.filter(m => m.group?.group_mode === "savings").map(m => m.group).filter(Boolean);
   const esusuGroups   = clientGroups.filter(m => m.group?.group_mode === "esusu").map(m => m.group).filter(Boolean);
 
@@ -5580,6 +5600,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
           client={client}
           clientGroups={client?.group_memberships?.filter(m => m.status === "active") || []}
           cycles={cycles}
+          contributions={contributions}
           onClose={() => setShowPay(false)}
           onSuccess={(ref, updatedClient) => {
             if (updatedClient) setClient(prev => ({ ...prev, ...updatedClient }));
@@ -5603,6 +5624,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
           client={client}
           clientGroups={client?.group_memberships?.filter(m => m.status === "active") || []}
           cycles={cycles}
+          contributions={contributions}
           ownerInfo={ownerInfo}
           onClose={() => setShowDeposit(false)}
           onSuccess={() => {}}
