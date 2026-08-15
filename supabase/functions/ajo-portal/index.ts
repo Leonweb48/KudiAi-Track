@@ -738,7 +738,6 @@ serve(async (req) => {
           callback_url: "https://kudiai.app/",
           channels:     ["card", "bank", "ussd", "bank_transfer"],
           subaccount:   subaccountCode,
-          bearer:       subaccountCode ? "subaccount" : undefined,
           metadata: {
             client_id,
             owner_id:             ownerId,
