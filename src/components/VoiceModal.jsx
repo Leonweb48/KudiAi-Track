@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useVoiceTx } from "../hooks/useVoiceTx";
 import { today } from "../utils/helpers";
 import { AmountDisplay } from "./shared/AmountDisplay";
@@ -48,21 +48,23 @@ function getTopMatches(itemName, products, max = 3) {
     .slice(0, max);
 }
 
-function ParsedCard({ parsed }) {
-  const isIn   = parsed.type === "in";
-  const catCls = CATEGORY_COLORS[parsed.category] || CATEGORY_COLORS.other;
+function ParsedCard({ parsed, overrideAmount, overrideQty }) {
+  const isIn     = parsed.type === "in";
+  const catCls   = CATEGORY_COLORS[parsed.category] || CATEGORY_COLORS.other;
+  const amount   = overrideAmount ?? parsed.amount ?? 0;
+  const quantity = overrideQty   ?? parsed.quantity ?? 1;
   return (
     <div className="bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-700 p-4 space-y-2.5">
       <div className="flex items-center justify-between">
         <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${isIn ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300" : "bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400"}`}>
           {isIn ? "Cash In" : "Cash Out"}
         </span>
-        <AmountDisplay amount={parsed.amount || 0} size="stat" align="left" colorBy={isIn ? "in" : "out"} />
+        <AmountDisplay amount={amount} size="stat" align="left" colorBy={isIn ? "in" : "out"} />
       </div>
       <p className="font-semibold text-slate-800 dark:text-slate-100 text-sm">
         {parsed.item_name || "—"}
-        {parsed.quantity > 1 && (
-          <span className="text-slate-400 dark:text-slate-500 font-normal"> × {parsed.quantity}</span>
+        {quantity > 1 && (
+          <span className="text-slate-400 dark:text-slate-500 font-normal"> × {quantity}</span>
         )}
       </p>
       <div className="flex flex-wrap gap-1.5">
@@ -91,6 +93,23 @@ export default function VoiceModal({ onClose, onSave, products = [], inventory =
   const [matchedProduct, setMatchedProduct] = useState(null);
   const [matchDismissed, setMatchDismissed] = useState(false);
 
+  // User-adjustable quantity for the current parsed item.
+  // Seeded from the AI-parsed quantity each time a new result arrives.
+  const [localQty, setLocalQty] = useState(1);
+  useEffect(() => {
+    if (parsed) setLocalQty(parseInt(parsed.quantity) || 1);
+  }, [parsed]);
+
+  // When a matched catalogue product is selected, its selling_price × localQty
+  // overrides the voice-parsed amount so the user sees the actual catalogue total.
+  const sellingPrice  = matchedProduct
+    ? (matchedProduct.selling_price || matchedProduct.unit_price || 0)
+    : 0;
+  const effectiveAmount = matchedProduct && sellingPrice > 0
+    ? sellingPrice * localQty
+    : (parseFloat(parsed?.amount) || 0);
+  const effectiveQty    = localQty;
+
   const matches = status === "done" && parsed && !matchDismissed
     ? getTopMatches(parsed.item_name, products)
     : [];
@@ -102,37 +121,39 @@ export default function VoiceModal({ onClose, onSave, products = [], inventory =
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
-  // Deduct stock for a matched product (fire-and-forget)
+  const handleReset = () => {
+    reset();
+    setMatchedProduct(null);
+    setMatchDismissed(false);
+    setLocalQty(1);
+  };
+
   const deductStock = (product, qty, amount, customerName) => {
     if (!product || !inventory?.recordMovement) return;
     inventory.recordMovement({
       product_id: product.id,
       type:       "sale",
       quantity:   qty,
-      unit_price: amount / qty || 0,
+      unit_price: qty > 0 ? amount / qty : 0,
       notes:      customerName ? `Sale to ${customerName}` : "Auto-synced from voice transaction",
     });
   };
 
-  // The exact name to store: matched product's catalogue name beats the AI-parsed name.
-  // This ensures profitEngine's productByName lookup succeeds and COGS is computed
-  // (profitEngine uses item_name for the single-item path; the AI-parsed name often
-  // differs from the catalogue name, causing the lookup to miss).
+  // Exact name for the transaction: catalogue name beats AI-parsed name so
+  // profitEngine's productByName lookup succeeds and COGS is computed.
   const resolvedName = () =>
     matchedProduct ? matchedProduct.product_name : (parsed?.item_name || "");
 
   // ── Save paths ────────────────────────────────────────────────────────────
 
-  // Add current parsed item to voiceItems list and reset for next recording
   const handleAddToList = () => {
     if (!parsed) return;
-    const qty  = parseInt(parsed.quantity) || 1;
     const name = resolvedName();
-    deductStock(matchedProduct, qty, parseFloat(parsed.amount) || 0, parsed.customer_name);
+    deductStock(matchedProduct, effectiveQty, effectiveAmount, parsed.customer_name);
     setVoiceItems(prev => [...prev, {
       item_name:      name,
-      amount:         parseFloat(parsed.amount) || 0,
-      quantity:       qty,
+      amount:         effectiveAmount,
+      quantity:       effectiveQty,
       category:       parsed.category,
       payment_type:   parsed.payment_type,
       customer_name:  parsed.customer_name || "",
@@ -141,40 +162,35 @@ export default function VoiceModal({ onClose, onSave, products = [], inventory =
     }]);
     setMatchedProduct(null);
     setMatchDismissed(false);
+    setLocalQty(1);
     reset();
   };
 
-  // Save a single parsed item immediately (no prior accumulated items)
   const handleSaveSingle = () => {
     if (!parsed) return;
-    const qty  = parseInt(parsed.quantity) || 1;
     const name = resolvedName();
-    deductStock(matchedProduct, qty, parseFloat(parsed.amount) || 0, parsed.customer_name);
+    deductStock(matchedProduct, effectiveQty, effectiveAmount, parsed.customer_name);
     onSave({
       ...parsed,
-      item_name:        name,           // override AI name with catalogue name for COGS
-      amount:           parseFloat(parsed.amount) || 0,
-      quantity:         qty,
+      item_name:        name,
+      amount:           effectiveAmount,
+      quantity:         effectiveQty,
       transaction_date: today(),
       ...(matchedProduct ? { linked_product_id: matchedProduct.id } : {}),
     });
     onClose();
   };
 
-  // Save all accumulated items, optionally including the current parsed item.
-  // Single item → flat transaction (backward-compatible).
-  // Multiple items → line_items transaction (profitEngine uses productId per line).
   const handleSaveAll = (includeCurrent = false) => {
     let items = voiceItems;
 
     if (includeCurrent && parsed) {
-      const qty  = parseInt(parsed.quantity) || 1;
       const name = resolvedName();
-      deductStock(matchedProduct, qty, parseFloat(parsed.amount) || 0, parsed.customer_name);
+      deductStock(matchedProduct, effectiveQty, effectiveAmount, parsed.customer_name);
       items = [...voiceItems, {
         item_name:      name,
-        amount:         parseFloat(parsed.amount) || 0,
-        quantity:       qty,
+        amount:         effectiveAmount,
+        quantity:       effectiveQty,
         category:       parsed.category,
         payment_type:   parsed.payment_type,
         customer_name:  parsed.customer_name || "",
@@ -252,7 +268,7 @@ export default function VoiceModal({ onClose, onSave, products = [], inventory =
       {(status === "idle" || status === "recording" || isParsing) && (
         <div className="flex flex-col items-center">
 
-          {/* Items accumulated so far (shown while idle between recordings) */}
+          {/* Accumulated items so far — shown idle between recordings */}
           {hasItems && status === "idle" && (
             <div className="w-full mb-4 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-3">
               <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-2">
@@ -282,7 +298,7 @@ export default function VoiceModal({ onClose, onSave, products = [], inventory =
             </div>
           )}
 
-          {/* Mic button with pulse rings */}
+          {/* Mic button */}
           <div className="relative mb-5">
             {isRecording && (
               <>
@@ -319,7 +335,6 @@ export default function VoiceModal({ onClose, onSave, products = [], inventory =
             </button>
           </div>
 
-          {/* Status / hint text */}
           {isParsing && (
             <div className="text-center">
               <p className="font-semibold text-slate-700 dark:text-slate-200 text-sm">Analyzing with Gemini AI…</p>
@@ -356,7 +371,7 @@ export default function VoiceModal({ onClose, onSave, products = [], inventory =
       {error && (
         <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4 mb-4" role="alert">
           <p className="text-sm text-red-600 dark:text-red-400 font-medium">{error}</p>
-          <button onClick={reset} className="mt-2 text-xs text-red-500 dark:text-red-400 underline font-medium">
+          <button onClick={handleReset} className="mt-2 text-xs text-red-500 dark:text-red-400 underline font-medium">
             Try again
           </button>
         </div>
@@ -388,7 +403,41 @@ export default function VoiceModal({ onClose, onSave, products = [], inventory =
           <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wide mb-1.5">
             {hasItems ? "Current Item" : "Parsed Transaction"}
           </p>
-          <ParsedCard parsed={parsed} />
+
+          {/* ParsedCard reflects the effective amount and qty */}
+          <ParsedCard
+            parsed={parsed}
+            overrideAmount={effectiveAmount}
+            overrideQty={effectiveQty}
+          />
+
+          {/* ── Quantity stepper — always visible ── */}
+          <div className="flex items-center justify-between mt-3 bg-slate-50 dark:bg-slate-900 rounded-xl px-4 py-3 border border-slate-100 dark:border-slate-700">
+            <span className="text-sm font-medium text-slate-600 dark:text-slate-400">Quantity</span>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setLocalQty(q => Math.max(1, q - 1))}
+                className="w-8 h-8 rounded-lg bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-slate-700 dark:text-slate-200 font-bold text-base active:scale-95 transition-transform"
+              >−</button>
+              <span className="w-8 text-center font-bold text-slate-800 dark:text-white tabular-nums text-sm">{localQty}</span>
+              <button
+                onClick={() => setLocalQty(q => q + 1)}
+                className="w-8 h-8 rounded-lg bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-slate-700 dark:text-slate-200 font-bold text-base active:scale-95 transition-transform"
+              >+</button>
+            </div>
+          </div>
+
+          {/* Catalogue price breakdown — shown when a product is matched */}
+          {matchedProduct && sellingPrice > 0 && (
+            <div className="flex items-center justify-between mt-1.5 px-1">
+              <span className="text-xs text-slate-400 dark:text-slate-500">
+                ₦{sellingPrice.toLocaleString()} each × {localQty}
+              </span>
+              <span className="text-sm font-bold text-green-600 dark:text-green-400">
+                = ₦{effectiveAmount.toLocaleString()}
+              </span>
+            </div>
+          )}
 
           {/* Product match suggestions */}
           {matches.length > 0 && (
@@ -397,22 +446,25 @@ export default function VoiceModal({ onClose, onSave, products = [], inventory =
                 Match catalogue product?
               </p>
               <div className="space-y-1.5">
-                {matches.map(p => (
-                  <button
-                    key={p.id}
-                    onClick={() => setMatchedProduct(prev => prev?.id === p.id ? null : p)}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-all border ${
-                      matchedProduct?.id === p.id
-                        ? "bg-brand-600 border-brand-600 text-white"
-                        : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-brand-400"
-                    }`}
-                  >
-                    <span className="font-medium truncate">{p.product_name}</span>
-                    <span className={`text-xs ml-2 flex-shrink-0 ${matchedProduct?.id === p.id ? "text-brand-100" : "text-slate-400 dark:text-slate-500"}`}>
-                      {p.quantity ?? 0} in stock
-                    </span>
-                  </button>
-                ))}
+                {matches.map(p => {
+                  const price = p.selling_price || p.unit_price || 0;
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => setMatchedProduct(prev => prev?.id === p.id ? null : p)}
+                      className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-all border ${
+                        matchedProduct?.id === p.id
+                          ? "bg-brand-600 border-brand-600 text-white"
+                          : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-brand-400"
+                      }`}
+                    >
+                      <span className="font-medium truncate">{p.product_name}</span>
+                      <span className={`text-xs ml-2 flex-shrink-0 ${matchedProduct?.id === p.id ? "text-brand-100" : "text-slate-400 dark:text-slate-500"}`}>
+                        {price > 0 ? `₦${price.toLocaleString()} · ` : ""}{p.quantity ?? 0} in stock
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
               <button
                 onClick={() => { setMatchDismissed(true); setMatchedProduct(null); }}
@@ -424,7 +476,7 @@ export default function VoiceModal({ onClose, onSave, products = [], inventory =
           )}
 
           {matchedProduct && (
-            <p className="text-[11px] text-brand-600 dark:text-brand-400 mt-1 mb-1 text-center font-medium">
+            <p className="text-[11px] text-brand-600 dark:text-brand-400 mt-2 text-center font-medium">
               Stock will be deducted from "{matchedProduct.product_name}"
             </p>
           )}
@@ -433,7 +485,7 @@ export default function VoiceModal({ onClose, onSave, products = [], inventory =
             Review the details above before saving
           </p>
 
-          {/* Action buttons — multi-item mode vs single-item mode */}
+          {/* Action buttons */}
           {hasItems ? (
             <div className="space-y-2">
               <button
@@ -446,14 +498,14 @@ export default function VoiceModal({ onClose, onSave, products = [], inventory =
                 onClick={() => handleSaveAll(true)}
                 className="w-full py-3 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-bold text-sm transition-colors shadow-card-md"
               >
-                Save {voiceItems.length + 1} Items · ₦{(totalSoFar + (parseFloat(parsed.amount) || 0)).toLocaleString()}
+                Save {voiceItems.length + 1} Items · ₦{(totalSoFar + effectiveAmount).toLocaleString()}
               </button>
             </div>
           ) : (
             <>
               <div className="grid grid-cols-2 gap-3">
                 <button
-                  onClick={reset}
+                  onClick={handleReset}
                   className="py-3 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl font-semibold text-sm hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
                 >
                   Record Again
