@@ -251,7 +251,10 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
     setCreditItems([]); setProductSearch("");
   };
 
-  const closeAddCreditFor = () => { setAddCreditFor(null); setEf(EF_BLANK); setExtraError(""); };
+  const closeAddCreditFor = () => {
+    setAddCreditFor(null); setEf(EF_BLANK); setExtraError("");
+    setCreditItems([]); setProductSearch("");
+  };
 
   const handleAddExtraCredit = async () => {
     if (!ef.total_amount || !addCreditFor) return;
@@ -289,6 +292,17 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
     if (error) {
       setExtraError(error.message || "Failed to update credit. Please try again.");
       return;
+    }
+    if (creditItems.length > 0 && inventory?.recordMovement) {
+      creditItems.forEach(item => {
+        inventory.recordMovement({
+          product_id: item.product_id,
+          type:       "sale",
+          quantity:   item.quantity,
+          unit_price: item.unit_price,
+          notes:      `Credit sale to ${c.customer_name}`,
+        });
+      });
     }
     toast({ type: "success", title: "Credit updated", body: c.customer_name });
     closeAddCreditFor();
@@ -833,6 +847,95 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
             <Field label="Due Date" type="date" value={ef.due_date}
               onChange={e => setE("due_date", e.target.value)} />
           </div>
+
+          {/* Optional: link catalogue products — deducts stock and records cost price */}
+          {inventory?.products?.length > 0 && (
+            <>
+              <SectionLabel>Linked Products (optional)</SectionLabel>
+              <input
+                type="text"
+                placeholder="Search catalogue to link products…"
+                value={productSearch}
+                onChange={e => setProductSearch(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-200 mb-2 focus:outline-none focus:ring-2 focus:ring-brand-400"
+              />
+              {productSearch && (
+                <div className="max-h-36 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 mb-2 shadow-sm">
+                  {(inventory.products || [])
+                    .filter(p => p.product_name.toLowerCase().includes(productSearch.toLowerCase()))
+                    .slice(0, 8)
+                    .map(p => {
+                      const already = creditItems.some(i => i.product_id === p.id);
+                      const price   = p.selling_price || p.unit_price || 0;
+                      return (
+                        <button
+                          key={p.id}
+                          onClick={() => {
+                            if (already) return;
+                            const upd = [...creditItems, {
+                              product_id:   p.id,
+                              product_name: p.product_name,
+                              quantity:     1,
+                              unit_price:   price,
+                              cost_price:   p.cost_price || 0,
+                            }];
+                            setCreditItems(upd);
+                            setE("total_amount", String(upd.reduce((s, i) => s + i.quantity * i.unit_price, 0)));
+                            setProductSearch("");
+                          }}
+                          disabled={already}
+                          className="w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-40 border-b border-slate-100 dark:border-slate-700 last:border-b-0"
+                        >
+                          <span className="font-medium text-slate-700 dark:text-slate-200 truncate">{p.product_name}</span>
+                          <span className="text-xs text-slate-400 ml-2 flex-shrink-0">₦{price.toLocaleString()} · {p.quantity ?? 0} in stock</span>
+                        </button>
+                      );
+                    })}
+                </div>
+              )}
+              {creditItems.length > 0 && (
+                <div className="space-y-1.5 mb-2">
+                  {creditItems.map((item, idx) => (
+                    <div key={item.product_id} className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800 rounded-xl px-3 py-2">
+                      <span className="flex-1 text-sm font-medium text-slate-700 dark:text-slate-200 truncate">{item.product_name}</span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => {
+                            const upd = creditItems.map((i, ii) => ii === idx ? { ...i, quantity: Math.max(1, i.quantity - 1) } : i);
+                            setCreditItems(upd);
+                            setE("total_amount", String(upd.reduce((s, i) => s + i.quantity * i.unit_price, 0)));
+                          }}
+                          className="w-6 h-6 rounded-lg bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 font-bold text-sm"
+                        >−</button>
+                        <span className="text-sm font-semibold text-slate-800 dark:text-white w-6 text-center">{item.quantity}</span>
+                        <button
+                          onClick={() => {
+                            const upd = creditItems.map((i, ii) => ii === idx ? { ...i, quantity: i.quantity + 1 } : i);
+                            setCreditItems(upd);
+                            setE("total_amount", String(upd.reduce((s, i) => s + i.quantity * i.unit_price, 0)));
+                          }}
+                          className="w-6 h-6 rounded-lg bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 font-bold text-sm"
+                        >+</button>
+                      </div>
+                      <span className="text-xs text-slate-400 w-20 text-right tabular-nums">₦{(item.quantity * item.unit_price).toLocaleString()}</span>
+                      <button
+                        onClick={() => {
+                          const upd = creditItems.filter((_, ii) => ii !== idx);
+                          setCreditItems(upd);
+                          if (upd.length > 0) setE("total_amount", String(upd.reduce((s, i) => s + i.quantity * i.unit_price, 0)));
+                        }}
+                        className="w-6 h-6 text-slate-300 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 flex items-center justify-center text-base font-bold"
+                      >×</button>
+                    </div>
+                  ))}
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500 text-right">
+                    Products total: ₦{creditItems.reduce((s, i) => s + i.quantity * i.unit_price, 0).toLocaleString()} — stock deducted on save
+                  </p>
+                </div>
+              )}
+            </>
+          )}
+
           <div className="grid grid-cols-2 gap-2">
             <Field label="Interest Type" as="select" value={ef.interest_type}
               onChange={e => { setE("interest_type", e.target.value); setE("interest_value", ""); }}>
