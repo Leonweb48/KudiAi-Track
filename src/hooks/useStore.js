@@ -759,6 +759,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
       due_date:             c.due_date             || null,
       status:               "active",
       notes:                c.notes               || "",
+      items:                c.items               || null,
     };
 
     setCredits(p => [{ ...payload, id: tempId }, ...p]);

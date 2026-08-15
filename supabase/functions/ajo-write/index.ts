@@ -2049,7 +2049,7 @@ serve(async (req: Request) => {
     // Fetch credit — verify owner
     const { data: credit, error: creditFetchErr } = await sb
       .from("credits")
-      .select("id, user_id, amount_paid, total_amount, outstanding, status, customer_name, email, phone")
+      .select("id, user_id, amount_paid, total_amount, outstanding, status, customer_name, email, phone, items")
       .eq("id", credit_id)
       .maybeSingle();
 
@@ -2090,6 +2090,38 @@ serve(async (req: Request) => {
       .select("*")
       .single();
     if (payErr) return json({ ok: false, error: payErr.message }, 500);
+
+    // Record a cash-in transaction so the repayment appears in revenue and profit reporting.
+    // On the final payment (credit fully settled) include line_items from the stored catalogue
+    // items so profitEngine can compute COGS. Partial repayments record revenue only —
+    // attaching items to every partial payment would double-count COGS across installments.
+    {
+      const txPayload: Record<string, unknown> = {
+        user_id:          credit.user_id,
+        type:             "in",
+        category:         "debt repayment",
+        amount:           parsedAmount,
+        item_name:        credit.customer_name || "",
+        customer_name:    credit.customer_name || "",
+        payment_type:     payment_method || "cash",
+        note:             notes || null,
+        transaction_date: new Date().toISOString().slice(0, 10),
+        client_txn_id:    crypto.randomUUID(),
+      };
+      // Attach line_items only on full settlement so COGS isn't counted multiple times
+      const storedItems = Array.isArray(credit.items) ? credit.items as Array<Record<string, unknown>> : [];
+      if (newStatus === "paid" && storedItems.length > 0) {
+        txPayload.line_items = storedItems.map(item => ({
+          name:      item.product_name || "",
+          qty:       Number(item.quantity) || 1,
+          unitPrice: Number(item.unit_price) || 0,
+          lineTotal: (Number(item.quantity) || 1) * (Number(item.unit_price) || 0),
+          productId: item.product_id || null,
+        }));
+      }
+      const { error: txErr } = await sb.from("transactions").insert(txPayload);
+      if (txErr) console.error("record_credit_repayment: failed to insert transaction:", txErr.message);
+    }
 
     return json({ ok: true, payment, outstanding: newOutstanding, status: newStatus });
   }
