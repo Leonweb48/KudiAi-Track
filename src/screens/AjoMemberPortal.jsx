@@ -2040,13 +2040,19 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
   const trulyWithdrawable = Math.max(0, withdrawable - totalPending);
 
   const activePending = (() => {
-    if (activeTab === "personal" && selectedCycleId) return getPendingForCycle(selectedCycleId, withdrawRequests);
-    if (activeTab === "group"    && selectedGrpId)   return getPendingForGroup(selectedGrpId, withdrawRequests);
+    if (activeTab === "personal" && selectedCycleId) {
+      // Percentage cycles draw from overall balance — show total pending, not just per-cycle
+      if (selectedCycleObj && selectedCycleObj.commission_model !== "first_period") return totalPending;
+      return getPendingForCycle(selectedCycleId, withdrawRequests);
+    }
+    if (activeTab === "group" && selectedGrpId) return getPendingForGroup(selectedGrpId, withdrawRequests);
     return 0;
   })();
 
   const activeCeiling = (() => {
     if (activeTab === "personal" && selectedCycleId && selectedCycleObj) {
+      // Percentage cycles are freely withdrawable at any time — cap at overall withdrawable balance
+      if (selectedCycleObj.commission_model !== "first_period") return trulyWithdrawable;
       const stats = getCycleStats(selectedCycleObj, contributions);
       return Math.max(0, stats.net - activePending);
     }

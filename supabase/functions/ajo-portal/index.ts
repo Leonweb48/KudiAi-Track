@@ -320,23 +320,32 @@ serve(async (req) => {
       // ── Per-entity scoping ─────────────────────────────────────────────────────
       // If the client selected a specific cycle or group, cap the request to that
       // entity's own balance minus any pending requests already against it.
+      // Percentage cycles (commission_model != 'first_period') are freely withdrawable at any
+      // time from the overall balance — skip the per-cycle cap for them; the global
+      // balance + lock checks above are sufficient.
       if (reqCycleId) {
-        const [{ data: cycleNetRaw }, { data: cyclePendingRaw }] = await Promise.all([
-          sb.rpc("ajo_cycle_net_balance",    { p_client_id: client_id, p_cycle_id: reqCycleId }),
-          sb.rpc("ajo_pending_for_entity",   { p_client_id: client_id, p_cycle_id: reqCycleId, p_group_id: null }),
-        ]);
-        const cycleNet     = Number(cycleNetRaw    || 0);
-        const cyclePending = Number(cyclePendingRaw || 0);
-        const cycleAvailNow = Math.max(0, cycleNet - cyclePending);
-        if (amount > cycleAvailNow) {
-          const pendStr = cyclePending > 0
-            ? ` — ₦${cyclePending.toLocaleString("en-NG")} already pending review`
-            : "";
-          return json({
-            error:            `Only ₦${cycleAvailNow.toLocaleString("en-NG")} available in this savings plan${pendStr}`,
-            entity_available: cycleAvailNow,
-            entity_pending:   cyclePending,
-          }, 400);
+        const { data: reqCycleRow } = await sb.from("ajo_cycles")
+          .select("commission_model").eq("id", reqCycleId).maybeSingle();
+        const isPercentCycle = reqCycleRow && reqCycleRow.commission_model !== "first_period";
+
+        if (!isPercentCycle) {
+          const [{ data: cycleNetRaw }, { data: cyclePendingRaw }] = await Promise.all([
+            sb.rpc("ajo_cycle_net_balance",    { p_client_id: client_id, p_cycle_id: reqCycleId }),
+            sb.rpc("ajo_pending_for_entity",   { p_client_id: client_id, p_cycle_id: reqCycleId, p_group_id: null }),
+          ]);
+          const cycleNet     = Number(cycleNetRaw    || 0);
+          const cyclePending = Number(cyclePendingRaw || 0);
+          const cycleAvailNow = Math.max(0, cycleNet - cyclePending);
+          if (amount > cycleAvailNow) {
+            const pendStr = cyclePending > 0
+              ? ` — ₦${cyclePending.toLocaleString("en-NG")} already pending review`
+              : "";
+            return json({
+              error:            `Only ₦${cycleAvailNow.toLocaleString("en-NG")} available in this savings plan${pendStr}`,
+              entity_available: cycleAvailNow,
+              entity_pending:   cyclePending,
+            }, 400);
+          }
         }
       }
 
