@@ -541,7 +541,9 @@ serve(async (req) => {
         PhoneNo: phone.replace(/\D/g, ""), RequestID: reqId(), CallBackURL: "https://kudiai.app/",
       });
       if (!isOk(data)) return json({ error: errMsg(data, "WAEC ePin purchase failed"), _raw: data });
-      return json({ status: "SUCCESS", reference: String(data.orderid ?? data.requestid ?? ""), cardDetails: String(data.carddetails ?? data.CardDetails ?? ""), message: String(data.status ?? "ORDER_RECEIVED") });
+      const waecDetails = String(data.carddetails ?? data.CardDetails ?? "");
+      if (!waecDetails) return json({ error: "WAEC card details not returned — contact Clubkonnect support", _raw: data });
+      return json({ status: "SUCCESS", reference: String(data.orderid ?? data.requestid ?? ""), cardDetails: waecDetails, message: String(data.status ?? "ORDER_RECEIVED") });
     }
 
     // ── JAMB packages ─────────────────────────────────────────────────────────
@@ -570,7 +572,9 @@ serve(async (req) => {
         PhoneNo: phone.replace(/\D/g, ""), RequestID: reqId(), CallBackURL: "https://kudiai.app/",
       });
       if (!isOk(data)) return json({ error: errMsg(data, "JAMB ePin purchase failed"), _raw: data });
-      return json({ status: "SUCCESS", reference: String(data.orderid ?? data.requestid ?? ""), cardDetails: String(data.carddetails ?? data.CardDetails ?? ""), message: String(data.status ?? "ORDER_RECEIVED") });
+      const jambDetails = String(data.carddetails ?? data.CardDetails ?? "");
+      if (!jambDetails) return json({ error: "JAMB card details not returned — contact Clubkonnect support", _raw: data });
+      return json({ status: "SUCCESS", reference: String(data.orderid ?? data.requestid ?? ""), cardDetails: jambDetails, message: String(data.status ?? "ORDER_RECEIVED") });
     }
 
     // ── Spectranet plans ──────────────────────────────────────────────────────
@@ -675,7 +679,7 @@ serve(async (req) => {
         Quantity: String(qty), RequestID: reqId(), CallBackURL: "https://kudiai.app/",
       });
       const pins = (data?.TXN_EPIN ?? []) as Record<string, unknown>[];
-      if (!pins.length && !isOk(data)) return json({ error: errMsg(data, "Print airtime failed"), _raw: data });
+      if (!pins.length) return json({ error: isOk(data) ? "Airtime ePIN not returned — contact Clubkonnect support" : errMsg(data, "Print airtime failed"), _raw: data });
       return json({ status: "SUCCESS", reference: String(data?.batchno ?? data?.orderid ?? data?.requestid ?? ""), pins, message: "ORDER_RECEIVED" });
     }
 
@@ -693,7 +697,7 @@ serve(async (req) => {
         Quantity: String(qty), RequestID: reqId(), CallBackURL: "https://kudiai.app/",
       });
       const pins = (data?.TXN_EPIN_DATABUNDLE ?? []) as Record<string, unknown>[];
-      if (!pins.length && !isOk(data)) return json({ error: errMsg(data, "Print data failed"), _raw: data });
+      if (!pins.length) return json({ error: isOk(data) ? "Data ePIN not returned — contact Clubkonnect support" : errMsg(data, "Print data failed"), _raw: data });
       return json({ status: "SUCCESS", reference: String(data?.batchno ?? data?.orderid ?? data?.requestid ?? ""), pins, message: "ORDER_RECEIVED" });
     }
 

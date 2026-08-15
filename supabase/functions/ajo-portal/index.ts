@@ -503,6 +503,15 @@ serve(async (req) => {
       const numAmt = Number(amount);
       if (!numAmt || numAmt <= 0) return json({ error: "Amount must be greater than zero" }, 400);
 
+      // ── Entity gate: reject if client has no savings entity ──
+      const [{ data: smEntityCard }, { data: smEntityGroup }] = await Promise.all([
+        sb.from("ajo_cycles").select("id").eq("client_id", client_id).eq("status", "active").limit(1).maybeSingle(),
+        sb.from("aso_client_group_memberships").select("id").eq("client_id", client_id).eq("status", "active").limit(1).maybeSingle(),
+      ]);
+      if (!smEntityCard && !smEntityGroup) {
+        return json({ error: "Open a savings card first to start saving." }, 400);
+      }
+
       // ── Fix 2: Reject non-personal contributions with no active membership/round ──
       if (contribution_context === "group_savings" || contribution_context === "esusu_rotation") {
         if (!callerGroupId) return json({ error: "Select a savings group to contribute to" }, 400);
@@ -679,6 +688,15 @@ serve(async (req) => {
       const ownerId = cl.user_id;
       if (!ownerId) return json({ error: "We couldn't start your payment — please contact your savings agent" }, 422);
 
+      // ── Entity gate: reject before charging if client has no savings entity ──
+      const [{ data: entityCard }, { data: entityGroup }] = await Promise.all([
+        sb.from("ajo_cycles").select("id").eq("client_id", client_id).eq("status", "active").limit(1).maybeSingle(),
+        sb.from("aso_client_group_memberships").select("id").eq("client_id", client_id).eq("status", "active").limit(1).maybeSingle(),
+      ]);
+      if (!entityCard && !entityGroup) {
+        return json({ error: "Open a savings card first to start saving." }, 422);
+      }
+
       const amount = (requestedAmount && requestedAmount > 0)
         ? Number(requestedAmount)
         : Number(cl.contribution_amount);
@@ -751,6 +769,18 @@ serve(async (req) => {
         }
       }
 
+      // ── Resolve cycle and confirm active card before any Paystack charge ──
+      let psCycleId: string | null = callerPayCycleId ?? null;
+      if (contribution_context === "personal_savings") {
+        if (!psCycleId) {
+          const { data: psCycle } = await sb
+            .from("ajo_cycles").select("id").eq("client_id", client_id).eq("status", "active")
+            .order("created_at", { ascending: true }).limit(1).maybeSingle();
+          psCycleId = psCycle?.id ?? null;
+        }
+        if (!psCycleId) return json({ error: "You don't have an active savings plan — ask your savings agent to set one up" }, 422);
+      }
+
       const psRes = await fetch("https://api.paystack.co/transaction/initialize", {
         method: "POST",
         headers: {
@@ -779,30 +809,6 @@ serve(async (req) => {
         console.error("[initialize-payment] Paystack rejected:", JSON.stringify(psData));
         const psMsg = psData?.message || "";
         return json({ error: psMsg || "Payment couldn't be started — please try again" }, 422);
-      }
-
-      // Always resolve cycle_id for personal_savings so ajo_confirm_payment can apply
-      // the correct per-cycle fee. Caller-provided cycle_id wins; fall back to oldest active.
-      let psCycleId: string | null = null;
-      if (contribution_context === "personal_savings") {
-        if (callerPayCycleId) {
-          psCycleId = callerPayCycleId;
-        } else {
-          const { data: psCycle } = await sb
-            .from("ajo_cycles")
-            .select("id")
-            .eq("client_id", client_id)
-            .eq("status", "active")
-            .order("created_at", { ascending: true })
-            .limit(1)
-            .maybeSingle();
-          psCycleId = psCycle?.id || null;
-        }
-      }
-
-      // ── Block: personal savings requires an active savings card ─────────────
-      if (contribution_context === "personal_savings" && !psCycleId) {
-        return json({ error: "You don't have an active savings plan — ask your savings agent to set one up" }, 422);
       }
 
       // ── Cap check: reject if this cycle's target is already met ──────────────

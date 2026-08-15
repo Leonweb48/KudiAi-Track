@@ -391,6 +391,15 @@ serve(async (req: Request) => {
       return json({ ok: false, error: "This client has a pending archive request — contributions cannot be recorded until it is resolved." }, 409);
     }
 
+    // ── Entity gate: client must have at least one active savings entity ──
+    const [{ data: rcEntityCard }, { data: rcEntityGroup }] = await Promise.all([
+      sb.from("ajo_cycles").select("id").eq("client_id", client_id).eq("status", "active").limit(1).maybeSingle(),
+      sb.from("aso_client_group_memberships").select("id").eq("client_id", client_id).eq("status", "active").limit(1).maybeSingle(),
+    ]);
+    if (!rcEntityCard && !rcEntityGroup) {
+      return json({ ok: false, error: "Open a savings card first to start saving." }, 400);
+    }
+
     // recorded_by = staff.id for staff callers; null for owner (owner needs no tracking)
     const recordedBy = ajoPerms === null ? null : ajoPerms.staffId;
     // Staff contributions are tagged staff_collection so the owner queue can filter them
@@ -676,6 +685,15 @@ serve(async (req: Request) => {
 
     const ajoPerms = await resolveAjoPerms(sb, user.id, ownerId);
     if (ajoPerms !== null) return json({ ok: false, error: "Unauthorized: owner-only action" }, 403);
+
+    // ── Entity gate: client must have at least one active savings entity ──
+    const [{ data: ccEntityCard }, { data: ccEntityGroup }] = await Promise.all([
+      sb.from("ajo_cycles").select("id").eq("client_id", client_id).eq("status", "active").limit(1).maybeSingle(),
+      sb.from("aso_client_group_memberships").select("id").eq("client_id", client_id).eq("status", "active").limit(1).maybeSingle(),
+    ]);
+    if (!ccEntityCard && !ccEntityGroup) {
+      return json({ ok: false, error: "Open a savings card first to start saving." }, 400);
+    }
 
     const recordedBy = null;
     const context    = contribution_context || "personal_savings";
