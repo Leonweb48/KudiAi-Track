@@ -1582,7 +1582,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
             </div>
             <div className="bg-white px-4 py-3">
               <p className="text-sm text-slate-700 leading-relaxed">
-                Your payment was successful. We&apos;re experiencing a brief delay fulfilling your service. Our team has been automatically notified and will resolve this within <strong>30 minutes</strong>.
+                Your payment was received but the service couldn&apos;t be delivered right now. A <strong>refund has been automatically initiated</strong> — expect it within 24 hours. Our team has also been notified and will follow up if needed.
               </p>
             </div>
           </div>
@@ -1760,6 +1760,9 @@ export default function BillPayments({ store, plan, session = null, staffName = 
   const pointsBalanceRef     = useRef(0);
   const cashbackBalanceRef   = useRef(0);
   const billAppliedCouponRef = useRef(null);
+
+  // CK wallet balance cache — checked before every Paystack init (60s TTL)
+  const ckWalletCacheRef = useRef({ balance: null, ts: 0 });
 
   // Ref for updating DB + sending email when electricity token arrives via polling
   const elecPendingCbRef = useRef(null);
@@ -2317,6 +2320,25 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
       if (!chargeAmount || chargeAmount <= 0) throw new Error("Invalid amount");
 
+      // ── CK wallet balance guard ─────────────────────────────────────────────
+      // Fetch wallet balance (cached 60s) and block payment if the provider wallet
+      // can't cover the purchase. This prevents the worst failure: customer pays,
+      // CK rejects with "LOW_WALLET", customer has no service and no automatic recovery.
+      {
+        const cache = ckWalletCacheRef.current;
+        if (Date.now() - cache.ts > 60_000) {
+          try {
+            const { data: wb } = await supabase.functions.invoke("clubkonnect", { body: { action: "wallet-balance" } });
+            if (wb?.balance != null) { cache.balance = wb.balance; cache.ts = Date.now(); }
+          } catch (_) { /* non-fatal — proceed if balance check fails */ }
+        }
+        if (cache.balance !== null && chargeAmount > cache.balance) {
+          throw new Error(
+            `Your bill-payment wallet (₦${Math.floor(cache.balance).toLocaleString("en-NG")}) doesn't have enough balance for this ₦${chargeAmount.toLocaleString("en-NG")} purchase — top up your Clubkonnect wallet to continue.`
+          );
+        }
+      }
+
       const { pointsDiscount, cashbackDiscount, couponDiscount, afterDiscounts, finalAmount } = calcBillAmounts({
         chargeAmount,
         pointsBalance:   pointsBalanceRef.current,
@@ -2420,7 +2442,9 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         if (pbRow?.status === "failed" && pbRow.fulfillment) {
           localStorage.removeItem(BILL_PENDING_PREFIX + ref);
           setSaving(false);
-          setFulfillResult({ ok: false, disrupted: true, ...pbRow.fulfillment, psRef: ref });
+          // Payment WAS confirmed by Paystack before the webhook tried to fulfill — show
+          // "We're Sorting This Out" (not "disrupted / not charged"). A refund is auto-initiated.
+          setFulfillResult({ ok: false, ...pbRow.fulfillment, psRef: ref });
           return;
         }
       } catch (_) { /* non-fatal — proceed with normal fulfillment */ }

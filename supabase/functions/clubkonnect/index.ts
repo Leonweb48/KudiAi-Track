@@ -837,8 +837,47 @@ serve(async (req) => {
           catch (e) { console.error("User failure email failed:", (e as Error).message); }
         }
 
-        console.log(`Bill failure alert created: ${ps_ref} — ${ck_error}`);
-        return json({ ok: true });
+        // ── Automatic Paystack refund ──────────────────────────────────────
+        // Initiating a refund here means every definite fulfillment failure (after
+        // the customer was charged) triggers an automatic full refund. Electricity
+        // PENDING does not reach this path — that stays as "check meter" polling.
+        let refundInitiated = false;
+        let refundId: string | null = null;
+        if (ps_ref && amount && Number(amount) > 0) {
+          try {
+            const rfRes = await fetch(`${SUPABASE_URL}/functions/v1/paystack`, {
+              method: "POST",
+              headers: { "Authorization": `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                action:      "refund",
+                transaction: ps_ref,
+                // Omit amount → full refund. Paystack is idempotent; double calls return same refund.
+                reason: `Bill delivery failed: ${String(ck_error || "provider error").slice(0, 100)}`,
+              }),
+            });
+            const rfData = await rfRes.json() as Record<string, unknown>;
+            const rfDataInner = rfData?.data as Record<string, unknown> | undefined;
+            if (rfData?.status && rfDataInner?.id) {
+              refundInitiated = true;
+              refundId = String(rfDataInner.id);
+              console.log(`Auto-refund initiated: ps_ref=${ps_ref} refund_id=${refundId}`);
+            } else {
+              console.error(`Auto-refund failed: ps_ref=${ps_ref} response=${JSON.stringify(rfData).slice(0, 200)}`);
+            }
+          } catch (rfErr) {
+            console.error("Auto-refund error:", (rfErr as Error).message);
+          }
+        }
+
+        // Update the admin task description with refund status
+        if (refundInitiated && refundId) {
+          await sb.from("admin_tasks").update({
+            description: `Paystack ref ${ps_ref} was charged ₦${amount?.toLocaleString() || "?"} but provider returned: "${ck_error}". ✅ Auto-refund initiated (ID: ${refundId}). Verify delivery within 24h.`,
+          }).eq("title", `Service wallet failure — ${service}`);
+        }
+
+        console.log(`Bill failure alert: ${ps_ref} — ${ck_error} | refund_initiated=${refundInitiated}`);
+        return json({ ok: true, refund_initiated: refundInitiated, refund_id: refundId });
       } catch (e) {
         console.error("bill-failure-alert error:", e);
         return json({ ok: false, error: (e as Error).message });
@@ -994,6 +1033,76 @@ serve(async (req) => {
         console.error("bill-staff-email error:", e);
         return json({ ok: false, error: (e as Error).message });
       }
+    }
+
+    // ── Wallet balance alert — call hourly via pg_cron or manually ───────────
+    // Reads the CK wallet balance and emails super_admin + finance_admin if it falls
+    // below CK_WALLET_LOW_THRESHOLD (default ₦5 000). Guards against the scenario
+    // where a low wallet isn't noticed until a customer pays and fulfilment fails.
+    if (action === "wallet-balance-alert") {
+      const threshold = Number(Deno.env.get("CK_WALLET_LOW_THRESHOLD") ?? "5000");
+      const useKey = AIRTIME_K || DATA_K || ELECTRICITY_K || CABLETV_K;
+      if (!USER_ID || !useKey)
+        return json({ ok: false, error: "CK credentials not configured", balance: null });
+
+      const wbData = await ck("APIWalletBalanceV1.asp", { APIKey: useKey });
+      const parseAmt = (v: unknown): number | null => {
+        if (v === null || v === undefined || v === "") return null;
+        const n = Number(String(v).replace(/[^0-9.]/g, ""));
+        return isNaN(n) ? null : n;
+      };
+      const BALANCE_FIELDS = [
+        "WalletBalance","walletbalance","wallet_balance","Balance","balance",
+        "AccountBalance","Wallet_Balance","WALLETBALANCE","available_balance","AvailableBalance",
+      ];
+      let balance: number | null = null;
+      for (const f of BALANCE_FIELDS) {
+        const v = parseAmt(wbData[f]);
+        if (v !== null) { balance = v; break; }
+      }
+
+      console.log(`wallet-balance-alert: balance=${balance} threshold=${threshold}`);
+      if (balance === null || balance >= threshold) {
+        return json({ ok: true, balance, threshold, alerted: false });
+      }
+
+      // Below threshold — email admins
+      const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+      const { data: admins } = await sb.from("admin_users")
+        .select("email, role")
+        .in("role", ["super_admin", "finance_admin"])
+        .eq("is_active", true)
+        .not("email", "is", null);
+
+      const alertHtml = billEmailHtml({
+        accentColor: "linear-gradient(135deg,#d97706,#b45309)",
+        icon: "⚠",
+        title: "Low Bill-Payment Wallet Balance",
+        subtitle: "Top up your Clubkonnect wallet immediately",
+        body: `<p style="margin:0 0 14px;color:#374151;font-size:14px;">Your Clubkonnect wallet balance has dropped below the alert threshold. If it runs out, customers who pay will not receive their service and automatic refunds will be triggered.</p>
+          <table style="width:100%;border-collapse:collapse;font-size:14px;margin:0 0 16px;">
+            <tr><td style="padding:7px 0;color:#6b7280;width:160px;font-weight:600;">Current Balance</td><td style="padding:7px 0;font-weight:800;color:#dc2626;">₦${balance.toLocaleString()}</td></tr>
+            <tr style="background:#fef9c3;"><td style="padding:7px 8px;color:#6b7280;font-weight:600;">Alert Threshold</td><td style="padding:7px 8px;font-weight:700;color:#92400e;">₦${threshold.toLocaleString()}</td></tr>
+          </table>
+          <div style="padding:14px 16px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;">
+            <p style="margin:0;font-weight:700;color:#92400e;font-size:14px;">Action Required</p>
+            <p style="margin:8px 0 0;color:#92400e;font-size:13px;">Top up your Clubkonnect wallet at <a href="https://www.nellobytesystems.com" style="color:#d97706;font-weight:600;">nellobytesystems.com</a> before the balance reaches zero. New threshold can be set via the <strong>CK_WALLET_LOW_THRESHOLD</strong> Supabase secret.</p>
+          </div>`,
+      });
+
+      for (const admin of (admins || [])) {
+        if (admin.email) {
+          try {
+            await sendEmail(sb, {
+              to: admin.email,
+              subject: "[KudiTrack] ALERT: Low Clubkonnect wallet balance",
+              html: alertHtml,
+            });
+          } catch (e) { console.error("Wallet alert email failed:", admin.email, (e as Error).message); }
+        }
+      }
+
+      return json({ ok: true, balance, threshold, alerted: true, admins_notified: (admins || []).length });
     }
 
     // ── Health check — test every service key in parallel ─────────────────────

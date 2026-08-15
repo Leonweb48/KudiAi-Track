@@ -285,10 +285,52 @@ async function handleBillPayment(
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Unknown error";
     console.error(`[webhook/bill] ClubKonnect failed for ${reference}: ${msg}`);
+
+    // _charged:true tells the client to show "We're Sorting This Out" (not "You were not charged"),
+    // because the payment was confirmed by Paystack before the webhook tried to fulfill.
     await sb.from("pending_bills").update({
       status: "failed",
-      fulfillment: { detail: msg },
+      fulfillment: { detail: msg, _charged: true },
     }).eq("reference", reference);
+
+    // Record the failed transaction so it appears in the owner's bill history.
+    await sb.from("transactions").insert({
+      user_id:          pb.user_id,
+      type:             "expense",
+      category:         cat,
+      amount:           amountNgn,
+      item_name:        cat,
+      payment_type:     "paystack",
+      note:             `FAILED (webhook): ${msg} | PS: ${reference}`,
+      transaction_date: new Date().toISOString().slice(0, 10),
+      bill_status:      "failed",
+      client_txn_id:    `wh_${reference}`,
+    }).onConflict("client_txn_id").ignore();
+
+    // Fire the same bill-failure-alert as the client-side path:
+    // creates a critical support ticket, emails admins, and initiates auto-refund.
+    try {
+      const { data: uProf } = await sb.from("profiles")
+        .select("email, owner_name, business_name")
+        .eq("id", pb.user_id).maybeSingle();
+      await fetch(`${supabaseUrl}/functions/v1/clubkonnect`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${serviceKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action:     "bill-failure-alert",
+          user_id:    pb.user_id,
+          user_email: (uProf as Record<string, unknown> | null)?.email ?? null,
+          user_name:  (uProf as Record<string, unknown> | null)?.owner_name
+                      ?? (uProf as Record<string, unknown> | null)?.business_name ?? null,
+          service:    cat,
+          amount:     amountNgn,
+          ps_ref:     reference,
+          ck_error:   msg,
+        }),
+      });
+    } catch (alertErr) {
+      console.error(`[webhook/bill] Failure alert error: ${(alertErr as Error).message}`);
+    }
   }
 }
 

@@ -468,6 +468,31 @@ serve(async (req) => {
       return json({ account: { bank: profile.virtual_account_bank, number: profile.virtual_account_number, name: profile.virtual_account_name } });
     }
 
+    // ── Initiate a Paystack refund ─────────────────────────────────────────────
+    // Called server-to-server only (service role key required).
+    // Paystack refund API: POST /refund { transaction, amount? (kobo), merchant_note? }
+    // Omitting amount triggers a full refund of the original charge.
+    if (action === "refund") {
+      const token = authHeader.replace("Bearer ", "");
+      if (!token || token !== SERVICE_KEY) return json({ error: "Unauthorized" }, 401);
+      const { transaction, amount, reason } = body as {
+        transaction: string; amount?: number; reason?: string;
+      };
+      if (!transaction) return json({ error: "transaction reference required" }, 400);
+      const refBody: Record<string, unknown> = { transaction };
+      // If amount provided (NGN), convert to kobo. Omit for full refund.
+      if (amount != null && Number(amount) > 0) refBody.amount = Math.round(Number(amount) * 100);
+      if (reason) refBody.merchant_note = String(reason).slice(0, 200);
+      const res = await fetch("https://api.paystack.co/refund", {
+        method: "POST",
+        headers: psHeaders,
+        body: JSON.stringify(refBody),
+      });
+      const rd = await res.json();
+      console.log(`[paystack/refund] ref=${transaction} status=${rd?.status} id=${rd?.data?.id ?? "n/a"}`);
+      return json(rd);
+    }
+
     return json({ error: `Unknown action: ${action}` }, 400);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
