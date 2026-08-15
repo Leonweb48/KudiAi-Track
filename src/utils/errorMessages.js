@@ -10,6 +10,7 @@ const KNOWN = {
   // Paystack / payment
   "Payment not confirmed by Paystack":  "Payment wasn't confirmed — your balance was not affected. Tap Retry if you completed the payment.",
   "Payment initialization failed":      "Payment couldn't be started — please try again.",
+  "Payment couldn't be started":        "Payment couldn't be started — please try again.",
 
   // Account / client
   "Client not found":                   "We couldn't find your account — please sign out and sign back in.",

@@ -736,7 +736,7 @@ serve(async (req) => {
           amount:       Math.round(amount * 100),
           reference:    ref,
           callback_url: "https://kudiai.app/",
-          channels:     ["card", "bank", "ussd", "mobile_money", "bank_transfer"],
+          channels:     ["card", "bank", "ussd", "bank_transfer"],
           subaccount:   subaccountCode,
           bearer:       subaccountCode ? "subaccount" : undefined,
           metadata: {
@@ -751,7 +751,9 @@ serve(async (req) => {
 
       const psData = await psRes.json();
       if (!psData.status || !psData.data?.access_code) {
-        return json({ error: "Payment couldn't be started — please try again" }, 422);
+        console.error("[initialize-payment] Paystack rejected:", JSON.stringify(psData));
+        const psMsg = psData?.message || "";
+        return json({ error: psMsg || "Payment couldn't be started — please try again" }, 422);
       }
 
       // Always resolve cycle_id for personal_savings so ajo_confirm_payment can apply
