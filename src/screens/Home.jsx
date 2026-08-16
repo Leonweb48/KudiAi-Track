@@ -338,21 +338,21 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
 
           {/* This week — source: forecast.thisWeekActual from getSalesPrediction */}
           <button onClick={() => setTab("transactions")}
-            className="flex flex-col gap-0.5 bg-white dark:bg-slate-800 rounded-2xl px-3 py-3 shadow-card border border-slate-100 dark:border-slate-700/50 active:scale-95 transition-transform text-left min-w-0">
+            className="flex flex-col gap-0.5 bg-white dark:bg-slate-800 rounded-2xl px-3 py-3 shadow-card border border-slate-100 dark:border-slate-700/50 active:scale-95 transition-transform text-left min-w-0 overflow-hidden">
             <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider whitespace-nowrap">This Week</p>
             <AmountDisplay
               amount={forecast?.thisWeekActual ?? 0}
               size="stat"
               align="left"
               hidden={balanceHidden}
-              className="text-slate-800 dark:text-slate-100"
+              className="text-slate-800 dark:text-slate-100 w-full"
             />
             <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-none">Sales</p>
           </button>
 
           {/* Credit outstanding */}
           <button onClick={() => onQuickAction?.("credit")}
-            className="flex flex-col gap-0.5 bg-white dark:bg-slate-800 rounded-2xl px-3 py-3 shadow-card border border-slate-100 dark:border-slate-700/50 active:scale-95 transition-transform text-left min-w-0">
+            className="flex flex-col gap-0.5 bg-white dark:bg-slate-800 rounded-2xl px-3 py-3 shadow-card border border-slate-100 dark:border-slate-700/50 active:scale-95 transition-transform text-left min-w-0 overflow-hidden">
             <div className="flex items-center gap-1">
               <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider whitespace-nowrap">Credit</p>
               {overdueCount > 0 && <span className="text-[8px] text-red-500">⚠</span>}
@@ -362,21 +362,21 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
               size="stat"
               align="left"
               hidden={balanceHidden}
-              className="text-slate-800 dark:text-slate-100"
+              className="text-slate-800 dark:text-slate-100 w-full"
             />
             <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-none">Outstanding</p>
           </button>
 
           {/* Ajo held */}
           <button onClick={() => onQuickAction?.("aso")}
-            className="flex flex-col gap-0.5 bg-white dark:bg-slate-800 rounded-2xl px-3 py-3 shadow-card border border-slate-100 dark:border-slate-700/50 active:scale-95 transition-transform text-left min-w-0">
+            className="flex flex-col gap-0.5 bg-white dark:bg-slate-800 rounded-2xl px-3 py-3 shadow-card border border-slate-100 dark:border-slate-700/50 active:scale-95 transition-transform text-left min-w-0 overflow-hidden">
             <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider whitespace-nowrap">Ajo</p>
             <AmountDisplay
               amount={totalAso}
               size="stat"
               align="left"
               hidden={balanceHidden}
-              className="text-slate-800 dark:text-slate-100"
+              className="text-slate-800 dark:text-slate-100 w-full"
             />
             <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-none">Held</p>
           </button>
