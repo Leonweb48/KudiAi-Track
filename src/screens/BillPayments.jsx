@@ -27,6 +27,7 @@ import { captureReceiptCanvas } from "../utils/captureReceipt";
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
 import { getProviderLogo, getProviderBadge } from "../utils/logoMap";
+import { openPrintVoucherCards } from "../utils/printVouchers";
 
 /* ─── Service catalogue ───────────────────────────────────────────────────── */
 
@@ -1413,9 +1414,15 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
                     </svg>
                   </div>
                   <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest">{t("bp.pinVouchers")}</p>
-                  <span className="ml-auto text-[9px] font-black text-white px-2 py-0.5 rounded-full bg-green-600">
+                  <span className="text-[9px] font-black text-white px-2 py-0.5 rounded-full bg-green-600">
                     {fulfillResult.pinsArr.length}
                   </span>
+                  <button
+                    onClick={() => openPrintVoucherCards(fulfillResult.pinsArr, businessName || profile?.business_name, fulfillResult.cat)}
+                    className="ml-auto text-[9px] font-bold text-slate-600 dark:text-slate-300 active:opacity-60 flex items-center gap-1"
+                  >
+                    🖨 Print Cards
+                  </button>
                 </div>
                 <div className="p-3 space-y-2 bg-white">
                   {fulfillResult.pinsArr.map((pin, i) => {

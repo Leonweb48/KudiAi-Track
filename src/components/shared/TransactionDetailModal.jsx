@@ -19,6 +19,7 @@ import { savePdf } from "../../utils/pdfSave";
 import { captureReceiptCanvas } from "../../utils/captureReceipt";
 import { ReceiptCard } from "./ReceiptCard";
 import SupportTicketModal from "./SupportTicketModal";
+import { openPrintVoucherCards } from "../../utils/printVouchers";
 
 const GREEN = '#3da829';
 
@@ -320,22 +321,30 @@ export default function TransactionDetailModal({ data, onClose, onReportIssue, o
             {data.pinsArr?.length > 0 && (
               <div className="px-4 pt-4 pb-1">
                 <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl border border-emerald-200 dark:border-emerald-700 overflow-hidden">
-                  <div className="px-4 pt-3 pb-2 flex items-center justify-between">
+                  <div className="px-4 pt-3 pb-2 flex items-center justify-between gap-2">
                     <p className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-widest">
                       Voucher PINs ({data.pinsArr.length})
                     </p>
-                    <button
-                      onClick={() => {
-                        const text = data.pinsArr.map((p, i) => {
-                          const code = p.EPIN ?? p.pin ?? p.code ?? "";
-                          return `${i + 1}. ${p.network ? `[${p.network}] ` : ""}${code}`;
-                        }).join("\n");
-                        try { navigator.clipboard.writeText(text); } catch (_) {}
-                      }}
-                      className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 active:opacity-60"
-                    >
-                      Copy All
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => openPrintVoucherCards(data.pinsArr, data.businessName, data.category)}
+                        className="text-[10px] font-bold text-slate-600 dark:text-slate-300 active:opacity-60"
+                      >
+                        🖨 Print Cards
+                      </button>
+                      <button
+                        onClick={() => {
+                          const text = data.pinsArr.map((p, i) => {
+                            const code = p.EPIN ?? p.pin ?? p.code ?? "";
+                            return `${i + 1}. ${p.network ? `[${p.network}] ` : ""}${code}`;
+                          }).join("\n");
+                          try { navigator.clipboard.writeText(text); } catch (_) {}
+                        }}
+                        className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 active:opacity-60"
+                      >
+                        Copy All
+                      </button>
+                    </div>
                   </div>
                   <div className="px-4 pb-4 space-y-2.5">
                     {data.pinsArr.map((p, i) => {
