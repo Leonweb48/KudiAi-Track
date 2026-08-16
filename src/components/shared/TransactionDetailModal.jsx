@@ -316,6 +316,54 @@ export default function TransactionDetailModal({ data, onClose, onReportIssue, o
               </div>
             )}
 
+            {/* Voucher PINs — airtime / data print */}
+            {data.pinsArr?.length > 0 && (
+              <div className="px-4 pt-4 pb-1">
+                <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl border border-emerald-200 dark:border-emerald-700 overflow-hidden">
+                  <div className="px-4 pt-3 pb-2 flex items-center justify-between">
+                    <p className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-widest">
+                      Voucher PINs ({data.pinsArr.length})
+                    </p>
+                    <button
+                      onClick={() => {
+                        const text = data.pinsArr.map((p, i) => {
+                          const code = p.EPIN ?? p.pin ?? p.code ?? "";
+                          return `${i + 1}. ${p.network ? `[${p.network}] ` : ""}${code}`;
+                        }).join("\n");
+                        try { navigator.clipboard.writeText(text); } catch (_) {}
+                      }}
+                      className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 active:opacity-60"
+                    >
+                      Copy All
+                    </button>
+                  </div>
+                  <div className="px-4 pb-4 space-y-2.5">
+                    {data.pinsArr.map((p, i) => {
+                      const code = p.EPIN ?? p.pin ?? p.code ?? "";
+                      return (
+                        <div key={i} className="flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            {p.network && (
+                              <p className="text-[9px] font-bold text-emerald-500 dark:text-emerald-500 uppercase tracking-wider mb-0.5">{p.network}</p>
+                            )}
+                            <p className="text-sm font-mono font-extrabold text-slate-800 dark:text-slate-100 tracking-widest break-all leading-tight">
+                              {code || "—"}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => { try { navigator.clipboard.writeText(code); } catch (_) {} }}
+                            className="flex-none text-[10px] font-bold text-emerald-600 dark:text-emerald-400 active:opacity-60"
+                          >
+                            Copy
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Full receipt card — exactly what will be shared / exported */}
             <div className="px-4 py-4">
               <ReceiptCard data={data} innerRef={receiptRef} />
