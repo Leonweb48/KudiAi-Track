@@ -309,6 +309,19 @@ export default function App() {
 
   // Edge-to-edge status bar: transparent + icon colour adapts to light/dark mode.
   // CSS env(safe-area-inset-top) on the container keeps content below the bar.
+  // Read real status bar height from the OS once on mount and expose it as a CSS
+  // variable so all four portal spacers can consume it. env(safe-area-inset-top)
+  // requires a timing handshake with the WebView that is unreliable on Android;
+  // StatusBar.getInfo().height is the authoritative OS measurement.
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    StatusBar.getInfo().then(({ height }) => {
+      if (height > 0) {
+        document.documentElement.style.setProperty('--status-bar-height', `${height}px`);
+      }
+    }).catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
     StatusBar.setOverlaysWebView({ overlay: true }).catch(() => {});
@@ -556,7 +569,7 @@ export default function App() {
       <div className="h-[100dvh] bg-slate-50 dark:bg-slate-900 md:bg-slate-200 dark:md:bg-slate-950 flex justify-center transition-colors duration-200">
         <div className="w-full max-w-md relative flex flex-col h-[100dvh] md:shadow-2xl md:shadow-black/20 dark:md:shadow-black/60 md:border-x md:border-slate-300/50 dark:md:border-slate-700/50">
           {/* Status-bar spacer — sits before header in the flex column so header content is always below the status bar */}
-          <div className="flex-none bg-white dark:bg-slate-900" style={{ height: "env(safe-area-inset-top, 24px)" }} />
+          <div className="flex-none bg-white dark:bg-slate-900" style={{ height: "var(--status-bar-height, 24px)" }} />
           {/* Owner portal header */}
           <header className="flex-none z-sticky bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shadow-sm">
             <div className="h-14 flex items-center justify-between px-4">
