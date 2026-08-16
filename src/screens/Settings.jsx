@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { Capacitor } from "@capacitor/core";
+import { CapacitorUpdater } from "@capgo/capacitor-updater";
 import { compressImage } from "../utils/compressImage";
 import { useNavigate } from "react-router-dom";
 import Modal              from "../components/shared/Modal";
@@ -357,6 +359,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
   const [showNotifPrefs,     setShowNotifPrefs]     = useState(false);
   const [acceptedConsent,    setAcceptedConsent]    = useState(null);
   const [showProfilePreview, setShowProfilePreview] = useState(false);
+  const [buildVer,    setBuildVer]    = useState(null);
   const [wcAmountStr, setWcAmountStr] = useState(
     profile.working_capital_amount ? String(Math.round(profile.working_capital_amount / 100)) : ""
   );
@@ -393,6 +396,25 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
         setSettleDataLoaded(true);
       })
       .catch(() => { setSettleDataLoaded(true); });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch build version + Capgo bundle ID for the version footer
+  useEffect(() => {
+    const load = async () => {
+      let version = null, commit = null, bundle = null;
+      try {
+        const r = await fetch('/build-info.json');
+        if (r.ok) { const d = await r.json(); version = d.version; commit = d.commit?.slice(0, 7); }
+      } catch {}
+      if (Capacitor.isNativePlatform()) {
+        try {
+          const { bundle: b } = await CapacitorUpdater.current();
+          if (b?.id && b.id !== 'builtin') bundle = b.id.slice(0, 8);
+        } catch {}
+      }
+      setBuildVer({ version, commit, bundle });
+    };
+    load();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -1144,8 +1166,14 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
         {signingOut ? t("settings.signingOut") : t("settings.logOut")}
       </button>
 
-      <p className="text-center text-[11px] text-slate-300 dark:text-slate-600 mt-6 font-medium">
-        {t("settings.version")}
+      <p className="text-center text-[11px] text-slate-300 dark:text-slate-600 mt-6 font-medium select-all">
+        {buildVer?.version
+          ? [
+              buildVer.version,
+              buildVer.commit  && `commit:${buildVer.commit}`,
+              buildVer.bundle  && `bundle:${buildVer.bundle}`,
+            ].filter(Boolean).join(' · ')
+          : t("settings.version")}
       </p>
 
       {/* ── Language picker modal ──────────────────────────────────── */}
