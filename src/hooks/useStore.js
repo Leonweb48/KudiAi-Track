@@ -594,6 +594,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
       bill_status:      t.bill_status       !== undefined ? t.bill_status : null,
       client_txn_id:    localId,
       line_items:       t.line_items        != null ? t.line_items : null,
+      bill_details:     t.bill_details      != null ? t.bill_details : null,
     };
 
     setTransactions(p => [{ ...payload, id: tempId, _pending: true }, ...p]);

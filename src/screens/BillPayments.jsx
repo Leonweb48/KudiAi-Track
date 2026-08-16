@@ -927,8 +927,10 @@ function billToReceipt(bill, profile, staffName) {
     try { pinsArr = JSON.parse(raw.slice(pinsIdx + 8)); } catch (_) {}
   }
 
+  // bill_details is the authoritative structured source — prefer it over regex
+  const bd = bill.bill_details || {};
+
   const parsedProvider = pick(/Provider:\s*([^|]+)/i);
-  // Derive station address — try parsed provider first, fall back to item_name prefix
   const elecComp = bill.category === "electricity"
     ? ELECTRICITY_COMPANIES.find(c =>
         (parsedProvider && parsedProvider.startsWith(c.name)) ||
@@ -940,9 +942,9 @@ function billToReceipt(bill, profile, staffName) {
     ...bill,
     businessName:   profile?.business_name || profile?.owner_name || "My Business",
     service:        CATS.find(c => c.id === bill.category)?.label || bill.category,
-    apiRef:         pick(/Ref:\s*([^\s|]+)/i),
-    token:          (() => { const t = (pick(/Token:\s*([^|]+)/i) || "").trim(); return t && !t.toLowerCase().startsWith("loading") ? t : undefined; })(),
-    units:          (pick(/Units:\s*([^|]+)/i) || "").trim() || undefined,
+    apiRef:         bd.orderId || pick(/Ref:\s*([^\s|]+)/i),
+    token:          bd.token  || (() => { const t = (pick(/Token:\s*([^|]+)/i) || "").trim(); return t && !t.toLowerCase().startsWith("loading") ? t : undefined; })(),
+    units:          bd.units  || (pick(/Units:\s*([^|]+)/i) || "").trim() || undefined,
     network:        pick(/Network:\s*([^|]+)/i),
     phone:          pick(/Phone:\s*([^|]+)/i) || pick(/Beneficiary:\s*([^|]+)/i),
     planName:       pick(/Plan:\s*([^|]+)/i),
@@ -957,7 +959,8 @@ function billToReceipt(bill, profile, staffName) {
     accountNo:      pick(/Account:\s*([^|]+)/i),
     value:          pick(/Value:\s*([^|]+)/i),
     staffName:      staffName || undefined,
-    pinsArr:        pinsArr,
+    pinsArr:        bd.pins   || pinsArr,
+    cardDetails:    bd.cardDetails || undefined,
     stationAddress: elecComp?.address || undefined,
   };
 }
@@ -2659,12 +2662,20 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         : cat === "airtime-bundle" ? paidAmount
         : paidAmount || amount;
 
+      const bill_details =
+        pinsArr?.length > 0                      ? { pins: pinsArr }
+        : cat === "electricity" && elecToken     ? { token: elecToken, orderId: elecOrderId || apiRef || "", units: elecUnits }
+        : cat === "electricity" && elecOrderId   ? { orderId: elecOrderId || apiRef || "" }
+        : cardDetails                            ? { cardDetails }
+        : null;
+
       const payload = {
         type: "out", category: cat, payment_type: "bill_payment",
         item_name: itemName, customer_name: customerRef,
         amount: totalAmount || amount, note,
         transaction_date: today(),
         bill_status: "success",
+        bill_details,
       };
 
       const savedTxn = await addTransaction(payload);
@@ -2733,13 +2744,17 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       if (cat === "electricity" && elecOrderId) {
         const _ref      = ref;
         const _txnId    = savedTxn?.id || null;
+        const _orderId  = elecOrderId || apiRef || "";
         const _email    = profile?.email || null;
         const _name     = profile?.owner_name || profile?.business_name || null;
         const _amount   = totalAmount || amount;
         elecPendingCbRef.current = (tok, updatedNote) => {
           elecPendingCbRef.current = null;
           if (_txnId) {
-            supabase.from("transactions").update({ note: updatedNote }).eq("id", _txnId).catch(() => {});
+            const dbPatch = tok
+              ? { note: updatedNote, bill_details: { token: tok, orderId: _orderId, units: "" } }
+              : { note: updatedNote };
+            Promise.resolve(supabase.from("transactions").update(dbPatch).eq("id", _txnId)).catch(() => {});
             patchTransactionNote(_txnId, updatedNote);
           }
           supabase.functions.invoke("clubkonnect", {
@@ -3731,7 +3746,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                         .replace("Token loading...", "");
                       const unitsSegment = qUnits && !baseNote.includes("Units:") ? ` | Units: ${qUnits}` : "";
                       const updatedNote = `Token: ${qToken}${unitsSegment} | ${baseNote}`.replace(" |  | ", " | ");
-                      supabase.from("transactions").update({ note: updatedNote }).eq("id", receipt.id).catch(() => {});
+                      Promise.resolve(supabase.from("transactions").update({ note: updatedNote, bill_details: { token: qToken, orderId: receipt.apiRef || "", units: qUnits } }).eq("id", receipt.id)).catch(() => {});
                       patchTransactionNote(receipt.id, updatedNote);
                       // Update the open receipt state so the modal immediately shows the token
                       // in the main field (collapses the retrieve button on the next render)

@@ -341,9 +341,10 @@ export function buildBillReceipt(bill) {
       retrievable: !bill.token && !!bill.apiRef,
       orderId:     bill.apiRef,
     },
+    bill.cardDetails && { label: 'Card Details', value: bill.cardDetails },
     bill.pinsArr?.length > 0 && {
       label: 'Pins Issued',
-      value: `${bill.pinsArr.length} token${bill.pinsArr.length > 1 ? 's' : ''} (see PDF)`,
+      value: `${bill.pinsArr.length} token${bill.pinsArr.length > 1 ? 's' : ''} (tap PDF to view)`,
     },
     bill.apiRef && { label: 'Provider Ref.', value: bill.apiRef, copy: true },
     bill.staffName && { label: 'Served by',   value: bill.staffName },
@@ -367,6 +368,10 @@ export function buildBillReceipt(bill) {
     category:      bill.category || null,
     processorName: PROCESSOR_NAME,
     iconType:      null,
+    // Raw structured data for specialized display in TransactionDetailModal
+    elecToken:    bill.token      || undefined,
+    cardDetails:  bill.cardDetails || undefined,
+    pinsArr:      bill.pinsArr?.length > 0 ? bill.pinsArr : undefined,
   };
 }
 

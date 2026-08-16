@@ -267,10 +267,52 @@ export default function TransactionDetailModal({ data, onClose, onReportIssue, o
 
           {/* Scrollable body — full receipt + optional electricity section */}
           <div className="flex-1 overflow-y-auto">
-            {/* Electricity token retrieval (async — needs a button) */}
+            {/* Electricity token — async retrieval (token not yet known) */}
             {(retrievableField || onRetrieveToken) && onRetrieveToken && (
               <div className="px-4 pt-4 pb-1">
                 <TokenSection onRetrieveToken={onRetrieveToken} />
+              </div>
+            )}
+            {/* Electricity token — already stored (show immediately with copy) */}
+            {data.elecToken && !onRetrieveToken && (
+              <div className="px-4 pt-4 pb-1">
+                <div className="bg-amber-50 dark:bg-amber-900/20 rounded-2xl border border-amber-200 dark:border-amber-700 overflow-hidden">
+                  <div className="px-4 pt-3 pb-2 flex items-center justify-between">
+                    <p className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-widest">Electricity Token</p>
+                    <button
+                      onClick={() => { try { navigator.clipboard.writeText(data.elecToken); } catch (_) {} }}
+                      className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 active:opacity-60"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                  <div className="px-4 pb-4">
+                    <p className="text-sm font-mono font-extrabold text-emerald-600 dark:text-emerald-400 tracking-widest break-all leading-relaxed">
+                      {data.elecToken}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+            {/* Card details — WAEC / JAMB scratch cards */}
+            {data.cardDetails && (
+              <div className="px-4 pt-4 pb-1">
+                <div className="bg-blue-50 dark:bg-blue-900/20 rounded-2xl border border-blue-200 dark:border-blue-700 overflow-hidden">
+                  <div className="px-4 pt-3 pb-2 flex items-center justify-between">
+                    <p className="text-[10px] font-bold text-blue-700 dark:text-blue-300 uppercase tracking-widest">Card Details</p>
+                    <button
+                      onClick={() => { try { navigator.clipboard.writeText(data.cardDetails); } catch (_) {} }}
+                      className="text-[10px] font-bold text-blue-600 dark:text-blue-400 active:opacity-60"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                  <div className="px-4 pb-4">
+                    <p className="text-sm font-mono font-bold text-slate-800 dark:text-slate-100 break-all leading-relaxed">
+                      {data.cardDetails}
+                    </p>
+                  </div>
+                </div>
               </div>
             )}
 
