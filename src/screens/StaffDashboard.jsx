@@ -212,9 +212,10 @@ If asked about business-wide figures (total business revenue, all staff performa
     <div className="h-[100dvh] bg-white dark:bg-slate-900 flex justify-center transition-colors duration-200">
       <div className="w-full max-w-md flex flex-col h-full relative">
 
+        {/* Status-bar spacer */}
+        <div className="flex-none bg-white dark:bg-slate-900" style={{ height: "env(safe-area-inset-top, 24px)" }} />
         {/* Header */}
         <header className="flex-none z-sticky bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shadow-sm">
-          <div style={{ height: "env(safe-area-inset-top, 0px)" }} />
           <div className="h-14 flex items-center justify-between px-4">
           <AppLogo businessName={staff?.business_name} />
           <div className="flex-none flex items-center gap-2">

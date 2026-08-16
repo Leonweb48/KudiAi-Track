@@ -555,9 +555,10 @@ export default function App() {
     <div className={isDark ? "dark" : ""}>
       <div className="h-[100dvh] bg-slate-50 dark:bg-slate-900 md:bg-slate-200 dark:md:bg-slate-950 flex justify-center transition-colors duration-200">
         <div className="w-full max-w-md relative flex flex-col h-[100dvh] md:shadow-2xl md:shadow-black/20 dark:md:shadow-black/60 md:border-x md:border-slate-300/50 dark:md:border-slate-700/50">
-          {/* Owner portal header — flex-none at column root, same pattern as Staff/Manager/Ajo */}
+          {/* Status-bar spacer — sits before header in the flex column so header content is always below the status bar */}
+          <div className="flex-none bg-white dark:bg-slate-900" style={{ height: "env(safe-area-inset-top, 24px)" }} />
+          {/* Owner portal header */}
           <header className="flex-none z-sticky bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shadow-sm">
-            <div style={{ height: "env(safe-area-inset-top, 0px)" }} />
             <div className="h-14 flex items-center justify-between px-4">
             <AppLogo businessName={store.profile?.business_name} />
             <div className="flex-none flex items-center gap-2">

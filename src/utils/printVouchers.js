@@ -83,34 +83,39 @@ body{font-family:Arial,Helvetica,sans-serif;background:#fff;color:#111}
   cursor:pointer;letter-spacing:.3px
 }
 .print-btn:hover{background:#2e8020}
-.grid{display:flex;flex-wrap:wrap;padding:6mm 4mm}
+.grid{display:flex;flex-wrap:wrap;padding:4mm 3mm}
 .card{
   width:48%;margin:1%;
-  border:1.5px dashed #999;border-radius:4px;
+  border:1.5px dashed #999;border-radius:3px;
   overflow:hidden;display:flex;flex-direction:column;
   page-break-inside:avoid;break-inside:avoid;
-  min-height:44mm
 }
 .card-top{
   display:flex;align-items:center;justify-content:space-between;
-  padding:5px 10px;gap:4px
+  padding:2px 6px;gap:4px
 }
-.biz{font-size:9px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:68%}
-.net{font-size:13px;font-weight:900;letter-spacing:.5px;white-space:nowrap}
-.card-mid{padding:6px 10px 4px;flex:1}
-.type-lbl{font-size:8px;color:#777;text-transform:uppercase;letter-spacing:.5px;margin-bottom:1px}
-.denom{font-size:22px;font-weight:900;line-height:1;margin-bottom:4px}
-.pin-lbl{font-size:8px;color:#999;text-transform:uppercase;letter-spacing:.5px}
-.pin{font-size:15px;font-weight:900;font-family:'Courier New',monospace;letter-spacing:2px;margin:2px 0 5px;word-break:break-all}
-.meta{font-size:8px;color:#666;margin-bottom:1px;line-height:1.3}
-.card-bot{padding:5px 10px;background:#f6f6f6;border-top:1px solid #e5e5e5}
-.load{font-size:9px;margin-bottom:2px}
-.care{font-size:9px;margin-bottom:2px}
-.gen{font-size:7px;color:#bbb;margin-top:2px}
+.biz{font-size:6px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:68%}
+.net{font-size:9px;font-weight:900;letter-spacing:.5px;white-space:nowrap}
+.card-mid{padding:2px 6px;flex:1}
+.type-lbl{font-size:6px;color:#777;text-transform:uppercase;letter-spacing:.5px;margin-bottom:1px}
+.denom{font-size:11px;font-weight:900;line-height:1;margin-bottom:2px}
+.pin-lbl{font-size:5px;color:#999;text-transform:uppercase;letter-spacing:.5px}
+.pin{font-size:10px;font-weight:900;font-family:'Courier New',monospace;letter-spacing:1.5px;margin:1px 0 2px;word-break:break-all}
+.meta{font-size:5px;color:#666;margin-bottom:1px;line-height:1.2}
+.card-bot{padding:2px 6px;background:#f6f6f6;border-top:1px solid #e5e5e5}
+.load{font-size:6px;margin-bottom:1px}
+.care{font-size:6px;margin-bottom:1px}
+.gen{font-size:5px;color:#bbb;margin-top:1px}
 @media print{
   .bar{display:none}
   .grid{padding:4mm 3mm}
-  .card{border-color:#bbb}
+  .card{
+    width:85mm;height:25mm;
+    margin:2mm 2.5mm;
+    box-sizing:border-box;
+    overflow:hidden;
+    border-color:#bbb;
+  }
 }
 @page{size:A4 portrait;margin:8mm}
 </style>
