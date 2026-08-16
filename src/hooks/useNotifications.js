@@ -66,7 +66,7 @@ export function useNotifications(userId, onNewNotification = null) {
       .order("created_at", { ascending: false })
       .range(from, from + PAGE_SIZE - 1);
     setLoading(false);
-    if (error) { console.error("[Notif] fetchPage error:", error.message); return; }
+    if (error) { console.error("fetchPage error:", error.message); return; }
     if (!data) return;
     if (reset) { setNotifications(data); setPage(1); }
     else        { setNotifications(prev => [...prev, ...data]); setPage(p => p + 1); }
@@ -93,7 +93,7 @@ export function useNotifications(userId, onNewNotification = null) {
       )
       .subscribe((status, err) => {
         if (err || status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-          console.error("[Notif] Realtime subscription failed:", status, err);
+          console.error("Realtime subscription failed:", status, err);
         }
       });
     return () => { supabase.removeChannel(channel); };
