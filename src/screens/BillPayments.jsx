@@ -1421,7 +1421,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
                     onClick={() => openPrintVoucherCards(fulfillResult.pinsArr, businessName || profile?.business_name, fulfillResult.cat)}
                     className="ml-auto text-[9px] font-bold text-slate-600 dark:text-slate-300 active:opacity-60 flex items-center gap-1"
                   >
-                    🖨 Print Cards
+                    📄 Save as PDF
                   </button>
                 </div>
                 <div className="p-3 space-y-2 bg-white">

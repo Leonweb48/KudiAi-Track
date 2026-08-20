@@ -330,7 +330,7 @@ export default function TransactionDetailModal({ data, onClose, onReportIssue, o
                         onClick={() => openPrintVoucherCards(data.pinsArr, data.businessName, data.category)}
                         className="text-[10px] font-bold text-slate-600 dark:text-slate-300 active:opacity-60"
                       >
-                        🖨 Print Cards
+                        📄 Save as PDF
                       </button>
                       <button
                         onClick={() => {
