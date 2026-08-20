@@ -3,6 +3,7 @@
 // calls back via window.opener.__kvDL() / window.opener.__kvSH() so no bundling is needed.
 // [KT/boot] — keep this comment as a regression detector for the print→PDF migration.
 
+import { Capacitor } from '@capacitor/core';
 import html2canvas from 'html2canvas';
 import { jsPDF }   from 'jspdf';
 import { savePdf } from './pdfSave';
@@ -170,6 +171,15 @@ async function generateVoucherBlob(pins, businessName, category) {
 
 export async function shareVoucherPDF(pins, businessName, category) {
   if (!pins?.length) return;
+
+  // On native Capacitor: savePdf (called by generateVoucherPDF) uses
+  // Capacitor.Share with a real file URI — more reliable than navigator.share
+  // with a blob, which silently fails inside a WebView context.
+  if (Capacitor.isNativePlatform()) {
+    await generateVoucherPDF(pins, businessName, category);
+    return;
+  }
+
   try {
     const { blob, filename } = await generateVoucherBlob(pins, businessName, category);
     const file = new File([blob], filename, { type: 'application/pdf' });
@@ -180,7 +190,7 @@ export async function shareVoucherPDF(pins, businessName, category) {
   } catch (e) {
     if (e?.name === 'AbortError') return; // user cancelled share sheet — do not fall through
   }
-  // Fallback: regular download
+  // Web fallback: browser download
   await generateVoucherPDF(pins, businessName, category);
 }
 
@@ -189,9 +199,19 @@ export async function shareVoucherPDF(pins, businessName, category) {
 export function openPrintVoucherCards(pins, businessName, category) {
   if (!pins?.length) return;
 
-  // Expose callbacks on the opener so the preview tab can trigger PDF gen.
-  window.__kvDL = () => generateVoucherPDF(pins, businessName, category).catch(console.error);
-  window.__kvSH = () => shareVoucherPDF(pins, businessName, category).catch(console.error);
+  // On native Capacitor: window.open creates a tab that breaks the
+  // window.opener callback chain, and the Capacitor Share sheet would
+  // appear behind the preview tab (invisible). Skip the preview; go
+  // straight to the native share sheet via savePdf.
+  if (Capacitor.isNativePlatform()) {
+    generateVoucherPDF(pins, businessName, category).catch(console.error);
+    return;
+  }
+
+  // Web: expose callbacks WITHOUT .catch so real errors propagate to the
+  // preview tab's own error handler ("Error — retry"), not a fake "✓ Downloaded".
+  window.__kvDL = () => generateVoucherPDF(pins, businessName, category);
+  window.__kvSH = () => shareVoucherPDF(pins, businessName, category);
 
   const biz       = esc(businessName || 'My Business');
 
