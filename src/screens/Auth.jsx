@@ -12,6 +12,20 @@ const OAUTH_REDIRECT = isNative
   ? "com.amayatechnologies.kuditrack://login-callback"
   : window.location.origin;
 
+// ── OTP lockout helpers ────────────────────────────────────────────────
+function getLockoutState(email) {
+  try {
+    const raw = localStorage.getItem(`kt_otp_lockout_${email}`);
+    return raw ? JSON.parse(raw) : { attempts: 0, lockedUntil: null };
+  } catch { return { attempts: 0, lockedUntil: null }; }
+}
+function saveLockoutState(email, state) {
+  localStorage.setItem(`kt_otp_lockout_${email}`, JSON.stringify(state));
+}
+function clearLockoutState(email) {
+  localStorage.removeItem(`kt_otp_lockout_${email}`);
+}
+
 function SetupNotice() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 flex items-center justify-center px-4">
@@ -99,6 +113,8 @@ function OtpScreen({ email, onBack, onVerified, otpType = "signup", onSubmit, in
   const [resent, setResent]       = useState(false);
   const [countdown, setCountdown] = useState(60);
   const inputRefs = useRef([]);
+  const isMounted = useRef(true);
+  useEffect(() => () => { isMounted.current = false; }, []);
 
   useEffect(() => {
     inputRefs.current[0]?.focus();
@@ -141,16 +157,30 @@ function OtpScreen({ email, onBack, onVerified, otpType = "signup", onSubmit, in
     try {
       if (onSubmit) {
         onSubmit(otp);
-        // caller handles mode switch — no need to reset loading (component unmounts)
-      } else {
-        const { error } = await supabase.auth.verifyOtp({ email, token: otp, type: otpType });
-        if (error) throw error;
-        onVerified();
+        return; // caller handles mode switch; loading stays true until component unmounts
       }
+      const { error: verifyErr } = await supabase.auth.verifyOtp({ email, token: otp, type: otpType });
+      if (verifyErr) {
+        // Distinguish expired OTP from wrong OTP — Supabase can return similar errors for both.
+        // Any message mentioning "expired" → code timed out; anything else → code is wrong.
+        const msg = (verifyErr.message || "").toLowerCase();
+        const errMsg = (msg.includes("token has expired") || msg.includes("otp expired") || msg.includes("expired"))
+          ? "This code has expired — request a new one"
+          : "Incorrect code — please check and try again";
+        if (isMounted.current) { setError(errMsg); onFail?.(); setLoading(false); }
+        return;
+      }
+      // verifyOtp succeeded. Await onVerified so updateUser runs in the same async chain
+      // with no gap — prevents session-expiry races for the reset flow.
+      // If onVerified throws (e.g. updateUser failed), it surfaces in the catch below.
+      await onVerified?.();
+      if (isMounted.current) setLoading(false);
     } catch (err) {
-      setError(friendlyError(err));
-      onFail?.();
-      setLoading(false);
+      if (isMounted.current) {
+        setError(err.__friendly || friendlyError(err));
+        onFail?.();
+        setLoading(false);
+      }
     }
   };
 
@@ -320,7 +350,7 @@ function EyeIcon({ open }) {
 /* ── Main Auth screen ──────────────────────────────────────────────── */
 export default function Auth() {
   const t = useT();
-  const [mode,          setMode]         = useState("login"); // "login" | "register" | "forgot" | "otp" | "reset_otp" | "set_password"
+  const [mode,          setMode]         = useState("login"); // "login" | "register" | "forgot" | "otp" | "reset_otp"
   const [email,         setEmail]        = useState("");
   const [password,      setPass]         = useState("");
   const [confirmPass,   setConfirmPass]  = useState("");
@@ -371,12 +401,22 @@ export default function Auth() {
     }
   }, []);
 
+  // Countdown tick for the OTP lockout screen — wakes every minute (or when lockout expires)
+  // so the remaining-time display updates without a manual refresh.
+  useEffect(() => {
+    if (mode !== "reset_otp") return;
+    const ld = getLockoutState(email);
+    if (!ld.lockedUntil || Date.now() >= ld.lockedUntil) return;
+    const remaining = ld.lockedUntil - Date.now();
+    const timer = setTimeout(() => setResetTrigger(t => t + 1), Math.min(remaining + 100, 60000));
+    return () => clearTimeout(timer);
+  }, [mode, email, resetTrigger]);
+
   const [info,         setInfo]         = useState("");
   const [staffConfirm, setStaffConfirm] = useState(false);
 
   // Password reset OTP flow state
-  const [resetAttempts,    setResetAttempts]    = useState(0);
-  const [resetLockedUntil, setResetLockedUntil] = useState(null);
+  const [resetTrigger,     setResetTrigger]     = useState(0); // bumped to force re-render after localStorage lockout changes
   const [newPassword,      setNewPassword]      = useState("");
   const [newConfirmPass,   setNewConfirmPass]   = useState("");
   const [showNewPw,        setShowNewPw]        = useState(false);
@@ -461,11 +501,31 @@ export default function Auth() {
           setMode("otp");
         }
       } else {
-        const { error } = await supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: false } });
-        if (error) throw error;
+        // Validate the new password fields (collected on the forgot form)
+        if (newPassword.length < 8) { setError("New password must be at least 8 characters."); return; }
+        if (newPassword !== newConfirmPass) { setError("Passwords do not match."); return; }
+
+        // Respect localStorage lockout — user may have hit 3 wrong OTPs in a previous attempt
+        const ld = getLockoutState(email);
+        if (ld.lockedUntil && Date.now() < ld.lockedUntil) {
+          const minLeft = Math.ceil((ld.lockedUntil - Date.now()) / 60000);
+          setError(`Too many failed attempts. Please wait ${minLeft} minute${minLeft !== 1 ? "s" : ""} before trying again.`);
+          return;
+        }
+
+        // Same-password pre-check: signInWithPassword succeeds ⟹ new password == current password
+        const { error: sameCheckErr } = await supabase.auth.signInWithPassword({ email, password: newPassword });
+        if (!sameCheckErr) {
+          // Matches the current password — sign out the temporary session and reject
+          await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+          setError("Your new password must be different from your current password.");
+          return;
+        }
+
+        // Send OTP
+        const { error: otpErr } = await supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: false } });
+        if (otpErr) throw otpErr;
         sessionStorage.setItem("kuditrack_password_reset", "1");
-        setResetAttempts(0);
-        setResetLockedUntil(null);
         setResetOtpError("");
         setMode("reset_otp");
       }
@@ -570,8 +630,12 @@ export default function Auth() {
   }
 
   if (mode === "reset_otp") {
-    if (resetLockedUntil && Date.now() < resetLockedUntil) {
-      const minLeft = Math.ceil((resetLockedUntil - Date.now()) / 60000);
+    // Read lockout state fresh from localStorage every render (Bug 4 — survives app refresh)
+    const ld = getLockoutState(email);
+    const isLocked = ld.lockedUntil && Date.now() < ld.lockedUntil;
+
+    if (isLocked) {
+      const minLeft = Math.ceil((ld.lockedUntil - Date.now()) / 60000);
       return (
         <BgLayout center>
           <div className="text-center">
@@ -589,7 +653,9 @@ export default function Auth() {
               onClick={() => {
                 sessionStorage.removeItem("kuditrack_password_reset");
                 supabase.auth.signOut({ scope: "global" }).catch(() => {});
-                setMode("login"); setResetAttempts(0); setResetLockedUntil(null); setResetOtpError(""); clearMessages();
+                setResetOtpError(""); clearMessages();
+                setNewPassword(""); setNewConfirmPass("");
+                setMode("login");
               }}
               className="w-full py-3 rounded-xl text-white font-bold text-sm bg-gray-800 border-0 cursor-pointer"
             >
@@ -599,6 +665,7 @@ export default function Auth() {
         </BgLayout>
       );
     }
+
     return (
       <OtpScreen
         email={email}
@@ -607,143 +674,44 @@ export default function Auth() {
         onBack={() => {
           sessionStorage.removeItem("kuditrack_password_reset");
           supabase.auth.signOut({ scope: "global" }).catch(() => {});
-          setMode("forgot"); setResetAttempts(0); setResetLockedUntil(null); setResetOtpError(""); clearMessages();
+          setResetOtpError(""); clearMessages();
+          setNewPassword(""); setNewConfirmPass("");
+          setMode("forgot");
         }}
-        onVerified={() => { setMode("set_password"); }}
+        onVerified={async () => {
+          // verifyOtp just succeeded — run updateUser immediately in the same async chain.
+          // No mode switch or user interaction in between: eliminates session-expiry window.
+          clearLockoutState(email);
+          const { error: updateErr } = await supabase.auth.updateUser({ password: newPassword });
+          if (updateErr) {
+            // Supabase natively rejects same-password updates on some plan configs.
+            // Surface a clear message rather than the raw error.
+            const msg = (updateErr.message || "").toLowerCase();
+            const friendlyMsg = (msg.includes("different") || msg.includes("same") || msg.includes("password"))
+              ? "Your new password must be different from your current password."
+              : friendlyError(updateErr);
+            const err = new Error(friendlyMsg);
+            err.__friendly = friendlyMsg;
+            throw err;
+          }
+          // Success — force sign-out of all devices (app lock regardless of user setting)
+          sessionStorage.removeItem("kuditrack_password_reset");
+          await supabase.auth.signOut({ scope: "global" });
+          setNewPassword(""); setNewConfirmPass(""); setResetOtpError("");
+          setMode("login");
+          setInfo("Password updated successfully. Please sign in with your new password.");
+        }}
         onFail={() => {
-          const next = resetAttempts + 1;
-          setResetAttempts(next);
-          if (next >= 3) setResetLockedUntil(Date.now() + 30 * 60 * 1000);
+          // Increment attempt count in localStorage so lockout survives app refresh (Bug 4)
+          const current = getLockoutState(email);
+          const next = (current.attempts || 0) + 1;
+          saveLockoutState(email, {
+            attempts: next,
+            lockedUntil: next >= 3 ? Date.now() + 30 * 60 * 1000 : (current.lockedUntil || null),
+          });
+          setResetTrigger(t => t + 1); // trigger re-render so lockout screen shows immediately
         }}
       />
-    );
-  }
-
-  if (mode === "set_password") {
-    const handleSetPassword = async (e) => {
-      e.preventDefault();
-      setError("");
-      if (newPassword.length < 8) { setError("Password must be at least 8 characters."); return; }
-      if (newPassword !== newConfirmPass) { setError("Passwords do not match."); return; }
-      setLoading(true);
-      try {
-        // Session already established by verifyOtp on the OTP screen — just update the password.
-        const { error: updateErr } = await supabase.auth.updateUser({ password: newPassword });
-        if (updateErr) throw updateErr;
-        // Clear flag before signOut so resolve(null) proceeds normally.
-        sessionStorage.removeItem("kuditrack_password_reset");
-        // scope:"global" revokes all sessions on all devices — user must log in fresh everywhere.
-        await supabase.auth.signOut({ scope: "global" });
-        setNewPassword("");
-        setNewConfirmPass("");
-        setResetAttempts(0);
-        setResetLockedUntil(null);
-        setResetOtpError("");
-        setMode("login");
-        setInfo("Password updated successfully. Please sign in with your new password.");
-      } catch (err) {
-        setError(friendlyError(err));
-        setLoading(false);
-      }
-    };
-
-    const pwStrength = getPasswordStrength(newPassword);
-
-    return (
-      <BgLayout center>
-        <div>
-          <div className="text-center mb-6">
-            <div className="inline-flex items-center justify-center w-10 h-10 rounded-2xl mb-3 bg-emerald-100">
-              <svg width="20" height="20" fill="none" stroke="#059669" strokeWidth="2" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
-              </svg>
-            </div>
-            <h2 className="text-xl font-bold text-gray-800">Set New Password</h2>
-            <p className="text-xs text-gray-500 mt-1">Choose a strong password for your account.</p>
-          </div>
-
-          {error && (
-            <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5">
-              {error}
-            </div>
-          )}
-
-          <form onSubmit={handleSetPassword} className="space-y-3.5">
-            <div>
-              <label className="block text-[11px] font-semibold text-gray-400 mb-1.5 uppercase tracking-wider">New Password</label>
-              <div className="relative">
-                <input
-                  type={showNewPw ? "text" : "password"} required value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="Min. 8 characters" minLength={8}
-                  className="w-full border border-gray-200 rounded-xl px-4 py-3 pr-11 text-sm text-gray-900 bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
-                />
-                <button type="button" onClick={() => setShowNewPw(v => !v)}
-                  className="absolute right-0 top-0 h-full w-11 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors" tabIndex={-1}>
-                  <EyeIcon open={showNewPw} />
-                </button>
-              </div>
-              {newPassword.length > 0 && pwStrength && (
-                <div className="mt-1.5 flex items-center gap-2">
-                  <div className="flex gap-0.5 flex-1">
-                    {[1,2,3,4].map(b => (
-                      <div key={b} className={`h-1 flex-1 rounded-full transition-all duration-300 ${b <= pwStrength.bars ? pwStrength.color : "bg-gray-200"}`} />
-                    ))}
-                  </div>
-                  <span className={`text-[11px] font-semibold ${pwStrength.text}`}>{pwStrength.label}</span>
-                </div>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-semibold text-gray-400 mb-1.5 uppercase tracking-wider">Confirm Password</label>
-              <div className="relative">
-                <input
-                  type={showNewConfirmPw ? "text" : "password"} required value={newConfirmPass}
-                  onChange={(e) => setNewConfirmPass(e.target.value)}
-                  placeholder="Repeat new password" minLength={8}
-                  className={`w-full border rounded-xl px-4 py-3 pr-11 text-sm text-gray-900 bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:border-transparent transition-all ${
-                    newConfirmPass.length > 0
-                      ? newConfirmPass === newPassword ? "border-emerald-400 focus:ring-emerald-500" : "border-red-300 focus:ring-red-400"
-                      : "border-gray-200 focus:ring-emerald-500"
-                  }`}
-                />
-                <button type="button" onClick={() => setShowNewConfirmPw(v => !v)}
-                  className="absolute right-0 top-0 h-full w-11 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors" tabIndex={-1}>
-                  <EyeIcon open={showNewConfirmPw} />
-                </button>
-              </div>
-              {newConfirmPass.length > 0 && (
-                <p className={`mt-1.5 text-[11px] font-semibold ${newConfirmPass === newPassword ? "text-emerald-600" : "text-red-500"}`}>
-                  {newConfirmPass === newPassword ? "✓ Passwords match" : "✗ Passwords do not match"}
-                </p>
-              )}
-            </div>
-
-            <button type="submit" disabled={loading}
-              className="w-full py-3 rounded-xl text-white font-bold text-sm bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors border-0 cursor-pointer">
-              {loading
-                ? <span className="inline-flex items-center justify-center gap-2">
-                    <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                    Setting password…
-                  </span>
-                : "Set Password"}
-            </button>
-          </form>
-
-          <button
-            onClick={async () => {
-              sessionStorage.removeItem("kuditrack_password_reset");
-              await supabase.auth.signOut({ scope: "global" }).catch(() => {});
-              setNewPassword(""); setNewConfirmPass(""); setResetAttempts(0); setResetLockedUntil(null); setResetOtpError(""); clearMessages();
-              setMode("login");
-            }}
-            className="w-full text-center text-xs mt-4 text-gray-400 bg-transparent border-0 cursor-pointer"
-          >
-            ← Cancel — back to sign in
-          </button>
-        </div>
-      </BgLayout>
     );
   }
 
@@ -789,7 +757,7 @@ export default function Auth() {
             {t("auth.backToSignIn")}
           </button>
           <h2 className="text-lg font-bold text-gray-800 dark:text-white mt-2">{t("auth.resetPassword")}</h2>
-          <p className="text-xs text-gray-500 dark:text-slate-400">We'll send a 6-digit code to your email.</p>
+          <p className="text-xs text-gray-500 dark:text-slate-400">Enter your new password, then we'll send a 6-digit verification code to your email.</p>
         </div>
       )}
 
@@ -906,6 +874,64 @@ export default function Auth() {
               </p>
             )}
           </div>
+        )}
+
+        {/* New password + confirm — only on the forgot form */}
+        {isForgot && (
+          <>
+            <div>
+              <label className="block text-[11px] font-semibold text-gray-400 mb-1.5 uppercase tracking-wider">New Password</label>
+              <div className="relative">
+                <input
+                  type={showNewPw ? "text" : "password"} required value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Min. 8 characters" minLength={8}
+                  className="w-full border border-gray-200 dark:border-slate-600 rounded-xl px-4 py-3 pr-11 text-sm text-gray-900 dark:text-white bg-gray-50 dark:bg-slate-800 focus:bg-white dark:focus:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+                />
+                <button type="button" onClick={() => setShowNewPw(v => !v)}
+                  className="absolute right-0 top-0 h-full w-11 flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors" tabIndex={-1}>
+                  <EyeIcon open={showNewPw} />
+                </button>
+              </div>
+              {newPassword.length > 0 && (() => {
+                const s = getPasswordStrength(newPassword);
+                return (
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <div className="flex gap-0.5 flex-1">
+                      {[1,2,3,4].map(b => (
+                        <div key={b} className={`h-1 flex-1 rounded-full transition-all duration-300 ${b <= s.bars ? s.color : "bg-gray-200"}`} />
+                      ))}
+                    </div>
+                    <span className={`text-[11px] font-semibold ${s.text}`}>{s.label}</span>
+                  </div>
+                );
+              })()}
+            </div>
+            <div>
+              <label className="block text-[11px] font-semibold text-gray-400 mb-1.5 uppercase tracking-wider">Confirm New Password</label>
+              <div className="relative">
+                <input
+                  type={showNewConfirmPw ? "text" : "password"} required value={newConfirmPass}
+                  onChange={(e) => setNewConfirmPass(e.target.value)}
+                  placeholder="Repeat new password" minLength={8}
+                  className={`w-full border rounded-xl px-4 py-3 pr-11 text-sm text-gray-900 dark:text-white bg-gray-50 dark:bg-slate-800 focus:bg-white dark:focus:bg-slate-700 focus:outline-none focus:ring-2 focus:border-transparent transition-all ${
+                    newConfirmPass.length > 0
+                      ? newConfirmPass === newPassword ? "border-emerald-400 focus:ring-emerald-500" : "border-red-300 focus:ring-red-400"
+                      : "border-gray-200 dark:border-slate-600 focus:ring-emerald-500"
+                  }`}
+                />
+                <button type="button" onClick={() => setShowNewConfirmPw(v => !v)}
+                  className="absolute right-0 top-0 h-full w-11 flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors" tabIndex={-1}>
+                  <EyeIcon open={showNewConfirmPw} />
+                </button>
+              </div>
+              {newConfirmPass.length > 0 && (
+                <p className={`mt-1.5 text-[11px] font-semibold ${newConfirmPass === newPassword ? "text-emerald-600" : "text-red-500"}`}>
+                  {newConfirmPass === newPassword ? "✓ Passwords match" : "✗ Passwords do not match"}
+                </p>
+              )}
+            </div>
+          </>
         )}
 
         {mode === "login" && (
