@@ -27,7 +27,7 @@ import { captureReceiptCanvas } from "../utils/captureReceipt";
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
 import { getProviderLogo, getProviderBadge } from "../utils/logoMap";
-import { openPrintVoucherCards } from "../utils/printVouchers";
+import { openPrintVoucherCards, shareVoucherPDF } from "../utils/printVouchers";
 
 /* ─── Service catalogue ───────────────────────────────────────────────────── */
 
@@ -1408,7 +1408,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
             {fulfillResult.pinsArr?.length > 0 && (
               <div className="mx-4 mt-4 rounded-2xl overflow-hidden shadow-sm border border-slate-200 dark:border-slate-700">
                 <div className="px-4 py-2.5 flex items-center gap-2 bg-green-50 dark:bg-green-900/20">
-                  <div className="w-5 h-5 rounded-full flex items-center justify-center bg-green-600">
+                  <div className="w-5 h-5 rounded-full flex items-center justify-center bg-green-600 flex-shrink-0">
                     <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
                       <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
                     </svg>
@@ -1417,30 +1417,60 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
                   <span className="text-[9px] font-black text-white px-2 py-0.5 rounded-full bg-green-600">
                     {fulfillResult.pinsArr.length}
                   </span>
-                  <button
-                    onClick={() => openPrintVoucherCards(fulfillResult.pinsArr, businessName || profile?.business_name, fulfillResult.cat)}
-                    className="ml-auto text-[9px] font-bold text-slate-600 dark:text-slate-300 active:opacity-60 flex items-center gap-1"
-                  >
-                    📄 Save as PDF
-                  </button>
+                  <div className="ml-auto flex items-center gap-3">
+                    <button
+                      onClick={() => shareVoucherPDF(fulfillResult.pinsArr, businessName || profile?.business_name, fulfillResult.cat)}
+                      className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 active:opacity-60 flex items-center gap-1"
+                    >
+                      📤 Share PDF
+                    </button>
+                    <button
+                      onClick={() => openPrintVoucherCards(fulfillResult.pinsArr, businessName || profile?.business_name, fulfillResult.cat)}
+                      className="text-[9px] font-bold text-slate-600 dark:text-slate-300 active:opacity-60 flex items-center gap-1"
+                    >
+                      📄 Save PDF
+                    </button>
+                  </div>
                 </div>
-                <div className="p-3 space-y-2 bg-white">
+                <div className="p-3 space-y-2 bg-white dark:bg-slate-900">
                   {fulfillResult.pinsArr.map((pin, i) => {
-                    const serial = pin.EPIN_SERIAL ?? pin.sno ?? pin.serial ?? "";
-                    const code   = pin.EPIN ?? pin.pin ?? pin.code ?? JSON.stringify(pin);
-                    const netCfg = pin.network ? NET_CONFIG[pin.network] : null;
+                    const serial  = pin.EPIN_SERIAL ?? pin.sno ?? pin.serial ?? "";
+                    const rawCode = pin.EPIN ?? pin.pin ?? pin.code ?? JSON.stringify(pin);
+                    const netCfg  = pin.network ? NET_CONFIG[pin.network] : null;
+                    const amount  = pin.amount ? `₦${Number(pin.amount).toLocaleString("en-NG")}` : "";
+                    const bare    = String(rawCode).replace(/\s+/g, "");
+                    const chunks  = [];
+                    for (let j = 0; j < bare.length; j += 4) chunks.push(bare.slice(j, j + 4));
+                    const formatted = chunks.join(" ") || rawCode;
                     return (
-                      <div key={i} className="rounded-xl px-4 py-3 border bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800">
-                        <div className="flex items-center justify-between mb-1">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">PIN {i + 1}</span>
+                      <div key={i} className="rounded-2xl overflow-hidden border border-green-200 dark:border-green-800">
+                        <div className="px-3 py-2 flex items-center justify-between bg-green-50 dark:bg-green-900/30 border-b border-green-200 dark:border-green-800">
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             {netCfg && (
                               <span className="text-[8px] font-black px-1.5 py-0.5 rounded-full leading-none" style={{ background: netCfg.bg, color: netCfg.fg }}>{pin.network}</span>
                             )}
+                            {amount && <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400">{amount}</span>}
+                            {!netCfg && !amount && <span className="text-[9px] font-bold text-green-700 dark:text-green-400 uppercase tracking-wider">Voucher {i + 1}</span>}
                           </div>
-                          {serial ? <span className="text-[9px] text-slate-400 font-mono">S/N: {serial}</span> : null}
+                          <button
+                            onClick={() => { try { navigator.clipboard.writeText(bare); } catch (_) {} }}
+                            className="text-[9px] font-bold text-green-600 dark:text-green-400 active:opacity-60"
+                          >
+                            Copy
+                          </button>
                         </div>
-                        <p className="font-mono font-black tracking-widest text-sm break-all text-green-600 dark:text-green-400">{code}</p>
+                        <div className="px-4 py-3 bg-white dark:bg-green-900/10">
+                          <p className="text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-0.5">PIN</p>
+                          <p className="font-mono font-black text-xl tracking-[0.2em] break-all text-green-700 dark:text-green-300 select-all leading-tight">
+                            {formatted || "—"}
+                          </p>
+                          {(serial || bare) && (
+                            <div className="flex items-center gap-4 flex-wrap mt-1.5">
+                              {serial && <span className="text-[9px] text-slate-400 dark:text-slate-500 font-mono">SN: {serial}</span>}
+                              {bare   && <span className="text-[9px] text-slate-400 dark:text-slate-500 font-mono">Dial: *311*{bare}#</span>}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     );
                   })}
@@ -1509,12 +1539,12 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
               </button>
               {fulfillResult.pinsArr?.length > 0 && (
                 <button
-                  onClick={() => generateTokenPDF({ fulfillResult, profile, businessName })}
+                  onClick={() => shareVoucherPDF(fulfillResult.pinsArr, businessName || profile?.business_name, fulfillResult.cat)}
                   className="flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform bg-transparent text-violet-700 dark:text-violet-400 border-[1.5px] border-violet-700 dark:border-violet-500">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z"/>
+                    <path d="M18 8h1a4 4 0 010 8h-1M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8zM6 1v3M10 1v3M14 1v3"/>
                   </svg>
-                  {t("bp.printPDF")}
+                  Share PDF
                 </button>
               )}
             </div>
