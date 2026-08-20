@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Android APK + AAB
 
 on:
   workflow_dispatch:
@@ -146,12 +146,13 @@ jobs:
             echo "No ANDROID_KEYSTORE_BASE64 secret — will use debug signing"
           fi
 
-      - name: Build release APK
+      - name: Build release APK + AAB
         run: |
           cd android
           BUILD_NUM=${{ github.run_number }}
-          # Inject versionCode via Gradle property; keep versionName human-readable
-          ./gradlew assembleRelease \
+          # assembleRelease → APK (sideload / direct install)
+          # bundleRelease   → AAB (required for Play Store new submissions)
+          ./gradlew assembleRelease bundleRelease \
             -PversionCode=$BUILD_NUM \
             -PversionName="1.0.$BUILD_NUM" \
             --no-daemon --stacktrace
@@ -161,17 +162,28 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ env.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ env.ANDROID_KEY_PASSWORD }}
 
-      - name: Verify APK signature
+      - name: Verify APK + AAB outputs
         run: |
           APK_PATH=$(find android/app/build/outputs/apk/release -name "*.apk" | head -1)
+          AAB_PATH=$(find android/app/build/outputs/bundle/release -name "*.aab" | head -1)
+
           echo "=== APK: $APK_PATH ==="
           $ANDROID_SDK_ROOT/build-tools/$(ls $ANDROID_SDK_ROOT/build-tools | tail -1)/apksigner verify --verbose "$APK_PATH" 2>&1 | head -10 || true
+          echo "APK size: $(du -sh "$APK_PATH" | cut -f1)"
+
           echo ""
-          echo "=== APK size ==="
-          du -sh "$APK_PATH"
+          echo "=== AAB: $AAB_PATH ==="
+          if [ -f "$AAB_PATH" ]; then
+            echo "AAB size: $(du -sh "$AAB_PATH" | cut -f1)"
+            echo "AAB present — ready for Play Store upload"
+          else
+            echo "ERROR: AAB not found at expected path"
+            exit 1
+          fi
+
           echo ""
-          if [ -n "${{ env.ANDROID_KEYSTORE_FILE }}" ]; then
-            echo "=== Signed with: RELEASE keystore (consistent across builds) ==="
+          if [ -n "$ANDROID_KEYSTORE_FILE" ]; then
+            echo "=== Signed with: RELEASE keystore ==="
           else
             echo "=== Signed with: DEBUG keystore (add ANDROID_KEYSTORE_BASE64 secret for release signing) ==="
           fi
@@ -179,6 +191,13 @@ jobs:
       - name: Upload release APK
         uses: actions/upload-artifact@v4
         with:
-          name: KudiAI-Track-${{ env.BUILD_VERSION }}-release
+          name: KudiAI-Track-${{ env.BUILD_VERSION }}-apk
           path: android/app/build/outputs/apk/release/app-release.apk
+          retention-days: 90
+
+      - name: Upload release AAB (Play Store)
+        uses: actions/upload-artifact@v4
+        with:
+          name: KudiAI-Track-${{ env.BUILD_VERSION }}-aab
+          path: android/app/build/outputs/bundle/release/app-release.aab
           retention-days: 90
