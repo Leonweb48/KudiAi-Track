@@ -401,17 +401,6 @@ export default function Auth() {
     }
   }, []);
 
-  // Countdown tick for the OTP lockout screen — wakes every minute (or when lockout expires)
-  // so the remaining-time display updates without a manual refresh.
-  useEffect(() => {
-    if (mode !== "reset_otp") return;
-    const ld = getLockoutState(email);
-    if (!ld.lockedUntil || Date.now() >= ld.lockedUntil) return;
-    const remaining = ld.lockedUntil - Date.now();
-    const timer = setTimeout(() => setResetTrigger(t => t + 1), Math.min(remaining + 100, 60000));
-    return () => clearTimeout(timer);
-  }, [mode, email, resetTrigger]);
-
   const [info,         setInfo]         = useState("");
   const [staffConfirm, setStaffConfirm] = useState(false);
 
@@ -422,6 +411,17 @@ export default function Auth() {
   const [showNewPw,        setShowNewPw]        = useState(false);
   const [showNewConfirmPw, setShowNewConfirmPw] = useState(false);
   const [resetOtpError,    setResetOtpError]    = useState("");
+
+  // Countdown tick for the OTP lockout screen — wakes every minute (or when lockout expires)
+  // so the remaining-time display updates without a manual refresh.
+  useEffect(() => {
+    if (mode !== "reset_otp") return;
+    const ld = getLockoutState(email);
+    if (!ld.lockedUntil || Date.now() >= ld.lockedUntil) return;
+    const remaining = ld.lockedUntil - Date.now();
+    const timer = setTimeout(() => setResetTrigger(t => t + 1), Math.min(remaining + 100, 60000));
+    return () => clearTimeout(timer);
+  }, [mode, email, resetTrigger]);
 
   if (!supabaseConfigured) return <SetupNotice />;
 
