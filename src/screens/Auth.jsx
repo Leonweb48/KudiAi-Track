@@ -91,11 +91,11 @@ function BgLayout({ children, center = false }) {
 }
 
 /* ── OTP verification screen — dark design matching marketer/admin ──── */
-function OtpScreen({ email, onBack, onVerified, otpType = "signup" }) {
+function OtpScreen({ email, onBack, onVerified, otpType = "signup", onSubmit, initialError = "" }) {
   const t = useT();
   const [digits, setDigits]       = useState(["", "", "", "", "", ""]);
   const [loading, setLoading]     = useState(false);
-  const [error, setError]         = useState("");
+  const [error, setError]         = useState(initialError);
   const [resent, setResent]       = useState(false);
   const [countdown, setCountdown] = useState(60);
   const inputRefs = useRef([]);
@@ -139,9 +139,14 @@ function OtpScreen({ email, onBack, onVerified, otpType = "signup" }) {
     setError("");
     setLoading(true);
     try {
-      const { error } = await supabase.auth.verifyOtp({ email, token: otp, type: otpType });
-      if (error) throw error;
-      onVerified();
+      if (onSubmit) {
+        onSubmit(otp);
+        // caller handles mode switch — no need to reset loading (component unmounts)
+      } else {
+        const { error } = await supabase.auth.verifyOtp({ email, token: otp, type: otpType });
+        if (error) throw error;
+        onVerified();
+      }
     } catch (err) {
       setError(friendlyError(err));
       setLoading(false);
@@ -314,7 +319,7 @@ function EyeIcon({ open }) {
 /* ── Main Auth screen ──────────────────────────────────────────────── */
 export default function Auth() {
   const t = useT();
-  const [mode,          setMode]         = useState("login"); // "login" | "register" | "forgot" | "otp"
+  const [mode,          setMode]         = useState("login"); // "login" | "register" | "forgot" | "otp" | "reset_otp" | "set_password"
   const [email,         setEmail]        = useState("");
   const [password,      setPass]         = useState("");
   const [confirmPass,   setConfirmPass]  = useState("");
@@ -367,6 +372,16 @@ export default function Auth() {
 
   const [info,         setInfo]         = useState("");
   const [staffConfirm, setStaffConfirm] = useState(false);
+
+  // Password reset OTP flow state
+  const [resetAttempts,    setResetAttempts]    = useState(0);
+  const [resetLockedUntil, setResetLockedUntil] = useState(null);
+  const [resetOtp,         setResetOtp]         = useState("");
+  const [newPassword,      setNewPassword]      = useState("");
+  const [newConfirmPass,   setNewConfirmPass]   = useState("");
+  const [showNewPw,        setShowNewPw]        = useState(false);
+  const [showNewConfirmPw, setShowNewConfirmPw] = useState(false);
+  const [resetOtpError,    setResetOtpError]    = useState("");
 
   if (!supabaseConfigured) return <SetupNotice />;
 
@@ -446,11 +461,13 @@ export default function Auth() {
           setMode("otp");
         }
       } else {
-        const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: window.location.origin,
-        });
+        const { error } = await supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: false } });
         if (error) throw error;
-        setInfo("Password reset link sent — check your email.");
+        setResetAttempts(0);
+        setResetLockedUntil(null);
+        setResetOtp("");
+        setResetOtpError("");
+        setMode("reset_otp");
       }
     } catch (err) {
       setError(friendlyError(err));
@@ -552,6 +569,179 @@ export default function Auth() {
     );
   }
 
+  if (mode === "reset_otp") {
+    if (resetLockedUntil && Date.now() < resetLockedUntil) {
+      const minLeft = Math.ceil((resetLockedUntil - Date.now()) / 60000);
+      return (
+        <BgLayout center>
+          <div className="text-center">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl mb-4 bg-red-100">
+              <svg width="24" height="24" fill="none" stroke="#ef4444" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+              </svg>
+            </div>
+            <h2 className="text-lg font-bold text-gray-800 mb-2">Too Many Attempts</h2>
+            <p className="text-sm text-gray-500 mb-6">
+              You entered the wrong code 3 times.<br />
+              Please wait <span className="font-semibold text-red-600">{minLeft} minute{minLeft !== 1 ? "s" : ""}</span> before trying again.
+            </p>
+            <button
+              onClick={() => { setMode("login"); setResetAttempts(0); setResetLockedUntil(null); setResetOtp(""); setResetOtpError(""); clearMessages(); }}
+              className="w-full py-3 rounded-xl text-white font-bold text-sm bg-gray-800 border-0 cursor-pointer"
+            >
+              Back to Sign In
+            </button>
+          </div>
+        </BgLayout>
+      );
+    }
+    return (
+      <OtpScreen
+        email={email}
+        otpType="email"
+        initialError={resetOtpError}
+        onBack={() => { setMode("forgot"); setResetOtp(""); setResetOtpError(""); clearMessages(); }}
+        onVerified={() => {}}
+        onSubmit={(otp) => { setResetOtp(otp); setResetOtpError(""); setMode("set_password"); }}
+      />
+    );
+  }
+
+  if (mode === "set_password") {
+    const handleSetPassword = async (e) => {
+      e.preventDefault();
+      setError("");
+      if (newPassword.length < 8) { setError("Password must be at least 8 characters."); return; }
+      if (newPassword !== newConfirmPass) { setError("Passwords do not match."); return; }
+      setLoading(true);
+      try {
+        const { error: verifyErr } = await supabase.auth.verifyOtp({ email, token: resetOtp, type: "email" });
+        if (verifyErr) {
+          const next = resetAttempts + 1;
+          setResetAttempts(next);
+          if (next >= 3) {
+            setResetLockedUntil(Date.now() + 30 * 60 * 1000);
+            setResetOtpError("");
+          } else {
+            setResetOtpError(`Incorrect code — ${3 - next} attempt${3 - next !== 1 ? "s" : ""} remaining.`);
+          }
+          setResetOtp("");
+          setMode("reset_otp");
+          setLoading(false);
+          return;
+        }
+        const { error: updateErr } = await supabase.auth.updateUser({ password: newPassword });
+        if (updateErr) throw updateErr;
+        await supabase.auth.signOut();
+        setNewPassword("");
+        setNewConfirmPass("");
+        setResetOtp("");
+        setResetAttempts(0);
+        setResetLockedUntil(null);
+        setResetOtpError("");
+        setMode("login");
+        setInfo("Password updated successfully. Please sign in with your new password.");
+      } catch (err) {
+        setError(friendlyError(err));
+        setLoading(false);
+      }
+    };
+
+    const pwStrength = getPasswordStrength(newPassword);
+
+    return (
+      <BgLayout center>
+        <div>
+          <div className="text-center mb-6">
+            <div className="inline-flex items-center justify-center w-10 h-10 rounded-2xl mb-3 bg-emerald-100">
+              <svg width="20" height="20" fill="none" stroke="#059669" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+              </svg>
+            </div>
+            <h2 className="text-xl font-bold text-gray-800">Set New Password</h2>
+            <p className="text-xs text-gray-500 mt-1">Choose a strong password for your account.</p>
+          </div>
+
+          {error && (
+            <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5">
+              {error}
+            </div>
+          )}
+
+          <form onSubmit={handleSetPassword} className="space-y-3.5">
+            <div>
+              <label className="block text-[11px] font-semibold text-gray-400 mb-1.5 uppercase tracking-wider">New Password</label>
+              <div className="relative">
+                <input
+                  type={showNewPw ? "text" : "password"} required value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Min. 8 characters" minLength={8}
+                  className="w-full border border-gray-200 rounded-xl px-4 py-3 pr-11 text-sm text-gray-900 bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+                />
+                <button type="button" onClick={() => setShowNewPw(v => !v)}
+                  className="absolute right-0 top-0 h-full w-11 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors" tabIndex={-1}>
+                  <EyeIcon open={showNewPw} />
+                </button>
+              </div>
+              {newPassword.length > 0 && pwStrength && (
+                <div className="mt-1.5 flex items-center gap-2">
+                  <div className="flex gap-0.5 flex-1">
+                    {[1,2,3,4].map(b => (
+                      <div key={b} className={`h-1 flex-1 rounded-full transition-all duration-300 ${b <= pwStrength.bars ? pwStrength.color : "bg-gray-200"}`} />
+                    ))}
+                  </div>
+                  <span className={`text-[11px] font-semibold ${pwStrength.text}`}>{pwStrength.label}</span>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-gray-400 mb-1.5 uppercase tracking-wider">Confirm Password</label>
+              <div className="relative">
+                <input
+                  type={showNewConfirmPw ? "text" : "password"} required value={newConfirmPass}
+                  onChange={(e) => setNewConfirmPass(e.target.value)}
+                  placeholder="Repeat new password" minLength={8}
+                  className={`w-full border rounded-xl px-4 py-3 pr-11 text-sm text-gray-900 bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:border-transparent transition-all ${
+                    newConfirmPass.length > 0
+                      ? newConfirmPass === newPassword ? "border-emerald-400 focus:ring-emerald-500" : "border-red-300 focus:ring-red-400"
+                      : "border-gray-200 focus:ring-emerald-500"
+                  }`}
+                />
+                <button type="button" onClick={() => setShowNewConfirmPw(v => !v)}
+                  className="absolute right-0 top-0 h-full w-11 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors" tabIndex={-1}>
+                  <EyeIcon open={showNewConfirmPw} />
+                </button>
+              </div>
+              {newConfirmPass.length > 0 && (
+                <p className={`mt-1.5 text-[11px] font-semibold ${newConfirmPass === newPassword ? "text-emerald-600" : "text-red-500"}`}>
+                  {newConfirmPass === newPassword ? "✓ Passwords match" : "✗ Passwords do not match"}
+                </p>
+              )}
+            </div>
+
+            <button type="submit" disabled={loading}
+              className="w-full py-3 rounded-xl text-white font-bold text-sm bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors border-0 cursor-pointer">
+              {loading
+                ? <span className="inline-flex items-center justify-center gap-2">
+                    <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                    Setting password…
+                  </span>
+                : "Set Password"}
+            </button>
+          </form>
+
+          <button
+            onClick={() => { setMode("login"); setNewPassword(""); setNewConfirmPass(""); setResetOtp(""); setResetAttempts(0); setResetLockedUntil(null); setResetOtpError(""); clearMessages(); }}
+            className="w-full text-center text-xs mt-4 text-gray-400 bg-transparent border-0 cursor-pointer"
+          >
+            ← Cancel — back to sign in
+          </button>
+        </div>
+      </BgLayout>
+    );
+  }
+
   const isForgot = mode === "forgot";
 
   return (
@@ -594,7 +784,7 @@ export default function Auth() {
             {t("auth.backToSignIn")}
           </button>
           <h2 className="text-lg font-bold text-gray-800 dark:text-white mt-2">{t("auth.resetPassword")}</h2>
-          <p className="text-xs text-gray-500 dark:text-slate-400">We'll send a reset link to your email.</p>
+          <p className="text-xs text-gray-500 dark:text-slate-400">We'll send a 6-digit code to your email.</p>
         </div>
       )}
 
@@ -730,7 +920,7 @@ export default function Auth() {
             ? t("auth.pleaseWait")
             : mode === "login"    ? t("auth.signIn")
             : mode === "register" ? t("auth.createAccount")
-            : t("auth.sendResetLink")}
+            : "Send Reset Code"}
         </button>
       </form>
 
