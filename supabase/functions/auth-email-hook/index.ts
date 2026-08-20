@@ -63,12 +63,13 @@ serve(async (req) => {
   try {
     const body = await req.json() as {
       user?: { id?: string; email?: string; user_metadata?: { full_name?: string } };
-      email_data?: { token?: string; email_action_type?: string };
+      email_data?: { token?: string; token_url?: string; email_action_type?: string };
     };
 
     const email      = body.user?.email || "";
     const name       = body.user?.user_metadata?.full_name || "";
     const otpToken   = body.email_data?.token || "";
+    const tokenUrl   = body.email_data?.token_url || "";
     const actionType = body.email_data?.email_action_type || "";
 
     // Verify Supabase hook JWT — log failures but never block signup
@@ -95,16 +96,23 @@ serve(async (req) => {
       event = "business_signup_otp";
     } else if (actionType === "magiclink") {
       event = "business_login_otp";
+    } else if (actionType === "recovery") {
+      event = "business_password_reset";
     }
 
-    if (event && email && otpToken) {
+    // Build event payload — OTP-based events need otp_token; recovery needs reset_url
+    const payload: Record<string, string> = { email, name };
+    if (otpToken) payload.otp_token = otpToken;
+    if (tokenUrl) payload.reset_url = tokenUrl;
+
+    if (event && email) {
       await fetch(`${ADMIN_URL}/api/public/email-trigger`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "x-trigger-secret": TRIGGER_SECRET,
         },
-        body: JSON.stringify({ event, data: { email, name, otp_token: otpToken } }),
+        body: JSON.stringify({ event, data: payload }),
       }).catch((e) => console.error("[auth-email-hook] email trigger failed:", e));
     }
 
