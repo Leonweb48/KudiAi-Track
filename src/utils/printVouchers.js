@@ -246,8 +246,8 @@ body{font-family:Arial,Helvetica,sans-serif;background:#fff;color:#111}
 <div class="bar">
   <button class="return-btn" onclick="window.close()">← Return</button>
   <div class="btn-group">
-    <button class="sh-btn" id="shBtn" onclick="shPdf()">📤 Share PDF</button>
-    <button class="dl-btn" id="dlBtn" onclick="dlPdf()">⬇️ Download PDF</button>
+    <button class="sh-btn" id="shBtn" onclick="shPdf()">📤 Share Cards</button>
+    <button class="dl-btn" id="dlBtn" onclick="dlPdf()">⬇️ Download Cards</button>
   </div>
 </div>
 <div class="grid">

@@ -330,25 +330,13 @@ export default function TransactionDetailModal({ data, onClose, onReportIssue, o
                       onClick={() => shareVoucherPDF(data.pinsArr, data.businessName, data.category)}
                       className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 active:opacity-60"
                     >
-                      📤 Share PDF
+                      📤 Share Cards
                     </button>
                     <button
                       onClick={() => openPrintVoucherCards(data.pinsArr, data.businessName, data.category)}
                       className="text-[10px] font-bold text-slate-600 dark:text-slate-300 active:opacity-60"
                     >
-                      📄 Save PDF
-                    </button>
-                    <button
-                      onClick={() => {
-                        const text = data.pinsArr.map((p, i) => {
-                          const code = p.EPIN ?? p.pin ?? p.code ?? "";
-                          return `${i + 1}. ${p.network ? `[${p.network}] ` : ""}${code}`;
-                        }).join("\n");
-                        try { navigator.clipboard.writeText(text); } catch (_) {}
-                      }}
-                      className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 active:opacity-60"
-                    >
-                      Copy All
+                      📄 Download Cards
                     </button>
                   </div>
                 </div>
@@ -367,9 +355,12 @@ export default function TransactionDetailModal({ data, onClose, onReportIssue, o
                       <div key={i} className="bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl border border-emerald-200 dark:border-emerald-700 overflow-hidden">
                         <div className="px-4 pt-3 pb-1 flex items-center justify-between">
                           <div className="flex items-center gap-2 flex-wrap">
-                            {net   && <span className="text-[9px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">{net}</span>}
+                            {(() => {
+                              const tl  = (data.category || '').toLowerCase().includes('data') ? 'Data' : 'Airtime';
+                              const lbl = net ? `${net} ${tl} PIN` : `${tl} PIN ${i + 1}`;
+                              return <span className="text-[9px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">{lbl}</span>;
+                            })()}
                             {amount && <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400">{amount}</span>}
-                            {!net && !amount && <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">Voucher #{i + 1}</span>}
                           </div>
                           <button
                             onClick={() => { try { navigator.clipboard.writeText(bare); } catch (_) {} }}
@@ -393,6 +384,27 @@ export default function TransactionDetailModal({ data, onClose, onReportIssue, o
                       </div>
                     );
                   })}
+                </div>
+                <div className="pt-2 pb-1 flex justify-end">
+                  <button
+                    onClick={() => {
+                      const tl   = (data.category || '').toLowerCase().includes('data') ? 'Data' : 'Airtime';
+                      const text = data.pinsArr.map((p, k) => {
+                        const raw  = p.EPIN ?? p.pin ?? p.code ?? "";
+                        const bare = String(raw).replace(/\s+/g, "");
+                        const cs   = [];
+                        for (let j = 0; j < bare.length; j += 4) cs.push(bare.slice(j, j + 4));
+                        const fmt  = cs.join(" ") || raw;
+                        const n    = p.network || p.mobilenetwork || "";
+                        const lbl  = n ? `${n} ${tl} PIN` : `${tl} PIN`;
+                        return `${k + 1}. ${lbl}: ${fmt}`;
+                      }).join("\n");
+                      try { navigator.clipboard.writeText(text); } catch (_) {}
+                    }}
+                    className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 active:opacity-60"
+                  >
+                    Copy All PINs
+                  </button>
                 </div>
               </div>
             )}

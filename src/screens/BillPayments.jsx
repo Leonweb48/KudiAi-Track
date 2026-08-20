@@ -1245,13 +1245,13 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
                       onClick={() => shareVoucherPDF(fulfillResult.pinsArr, businessName || profile?.business_name, fulfillResult.cat)}
                       className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 active:opacity-60 flex items-center gap-1"
                     >
-                      📤 Share PDF
+                      📤 Share Cards
                     </button>
                     <button
                       onClick={() => openPrintVoucherCards(fulfillResult.pinsArr, businessName || profile?.business_name, fulfillResult.cat)}
                       className="text-[9px] font-bold text-slate-600 dark:text-slate-300 active:opacity-60 flex items-center gap-1"
                     >
-                      📄 Save PDF
+                      📄 Download Cards
                     </button>
                   </div>
                 </div>
@@ -1269,11 +1269,14 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
                       <div key={i} className="rounded-2xl overflow-hidden border border-green-200 dark:border-green-800">
                         <div className="px-3 py-2 flex items-center justify-between bg-green-50 dark:bg-green-900/30 border-b border-green-200 dark:border-green-800">
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            {netCfg && (
-                              <span className="text-[8px] font-black px-1.5 py-0.5 rounded-full leading-none" style={{ background: netCfg.bg, color: netCfg.fg }}>{pin.network}</span>
-                            )}
+                            {(() => {
+                              const tl  = (fulfillResult.cat || '').toLowerCase().includes('data') ? 'Data' : 'Airtime';
+                              const lbl = pin.network ? `${pin.network} ${tl} PIN` : `${tl} PIN ${i + 1}`;
+                              return netCfg
+                                ? <span className="text-[8px] font-black px-1.5 py-0.5 rounded-full leading-none" style={{ background: netCfg.bg, color: netCfg.fg }}>{lbl}</span>
+                                : <span className="text-[9px] font-bold text-green-700 dark:text-green-400 uppercase tracking-wider">{lbl}</span>;
+                            })()}
                             {amount && <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400">{amount}</span>}
-                            {!netCfg && !amount && <span className="text-[9px] font-bold text-green-700 dark:text-green-400 uppercase tracking-wider">Voucher {i + 1}</span>}
                           </div>
                           <button
                             onClick={() => { try { navigator.clipboard.writeText(bare); } catch (_) {} }}
@@ -1297,6 +1300,26 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
                       </div>
                     );
                   })}
+                </div>
+                <div className="px-3 pb-3 flex justify-end">
+                  <button
+                    onClick={() => {
+                      const tl   = (fulfillResult.cat || '').toLowerCase().includes('data') ? 'Data' : 'Airtime';
+                      const text = fulfillResult.pinsArr.map((pin, k) => {
+                        const raw  = pin.EPIN ?? pin.pin ?? pin.code ?? "";
+                        const bare = String(raw).replace(/\s+/g, "");
+                        const cs   = [];
+                        for (let j = 0; j < bare.length; j += 4) cs.push(bare.slice(j, j + 4));
+                        const fmt  = cs.join(" ") || raw;
+                        const lbl  = pin.network ? `${pin.network} ${tl} PIN` : `${tl} PIN`;
+                        return `${k + 1}. ${lbl}: ${fmt}`;
+                      }).join("\n");
+                      try { navigator.clipboard.writeText(text); } catch (_) {}
+                    }}
+                    className="text-[9px] font-bold text-green-600 dark:text-green-400 active:opacity-60"
+                  >
+                    Copy All PINs
+                  </button>
                 </div>
               </div>
             )}
@@ -1367,7 +1390,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M18 8h1a4 4 0 010 8h-1M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8zM6 1v3M10 1v3M14 1v3"/>
                   </svg>
-                  Share PDF
+                  Share Cards
                 </button>
               )}
             </div>
