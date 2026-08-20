@@ -63,14 +63,23 @@ serve(async (req) => {
   try {
     const body = await req.json() as {
       user?: { id?: string; email?: string; user_metadata?: { full_name?: string } };
-      email_data?: { token?: string; token_url?: string; email_action_type?: string };
+      email_data?: {
+        token?: string;
+        token_hash?: string;
+        token_url?: string;      // only present in PKCE flow — usually empty
+        email_action_type?: string;
+        site_url?: string;
+        redirect_to?: string;
+      };
     };
 
     const email      = body.user?.email || "";
     const name       = body.user?.user_metadata?.full_name || "";
     const otpToken   = body.email_data?.token || "";
-    const tokenUrl   = body.email_data?.token_url || "";
+    const tokenHash  = body.email_data?.token_hash || "";
+    const tokenUrl   = body.email_data?.token_url || "";      // usually empty for recovery
     const actionType = body.email_data?.email_action_type || "";
+    const redirectTo = body.email_data?.redirect_to || body.email_data?.site_url || "";
 
     // Verify Supabase hook JWT — log failures but never block signup
     const hookSecret = Deno.env.get("HOOK_SECRET") ?? "";
@@ -100,10 +109,22 @@ serve(async (req) => {
       event = "business_password_reset";
     }
 
-    // Build event payload — OTP-based events need otp_token; recovery needs reset_url
+    // Build event payload
     const payload: Record<string, string> = { email, name };
     if (otpToken) payload.otp_token = otpToken;
-    if (tokenUrl) payload.reset_url = tokenUrl;
+
+    // For recovery: Supabase hook payloads don't include token_url (that's only the PKCE flow).
+    // Construct the verify URL from token_hash + SUPABASE_URL (auto-injected in edge functions).
+    if (actionType === "recovery") {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+      const resetUrl = tokenUrl
+        || (tokenHash && supabaseUrl
+          ? `${supabaseUrl}/auth/v1/verify?token=${tokenHash}&type=recovery${redirectTo ? `&redirect_to=${encodeURIComponent(redirectTo)}` : ""}`
+          : "");
+      if (resetUrl) payload.reset_url = resetUrl;
+    } else if (tokenUrl) {
+      payload.reset_url = tokenUrl;
+    }
 
     if (event && email) {
       await fetch(`${ADMIN_URL}/api/public/email-trigger`, {
