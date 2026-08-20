@@ -105,6 +105,13 @@ export function useAuth() {
 
   const resolve = useCallback(async (sess) => {
     try {
+    // Password reset in progress — don't route the new session; keep showing Auth screen.
+    // Auth.jsx sets this flag before calling signInWithOtp and clears it after signOut.
+    if (sess && sessionStorage.getItem("kuditrack_password_reset")) {
+      setSession(sess);
+      setStatus("unauthenticated");
+      return;
+    }
     if (!sess) {
       setEmailToken(null);
       setSession(null);

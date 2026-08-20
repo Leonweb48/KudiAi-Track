@@ -91,7 +91,7 @@ function BgLayout({ children, center = false }) {
 }
 
 /* ── OTP verification screen — dark design matching marketer/admin ──── */
-function OtpScreen({ email, onBack, onVerified, otpType = "signup", onSubmit, initialError = "" }) {
+function OtpScreen({ email, onBack, onVerified, otpType = "signup", onSubmit, initialError = "", onFail }) {
   const t = useT();
   const [digits, setDigits]       = useState(["", "", "", "", "", ""]);
   const [loading, setLoading]     = useState(false);
@@ -149,6 +149,7 @@ function OtpScreen({ email, onBack, onVerified, otpType = "signup", onSubmit, in
       }
     } catch (err) {
       setError(friendlyError(err));
+      onFail?.();
       setLoading(false);
     }
   };
@@ -376,7 +377,6 @@ export default function Auth() {
   // Password reset OTP flow state
   const [resetAttempts,    setResetAttempts]    = useState(0);
   const [resetLockedUntil, setResetLockedUntil] = useState(null);
-  const [resetOtp,         setResetOtp]         = useState("");
   const [newPassword,      setNewPassword]      = useState("");
   const [newConfirmPass,   setNewConfirmPass]   = useState("");
   const [showNewPw,        setShowNewPw]        = useState(false);
@@ -463,9 +463,9 @@ export default function Auth() {
       } else {
         const { error } = await supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: false } });
         if (error) throw error;
+        sessionStorage.setItem("kuditrack_password_reset", "1");
         setResetAttempts(0);
         setResetLockedUntil(null);
-        setResetOtp("");
         setResetOtpError("");
         setMode("reset_otp");
       }
@@ -586,7 +586,11 @@ export default function Auth() {
               Please wait <span className="font-semibold text-red-600">{minLeft} minute{minLeft !== 1 ? "s" : ""}</span> before trying again.
             </p>
             <button
-              onClick={() => { setMode("login"); setResetAttempts(0); setResetLockedUntil(null); setResetOtp(""); setResetOtpError(""); clearMessages(); }}
+              onClick={() => {
+                sessionStorage.removeItem("kuditrack_password_reset");
+                supabase.auth.signOut({ scope: "global" }).catch(() => {});
+                setMode("login"); setResetAttempts(0); setResetLockedUntil(null); setResetOtpError(""); clearMessages();
+              }}
               className="w-full py-3 rounded-xl text-white font-bold text-sm bg-gray-800 border-0 cursor-pointer"
             >
               Back to Sign In
@@ -600,9 +604,17 @@ export default function Auth() {
         email={email}
         otpType="email"
         initialError={resetOtpError}
-        onBack={() => { setMode("forgot"); setResetOtp(""); setResetOtpError(""); clearMessages(); }}
-        onVerified={() => {}}
-        onSubmit={(otp) => { setResetOtp(otp); setResetOtpError(""); setMode("set_password"); }}
+        onBack={() => {
+          sessionStorage.removeItem("kuditrack_password_reset");
+          supabase.auth.signOut({ scope: "global" }).catch(() => {});
+          setMode("forgot"); setResetAttempts(0); setResetLockedUntil(null); setResetOtpError(""); clearMessages();
+        }}
+        onVerified={() => { setMode("set_password"); }}
+        onFail={() => {
+          const next = resetAttempts + 1;
+          setResetAttempts(next);
+          if (next >= 3) setResetLockedUntil(Date.now() + 30 * 60 * 1000);
+        }}
       />
     );
   }
@@ -615,27 +627,15 @@ export default function Auth() {
       if (newPassword !== newConfirmPass) { setError("Passwords do not match."); return; }
       setLoading(true);
       try {
-        const { error: verifyErr } = await supabase.auth.verifyOtp({ email, token: resetOtp, type: "email" });
-        if (verifyErr) {
-          const next = resetAttempts + 1;
-          setResetAttempts(next);
-          if (next >= 3) {
-            setResetLockedUntil(Date.now() + 30 * 60 * 1000);
-            setResetOtpError("");
-          } else {
-            setResetOtpError(`Incorrect code — ${3 - next} attempt${3 - next !== 1 ? "s" : ""} remaining.`);
-          }
-          setResetOtp("");
-          setMode("reset_otp");
-          setLoading(false);
-          return;
-        }
+        // Session already established by verifyOtp on the OTP screen — just update the password.
         const { error: updateErr } = await supabase.auth.updateUser({ password: newPassword });
         if (updateErr) throw updateErr;
-        await supabase.auth.signOut();
+        // Clear flag before signOut so resolve(null) proceeds normally.
+        sessionStorage.removeItem("kuditrack_password_reset");
+        // scope:"global" revokes all sessions on all devices — user must log in fresh everywhere.
+        await supabase.auth.signOut({ scope: "global" });
         setNewPassword("");
         setNewConfirmPass("");
-        setResetOtp("");
         setResetAttempts(0);
         setResetLockedUntil(null);
         setResetOtpError("");
@@ -732,7 +732,12 @@ export default function Auth() {
           </form>
 
           <button
-            onClick={() => { setMode("login"); setNewPassword(""); setNewConfirmPass(""); setResetOtp(""); setResetAttempts(0); setResetLockedUntil(null); setResetOtpError(""); clearMessages(); }}
+            onClick={async () => {
+              sessionStorage.removeItem("kuditrack_password_reset");
+              await supabase.auth.signOut({ scope: "global" }).catch(() => {});
+              setNewPassword(""); setNewConfirmPass(""); setResetAttempts(0); setResetLockedUntil(null); setResetOtpError(""); clearMessages();
+              setMode("login");
+            }}
             className="w-full text-center text-xs mt-4 text-gray-400 bg-transparent border-0 cursor-pointer"
           >
             ← Cancel — back to sign in
