@@ -194,8 +194,6 @@ export function openPrintVoucherCards(pins, businessName, category) {
   window.__kvSH = () => shareVoucherPDF(pins, businessName, category).catch(console.error);
 
   const biz       = esc(businessName || 'My Business');
-  const isData    = category === 'print-data';
-  const typeLabel = isData ? 'Data Voucher' : 'Airtime Voucher';
 
   // Preview tab uses unprefixed class names (no app CSS to collide with)
   const cardsHtml = buildCardHtmlList(pins, businessName, category, '');
@@ -280,7 +278,7 @@ function shPdf() {
     btn.disabled = false;
   }).catch(function() { btn.textContent = '📤 Share PDF'; btn.disabled = false; });
 }
-<\/script>
+</script>
 </body>
 </html>`;
 
