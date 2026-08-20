@@ -259,7 +259,7 @@ function dlPdf() {
     btn.disabled = false;
   });
 }
-<\/script>
+</script>
 </body>
 </html>`;
 
