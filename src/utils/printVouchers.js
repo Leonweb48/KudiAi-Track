@@ -1,20 +1,49 @@
-// Generates a preview tab of voucher cards + downloads/shares a PDF via html2canvas → jsPDF.
-// PDF generation runs in the main React window (libraries loaded); the preview tab
-// calls back via window.opener.__kvDL() / window.opener.__kvSH() so no bundling is needed.
+// Voucher PDF — pure jsPDF vector drawing, no html2canvas.
+// Shares via Capacitor.Share on native; navigator.share / doc.save on web.
 // [KT/boot] — keep this comment as a regression detector for the print→PDF migration.
 
 import { Capacitor } from '@capacitor/core';
-import html2canvas from 'html2canvas';
-import { jsPDF }   from 'jspdf';
-import { savePdf } from './pdfSave';
+import { jsPDF }     from 'jspdf';
+import { savePdf }   from './pdfSave';
 
-const NET_STYLE = {
+// ── Network branding ─────────────────────────────────────────────────────────
+
+const NET_CFG = {
   MTN:       { bg: '#FFC300', fg: '#000000', care: '180' },
   Airtel:    { bg: '#EF3340', fg: '#ffffff', care: '111' },
   Glo:       { bg: '#007838', fg: '#ffffff', care: '121' },
   '9mobile': { bg: '#006B54', fg: '#ffffff', care: '200' },
 };
-const DEF_STYLE = { bg: '#333333', fg: '#ffffff', care: '—' };
+const DEF_CFG = { bg: '#333333', fg: '#ffffff', care: '' };
+
+// ── Layout constants (all in mm) ──────────────────────────────────────────────
+
+const CARD_W  = 48;    // card width
+const CARD_H  = 15;    // card height
+const STRIP_H = 4;     // network colour strip at top of card
+const COLS    = 4;     // cards per row
+const COL_GAP = 2.5;   // horizontal gap between cards
+const ROW_GAP = 2;     // vertical gap between rows
+const MARGIN_Y = 10;   // top/bottom page margin
+
+// Centre the 4-column grid on A4 (210 mm wide).
+// 4×48 + 3×2.5 = 199.5 mm of content → (210−199.5)/2 ≈ 5.25 mm side margins.
+const MARGIN_X = (210 - COLS * CARD_W - (COLS - 1) * COL_GAP) / 2;
+
+// How many complete card rows fit on one A4 page (297 mm).
+const ROWS_PER_PAGE = Math.floor(
+  (297 - 2 * MARGIN_Y + ROW_GAP) / (CARD_H + ROW_GAP)
+);
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function hexRgb(hex) {
+  return {
+    r: parseInt(hex.slice(1, 3), 16),
+    g: parseInt(hex.slice(3, 5), 16),
+    b: parseInt(hex.slice(5, 7), 16),
+  };
+}
 
 function fmtPin(raw) {
   const s = String(raw || '').replace(/\s+/g, '');
@@ -33,279 +62,125 @@ function fmtDate(d) {
   } catch { return String(d); }
 }
 
-function esc(s) {
-  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
+// ── PDF card builder ──────────────────────────────────────────────────────────
 
-// ── Shared card HTML builder ──────────────────────────────────────────────────
-// prefix = 'kv' for the PDF DOM container (avoids collisions with app CSS),
-//        = ''   for the preview tab (no app CSS present).
+function buildVoucherPdf(pins, businessName) {
+  const doc  = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+  const biz  = String(businessName || 'My Business');
+  const date = new Date().toISOString().slice(0, 10);
+  let   page = 0;
 
-function buildCardHtmlList(pins, businessName, category, prefix) {
-  const p       = prefix ? `${prefix}-` : '';
-  const isData  = category === 'print-data';
-  const typeLbl = isData ? 'Data Voucher' : 'Airtime Voucher';
-  const biz     = esc(businessName || 'My Business');
+  pins.forEach((pin, idx) => {
+    const col     = idx % COLS;
+    const absRow  = Math.floor(idx / COLS);
+    const pageNum = Math.floor(absRow / ROWS_PER_PAGE);
+    const pageRow = absRow % ROWS_PER_PAGE;
 
-  return pins.map(pin => {
-    const rawPin = String(pin.EPIN ?? pin.pin ?? pin.code ?? '');
+    if (pageNum > page) { doc.addPage(); page = pageNum; }
+
+    const x = MARGIN_X + col * (CARD_W + COL_GAP);
+    const y = MARGIN_Y + pageRow * (CARD_H + ROW_GAP);
+
     const net    = pin.network || pin.mobilenetwork || '';
-    const amount = pin.amount ? `₦${Number(pin.amount).toLocaleString('en-NG')}` : '';
+    const cfg    = NET_CFG[net] || DEF_CFG;
+    const raw    = String(pin.EPIN ?? pin.pin ?? pin.code ?? '');
+    const bare   = raw.replace(/\s+/g, '');
+    const fmted  = fmtPin(raw);
     const serial = pin.sno || pin.serial || pin.batchno || '';
-    const date   = fmtDate(pin.transactiondate);
-    const cfg    = NET_STYLE[net] || DEF_STYLE;
-    const cls    = prefix || 'card';
+    const dated  = fmtDate(pin.transactiondate);
+    const amount = pin.amount
+      ? `N${Number(pin.amount).toLocaleString('en-NG')}`
+      : '';
 
-    return `<div class="${cls}">
-  <div class="${cls}-top" style="background:${cfg.bg};color:${cfg.fg}">
-    <span class="${p}biz">${biz}</span>
-    <span class="${p}net">${esc(net) || 'Voucher'}</span>
-  </div>
-  <div class="${cls}-mid">
-    <div class="${p}type">${typeLbl}${amount ? ' · ' + esc(amount) : ''}</div>
-    <div class="${p}pin-wrap">
-      <div class="${p}pin-lbl">&#128273; PIN</div>
-      <div class="${p}pin">${esc(fmtPin(rawPin))}</div>
-    </div>
-    ${serial ? `<div class="${p}meta">SN:&nbsp;${esc(serial)}</div>` : ''}
-    ${date   ? `<div class="${p}meta">${esc(date)}</div>`            : ''}
-  </div>
-  <div class="${cls}-bot">
-    <div class="${p}load">Recharge:&nbsp;<strong>*311*${esc(rawPin)}#</strong></div>
-    <div class="${p}care">Customer Care:&nbsp;<strong>${cfg.care}</strong></div>
-    <div class="${p}gen">Generated via KudiAI Track App&nbsp;&nbsp;|&nbsp;&nbsp;Amaya &amp; Co. Technologies</div>
-  </div>
-</div>`;
-  }).join('\n');
+    // ── Dashed border ────────────────────────────────────────────────────────
+    doc.setDrawColor(160, 160, 160);
+    doc.setLineWidth(0.15);
+    doc.setLineDash([1, 1], 0);
+    doc.rect(x, y, CARD_W, CARD_H, 'S');
+    doc.setLineDash([], 0);
+
+    // ── Network colour strip (top STRIP_H mm) ────────────────────────────────
+    const { r: bgR, g: bgG, b: bgB } = hexRgb(cfg.bg);
+    doc.setFillColor(bgR, bgG, bgB);
+    doc.rect(x, y, CARD_W, STRIP_H, 'F');
+
+    // Line 1 — business name (left) + network + denomination (right), 5 pt bold
+    const { r: fgR, g: fgG, b: fgB } = hexRgb(cfg.fg);
+    doc.setTextColor(fgR, fgG, fgB);
+    doc.setFontSize(5);
+    doc.setFont('helvetica', 'bold');
+    const stripMid = y + STRIP_H / 2;
+    doc.text(biz, x + 0.8, stripMid, { baseline: 'middle', maxWidth: CARD_W * 0.55 });
+    const rightLbl = [net, amount].filter(Boolean).join(' ');
+    if (rightLbl) {
+      doc.text(rightLbl, x + CARD_W - 0.8, stripMid, { baseline: 'middle', align: 'right' });
+    }
+
+    // ── Card body ────────────────────────────────────────────────────────────
+    const bY = y + STRIP_H; // body top
+
+    // Line 2 — PIN, 7 pt bold Courier (monospace)
+    doc.setTextColor(30, 30, 30);
+    doc.setFontSize(7);
+    doc.setFont('courier', 'bold');
+    doc.text(fmted || bare || '—', x + 0.8, bY + 2.5, { baseline: 'middle' });
+
+    // Line 3 — serial + date, 4 pt
+    doc.setFontSize(4);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100, 100, 100);
+    const line3 = [serial ? `SN:${serial}` : '', dated].filter(Boolean).join('  ');
+    if (line3) {
+      doc.text(line3, x + 0.8, bY + 5.2, { baseline: 'middle', maxWidth: CARD_W - 1.6 });
+    }
+
+    // Line 4 — dial code (left) + care number (right), 4 pt
+    doc.setTextColor(80, 80, 80);
+    if (bare) {
+      doc.text(`*311*${bare}#`, x + 0.8, bY + 7.5, { baseline: 'middle' });
+    }
+    if (cfg.care) {
+      doc.text(`Care: ${cfg.care}`, x + CARD_W - 0.8, bY + 7.5, { baseline: 'middle', align: 'right' });
+    }
+  });
+
+  const net0     = (pins[0]?.network || 'voucher').toLowerCase().replace(/\s+/g, '-');
+  const filename = `vouchers-${net0}-${date}.pdf`;
+  return { doc, filename };
 }
 
-// ── Shared card CSS ───────────────────────────────────────────────────────────
-// prefix = 'kv' for PDF container, '' for preview tab
+// ── Internal: generate + save/share ──────────────────────────────────────────
 
-function cardCss(prefix) {
-  const p   = prefix ? `${prefix}-` : '';
-  const cls = prefix || 'card';
-  return `
-*{box-sizing:border-box;margin:0;padding:0}
-.${prefix || 'grid'}{display:flex;flex-wrap:wrap}
-.${cls}{width:85mm;height:25mm;margin:2mm 2.5mm;border:1.5px dashed #999;border-radius:3px;overflow:hidden;display:flex;flex-direction:column}
-.${cls}-top{display:flex;align-items:center;justify-content:space-between;padding:2px 6px;gap:4px;flex-shrink:0}
-.${p}biz{font-size:6px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:68%}
-.${p}net{font-size:9px;font-weight:900;letter-spacing:.5px;white-space:nowrap}
-.${cls}-mid{padding:2px 6px;flex:1;overflow:hidden}
-.${p}type{font-size:6px;color:#555;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;font-weight:600}
-.${p}pin-wrap{background:#fffde7;border:1px solid #f0d060;border-radius:2px;padding:2px 5px;margin:1px 0 2px}
-.${p}pin-lbl{font-size:6px;color:#8a6800;text-transform:uppercase;letter-spacing:.5px;font-weight:800;margin-bottom:1px}
-.${p}pin{font-size:13px;font-weight:900;font-family:'Courier New',monospace;letter-spacing:2px;word-break:break-all;color:#1a1a1a;line-height:1}
-.${p}meta{font-size:5px;color:#666;margin-bottom:1px;line-height:1.2}
-.${cls}-bot{padding:2px 6px;background:#f6f6f6;border-top:1px solid #e5e5e5;flex-shrink:0}
-.${p}load{font-size:6px;margin-bottom:1px}
-.${p}care{font-size:6px;margin-bottom:1px}
-.${p}gen{font-size:5px;color:#bbb;margin-top:1px}`;
+async function generateVoucherPDF(pins, businessName) {
+  const { doc, filename } = buildVoucherPdf(pins, businessName);
+  await savePdf(doc, filename);
 }
 
-// ── Build the DOM container used by html2canvas ───────────────────────────────
+// ── Public API ────────────────────────────────────────────────────────────────
 
-function buildVoucherContainer(pins, businessName, category) {
-  const network  = (pins[0]?.network || pins[0]?.mobilenetwork || 'voucher').toLowerCase().replace(/\s+/g, '-');
-  const dateStr  = new Date().toISOString().slice(0, 10);
-  const filename = `vouchers-${network}-${dateStr}.pdf`;
-
-  const cardsHtml = buildCardHtmlList(pins, businessName, category, 'kv');
-
-  const container = document.createElement('div');
-  container.style.cssText = [
-    'position:fixed', 'top:-9999px', 'left:-9999px',
-    'width:210mm', 'background:#ffffff',
-    'padding:8mm', 'box-sizing:border-box',
-    'font-family:Arial,Helvetica,sans-serif',
-  ].join(';');
-
-  container.innerHTML = `<style>${cardCss('kv')}</style>
-<div class="kv">${cardsHtml}</div>`;
-
-  return { container, filename };
-}
-
-// ── Render jsPDF from DOM container ──────────────────────────────────────────
-
-async function renderPdfFromContainer(container) {
-  document.body.appendChild(container);
-  await new Promise(r => setTimeout(r, 150));
-  const SCALE = 3;
-  try {
-    const canvas  = await html2canvas(container, {
-      scale: SCALE, useCORS: true, allowTaint: false,
-      backgroundColor: '#ffffff', logging: false,
-      windowWidth:  container.scrollWidth,
-      windowHeight: container.scrollHeight,
-    });
-    const imgData = canvas.toDataURL('image/png');
-    const mmW     = (canvas.width  / SCALE) * (25.4 / 96);
-    const mmH     = (canvas.height / SCALE) * (25.4 / 96);
-    const pdf     = new jsPDF({ orientation: 'p', unit: 'mm', format: [mmW, mmH] });
-    pdf.addImage(imgData, 'PNG', 0, 0, mmW, mmH);
-    return pdf;
-  } finally {
-    document.body.removeChild(container);
-  }
-}
-
-// ── Download PDF ──────────────────────────────────────────────────────────────
-
-async function generateVoucherPDF(pins, businessName, category) {
-  const { container, filename } = buildVoucherContainer(pins, businessName, category);
-  const pdf = await renderPdfFromContainer(container);
-  await savePdf(pdf, filename);
-}
-
-// ── Generate PDF blob (used by share) ────────────────────────────────────────
-
-async function generateVoucherBlob(pins, businessName, category) {
-  const { container, filename } = buildVoucherContainer(pins, businessName, category);
-  const pdf = await renderPdfFromContainer(container);
-  return { blob: pdf.output('blob'), filename };
-}
-
-// ── Share PDF via Web Share API (falls back to download on unsupported) ───────
-
-export async function shareVoucherPDF(pins, businessName, category) {
+// category kept in signature for call-site compatibility; not used in PDF layout.
+export async function shareVoucherPDF(pins, businessName, category) { // eslint-disable-line no-unused-vars
   if (!pins?.length) return;
 
-  // On native Capacitor: savePdf (called by generateVoucherPDF) uses
-  // Capacitor.Share with a real file URI — more reliable than navigator.share
-  // with a blob, which silently fails inside a WebView context.
+  // On native Capacitor: savePdf writes to cache then opens Capacitor.Share
+  // (real file URI → Android share sheet). navigator.share with a blob is
+  // unreliable inside a WebView.
   if (Capacitor.isNativePlatform()) {
-    await generateVoucherPDF(pins, businessName, category);
+    await generateVoucherPDF(pins, businessName);
     return;
   }
 
+  // Web: try navigator.share with the PDF blob, fall back to doc.save().
+  const { doc, filename } = buildVoucherPdf(pins, businessName);
   try {
-    const { blob, filename } = await generateVoucherBlob(pins, businessName, category);
+    const blob = doc.output('blob');
     const file = new File([blob], filename, { type: 'application/pdf' });
     if (typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] })) {
       await navigator.share({ files: [file], title: filename });
       return;
     }
   } catch (e) {
-    if (e?.name === 'AbortError') return; // user cancelled share sheet — do not fall through
+    if (e?.name === 'AbortError') return;
   }
-  // Web fallback: browser download
-  await generateVoucherPDF(pins, businessName, category);
-}
-
-// ── Preview tab ───────────────────────────────────────────────────────────────
-
-export function openPrintVoucherCards(pins, businessName, category) {
-  if (!pins?.length) return;
-
-  // On native Capacitor: window.open creates a tab that breaks the
-  // window.opener callback chain, and the Capacitor Share sheet would
-  // appear behind the preview tab (invisible). Skip the preview; go
-  // straight to the native share sheet via savePdf.
-  if (Capacitor.isNativePlatform()) {
-    generateVoucherPDF(pins, businessName, category).catch(console.error);
-    return;
-  }
-
-  // Web: expose callbacks WITHOUT .catch so real errors propagate to the
-  // preview tab's own error handler ("Error — retry"), not a fake "✓ Downloaded".
-  window.__kvDL = () => generateVoucherPDF(pins, businessName, category);
-  window.__kvSH = () => shareVoucherPDF(pins, businessName, category);
-
-  const biz       = esc(businessName || 'My Business');
-
-  // Preview tab uses unprefixed class names (no app CSS to collide with)
-  const cardsHtml = buildCardHtmlList(pins, businessName, category, '');
-
-  // Preview CSS: same visual rules but for screen (wider cards)
-  const screenCss = `
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:Arial,Helvetica,sans-serif;background:#fff;color:#111}
-.bar{display:flex;align-items:center;gap:10px;padding:12px 16px;background:#f4f4f4;border-bottom:1px solid #ddd;flex-wrap:wrap}
-.return-btn{padding:8px 18px;background:#fff;color:#444;border:1.5px solid #ccc;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer}
-.return-btn:hover{background:#efefef}
-.btn-group{margin-left:auto;display:flex;align-items:center;gap:8px}
-.sh-btn{padding:9px 24px;background:#6366f1;color:#fff;border:none;border-radius:6px;font-size:14px;font-weight:700;cursor:pointer;letter-spacing:.3px}
-.sh-btn:hover{background:#4f46e5}
-.sh-btn:disabled{opacity:.55;cursor:not-allowed}
-.dl-btn{padding:9px 24px;background:#3DA829;color:#fff;border:none;border-radius:6px;font-size:14px;font-weight:700;cursor:pointer;letter-spacing:.3px}
-.dl-btn:hover{background:#2e8020}
-.dl-btn:disabled{opacity:.55;cursor:not-allowed}
-.grid{display:flex;flex-wrap:wrap;padding:4mm 3mm}
-.card{width:48%;margin:1%;border:1.5px dashed #999;border-radius:3px;overflow:hidden;display:flex;flex-direction:column;page-break-inside:avoid;break-inside:avoid}
-.card-top{display:flex;align-items:center;justify-content:space-between;padding:2px 6px;gap:4px}
-.biz{font-size:6px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:68%}
-.net{font-size:9px;font-weight:900;letter-spacing:.5px;white-space:nowrap}
-.card-mid{padding:2px 6px;flex:1}
-.type{font-size:6px;color:#555;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;font-weight:600}
-.pin-wrap{background:#fffde7;border:1px solid #f0d060;border-radius:2px;padding:2px 5px;margin:1px 0 2px}
-.pin-lbl{font-size:6px;color:#8a6800;text-transform:uppercase;letter-spacing:.5px;font-weight:800;margin-bottom:1px}
-.pin{font-size:13px;font-weight:900;font-family:'Courier New',monospace;letter-spacing:2px;word-break:break-all;color:#1a1a1a;line-height:1}
-.meta{font-size:5px;color:#666;margin-bottom:1px;line-height:1.2}
-.card-bot{padding:2px 6px;background:#f6f6f6;border-top:1px solid #e5e5e5}
-.load{font-size:6px;margin-bottom:1px}
-.care{font-size:6px;margin-bottom:1px}
-.gen{font-size:5px;color:#bbb;margin-top:1px}
-@media print{
-  .bar{display:none}
-  .grid{padding:4mm 3mm}
-  .card{width:85mm;height:25mm;margin:2mm 2.5mm;box-sizing:border-box;overflow:hidden;border-color:#bbb}
-}
-@page{size:A4 portrait;margin:8mm}`;
-
-  const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${biz} — Voucher Cards</title>
-<style>${screenCss}</style>
-</head>
-<body>
-<div class="bar">
-  <button class="return-btn" onclick="window.close()">← Return</button>
-  <div class="btn-group">
-    <button class="sh-btn" id="shBtn" onclick="shPdf()">📤 Share Cards</button>
-    <button class="dl-btn" id="dlBtn" onclick="dlPdf()">⬇️ Download Cards</button>
-  </div>
-</div>
-<div class="grid">
-${cardsHtml}
-</div>
-<script>
-function dlPdf() {
-  if (!window.opener || !window.opener.__kvDL) {
-    alert('The main window has been closed. Please close this tab and tap Download again.');
-    return;
-  }
-  var btn = document.getElementById('dlBtn');
-  btn.textContent = 'Generating…'; btn.disabled = true;
-  window.opener.__kvDL().then(function() {
-    btn.textContent = '✓ Downloaded';
-    setTimeout(function() { btn.textContent = '⬇️ Download PDF'; btn.disabled = false; }, 2500);
-  }).catch(function() { btn.textContent = 'Error — retry'; btn.disabled = false; });
-}
-function shPdf() {
-  if (!window.opener || !window.opener.__kvSH) {
-    alert('The main window has been closed. Please close this tab and tap Share again.');
-    return;
-  }
-  var btn = document.getElementById('shBtn');
-  btn.textContent = 'Generating…'; btn.disabled = true;
-  window.opener.__kvSH().then(function() {
-    btn.textContent = '📤 Share PDF';
-    btn.disabled = false;
-  }).catch(function() { btn.textContent = '📤 Share PDF'; btn.disabled = false; });
-}
-</script>
-</body>
-</html>`;
-
-  const w = window.open('about:blank', '_blank');
-  if (w) {
-    w.document.open();
-    w.document.write(html);
-    w.document.close();
-  }
+  doc.save(filename);
 }

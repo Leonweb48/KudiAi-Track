@@ -27,7 +27,7 @@ import { captureReceiptCanvas } from "../utils/captureReceipt";
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
 import { getProviderLogo, getProviderBadge } from "../utils/logoMap";
-import { openPrintVoucherCards, shareVoucherPDF } from "../utils/printVouchers";
+import { shareVoucherPDF } from "../utils/printVouchers";
 
 /* ─── Service catalogue ───────────────────────────────────────────────────── */
 
@@ -1246,12 +1246,6 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
                       className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 active:opacity-60 flex items-center gap-1"
                     >
                       📤 Share Cards
-                    </button>
-                    <button
-                      onClick={() => openPrintVoucherCards(fulfillResult.pinsArr, businessName || profile?.business_name, fulfillResult.cat)}
-                      className="text-[9px] font-bold text-slate-600 dark:text-slate-300 active:opacity-60 flex items-center gap-1"
-                    >
-                      📄 Download Cards
                     </button>
                   </div>
                 </div>

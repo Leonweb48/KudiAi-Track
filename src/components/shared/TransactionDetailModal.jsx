@@ -19,7 +19,7 @@ import { savePdf } from "../../utils/pdfSave";
 import { captureReceiptCanvas } from "../../utils/captureReceipt";
 import { ReceiptCard } from "./ReceiptCard";
 import SupportTicketModal from "./SupportTicketModal";
-import { openPrintVoucherCards, shareVoucherPDF } from "../../utils/printVouchers";
+import { shareVoucherPDF } from "../../utils/printVouchers";
 
 const GREEN = '#3da829';
 
@@ -331,12 +331,6 @@ export default function TransactionDetailModal({ data, onClose, onReportIssue, o
                       className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 active:opacity-60"
                     >
                       📤 Share Cards
-                    </button>
-                    <button
-                      onClick={() => openPrintVoucherCards(data.pinsArr, data.businessName, data.category)}
-                      className="text-[10px] font-bold text-slate-600 dark:text-slate-300 active:opacity-60"
-                    >
-                      📄 Download Cards
                     </button>
                   </div>
                 </div>
