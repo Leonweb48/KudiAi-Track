@@ -4,12 +4,37 @@ import { useStore }          from "./hooks/useStore";
 import { useAuth }           from "./hooks/useAuth";
 import { ToastProvider }     from "./components/Toast";
 import { usePushNotifications } from "./hooks/usePushNotifications";
+import { useInventory }      from "./hooks/useInventory";
+import { useInvoices }       from "./hooks/useInvoices";
+import { usePinLock }        from "./hooks/usePinLock";
+import { useLoyalty }        from "./hooks/useLoyalty";
+import { useBranches }       from "./hooks/useBranches";
+import { usePermissions }    from "./hooks/usePermissions";
+import { useNotifications }  from "./hooks/useNotifications";
+import { useConsent }        from "./hooks/useConsent";
+import { usePlatformConfig } from "./hooks/usePlatformConfig";
+import { unlockAudio }       from "./utils/tts";
+import { canDo }             from "./utils/plans";
+import {
+  isPaidPlan, isPaidCompliant, getMissingPaidFields, getPaidGraceInfo,
+  recordPaidSince, clearPaidSince,
+  isComplianceIntroShown, markComplianceIntroShown,
+  isFeatureLocked,
+} from "./utils/paidCompliance";
+import { buildContext }      from "./utils/buildContext";
+import { hasChosenLang, setLang, markLangChosen } from "./utils/i18n";
+import { useLanguage as useLangCtx } from "./contexts/LanguageContext";
+import { Browser }           from "@capacitor/browser";
+import { StatusBar, Style }  from "@capacitor/status-bar";
+import { Capacitor }         from "@capacitor/core";
+import { App as CapApp }     from "@capacitor/app";
 import SyncBar               from "./components/SyncBar";
 import BottomNav             from "./components/BottomNav";
 import AppLogo               from "./components/AppLogo";
 import NotificationCenter    from "./components/NotificationCenter";
 import VoiceModal            from "./components/VoiceModal";
 import DailyVoice            from "./components/DailyVoice";
+import MoreSheet             from "./components/MoreSheet";
 // ── Eager imports (needed on first render for all users) ──────────────────────
 import Home                  from "./screens/Home";
 import Auth                  from "./screens/Auth";
@@ -17,8 +42,8 @@ import Onboarding            from "./screens/Onboarding";
 import SubscriptionPlan      from "./screens/SubscriptionPlan";
 import LockScreen            from "./components/LockScreen";
 import PinSetupFlow          from "./components/PinSetupFlow";
-import ConsentModal         from "./components/ConsentModal";
-import OfflineScreen        from "./screens/OfflineScreen";
+import ConsentModal          from "./components/ConsentModal";
+import OfflineScreen         from "./screens/OfflineScreen";
 import PaymentReturn         from "./screens/PaymentReturn";
 // ── Lazy imports — split into separate chunks, loaded on first use ────────────
 // Heavy screen chunks (jsPDF + html2canvas live in Reports; AI SDK in AIAssistant)
@@ -55,28 +80,11 @@ const CoopList              = lazy(() => import("./screens/CoopList"));
 const CoopDashboard         = lazy(() => import("./screens/CoopDashboard"));
 const CoopComingSoon        = lazy(() => import("./screens/CoopComingSoon"));
 // CoopMemberPortal has named exports — resolve each from the same shared chunk
-const CoopMemberPortal    = lazy(() => import("./screens/CoopMemberPortal").then(m => ({ default: m.default })));
+const CoopMemberPortal      = lazy(() => import("./screens/CoopMemberPortal").then(m => ({ default: m.default })));
 const CoopMemberFirstLogin  = lazy(() => import("./screens/CoopMemberPortal").then(m => ({ default: m.CoopMemberFirstLogin })));
 const OrgMemberArchivedScreen = lazy(() => import("./screens/CoopMemberPortal").then(m => ({ default: m.OrgMemberArchivedScreen })));
 const AIChatWidget          = lazy(() => import("./components/AIChatWidget"));
 const LanguageSelector      = lazy(() => import("./screens/LanguageSelector"));
-import { useInventory }      from "./hooks/useInventory";
-import { useInvoices }      from "./hooks/useInvoices";
-import { usePinLock }        from "./hooks/usePinLock";
-import { useLoyalty }        from "./hooks/useLoyalty";
-import { useBranches }       from "./hooks/useBranches";
-import { usePermissions }    from "./hooks/usePermissions";
-import { useNotifications }  from "./hooks/useNotifications";
-import { canDo }             from "./utils/plans";
-import {
-  isPaidPlan, isPaidCompliant, getMissingPaidFields, getPaidGraceInfo,
-  recordPaidSince, clearPaidSince,
-  isComplianceIntroShown, markComplianceIntroShown,
-  isFeatureLocked,
-} from "./utils/paidCompliance";
-import { buildContext }      from "./utils/buildContext";
-import { hasChosenLang, setLang, markLangChosen } from "./utils/i18n";
-import { useLanguage as useLangCtx } from "./contexts/LanguageContext";
 
 function Spinner() {
   return (
