@@ -355,6 +355,37 @@ export default function App() {
     return () => { sub.then(s => s.remove()); };
   }, [navigate]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // appUrlOpen: fires when Android delivers a URL to the APK via App Links
+  // (https://kudiai.app/payment-return) or the custom-scheme intent button
+  // in PaymentReturn.jsx (com.amayatechnologies.kuditrack://payment-callback).
+  // Translates either URL into the paymentCallback custom event consumed by
+  // the BillPayments bill-verification flow.
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    let listener;
+    CapApp.addListener("appUrlOpen", ({ url }) => {
+      try {
+        const u = new URL(url);
+        const isPaymentReturn =
+          u.pathname === "/payment-return" ||
+          u.pathname === "/app/payment-callback" ||
+          u.pathname === "/payment-callback";
+        if (!isPaymentReturn) return;
+        const bill_ref = u.searchParams.get("bill_ref") || "";
+        const ref      = u.searchParams.get("reference") || u.searchParams.get("trxref") || "";
+        const qs = new URLSearchParams();
+        if (bill_ref) qs.set("bill_ref", bill_ref);
+        if (ref)      qs.set("reference", ref);
+        window.dispatchEvent(
+          new CustomEvent("paymentCallback", {
+            detail: { url: `com.amayatechnologies.kuditrack://payment-callback?${qs}` },
+          }),
+        );
+      } catch { /* malformed URL — ignore */ }
+    }).then(l => { listener = l; });
+    return () => { listener?.remove?.(); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const triggerQuickAction = (targetTab, type = null, category = null) => {
     setTab(targetTab);
     setAutoAdd({ tab: targetTab, type, category });
