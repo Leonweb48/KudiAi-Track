@@ -54,12 +54,17 @@ async function webauthnVerify(credId) {
 
 async function invoke(action, params = {}) {
   if (!supabase) throw new Error("Supabase not configured");
-  const { data, error } = await supabase.functions.invoke("pin-manager", {
-    body: { action, ...params },
-  });
-  // Network/deployment-level error (function unreachable, CORS, etc.)
+  // Race against an 8-second hard timeout. On Android WebView or flaky networks,
+  // fetch() can stall indefinitely without throwing — this prevents the spinner
+  // from hanging forever and ensures the retry/offline-hash path is always reached.
+  const timeout = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error("pin-manager timed out")), 8000)
+  );
+  const { data, error } = await Promise.race([
+    supabase.functions.invoke("pin-manager", { body: { action, ...params } }),
+    timeout,
+  ]);
   if (error) throw new Error(error.message);
-  // Application-level error — edge function always returns 200; errors are in the body
   if (data?.error) throw new Error(data.error);
   return { data };
 }
@@ -114,8 +119,10 @@ export function usePinLock(userId) {
       // Do NOT set locked=false here — fail CLOSED on every attempt.
       // Only resolve the locked state after all retries are exhausted so we never
       // flash the portal open while a retry is in flight.
-      if (retryCount < 4) {
-        setTimeout(() => refetch(retryCount + 1), 2000 * Math.pow(2, retryCount));
+      // Schedule: 1 s → 2 s → 4 s (total ≤7 s) vs the old 30 s exponential waterfall.
+      const RETRY_DELAYS = [1000, 2000, 4000];
+      if (retryCount < RETRY_DELAYS.length) {
+        setTimeout(() => refetch(retryCount + 1), RETRY_DELAYS[retryCount]);
       } else {
         // All retries exhausted. Determine locked state from local evidence.
         if (userId) {

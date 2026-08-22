@@ -454,14 +454,27 @@ export function useAuth() {
       return;
     }
 
-    // ── Admin fallback: check admin_users by user_id ─────────────────
-    // Catches super_admin even when account_type metadata is missing/wrong.
-    const { data: adminFallback } = await supabase
-      .from("admin_users")
-      .select("id, username, role, can_create_admins")
-      .eq("user_id", uid)
-      .eq("is_active", true)
-      .maybeSingle();
+    // ── Parallel fallback checks (business owners) ───────────────────
+    // Run admin check, org portal check, and profile check simultaneously.
+    // For typical business owners (no accountType) all three fire at once;
+    // for portal types the early-return branches above have already exited.
+    const [
+      { data: adminFallback },
+      { data: orgPreCheck },
+      { data: profileData, error: profileError },
+    ] = await Promise.all([
+      supabase.from("admin_users")
+        .select("id, username, role, can_create_admins")
+        .eq("user_id", uid).eq("is_active", true).maybeSingle(),
+      (!accountType || accountType === "organisation")
+        ? supabase.rpc("get_my_org")
+        : Promise.resolve({ data: null }),
+      supabase.from("profiles")
+        .select("id, business_name")
+        .eq("id", uid).maybeSingle(),
+    ]);
+
+    // Admin fallback: catches super_admin when metadata is missing/wrong.
     if (adminFallback) {
       setAdminUser(adminFallback);
       subVerified.current = true;
@@ -469,49 +482,33 @@ export function useAuth() {
       return;
     }
 
-    // ── Org portal fallback (before profile check) ────────────────────
-    // Catches org portal users even if account_type metadata is missing
-    // OR if they somehow have a profiles row (which would skip the block below).
-    // get_my_org() is a SECURITY DEFINER fn — returns null for non-org users.
-    if (!accountType || accountType === "organisation") {
-      const { data: orgPreCheck } = await supabase.rpc("get_my_org");
-      if (orgPreCheck) {
-        if (orgPreCheck.status !== "active") {
-          const msg = "Your organisation account is not active. Please contact the business that set up your portal.";
-          sessionStorage.setItem("auth_block_reason", msg);
-          window.dispatchEvent(new CustomEvent("kuditrack_auth_error", { detail: msg }));
-          await supabase.auth.signOut();
-          setStatus("unauthenticated");
-          return;
-        }
-        setOrg(orgPreCheck);
-        subVerified.current = true;
-        logPlatformSession(supabase, uid, "organisation", orgPreCheck.name, email);
-        const emailVerified = sess.user.user_metadata?.email_verified !== false;
-        if (!emailVerified) { setStatus("org_otp"); } else if (mustChange) { setStatus("org_setup"); } else { setStatus("organisation"); }
+    // Org portal fallback: catches org users whose account_type metadata was lost.
+    if (orgPreCheck) {
+      if (orgPreCheck.status !== "active") {
+        const msg = "Your organisation account is not active. Please contact the business that set up your portal.";
+        sessionStorage.setItem("auth_block_reason", msg);
+        window.dispatchEvent(new CustomEvent("kuditrack_auth_error", { detail: msg }));
+        await supabase.auth.signOut();
+        setStatus("unauthenticated");
         return;
       }
+      setOrg(orgPreCheck);
+      subVerified.current = true;
+      logPlatformSession(supabase, uid, "organisation", orgPreCheck.name, email);
+      const emailVerified = sess.user.user_metadata?.email_verified !== false;
+      if (!emailVerified) { setStatus("org_otp"); } else if (mustChange) { setStatus("org_setup"); } else { setStatus("organisation"); }
+      return;
     }
 
-    // ── Onboarding check (business owners) ───────────────────────────
-    let { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("id, business_name")
-      .eq("id", uid)
-      .maybeSingle();
-
+    // Profile check result — apply the same retry / offline-cache logic as before.
+    let profile = profileData;
     if (profileError && !profile) {
-      // Network error — retry up to 3 times (3 s, 6 s, 9 s) before giving up.
-      // Prevents a transient failure from falsely sending a user with an existing
-      // profile into the onboarding / "create profile" flow.
       if (isNetErr(profileError) && profileRetryRef.current < 3) {
         profileRetryRef.current++;
         setTimeout(() => resolve(sess), 3000 * profileRetryRef.current);
         return;
       }
       profileRetryRef.current = 0;
-      // After retries (or non-network error): check local profile cache so an
-      // offline business owner is never dumped into onboarding.
       if (isNetErr(profileError)) {
         try {
           const cp = JSON.parse(localStorage.getItem(PROFILE_CACHE_KEY) || "null");
@@ -520,8 +517,7 @@ export function useAuth() {
         if (!profile) { setStatus("offline"); return; }
       }
     } else {
-      profileRetryRef.current = 0; // Reset on successful DB response.
-      // Cache the profile so offline reloads can skip onboarding.
+      profileRetryRef.current = 0;
       if (profile?.business_name) {
         try { localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify({ ...profile, user_id: uid })); } catch {}
       }
@@ -707,10 +703,13 @@ export function useAuth() {
       localStorage.setItem(CACHE_KEY, resolvedPlan);
       subVerified.current = true;
       logPlatformSession(supabase, uid, "business", sess.user.user_metadata?.full_name || sess.user.user_metadata?.owner_name, email);
-      // Await plans fetch so feature_keys from DB are warm before first render
-      await fetchAndCachePlans(supabase).catch(() => {});
       setUpgradeAvailable(hasHigherPlanAvailable(resolvedPlan));
       setStatus("ready");
+      // Fetch plan feature_keys in the background — don't block the home screen for it.
+      // The stale value from localStorage is already warm from a previous session.
+      fetchAndCachePlans(supabase).then(() => {
+        setUpgradeAvailable(hasHigherPlanAvailable(resolvedPlan));
+      }).catch(() => {});
       return;
     }
 
@@ -725,9 +724,11 @@ export function useAuth() {
       localStorage.setItem(CACHE_KEY, resolvedPlan);
       subVerified.current = true;
       logPlatformSession(supabase, uid, "business", sess.user.user_metadata?.full_name || sess.user.user_metadata?.owner_name, email);
-      await fetchAndCachePlans(supabase).catch(() => {});
       setUpgradeAvailable(hasHigherPlanAvailable(resolvedPlan));
       setStatus("ready");
+      fetchAndCachePlans(supabase).then(() => {
+        setUpgradeAvailable(hasHigherPlanAvailable(resolvedPlan));
+      }).catch(() => {});
       return;
     }
 
@@ -743,9 +744,9 @@ export function useAuth() {
         const cachedPlan = normalizeSlug(cached);
         setPlan(cachedPlan);
         subVerified.current = true;
-        await fetchAndCachePlans(supabase).catch(() => {});
         setUpgradeAvailable(hasHigherPlanAvailable(cachedPlan));
         setStatus("ready");
+        fetchAndCachePlans(supabase).catch(() => {});
         return;
       }
     }

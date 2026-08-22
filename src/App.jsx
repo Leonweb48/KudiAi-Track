@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from "react";
 import { useNavigate, useLocation, Routes, Route } from "react-router-dom";
 import { useStore }          from "./hooks/useStore";
 import { useAuth }           from "./hooks/useAuth";
@@ -10,55 +10,56 @@ import AppLogo               from "./components/AppLogo";
 import NotificationCenter    from "./components/NotificationCenter";
 import VoiceModal            from "./components/VoiceModal";
 import DailyVoice            from "./components/DailyVoice";
+// ── Eager imports (needed on first render for all users) ──────────────────────
 import Home                  from "./screens/Home";
-import Transactions          from "./screens/Transactions";
-import Insights              from "./screens/Insights";
-import Settings              from "./screens/Settings";
 import Auth                  from "./screens/Auth";
 import Onboarding            from "./screens/Onboarding";
 import SubscriptionPlan      from "./screens/SubscriptionPlan";
-import StaffDashboard        from "./screens/StaffDashboard";
-import MarketerDashboard     from "./screens/MarketerDashboard";
-import MarketerFirstLogin    from "./screens/MarketerFirstLogin";
-import BillPayments          from "./screens/BillPayments";
-import Inventory             from "./screens/Inventory";
-import Reports               from "./screens/Reports";
-import AIAssistant           from "./screens/AIAssistant";
 import LockScreen            from "./components/LockScreen";
 import PinSetupFlow          from "./components/PinSetupFlow";
-import AIChatWidget         from "./components/AIChatWidget";
-import Loyalty               from "./screens/Loyalty";
-import Branches              from "./screens/Branches";
-import { unlockAudio }       from "./utils/tts";
-import MoreSheet             from "./components/MoreSheet";
-import ManagerDashboard from "./screens/ManagerDashboard";
-import AjoMemberPortal       from "./screens/AjoMemberPortal";
-import CoopList              from "./screens/CoopList";
-import CoopDashboard         from "./screens/CoopDashboard";
-import CoopMemberPortal, { CoopMemberFirstLogin, OrgMemberArchivedScreen } from "./screens/CoopMemberPortal";
-import CoopComingSoon        from "./screens/CoopComingSoon";
-import { usePlatformConfig } from "./hooks/usePlatformConfig";
-import PaymentReturn         from "./screens/PaymentReturn";
-import { Browser }           from "@capacitor/browser";
-import { StatusBar, Style }  from "@capacitor/status-bar";
-import { Capacitor }         from "@capacitor/core";
-import { App as CapApp }     from "@capacitor/app";
-import Finance               from "./screens/Finance";
-import OrgPortal             from "./screens/OrgPortal";
-import OrgFirstLogin         from "./screens/OrgFirstLogin";
-import OrgMemberOtpVerify   from "./screens/OrgMemberOtpVerify";
-import StaffOtpVerify       from "./screens/StaffOtpVerify";
-import StaffFirstLogin      from "./screens/StaffFirstLogin";
-import { useConsent }       from "./hooks/useConsent";
 import ConsentModal         from "./components/ConsentModal";
-import AjoClientOtpVerify   from "./screens/AjoClientOtpVerify";
-import AjoClientArchivedScreen from "./screens/AjoClientArchivedScreen";
-import OrgOtpVerify         from "./screens/OrgOtpVerify";
 import OfflineScreen        from "./screens/OfflineScreen";
-import AdminDashboard        from "./screens/AdminDashboard";
-import Help                  from "./screens/Help";
-import Verification           from "./screens/Verification";
-import Profile               from "./screens/Profile";
+import PaymentReturn         from "./screens/PaymentReturn";
+// ── Lazy imports — split into separate chunks, loaded on first use ────────────
+// Heavy screen chunks (jsPDF + html2canvas live in Reports; AI SDK in AIAssistant)
+const Reports        = lazy(() => import("./screens/Reports"));
+const AIAssistant    = lazy(() => import("./screens/AIAssistant"));
+// Route-based screens not needed on startup
+const Transactions   = lazy(() => import("./screens/Transactions"));
+const Finance        = lazy(() => import("./screens/Finance"));
+const BillPayments   = lazy(() => import("./screens/BillPayments"));
+const Inventory      = lazy(() => import("./screens/Inventory"));
+const Insights       = lazy(() => import("./screens/Insights"));
+const Settings       = lazy(() => import("./screens/Settings"));
+const Help           = lazy(() => import("./screens/Help"));
+const Verification   = lazy(() => import("./screens/Verification"));
+const Profile        = lazy(() => import("./screens/Profile"));
+const Loyalty        = lazy(() => import("./screens/Loyalty"));
+const Branches       = lazy(() => import("./screens/Branches"));
+// Portal screens (only rendered for specific account types)
+const StaffDashboard        = lazy(() => import("./screens/StaffDashboard"));
+const ManagerDashboard      = lazy(() => import("./screens/ManagerDashboard"));
+const MarketerDashboard     = lazy(() => import("./screens/MarketerDashboard"));
+const MarketerFirstLogin    = lazy(() => import("./screens/MarketerFirstLogin"));
+const AdminDashboard        = lazy(() => import("./screens/AdminDashboard"));
+const OrgPortal             = lazy(() => import("./screens/OrgPortal"));
+const OrgFirstLogin         = lazy(() => import("./screens/OrgFirstLogin"));
+const OrgOtpVerify          = lazy(() => import("./screens/OrgOtpVerify"));
+const OrgMemberOtpVerify    = lazy(() => import("./screens/OrgMemberOtpVerify"));
+const StaffOtpVerify        = lazy(() => import("./screens/StaffOtpVerify"));
+const StaffFirstLogin       = lazy(() => import("./screens/StaffFirstLogin"));
+const AjoClientOtpVerify    = lazy(() => import("./screens/AjoClientOtpVerify"));
+const AjoClientArchivedScreen = lazy(() => import("./screens/AjoClientArchivedScreen"));
+const AjoMemberPortal       = lazy(() => import("./screens/AjoMemberPortal"));
+const CoopList              = lazy(() => import("./screens/CoopList"));
+const CoopDashboard         = lazy(() => import("./screens/CoopDashboard"));
+const CoopComingSoon        = lazy(() => import("./screens/CoopComingSoon"));
+// CoopMemberPortal has named exports — resolve each from the same shared chunk
+const CoopMemberPortal    = lazy(() => import("./screens/CoopMemberPortal").then(m => ({ default: m.default })));
+const CoopMemberFirstLogin  = lazy(() => import("./screens/CoopMemberPortal").then(m => ({ default: m.CoopMemberFirstLogin })));
+const OrgMemberArchivedScreen = lazy(() => import("./screens/CoopMemberPortal").then(m => ({ default: m.OrgMemberArchivedScreen })));
+const AIChatWidget          = lazy(() => import("./components/AIChatWidget"));
+const LanguageSelector      = lazy(() => import("./screens/LanguageSelector"));
 import { useInventory }      from "./hooks/useInventory";
 import { useInvoices }      from "./hooks/useInvoices";
 import { usePinLock }        from "./hooks/usePinLock";
@@ -74,7 +75,6 @@ import {
   isFeatureLocked,
 } from "./utils/paidCompliance";
 import { buildContext }      from "./utils/buildContext";
-import LanguageSelector      from "./screens/LanguageSelector";
 import { hasChosenLang, setLang, markLangChosen } from "./utils/i18n";
 import { useLanguage as useLangCtx } from "./contexts/LanguageContext";
 
@@ -89,6 +89,11 @@ function Spinner() {
       />
     </div>
   );
+}
+
+// Thin wrapper so lazy screens get the same spinner fallback without repetition.
+function S({ children }) {
+  return <Suspense fallback={<Spinner />}>{children}</Suspense>;
 }
 
 export default function App() {
@@ -401,33 +406,33 @@ export default function App() {
   // Cooperative module gate — show Coming Soon for ALL coop/org statuses when flag is off.
   // Behaviour: existing accounts see Coming Soon + sign-out; no broken screens.
   // To restore full access: set platform_config.coop_module_enabled = 'true' in Supabase — no rebuild.
-  if (isCoopStatus && !coopEnabled) return <CoopComingSoon />;
+  if (isCoopStatus && !coopEnabled) return <S><CoopComingSoon /></S>;
 
   // Super Admin — full command center
-  if (status === "admin") return <AdminDashboard session={session} adminUser={adminUser} />;
+  if (status === "admin") return <S><AdminDashboard session={session} adminUser={adminUser} /></S>;
 
   // Organisation — OTP first, then password setup
-  if (status === "org_otp")   return <OrgOtpVerify org={org} />;
-  if (status === "org_setup") return <OrgFirstLogin org={org} />;
+  if (status === "org_otp")   return <S><OrgOtpVerify org={org} /></S>;
+  if (status === "org_setup") return <S><OrgFirstLogin org={org} /></S>;
 
   // Org member — OTP first, then password setup
-  if (status === "org_member_otp")   return <OrgMemberOtpVerify member={orgMember} />;
-  if (status === "org_member_setup") return <CoopMemberFirstLogin member={orgMember} />;
+  if (status === "org_member_otp")   return <S><OrgMemberOtpVerify member={orgMember} /></S>;
+  if (status === "org_member_setup") return <S><CoopMemberFirstLogin member={orgMember} /></S>;
 
   // Staff — OTP first, then password setup, then portal
-  if (status === "staff_otp")   return <StaffOtpVerify staff={staff} />;
-  if (status === "staff_setup") return <StaffFirstLogin staff={staff} />;
+  if (status === "staff_otp")   return <S><StaffOtpVerify staff={staff} /></S>;
+  if (status === "staff_setup") return <S><StaffFirstLogin staff={staff} /></S>;
 
   // Ajo client — OTP first, then password setup
-  if (status === "ajo_client_otp")      return <AjoClientOtpVerify ajoClient={ajoClient} />;
-  if (status === "ajo_client_setup")    return <AjoMemberPortal session={session} ajoClient={ajoClient} pinLock={pinLock} />;
-  if (status === "ajo_client_archived")  return <AjoClientArchivedScreen ajoClient={ajoClient} />;
-  if (status === "org_member_archived") return <OrgMemberArchivedScreen member={orgMember} />;
+  if (status === "ajo_client_otp")      return <S><AjoClientOtpVerify ajoClient={ajoClient} /></S>;
+  if (status === "ajo_client_setup")    return <S><AjoMemberPortal session={session} ajoClient={ajoClient} pinLock={pinLock} /></S>;
+  if (status === "ajo_client_archived")  return <S><AjoClientArchivedScreen ajoClient={ajoClient} /></S>;
+  if (status === "org_member_archived") return <S><OrgMemberArchivedScreen member={orgMember} /></S>;
   if (status === "offline")             return <OfflineScreen onRetry={retryAuth} />;
   if (status === "unauthenticated")  return <Auth />;
   if (status === "onboarding")       return <Onboarding session={session} onComplete={refetch} />;
   if (status === "subscribing")      return <SubscriptionPlan session={session} onComplete={setReady} />;
-  if (status === "marketer_setup")   return <MarketerFirstLogin marketer={marketer} />;
+  if (status === "marketer_setup")   return <S><MarketerFirstLogin marketer={marketer} /></S>;
 
   // ── Consent gate — blocks portal entry until legal docs are accepted ──
   if (portalStatuses.includes(status) && !consent.loading && consent.needsConsent) {
@@ -462,18 +467,16 @@ export default function App() {
   // Excluded from the onboarding + subscription flows (owner hasn't set up their account yet).
   const langGateStatuses = ["ready", "staff", "branch_manager", "marketer", "organisation", "org_member", "ajo_client"];
   if (langGateStatuses.includes(status) && !langChosen && !store.loading) {
-    return (
-      <LanguageSelector userId={userId} />
-    );
+    return <S><LanguageSelector userId={userId} /></S>;
   }
 
   // ── Authenticated portals (PIN already set) ──
-  if (status === "organisation")  return <OrgPortal session={session} org={org} />;
-  if (status === "org_member")    return <CoopMemberPortal member={orgMember} pinLock={pinLock} />;
-  if (status === "ajo_client")    return <AjoMemberPortal session={session} ajoClient={ajoClient} pinLock={pinLock} />;
-  if (status === "staff")         return <StaffDashboard session={session} staff={staff} pinLock={pinLock} />;
-  if (status === "branch_manager") return <ManagerDashboard session={session} staff={staff} pinLock={pinLock} />;
-  if (status === "marketer")      return <MarketerDashboard marketer={marketer} />;
+  if (status === "organisation")  return <S><OrgPortal session={session} org={org} /></S>;
+  if (status === "org_member")    return <S><CoopMemberPortal member={orgMember} pinLock={pinLock} /></S>;
+  if (status === "ajo_client")    return <S><AjoMemberPortal session={session} ajoClient={ajoClient} pinLock={pinLock} /></S>;
+  if (status === "staff")         return <S><StaffDashboard session={session} staff={staff} pinLock={pinLock} /></S>;
+  if (status === "branch_manager") return <S><ManagerDashboard session={session} staff={staff} pinLock={pinLock} /></S>;
+  if (status === "marketer")      return <S><MarketerDashboard marketer={marketer} /></S>;
 
   if (showUpgrade) {
     return (
@@ -501,7 +504,7 @@ export default function App() {
                     onAIOpen={() => setShowAI(true)}
                     onGoVerification={() => navigate("/verification")}
                     onGoSettings={() => navigate("/settings")} />,
-    transactions: <Transactions
+    transactions: <S><Transactions
                     store={{ ...store, addTransaction: addTransactionWithLoyalty }}
                     plan={plan}
                     autoOpen={autoAdd?.tab === "transactions"}
@@ -510,8 +513,8 @@ export default function App() {
                     onAutoOpened={clearAutoAdd}
                     onVoiceOpen={() => setVoiceOpen(true)}
                     onUpgrade={openUpgrade}
-                    inventory={inventory} />,
-    finance:      <Finance
+                    inventory={inventory} /></S>,
+    finance:      <S><Finance
                     store={store}
                     plan={plan}
                     onUpgrade={openUpgrade}
@@ -526,33 +529,33 @@ export default function App() {
                     session={session}
                     onSelectCoopOrg={setCoopOrg}
                     inventory={inventory}
-                    invoiceHook={invoiceHook} />,
-    inventory:    <Inventory
+                    invoiceHook={invoiceHook} /></S>,
+    inventory:    <S><Inventory
                     inventory={inventory}
                     isOwner={true}
                     plan={plan}
                     onUpgrade={openUpgrade}
                     branches={branchesHook.branches}
-                    staffList={store.staffList || []} />,
-    bills:        <BillPayments store={store} plan={plan} session={session}
+                    staffList={store.staffList || []} /></S>,
+    bills:        <S><BillPayments store={store} plan={plan} session={session}
                     markup={canDo(plan, "apiAccess") ? 1.05 : 1.098}
                     pointsEnabled
                     staffEmail={session?.user?.email}
                     staffName={store.profile?.owner_name || store.profile?.business_name}
                     autoService={autoAdd?.tab === "bills" ? autoAdd?.type : null}
-                    onAutoOpened={clearAutoAdd} />,
-    insights:     <Insights
+                    onAutoOpened={clearAutoAdd} /></S>,
+    insights:     <S><Insights
                     store={store}
                     inventory={inventory}
                     plan={plan}
                     onUpgrade={openUpgrade}
                     onReports={() => setShowReports(true)}
-                    onAIOpen={q => { setAiQuery(q || ""); setShowAI(true); }} />,
-    loyalty:      <Loyalty
+                    onAIOpen={q => { setAiQuery(q || ""); setShowAI(true); }} /></S>,
+    loyalty:      <S><Loyalty
                     loyalty={loyalty}
                     plan={plan}
-                    onUpgrade={openUpgrade} />,
-    settings:     <Settings
+                    onUpgrade={openUpgrade} /></S>,
+    settings:     <S><Settings
                     store={store}
                     session={session}
                     plan={plan}
@@ -560,7 +563,7 @@ export default function App() {
                     lock={pinLock}
                     onLoyalty={() => setShowLoyalty(true)}
                     onBranches={() => setShowBranches(true)}
-                    onCoops={() => setShowCoop(true)} />,
+                    onCoops={() => setShowCoop(true)} /></S>,
   };
 
   return (
@@ -634,9 +637,9 @@ export default function App() {
               <Route path="/insights"     element={SCREENS.insights}      />
               <Route path="/loyalty"      element={SCREENS.loyalty}       />
               <Route path="/settings"     element={SCREENS.settings}      />
-              <Route path="/help"          element={<Help store={store} session={session} plan={plan} />} />
-              <Route path="/profile"       element={<Profile      store={store} session={session} plan={plan} lock={pinLock} />} />
-              <Route path="/verification" element={<Verification store={store} />} />
+              <Route path="/help"          element={<S><Help store={store} session={session} plan={plan} /></S>} />
+              <Route path="/profile"       element={<S><Profile store={store} session={session} plan={plan} lock={pinLock} /></S>} />
+              <Route path="/verification" element={<S><Verification store={store} /></S>} />
               <Route path="/payment-return"        element={<PaymentReturn />} />
               <Route path="/app/payment-callback" element={<PaymentReturn />} />
               <Route path="*"             element={SCREENS.home}          />
@@ -674,7 +677,7 @@ export default function App() {
       {/* Report generator — full-screen overlay, z-60
            Compliance lock: blocked after grace expires for non-compliant paid owners. */}
       {showReports && !isFeatureLocked("pdfExport", complianceCtx) && (
-        <Reports store={store} onClose={() => setShowReports(false)} />
+        <S><Reports store={store} onClose={() => setShowReports(false)} /></S>
       )}
       {showReports && isFeatureLocked("pdfExport", complianceCtx) && (
         <ComplianceLockModal
@@ -687,13 +690,13 @@ export default function App() {
       {/* Branch report — wrapped at z-[80] so it appears above BranchDetail (z-70) */}
       {branchReport && (
         <div className="fixed inset-0 z-[80]">
-          <Reports store={branchReport} onClose={() => setBranchReport(null)} />
+          <S><Reports store={branchReport} onClose={() => setBranchReport(null)} /></S>
         </div>
       )}
 
       {/* Branch management — full-screen overlay, z-60 */}
       {showBranches && (
-        <Branches
+        <S><Branches
           store={{ ...store, ...branchesHook }}
           userId={userId}
           inventory={inventory}
@@ -701,31 +704,31 @@ export default function App() {
           onUpgrade={openUpgrade}
           onReport={(filteredStore) => setBranchReport(filteredStore)}
           onClose={() => setShowBranches(false)}
-        />
+        /></S>
       )}
 
       {/* Loyalty program — full-screen overlay, z-60 */}
       {showLoyalty && (
         <div className="fixed inset-0 z-[60] overflow-y-auto bg-slate-50 dark:bg-slate-900">
-          <Loyalty
+          <S><Loyalty
             loyalty={loyalty}
             plan={plan}
             onUpgrade={openUpgrade}
             onClose={() => setShowLoyalty(false)}
-          />
+          /></S>
         </div>
       )}
 
       {/* AI Business Assistant — full-screen overlay, z-50 (gated to aiChatbot feature + compliance) */}
       {showAI && canDo(plan, "aiChatbot") && !isFeatureLocked("aiChatbot", complianceCtx) && (
-        <AIAssistant
+        <S><AIAssistant
           store={store}
           inventory={inventory}
           branches={branchesHook.branches}
           invoices={invoiceHook.invoices}
           initialQuery={aiQuery}
           onClose={() => setShowAI(false)}
-        />
+        /></S>
       )}
       {showAI && canDo(plan, "aiChatbot") && isFeatureLocked("aiChatbot", complianceCtx) && (
         <ComplianceLockModal
@@ -737,7 +740,7 @@ export default function App() {
 
       {/* Floating AI Chat Widget — visible on all screens when full-screen AI is closed */}
       {!showAI && canDo(plan, "aiChatbot") && !isFeatureLocked("aiChatbot", complianceCtx) && (
-        <AIChatWidget store={store} inventory={inventory} branches={branchesHook.branches} />
+        <S><AIChatWidget store={store} inventory={inventory} branches={branchesHook.branches} /></S>
       )}
 
       {/* Cooperative / Community Org system — z-60 */}
@@ -758,19 +761,19 @@ export default function App() {
         </div>
       )}
       {showCoop && coopEnabled && !coopOrg && (
-        <CoopList
+        <S><CoopList
           userId={userId}
           onOpen={org => setCoopOrg(org)}
           onClose={() => setShowCoop(false)}
-        />
+        /></S>
       )}
       {coopEnabled && coopOrg && (
-        <CoopDashboard
+        <S><CoopDashboard
           org={coopOrg}
           onBack={() => { setCoopOrg(null); }}
           adminEmail={session?.user?.email}
           userId={userId}
-        />
+        /></S>
       )}
 
       {/* PIN lock screen removed — now handled as full-page gate above */}
