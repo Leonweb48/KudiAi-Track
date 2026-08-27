@@ -64,14 +64,49 @@ serve(async (req) => {
   }
   const authUserId = userData.user.id;
 
-  let body: Record<string, unknown>;
-  try {
-    body = await req.json();
-  } catch {
-    return json({ error: "Invalid JSON body" }, 400);
+  // Detect content type to support both JSON actions and multipart uploads
+  const contentType = req.headers.get("content-type") || "";
+  let action: string;
+  let body: Record<string, unknown> = {};
+  let incomingForm: FormData | null = null;
+
+  if (contentType.includes("multipart/form-data")) {
+    try {
+      incomingForm = await req.formData();
+      action = String(incomingForm.get("action") || "");
+    } catch {
+      return json({ error: "Invalid multipart body" }, 400);
+    }
+  } else {
+    try {
+      body = await req.json();
+    } catch {
+      return json({ error: "Invalid JSON body" }, 400);
+    }
+    action = String(body.action || "");
   }
 
-  const action = String(body.action || "");
+  // ── upload_avatar — upload staff/manager profile picture via service role ──
+  if (action === "upload_avatar") {
+    if (!incomingForm) return json({ error: "Multipart form data required for upload_avatar" }, 400);
+    const file = incomingForm.get("file") as File | null;
+    if (!file) return json({ error: "No file provided" }, 400);
+    const mimeType = file.type || "image/jpeg";
+    if (!mimeType.startsWith("image/")) return json({ error: "Only image files are allowed" }, 400);
+    if (file.size > 5 * 1024 * 1024) return json({ error: "File too large (max 5MB)" }, 400);
+
+    const fileData = new Uint8Array(await file.arrayBuffer());
+    const path = `staff/${authUserId}/avatar`;
+
+    const { error: upErr } = await adminClient.storage
+      .from("avatars")
+      .upload(path, fileData, { upsert: true, contentType: mimeType });
+
+    if (upErr) return json({ error: `Storage upload failed: ${upErr.message}` }, 500);
+
+    const { data: { publicUrl } } = adminClient.storage.from("avatars").getPublicUrl(path);
+    return json({ url: `${publicUrl}?v=${Date.now()}` });
+  }
 
   // ── request_email_change ──────────────────────────────────────────────────
   if (action === "request_email_change") {

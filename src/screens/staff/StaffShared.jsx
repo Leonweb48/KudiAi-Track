@@ -52,13 +52,37 @@ export function dateRange(period) {
 }
 
 export async function uploadAvatar(file) {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user?.id) throw new Error("Not authenticated");
-  const path = `staff/${user.id}/avatar`;
-  const { error } = await supabase.storage.from("avatars").upload(path, file, { upsert: true, contentType: file.type });
-  if (error) throw error;
-  const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(path);
-  return `${publicUrl}?v=${Date.now()}`;
+  // Upload via Edge Function (service role) to bypass storage RLS — direct to Supabase, not the Vercel proxy
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) throw new Error("Not authenticated");
+
+  const supabaseDirectUrl = process.env.REACT_APP_SUPABASE_URL;
+  if (!supabaseDirectUrl) throw new Error("Supabase URL not configured");
+
+  const form = new FormData();
+  form.append("action", "upload_avatar");
+  form.append("file", file);
+
+  const res = await fetch(
+    `${supabaseDirectUrl}/functions/v1/manage-staff-profile`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+        apikey: process.env.REACT_APP_SUPABASE_ANON_KEY || "",
+      },
+      body: form,
+    },
+  );
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || "Avatar upload failed");
+  }
+
+  const data = await res.json();
+  if (!data.url) throw new Error("No URL returned from upload");
+  return data.url;
 }
 
 /* ─ SVG primitive ───────────────────────────────────────────────── */
