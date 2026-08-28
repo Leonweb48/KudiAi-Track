@@ -290,7 +290,14 @@ export default function App() {
       if (e.detail?.url) {
         try { sessionStorage.setItem("ck_payment_callback_url", e.detail.url); } catch {}
       }
-      if (window.location.pathname !== "/bills") navigate("/bills");
+      // Skip the /bills redirect when this is a subscription payment return —
+      // SubscriptionPlan's own paymentCallback listener calls saveSub→setReady,
+      // and the realtime listener handles the subscribing→ready transition.
+      // Forcing /bills here would navigate away before setReady fires (for upgrades).
+      const isSubPending =
+        !!localStorage.getItem("pendingPayment") ||
+        Object.keys(localStorage).some(k => k.startsWith("sub_pending_"));
+      if (!isSubPending && window.location.pathname !== "/bills") navigate("/bills");
     };
     window.addEventListener("paymentCallback", handler);
     return () => window.removeEventListener("paymentCallback", handler);

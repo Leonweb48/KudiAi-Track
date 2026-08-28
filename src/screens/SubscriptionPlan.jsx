@@ -131,8 +131,15 @@ function PaidButton({ plan, session, disabled, yearly = false, appliedCoupon, on
           browserListener.remove();
           if (!paymentCompleted) {
             setBusy(false);
-            setErr("Payment cancelled. Please try again.");
-            onCancel?.();
+            // If pendingPayment is still in localStorage the webhook may have already
+            // activated the subscription — don't wrongly show "cancelled". The
+            // appStateChange → recheckPending path will surface the "Activate My Plan"
+            // banner, and the realtime listener will auto-transition to ready.
+            const maybeProcessed = !!localStorage.getItem("pendingPayment");
+            if (!maybeProcessed) {
+              setErr("Payment cancelled. Please try again.");
+              onCancel?.();
+            }
           }
         });
 

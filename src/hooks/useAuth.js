@@ -897,6 +897,17 @@ export function useAuth() {
           const newPlan = normalizeSlug(payload.new?.plan || "kobo");
           setPlan(newPlan);
           localStorage.setItem(CACHE_KEY, newPlan);
+          // When the webhook activates the subscription, transition the user out of the
+          // "subscribing" screen without requiring any client-side DB write or user tap.
+          if (payload.new?.status === "active") {
+            subVerified.current = true;
+            setStatus(prev => prev === "subscribing" ? "ready" : prev);
+            // Clean up any pending payment keys so the "Activate My Plan" banner clears.
+            localStorage.removeItem("pendingPayment");
+            Object.keys(localStorage)
+              .filter(k => k.startsWith("sub_pending_"))
+              .forEach(k => localStorage.removeItem(k));
+          }
           fetchAndCachePlans(supabase)
             .then(() => setPlansVersion(v => v + 1))
             .catch(() => {});
