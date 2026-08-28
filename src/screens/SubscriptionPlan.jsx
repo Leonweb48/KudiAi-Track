@@ -145,6 +145,12 @@ function PaidButton({ plan, session, disabled, yearly = false, appliedCoupon, on
 
         await Browser.open({ url: data.authorization_url });
       } else {
+        // Set pendingPayment before opening popup — if the browser redirects the page
+        // (common on some mobile browsers) this key persists so the "Activate My Plan"
+        // banner appears when the user returns to the subscription screen.
+        localStorage.setItem("pendingPayment", JSON.stringify({
+          planId: plan.slug, reference: ref, yearly, ...(couponMeta || {}),
+        }));
         const paidRef = await openPaystackInline({
           email:    session.user.email,
           amount:   finalAmount,
@@ -161,9 +167,12 @@ function PaidButton({ plan, session, disabled, yearly = false, appliedCoupon, on
             ],
           },
         });
+        // saveSub (called from onSuccess) clears pendingPayment on success.
         onSuccess?.(paidRef, couponMeta, () => setBusy(false));
       }
     } catch (e) {
+      // Clear pendingPayment on cancel or error so no stale banner appears.
+      localStorage.removeItem("pendingPayment");
       if (e.message === "cancelled") {
         setErr("Payment cancelled. Please try again.");
         onCancel?.();
@@ -408,6 +417,19 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
   }, [session, onComplete, plans]);
 
   saveSubRef.current = saveSub;
+
+  // On web: if the browser redirected during payment the page reloads and
+  // pendingPayment remains in localStorage. Auto-trigger activation on mount
+  // so the user doesn't have to tap the banner manually.
+  useEffect(() => {
+    if (isNative) return; // native uses deep-link / appStateChange instead
+    const pending = JSON.parse(localStorage.getItem("pendingPayment") || "null");
+    if (!pending?.reference) return;
+    setPendingPayment(null);
+    localStorage.removeItem("pendingPayment");
+    const { planId, reference, yearly: isYearly = false, couponCode: cc, originalAmount, discountAmount, finalAmount: fa } = pending;
+    saveSubRef.current?.(planId, reference, isYearly, cc ? { couponCode: cc, originalAmount, discountAmount, finalAmount: fa } : null);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const recheckPending = useCallback(() => {
     const pending = JSON.parse(localStorage.getItem("pendingPayment") || "null");
