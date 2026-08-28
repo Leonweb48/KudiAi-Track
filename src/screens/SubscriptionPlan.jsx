@@ -317,7 +317,9 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
           body: { action: "verify", reference },
         });
         const psStatus = vd?.data?.status;
-        if (psStatus !== "success") {
+        // "already_fulfilled" means the webhook already processed this reference —
+        // the subscription is active. Treat it the same as "success".
+        if (psStatus !== "success" && psStatus !== "already_fulfilled") {
           const gwResp = (vd?.data?.gateway_response || "").toLowerCase();
           const isCancelled = psStatus === "abandoned" || gwResp.includes("abandon") || gwResp.includes("cancel");
           const isPending   = psStatus === "pending";
