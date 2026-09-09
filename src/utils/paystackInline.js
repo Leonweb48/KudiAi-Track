@@ -25,7 +25,7 @@ function loadScript() {
  *
  * Never call this on native — use Chrome Custom Tabs via openPaystackCheckout() instead.
  */
-export async function openPaystackInline({ email, amount, ref, metadata = {} }) {
+export async function openPaystackInline({ email, amount, ref, metadata = {}, channels }) {
   if (Capacitor.isNativePlatform()) {
     throw new Error("openPaystackInline must not be called on native");
   }
@@ -37,7 +37,7 @@ export async function openPaystackInline({ email, amount, ref, metadata = {} }) 
       amount:   Math.round(amount * 100), // Paystack takes kobo
       ref,
       metadata,
-      channels: ["card", "bank", "ussd", "mobile_money", "bank_transfer"],
+      channels: channels || ["card", "bank", "ussd", "mobile_money", "bank_transfer"],
       callback: (response) => resolve(response.reference),
       onClose:  () => reject(new Error("cancelled")),
     });

@@ -103,7 +103,7 @@ serve(async (req) => {
   // ── Route by payment type ────────────────────────────────────────────────
   const paymentType = (meta.payment_type ?? "") as string;
   if (paymentType === "subscription") {
-    await handleSubscriptionPayment(sb, meta, reference, paidAt);
+    await handleSubscriptionPayment(sb, meta, reference, paidAt, amountNgn);
     return ok("subscription processed");
   }
 
@@ -480,6 +480,7 @@ async function handleSubscriptionPayment(
   meta: Record<string, unknown>,
   reference: string,
   paidAt: string,
+  amountNgn: number,
 ) {
   const userId   = meta.user_id   as string | undefined;
   const planSlug = meta.plan_slug as string | undefined;
@@ -490,36 +491,79 @@ async function handleSubscriptionPayment(
     return;
   }
 
-  const expiresAt = new Date(
-    Date.now() + (isYearly ? 365 : 30) * 24 * 60 * 60 * 1000,
-  ).toISOString();
-
-  const { data: existing } = await sb
-    .from("subscriptions")
-    .select("id")
-    .eq("user_id", userId)
+  // The plan does NOT upgrade here. Owner subscription payments are settled by
+  // bank transfer and must be confirmed + approved by an admin first. Drop a
+  // request into the admin approval queue (idempotent on the Paystack reference).
+  const { data: dupe } = await sb
+    .from("admin_approval_requests")
+    .select("id, status")
+    .eq("request_type", "subscription_upgrade")
+    .filter("payload->>reference", "eq", reference)
     .maybeSingle();
 
-  if (existing) {
-    await sb.from("subscriptions").update({
-      plan:               planSlug,
-      status:             "active",
-      paystack_reference: reference,
-      expires_at:         expiresAt,
-      billing_cycle:      isYearly ? "yearly" : "monthly",
-    }).eq("id", existing.id);
-  } else {
-    await sb.from("subscriptions").insert({
-      user_id:            userId,
-      plan:               planSlug,
-      status:             "active",
-      paystack_reference: reference,
-      expires_at:         expiresAt,
-      billing_cycle:      isYearly ? "yearly" : "monthly",
-    });
+  if (dupe) {
+    console.log(`[paystack-webhook] subscription request already exists for ref=${reference} (status=${dupe.status})`);
+    return;
   }
 
-  console.log(`[paystack-webhook] subscription activated: user=${userId} plan=${planSlug} ref=${reference}`);
+  // Skip if there's already a pending request for this user (client submitted it first)
+  const { data: pendingForUser } = await sb
+    .from("admin_approval_requests")
+    .select("id")
+    .eq("request_type", "subscription_upgrade")
+    .eq("requester", userId)
+    .eq("status", "pending")
+    .maybeSingle();
+
+  const { data: prof } = await sb
+    .from("profiles").select("business_name, full_name, email").eq("id", userId).maybeSingle();
+  const business = (prof as Record<string, unknown> | null)?.business_name as string ?? "";
+
+  if (!pendingForUser) {
+    const { error: insErr } = await sb.from("admin_approval_requests").insert({
+      request_type: "subscription_upgrade",
+      requester:    userId,
+      business,
+      target_id:    userId,
+      payload: {
+        plan_slug:     planSlug,
+        billing_cycle: isYearly ? "yearly" : "monthly",
+        amount:        amountNgn,
+        reference,
+        source:        "webhook",
+        submitted_at:  new Date().toISOString(),
+      },
+      reason: "Subscription payment — awaiting admin confirmation",
+      status: "pending",
+    });
+    if (insErr) {
+      console.error("[paystack-webhook] failed to create subscription approval request:", insErr.message);
+      return;
+    }
+  }
+
+  console.log(`[paystack-webhook] subscription payment queued for admin approval: user=${userId} plan=${planSlug} ref=${reference}`);
+
+  // Notify the owner: payment received, pending confirmation
+  const email = (prof as Record<string, unknown> | null)?.email as string | undefined;
+  if (email) {
+    await fetch("https://admin.kudiai.app/api/public/email-trigger", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
+      body: JSON.stringify({
+        event: "subscription_payment_received",
+        data: {
+          user_email:    email,
+          user_name:     (prof as Record<string, unknown> | null)?.full_name ?? email,
+          business_name: business,
+          plan_slug:     planSlug,
+          amount:        amountNgn,
+          reference,
+          billing_cycle: isYearly ? "yearly" : "monthly",
+        },
+      }),
+    }).catch((e) => console.error("[paystack-webhook] payment-received email failed:", e));
+  }
 }
 
 async function handleOrgRegistrationPayment(

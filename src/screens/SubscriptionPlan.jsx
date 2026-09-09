@@ -71,6 +71,14 @@ function computeCouponDiscount(appliedCoupon, planSlug, billingCycle, chargeAmou
 
 const SUB_PENDING_PREFIX = "sub_pending_";
 
+// A plan that costs nothing — activates instantly, no admin approval.
+function isFreePlanSlug(slug, plans = []) {
+  if (!slug) return true;
+  if (/^(kobo|starter|free)$/i.test(slug) || /starter/i.test(slug)) return true;
+  const p = plans.find(pl => pl.slug === slug);
+  return p ? Number(p.price_monthly || 0) === 0 : false;
+}
+
 function PaidButton({ plan, session, disabled, yearly = false, appliedCoupon, onSuccess, onCancel, onError, buttonLabel }) {
   const chargeAmount = yearly && plan.price_yearly > 0 ? plan.price_yearly : plan.price_monthly;
   const billingCycle = yearly ? "yearly" : "monthly";
@@ -155,6 +163,9 @@ function PaidButton({ plan, session, disabled, yearly = false, appliedCoupon, on
           email:    session.user.email,
           amount:   finalAmount,
           ref,
+          // Owner subscriptions are bank-transfer only — confirmed & approved by
+          // an admin before the plan upgrade takes effect.
+          channels: ["bank_transfer"],
           metadata: {
             payment_type: "subscription",
             plan_slug:    plan.slug,
@@ -216,6 +227,8 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
   const [pendingPayment, setPendingPayment] = useState(
     () => JSON.parse(localStorage.getItem("pendingPayment") || "null")
   );
+  // Paid payment made, waiting for an admin to confirm + approve the upgrade.
+  const [pendingApproval, setPendingApproval] = useState(null);
 
   // Current subscription details
   const [currentBillingCycle, setCurrentBillingCycle] = useState(null);
@@ -306,6 +319,14 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
     applyCoupon();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const clearPendingLocal = useCallback(() => {
+    setPendingPayment(null);
+    try {
+      localStorage.removeItem("pendingPayment");
+      Object.keys(localStorage).filter(k => k.startsWith(SUB_PENDING_PREFIX)).forEach(k => localStorage.removeItem(k));
+    } catch {}
+  }, []);
+
   const saveSub = useCallback(async (planSlug, reference, isYearly = false, couponInfo = null, onButtonError = null) => {
     const refKey = reference || `free_${planSlug}_${Date.now()}`;
     if (processingRef.current === refKey) return;
@@ -313,80 +334,10 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
 
     setSaving(true); setError("");
     try {
-      const isFree = planSlug === "kobo" || planSlug === "starter";
-      // A paid plan redeemed via 100% coupon has no Paystack reference — treat it as free
+      const isFree = isFreePlanSlug(planSlug, plans);
+      // A paid plan taken to ₦0 by a 100% coupon: no payment is made, so it does
+      // NOT grant the paid tier — it activates the free plan instead.
       const isFreeOrder = isFree || (couponInfo != null && (couponInfo.finalAmount === 0 || (couponInfo.discountAmount != null && couponInfo.originalAmount != null && couponInfo.discountAmount >= couponInfo.originalAmount)));
-
-      if (!isFreeOrder && !reference) {
-        throw new Error("Payment reference missing. Cannot verify subscription. Please try again.");
-      }
-
-      if (!isFreeOrder && reference) {
-        const { data: vd } = await supabase.functions.invoke("paystack", {
-          body: { action: "verify", reference },
-        });
-        const psStatus = vd?.data?.status;
-        // "already_fulfilled" means the webhook already processed this reference —
-        // the subscription is active. Treat it the same as "success".
-        if (psStatus !== "success" && psStatus !== "already_fulfilled") {
-          const gwResp = (vd?.data?.gateway_response || "").toLowerCase();
-          const isCancelled = psStatus === "abandoned" || gwResp.includes("abandon") || gwResp.includes("cancel");
-          const isPending   = psStatus === "pending";
-          const isFailed    = psStatus === "failed";
-          throw new Error(
-            isPending
-              ? "Your payment is still being processed. Please wait a moment then tap 'Activate My Plan' to check again."
-              : isFailed
-                ? `Payment was declined (${vd?.data?.gateway_response || "Transaction not approved"}). Please try a different payment method.`
-                : isCancelled
-                  ? "Payment was cancelled. Your plan was not changed. Please try again."
-                  : `Payment not confirmed (${vd?.data?.gateway_response || psStatus || "not verified"}). Please contact support if you were charged.`
-          );
-        }
-      }
-
-      if (!isFree && couponInfo?.couponCode && (couponInfo.discountAmount ?? 0) > 0) {
-        try {
-          await supabase.rpc("redeem_coupon", {
-            p_code:            couponInfo.couponCode,
-            p_plan_slug:       planSlug,
-            p_billing_cycle:   isYearly ? "yearly" : "monthly",
-            p_original_amount: couponInfo.originalAmount,
-            p_discount_amount: couponInfo.discountAmount,
-            p_final_amount:    couponInfo.finalAmount,
-            p_reference:       reference || "",
-          });
-        } catch (ce) {
-          console.warn("[Coupon] redemption failed:", ce);
-        }
-      }
-
-      const expiresAt = isFree
-        ? null
-        : new Date(Date.now() + (isYearly ? 365 : 30) * 24 * 60 * 60 * 1000).toISOString();
-
-      const { data: existing } = await supabase
-        .from("subscriptions").select("id, plan").eq("user_id", session.user.id).maybeSingle();
-
-      const isFirstTimePaid = !isFree && (!existing || existing.plan === "kobo" || existing.plan === "starter" || !existing.plan);
-
-      let err;
-      if (existing) {
-        ({ error: err } = await supabase.from("subscriptions").update({
-          plan: planSlug, status: "active",
-          paystack_reference: reference || null, expires_at: expiresAt,
-          billing_cycle: isFree ? "monthly" : (isYearly ? "yearly" : "monthly"),
-        }).eq("id", existing.id));
-      } else {
-        ({ error: err } = await supabase.from("subscriptions").insert({
-          user_id: session.user.id, plan: planSlug, status: "active",
-          paystack_reference: reference || null, expires_at: expiresAt,
-          billing_cycle: isFree ? "monthly" : (isYearly ? "yearly" : "monthly"),
-        }));
-      }
-
-      if (err) throw err;
-      await supabase.from("plan_upgrade_prompts").update({ seen: true }).eq("user_id", session.user.id).eq("seen", false);
 
       const planData = plans.find(p => p.slug === planSlug);
       const { data: profile } = await supabase
@@ -394,19 +345,68 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
       const userName = profile?.full_name || session.user.email;
       const bizName  = profile?.business_name || "";
 
-      sendEmailTrigger("business_welcome", { user_email: session.user.email, user_name: userName, business_name: bizName, current_plan: planSlug });
-
-      if (!isFree) {
-        const features = planData ? getDisplayFeatures(planData) : [];
-        sendEmailTrigger("subscription_welcome", { user_email: session.user.email, user_name: userName, business_name: bizName, plan_name: planData?.name || planSlug, plan_slug: planSlug, plan_price: planData?.price_monthly || 0, plan_features: features, billing_cycle: isYearly ? "yearly" : "monthly", reference: reference || "", is_first_time: isFirstTimePaid });
-        sendEmailTrigger("plan_purchased", { user_email: session.user.email, user_name: userName, business_name: bizName, plan_name: planData?.name || planSlug, plan_slug: planSlug, plan_price: planData?.price_monthly || 0, reference: reference || "", is_first_time: isFirstTimePaid });
+      // ── Free plan / fully-discounted coupon → activate immediately ──────────
+      if (isFreeOrder) {
+        const freeSlug = isFree ? planSlug : "kobo";
+        const { error: freeErr } = await supabase.rpc("activate_free_subscription", { p_plan_slug: freeSlug });
+        if (freeErr) throw freeErr;
+        if (couponInfo?.couponCode && (couponInfo.discountAmount ?? 0) > 0) {
+          supabase.rpc("redeem_coupon", {
+            p_code: couponInfo.couponCode, p_plan_slug: planSlug,
+            p_billing_cycle: isYearly ? "yearly" : "monthly",
+            p_original_amount: couponInfo.originalAmount, p_discount_amount: couponInfo.discountAmount,
+            p_final_amount: couponInfo.finalAmount, p_reference: reference || "",
+          }).catch(() => {});
+        }
+        sendEmailTrigger("business_welcome", { user_email: session.user.email, user_name: userName, business_name: bizName, current_plan: freeSlug });
+        clearPendingLocal();
+        setAppliedCoupon(null); setCouponCode(""); setCouponMsg(null);
+        onComplete(freeSlug);
+        return;
       }
 
-      setPendingPayment(null);
-      localStorage.removeItem("pendingPayment");
-      Object.keys(localStorage).filter(k => k.startsWith(SUB_PENDING_PREFIX)).forEach(k => localStorage.removeItem(k));
+      // ── Paid plan → confirm the bank transfer, then queue for admin approval ──
+      if (!reference) throw new Error("Payment reference missing. Cannot verify your transfer. Please try again.");
+
+      const { data: vd } = await supabase.functions.invoke("paystack", {
+        body: { action: "verify", reference },
+      });
+      const psStatus = vd?.data?.status;
+      if (psStatus !== "success" && psStatus !== "already_fulfilled") {
+        const gwResp = (vd?.data?.gateway_response || "").toLowerCase();
+        const isCancelled = psStatus === "abandoned" || gwResp.includes("abandon") || gwResp.includes("cancel");
+        const isPending   = psStatus === "pending";
+        const isFailed    = psStatus === "failed";
+        throw new Error(
+          isPending
+            ? "Your bank transfer is still being confirmed by Paystack. Please wait a moment then tap 'Check Payment' again."
+            : isFailed
+              ? `Payment was declined (${vd?.data?.gateway_response || "Transaction not approved"}). Please try again.`
+              : isCancelled
+                ? "Payment was cancelled. Your plan was not changed. Please try again."
+                : `Payment not confirmed (${vd?.data?.gateway_response || psStatus || "not verified"}). Contact support if you were debited.`
+        );
+      }
+
+      const paidNgn = (vd?.data?.amount || 0) / 100
+        || (planData ? (isYearly ? planData.price_yearly : planData.price_monthly) : 0);
+
+      const { error: reqErr } = await supabase.rpc("submit_subscription_upgrade_request", {
+        p_plan_slug:     planSlug,
+        p_billing_cycle: isYearly ? "yearly" : "monthly",
+        p_amount:        paidNgn,
+        p_reference:     reference || "",
+        p_coupon:        couponInfo?.couponCode
+          ? { code: couponInfo.couponCode, discount: couponInfo.discountAmount, final: couponInfo.finalAmount }
+          : null,
+      });
+      // "already awaiting approval" / "already been submitted" → the request exists, that's fine
+      if (reqErr && !/awaiting approval|already been submitted/i.test(reqErr.message || "")) throw reqErr;
+
+      clearPendingLocal();
       setAppliedCoupon(null); setCouponCode(""); setCouponMsg(null);
-      onComplete(planSlug);
+      setSaving(false);
+      setPendingApproval({ plan: planData?.name || planSlug, cycle: isYearly ? "yearly" : "monthly" });
     } catch (e) {
       setError(e.message || "Could not save plan. Please try again.");
       setSaving(false);
@@ -414,9 +414,47 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
     } finally {
       processingRef.current = null;
     }
-  }, [session, onComplete, plans]);
+  }, [session, onComplete, plans, clearPendingLocal]);
 
   saveSubRef.current = saveSub;
+
+  // Already have a subscription payment awaiting admin confirmation? Show the
+  // waiting screen, and react when the admin decides.
+  useEffect(() => {
+    const uid = session?.user?.id;
+    if (!uid) return;
+    let chan;
+    (async () => {
+      const { data } = await supabase
+        .from("admin_approval_requests")
+        .select("id, status, payload, decision_note")
+        .eq("requester", uid)
+        .eq("request_type", "subscription_upgrade")
+        .order("requested_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (data?.status === "pending") {
+        setPendingApproval({ plan: data.payload?.plan_slug || "your new plan", cycle: data.payload?.billing_cycle || "monthly" });
+      }
+      chan = supabase
+        .channel(`sub_approval_${uid}`)
+        .on("postgres_changes",
+          { event: "UPDATE", schema: "public", table: "admin_approval_requests", filter: `requester=eq.${uid}` },
+          (p) => {
+            const row = p.new;
+            if (row.request_type !== "subscription_upgrade") return;
+            if (row.status === "approved") {
+              setPendingApproval(null);
+              onComplete(row.payload?.plan_slug || currentPlan);
+            } else if (row.status === "rejected") {
+              setPendingApproval(null);
+              setError(`Your subscription payment could not be approved.${row.decision_note ? ` Reason: ${row.decision_note}.` : ""} A full refund has been issued to your bank account (allow up to 10 working days).`);
+            }
+          })
+        .subscribe();
+    })();
+    return () => { if (chan) supabase.removeChannel(chan); };
+  }, [session?.user?.id, onComplete, currentPlan]);
 
   // On web: if the browser redirected during payment the page reloads and
   // pendingPayment remains in localStorage. Auto-trigger activation on mount
@@ -466,20 +504,24 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
     setSaving(true);
     setError("");
     try {
-      const uid = session?.user?.id;
-      const { data: existing, error: fetchErr } = await supabase
-        .from("subscriptions")
-        .select("id")
-        .eq("user_id", uid)
-        .eq("status", "active")
-        .maybeSingle();
-      if (fetchErr || !existing) throw new Error("No active subscription found");
-      const { error: updateErr } = await supabase
-        .from("subscriptions")
-        .update({ plan: targetPlan.slug })
-        .eq("id", existing.id);
-      if (updateErr) throw updateErr;
-      onComplete(targetPlan.slug);
+      if (isFreePlanSlug(targetPlan.slug, plans)) {
+        // Downgrade to a free plan takes effect immediately.
+        const { error } = await supabase.rpc("activate_free_subscription", { p_plan_slug: targetPlan.slug });
+        if (error) throw error;
+        onComplete(targetPlan.slug);
+        return;
+      }
+      // Moving between paid tiers — no payment, but still needs an admin to approve.
+      const { error } = await supabase.rpc("submit_subscription_upgrade_request", {
+        p_plan_slug:     targetPlan.slug,
+        p_billing_cycle: yearly ? "yearly" : "monthly",
+        p_amount:        0,
+        p_reference:     "",
+        p_coupon:        null,
+      });
+      if (error && !/awaiting approval|already been submitted/i.test(error.message || "")) throw error;
+      setSaving(false);
+      setPendingApproval({ plan: targetPlan.name || targetPlan.slug, cycle: yearly ? "yearly" : "monthly" });
     } catch (e) {
       setError(e.message || "Could not change plan. Please try again.");
       setSaving(false);
@@ -525,6 +567,33 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
         <div className="flex flex-col items-center gap-3">
           <div className="w-10 h-10 border-[3px] border-green-500 border-t-transparent rounded-full animate-spin" />
           <p className="text-sm text-gray-500 dark:text-slate-400">Loading plans…</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Bank transfer received — waiting for an admin to confirm and approve.
+  if (pendingApproval) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 dark:from-slate-900 dark:to-slate-800 flex items-center justify-center px-6">
+        <div className="max-w-sm w-full text-center bg-white dark:bg-slate-800 rounded-3xl shadow-xl border border-green-100 dark:border-slate-700 px-6 py-9">
+          <div className="w-16 h-16 mx-auto rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mb-4">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
+          </div>
+          <h1 className="text-xl font-black text-gray-800 dark:text-white">Payment received</h1>
+          <p className="text-sm text-gray-500 dark:text-slate-400 mt-2 leading-relaxed">
+            Your transfer for <span className="font-bold text-gray-700 dark:text-slate-200">{pendingApproval.plan}</span>{" "}
+            ({pendingApproval.cycle}) is being confirmed by our team. Your plan upgrades automatically once it&apos;s approved — usually within a few hours. We&apos;ll email you.
+          </p>
+          <div className="mt-5 inline-flex items-center gap-2 text-xs font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-3 py-1.5 rounded-full">
+            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" /> Awaiting admin approval
+          </div>
+          {onClose && (
+            <button onClick={onClose} className="mt-6 w-full py-3 rounded-xl text-sm font-bold text-white bg-gradient-to-br from-blue-950 to-blue-800 active:scale-[0.98] transition-transform">
+              Continue to app
+            </button>
+          )}
+          {error && <p className="mt-3 text-xs text-red-500">{error}</p>}
         </div>
       </div>
     );
@@ -605,7 +674,7 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
 
         {pendingPayment && (
           <div className="mb-4 max-w-sm mx-auto bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-center">
-            <p className="text-sm font-semibold text-green-800 mb-2">Payment completed?</p>
+            <p className="text-sm font-semibold text-green-800 mb-2">Completed your bank transfer?</p>
             <button
               onClick={() => {
                 const p = pendingPayment;
@@ -616,7 +685,7 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
               }}
               disabled={saving}
               className="text-sm font-bold text-white bg-green-600 hover:bg-green-700 px-5 py-2 rounded-lg disabled:opacity-50">
-              Activate My Plan
+              {saving ? "Checking…" : "Check Payment"}
             </button>
           </div>
         )}
@@ -838,7 +907,7 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
         </div>
 
         <p className="text-center text-xs text-gray-400 dark:text-slate-500 mt-8">
-          Secure payment via Paystack · Paid plans renew based on your billing cycle · Cancel anytime
+          Paid plans are settled by bank transfer via Paystack and activated once our team confirms your payment · Cancel anytime
         </p>
       </div>
     </div>

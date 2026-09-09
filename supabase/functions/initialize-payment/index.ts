@@ -39,6 +39,10 @@ serve(async (req) => {
           email,
           amount,
           reference,
+          // Business-owner subscriptions are settled by bank transfer only — the
+          // payment is then confirmed and approved by an admin before the plan
+          // upgrade takes effect.
+          channels: ["bank_transfer"],
           // Must be an HTTPS URL so Paystack can redirect to it after payment.
           // The Vercel page then deep-links back into the native app.
           callback_url: "https://kudiai.app/payment-return",
