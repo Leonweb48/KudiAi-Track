@@ -28,3 +28,4 @@ Thumbs.db
 .claude/
 
 # NotoSans TTFs are committed (OFL-1.1 license, freely distributable)
+.env*
