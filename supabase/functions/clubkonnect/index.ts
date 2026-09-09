@@ -30,14 +30,38 @@ const NET_ID: Record<string, string> = {
 
 const reqId = () => `KDT${Date.now()}${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
 
-async function ck(path: string, params: Record<string, string>): Promise<Record<string, unknown>> {
-  const qs = new URLSearchParams({ UserID: USER_ID, ...params });
+// A network failure mid-request does NOT mean the order failed — ClubKonnect may
+// have already fulfilled it. We therefore (a) bound each call with a timeout and
+// (b) retry on network/timeout errors reusing the SAME url, which means the same
+// RequestID. CK is idempotent on RequestID: a retry after a lost-but-successful
+// response returns the existing order instead of charging again.
+async function ck(
+  path: string,
+  params: Record<string, string>,
+  opts: { timeoutMs?: number; retries?: number } = {},
+): Promise<Record<string, unknown>> {
+  const { timeoutMs = 45000, retries = 2 } = opts;
+  const qs  = new URLSearchParams({ UserID: USER_ID, ...params });
   const url = `${BASE}${path}?${qs}`;
-  const res = await fetch(url, { headers: { "Accept": "application/json" } });
-  const text = await res.text();
-  console.log(`CK ${path} status=${res.status} body=${text.slice(0, 400)}`);
-  try { return JSON.parse(text) as Record<string, unknown>; }
-  catch { return { _raw: text, _http: res.status }; }
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    if (attempt > 0) await new Promise(r => setTimeout(r, 1500 * attempt));
+    const ctrl  = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const res  = await fetch(url, { headers: { "Accept": "application/json" }, signal: ctrl.signal });
+      clearTimeout(timer);
+      const text = await res.text();
+      console.log(`CK ${path} try=${attempt} status=${res.status} body=${text.slice(0, 400)}`);
+      try { return JSON.parse(text) as Record<string, unknown>; }
+      catch { return { _raw: text, _http: res.status }; }
+    } catch (e) {
+      clearTimeout(timer);
+      lastErr = e;
+      console.warn(`CK ${path} try=${attempt} network error: ${(e as Error).message}`);
+    }
+  }
+  throw lastErr ?? new Error(`CK ${path} unreachable`);
 }
 
 // Statuses that always mean failure regardless of statuscode
@@ -88,6 +112,12 @@ serve(async (req) => {
   catch { return json({ error: "Invalid JSON body" }); }
   const { action } = body as { action: string };
 
+  // Caller-stable idempotency key. The client/webhook pass the pending_bills
+  // reference (KDT-BILL-…) so a retry — from ck() below, from the client after a
+  // dropped invoke, or from the `verify` action — hits CK with the same RequestID
+  // and CK returns the existing order rather than fulfilling twice.
+  const rid = String((body as Record<string, unknown>).requestId ?? "").trim().slice(0, 64) || reqId();
+
   // Read-only monitoring actions (wallet-balance, plan lookups) are gated only by
   // the Supabase gateway's own apikey validation — the gateway rejects any call
   // that doesn't carry a valid anon key before the function is ever invoked.
@@ -116,7 +146,7 @@ serve(async (req) => {
       if (!netId) return json({ error: `Unknown network: ${network}` });
       const data = await ck("APIAirtimeV1.asp", {
         APIKey: AIRTIME_K, MobileNetwork: netId, Amount: String(amount),
-        MobileNumber: phone.replace(/\D/g, ""), RequestID: reqId(), CallBackURL: "https://kudiai.app/",
+        MobileNumber: phone.replace(/\D/g, ""), RequestID: rid, CallBackURL: "https://kudiai.app/",
       });
       if (!isOk(data)) return json({ error: errMsg(data, "Airtime purchase failed"), _raw: data });
       return json({ status: "SUCCESS", reference: String(data.orderid ?? data.requestid ?? ""), message: String(data.status ?? "ORDER_RECEIVED") });
@@ -197,7 +227,7 @@ serve(async (req) => {
       console.log(`data purchase: net=${netId} plan=${planId} phone=${phone.replace(/\D/g,"").slice(-4)}`);
       const data = await ck("APIDatabundleV1.asp", {
         APIKey: DATA_K, MobileNetwork: netId, DataPlan: planId,
-        MobileNumber: phone.replace(/\D/g, ""), RequestID: reqId(), CallBackURL: "https://kudiai.app/",
+        MobileNumber: phone.replace(/\D/g, ""), RequestID: rid, CallBackURL: "https://kudiai.app/",
       });
       console.log(`data purchase result:`, JSON.stringify(data).slice(0, 500));
       if (!isOk(data)) return json({ error: `${errMsg(data, "Data purchase failed")} [net:${netId} plan:${planId}]`, _raw: data });
@@ -209,11 +239,11 @@ serve(async (req) => {
       const { network, planId } = body as { network: string; planId: string };
       const netId = NET_ID[network] ?? "01";
       const dummy = "08000000000";
-      const rid = reqId();
+      const probeRid = reqId();
       // Try V1 and V3 with the given planId and a dummy phone
       const [v1, v3] = await Promise.all([
-        ck("APIDatabundleV1.asp", { APIKey: DATA_K, MobileNetwork: netId, DataPlan: planId, MobileNumber: dummy, RequestID: rid + "A", CallBackURL: "https://kudiai.app/" }),
-        ck("APIDatabundleV3.asp", { APIKey: DATA_K, MobileNetwork: netId, DataPlan: planId, MobileNumber: dummy, RequestID: rid + "B", CallBackURL: "https://kudiai.app/" }),
+        ck("APIDatabundleV1.asp", { APIKey: DATA_K, MobileNetwork: netId, DataPlan: planId, MobileNumber: dummy, RequestID: probeRid + "A", CallBackURL: "https://kudiai.app/" }),
+        ck("APIDatabundleV3.asp", { APIKey: DATA_K, MobileNetwork: netId, DataPlan: planId, MobileNumber: dummy, RequestID: probeRid + "B", CallBackURL: "https://kudiai.app/" }),
       ]);
       console.log("data-probe v1:", JSON.stringify(v1));
       console.log("data-probe v3:", JSON.stringify(v3));
@@ -287,7 +317,7 @@ serve(async (req) => {
       const data = await ck("APICableTVV1.asp", {
         APIKey: CABLETV_K, CableTV: provider, Package: packageId,
         SmartCardNo: smartcard, PhoneNo: phone.replace(/\D/g, ""),
-        RequestID: reqId(), CallBackURL: "https://kudiai.app/",
+        RequestID: rid, CallBackURL: "https://kudiai.app/",
       });
       if (!isOk(data)) return json({ error: errMsg(data, "Cable TV subscription failed"), _raw: data });
       return json({ status: "SUCCESS", reference: String(data.orderid ?? data.requestid ?? ""), message: String(data.status ?? "ORDER_RECEIVED") });
@@ -395,7 +425,7 @@ serve(async (req) => {
       const data = await ck("APIElectricityV1.asp", {
         APIKey: ELECTRICITY_K, ElectricCompany: company, MeterType: meterType,
         MeterNo: meterNo, Amount: String(amount), PhoneNo: phone.replace(/\D/g, ""),
-        RequestID: reqId(), CallBackURL: "https://kudiai.app/",
+        RequestID: rid, CallBackURL: "https://kudiai.app/",
       });
       console.log("electricity purchase response:", JSON.stringify(data));
 
@@ -431,7 +461,7 @@ serve(async (req) => {
         if (orderId) {
           // If inner order is already completed, query once to get the token
           if (txnStat === "ORDER_COMPLETED" || txnStat === "SUCCESSFUL" || txnStat === "SUCCESS") {
-            const q = await ck("APIQueryV1.asp", { APIKey: ELECTRICITY_K, OrderID: orderId });
+            const q = await ck("APIQueryV1.asp", { APIKey: ELECTRICITY_K, OrderID: orderId }, { retries: 1, timeoutMs: 15000 });
             console.log("electricity TXN_HISTORY completed query:", JSON.stringify(q));
             const token = extractElecToken(q);
             if (token) return json({ status: "SUCCESS", reference: orderId, token, message: "ORDER_COMPLETED" });
@@ -452,7 +482,7 @@ serve(async (req) => {
       let completedButNoToken = 0;
       for (let i = 0; i < 22; i++) {
         await new Promise(r => setTimeout(r, 4000));
-        const q = await ck("APIQueryV1.asp", { APIKey: ELECTRICITY_K, OrderID: orderId });
+        const q = await ck("APIQueryV1.asp", { APIKey: ELECTRICITY_K, OrderID: orderId }, { retries: 0, timeoutMs: 10000 }).catch(() => ({} as Record<string, unknown>));
         const qCode = elecStatusCode(q);
         const qStat = elecStat(q);
         const qToken = extractElecToken(q);
@@ -478,7 +508,7 @@ serve(async (req) => {
     if (action === "electricity-query") {
       const { orderId } = body as { orderId: string };
       if (!orderId) return json({ error: "orderId required" });
-      const q = await ck("APIQueryV1.asp", { APIKey: ELECTRICITY_K, OrderID: orderId });
+      const q = await ck("APIQueryV1.asp", { APIKey: ELECTRICITY_K, OrderID: orderId }, { retries: 1, timeoutMs: 15000 });
       console.log("electricity-query full response:", JSON.stringify(q));
       const qCode = elecStatusCode(q);
       const qStat = elecStat(q);
@@ -495,6 +525,76 @@ serve(async (req) => {
         return json({ status: "CANCELLED", reference: orderId, token: "", message: errMsg(q, "Order cancelled") });
       }
       return json({ status: "PENDING", reference: orderId, token: "", message: qStat });
+    }
+
+    // ── Requery a purchase by RequestID (or OrderID) ─────────────────────────────
+    // Called by the client / webhook after a network failure to find out whether
+    // ClubKonnect actually fulfilled. Fails safe: when CK can't be reached or the
+    // answer is ambiguous it returns PENDING/UNKNOWN so the caller HOLDS rather
+    // than refunding a delivered order.
+    if (action === "verify") {
+      const svc     = String((body as Record<string, unknown>).service ?? "").toLowerCase().trim();
+      const orderId = String((body as Record<string, unknown>).orderId ?? "").trim();
+      const KEY_BY_SVC: Record<string, string> = {
+        airtime: AIRTIME_K, data: DATA_K, cable: CABLETV_K, electricity: ELECTRICITY_K,
+        betting: BETTING_K, waec: WAEC_K, jamb: JAMB_K, spectranet: SPECTRANET_K,
+        smile: SMILE_K, "print-airtime": PRINT_AIRTIME_K, "print-data": PRINT_DATA_K,
+      };
+      const apiKey = KEY_BY_SVC[svc] || AIRTIME_K;
+      const qp: Record<string, string> = { APIKey: apiKey };
+      if (orderId) qp.OrderID = orderId; else qp.RequestID = rid;
+
+      let q: Record<string, unknown>;
+      try {
+        q = await ck("APIQueryV1.asp", qp, { retries: 2, timeoutMs: 20000 });
+      } catch (e) {
+        return json({ status: "UNKNOWN", requestId: rid, message: `verify unavailable: ${(e as Error).message}` });
+      }
+
+      const code = String(q?.statuscode ?? q?.StatusCode ?? "").trim();
+      const stat = String(
+        q?.status ?? q?.Status ?? q?.transactionstatus ?? q?.TransactionStatus ?? "",
+      ).toUpperCase().trim();
+      const rawU = JSON.stringify(q).toUpperCase();
+      const token = extractElecToken(q);
+      const cardDetails = String(q?.carddetails ?? q?.CardDetails ?? "");
+      const vPins = (q?.TXN_EPIN ?? q?.TXN_EPIN_DATABUNDLE ?? []) as unknown[];
+
+      // No order exists for this id — genuinely nothing was placed
+      if (
+        stat.includes("INVALID_REQUESTID") || stat.includes("INVALID_ORDERID") ||
+        stat.includes("ORDER_NOT_FOUND")   || stat.includes("NOT_FOUND") ||
+        rawU.includes("INVALID REQUESTID") || rawU.includes("NO TRANSACTION") ||
+        rawU.includes("INVALID_REQUESTID")
+      ) {
+        return json({ status: "NOT_FOUND", requestId: rid, _raw: q });
+      }
+
+      // Explicit failure / cancellation
+      if (FAIL_PATTERNS.some(p => stat.includes(p)) || stat.includes("CANCEL") || code.startsWith("5")) {
+        return json({ status: "FAILED", requestId: rid, message: errMsg(q, "Order failed"), _raw: q });
+      }
+
+      // Delivered
+      if (
+        token || cardDetails || (Array.isArray(vPins) && vPins.length) ||
+        code === "100" || code === "200" ||
+        stat === "ORDER_COMPLETED" || stat === "ORDER_RECEIVED" ||
+        stat === "SUCCESSFUL" || stat === "SUCCESS"
+      ) {
+        return json({
+          status: "SUCCESS", requestId: rid,
+          reference: String(q.orderid ?? q.OrderID ?? q.transactionid ?? q.TransactionID ?? orderId ?? ""),
+          token: token || "",
+          cardDetails: cardDetails || "",
+          pins: Array.isArray(vPins) && vPins.length ? vPins : undefined,
+          message: stat || "ORDER_COMPLETED",
+          _raw: q,
+        });
+      }
+
+      // Order exists but still working, or shape we don't recognise — hold, don't refund
+      return json({ status: "PENDING", requestId: rid, message: stat || "processing", _raw: q });
     }
 
     // ── Betting providers ─────────────────────────────────────────────────────
@@ -520,7 +620,7 @@ serve(async (req) => {
       if (!company || !customerId || !amount) return json({ error: "company, customerId and amount required" });
       const data = await ck("APIBettingV1.asp", {
         APIKey: BETTING_K, BettingCompany: company, CustomerID: customerId,
-        Amount: String(amount), RequestID: reqId(), CallBackURL: "https://kudiai.app/",
+        Amount: String(amount), RequestID: rid, CallBackURL: "https://kudiai.app/",
       });
       if (!isOk(data)) return json({ error: errMsg(data, "Betting wallet funding failed"), _raw: data });
       return json({ status: "SUCCESS", reference: String(data.orderid ?? data.requestid ?? ""), message: String(data.status ?? "ORDER_RECEIVED") });
@@ -538,7 +638,7 @@ serve(async (req) => {
       if (!examType || !phone) return json({ error: "examType and phone required" });
       const data = await ck("APIWAECV1.asp", {
         APIKey: WAEC_K, ExamType: examType,
-        PhoneNo: phone.replace(/\D/g, ""), RequestID: reqId(), CallBackURL: "https://kudiai.app/",
+        PhoneNo: phone.replace(/\D/g, ""), RequestID: rid, CallBackURL: "https://kudiai.app/",
       });
       if (!isOk(data)) return json({ error: errMsg(data, "WAEC ePin purchase failed"), _raw: data });
       const waecDetails = String(data.carddetails ?? data.CardDetails ?? "");
@@ -569,7 +669,7 @@ serve(async (req) => {
       if (!examType || !phone) return json({ error: "examType and phone required" });
       const data = await ck("APIJAMBV1.asp", {
         APIKey: JAMB_K, ExamType: examType,
-        PhoneNo: phone.replace(/\D/g, ""), RequestID: reqId(), CallBackURL: "https://kudiai.app/",
+        PhoneNo: phone.replace(/\D/g, ""), RequestID: rid, CallBackURL: "https://kudiai.app/",
       });
       if (!isOk(data)) return json({ error: errMsg(data, "JAMB ePin purchase failed"), _raw: data });
       const jambDetails = String(data.carddetails ?? data.CardDetails ?? "");
@@ -609,7 +709,7 @@ serve(async (req) => {
       if (!accountNo || !planId) return json({ error: "accountNo and planId required" });
       const data = await ck("APISpectranetV1.asp", {
         APIKey: SPECTRANET_K, MobileNetwork: "spectranet", DataPlan: planId,
-        MobileNumber: accountNo, RequestID: reqId(), CallBackURL: "https://kudiai.app/",
+        MobileNumber: accountNo, RequestID: rid, CallBackURL: "https://kudiai.app/",
       });
       if (!isOk(data)) return json({ error: errMsg(data, "Spectranet purchase failed"), _raw: data });
       return json({ status: "SUCCESS", reference: String(data.orderid ?? data.requestid ?? ""), message: String(data.status ?? "ORDER_RECEIVED") });
@@ -658,7 +758,7 @@ serve(async (req) => {
       if (!accountNo || !planId) return json({ error: "accountNo and planId required" });
       const data = await ck("APISmileV1.asp", {
         APIKey: SMILE_K, MobileNetwork: "smile-direct", DataPlan: planId,
-        MobileNumber: accountNo, RequestID: reqId(), CallBackURL: "https://kudiai.app/",
+        MobileNumber: accountNo, RequestID: rid, CallBackURL: "https://kudiai.app/",
       });
       if (!isOk(data)) return json({ error: errMsg(data, "Smile purchase failed"), _raw: data });
       return json({ status: "SUCCESS", reference: String(data.orderid ?? data.requestid ?? ""), message: String(data.status ?? "ORDER_RECEIVED") });
@@ -676,7 +776,7 @@ serve(async (req) => {
       if (!["100", "200", "500"].includes(String(value))) return json({ error: "Value must be 100, 200 or 500" });
       const data = await ck("APIEPINV1.asp", {
         APIKey: PRINT_AIRTIME_K, MobileNetwork: netId, Value: String(value),
-        Quantity: String(qty), RequestID: reqId(), CallBackURL: "https://kudiai.app/",
+        Quantity: String(qty), RequestID: rid, CallBackURL: "https://kudiai.app/",
       });
       const pins = (data?.TXN_EPIN ?? []) as Record<string, unknown>[];
       if (!pins.length) return json({ error: isOk(data) ? "Airtime ePIN not returned — contact Clubkonnect support" : errMsg(data, "Print airtime failed"), _raw: data });
@@ -694,7 +794,7 @@ serve(async (req) => {
       if (qty < 1 || qty > 100) return json({ error: "Quantity must be between 1 and 100" });
       const data = await ck("APIDatabundleEPINV1.asp", {
         APIKey: PRINT_DATA_K, MobileNetwork: netId, DataPlan: planId,
-        Quantity: String(qty), RequestID: reqId(), CallBackURL: "https://kudiai.app/",
+        Quantity: String(qty), RequestID: rid, CallBackURL: "https://kudiai.app/",
       });
       const pins = (data?.TXN_EPIN_DATABUNDLE ?? []) as Record<string, unknown>[];
       if (!pins.length) return json({ error: isOk(data) ? "Data ePIN not returned — contact Clubkonnect support" : errMsg(data, "Print data failed"), _raw: data });
@@ -747,29 +847,42 @@ serve(async (req) => {
 
     // ── Bill failure alert — create critical support ticket + email admins & user ─
     if (action === "bill-failure-alert") {
-      const { user_id, user_email, user_name, service, amount, ps_ref, ck_error } = body as {
+      const { user_id, user_email, user_name, service, amount, ps_ref, ck_error, hold } = body as {
         user_id?: string; user_email?: string; user_name?: string;
         service?: string; amount?: number; ps_ref?: string; ck_error?: string;
+        // hold = we could NOT confirm the outcome (network disruption). Raise a
+        // ticket for a human to reconcile, but do NOT auto-refund — the order may
+        // have been delivered.
+        hold?: boolean;
       };
       try {
         const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
-        // Create a critical support ticket so admin/finance see it immediately
-        const ticketSubject = `BILLING FAILURE: ${service} — Paystack paid, service delivery failed`;
-        const description =
-          `A customer paid successfully via Paystack but bill delivery failed.\n\n` +
-          `User: ${user_name || "Unknown"} (${user_email || "N/A"})\n` +
-          `Service: ${service}\n` +
-          `Amount: ₦${amount?.toLocaleString() || "?"}\n` +
-          `Paystack Reference: ${ps_ref}\n` +
-          `Provider Error: ${ck_error}\n\n` +
-          `ACTION REQUIRED: Verify provider wallet balance and manually fulfill or refund.`;
+        // Create a support ticket so admin/finance see it immediately
+        const ticketSubject = hold
+          ? `BILLING UNCONFIRMED: ${service} — paid, delivery not verified (network)`
+          : `BILLING FAILURE: ${service} — Paystack paid, service delivery failed`;
+        const description = hold
+          ? `A customer paid via Paystack. The provider call was disrupted by a network fault and we could NOT confirm whether the order was delivered.\n\n` +
+            `User: ${user_name || "Unknown"} (${user_email || "N/A"})\n` +
+            `Service: ${service}\n` +
+            `Amount: ₦${amount?.toLocaleString() || "?"}\n` +
+            `Paystack Reference: ${ps_ref}\n` +
+            `Detail: ${ck_error}\n\n` +
+            `ACTION REQUIRED: Requery ClubKonnect for RequestID ${ps_ref}. If delivered — mark the transaction success. If not — refund. DO NOT assume failure.`
+          : `A customer paid successfully via Paystack but bill delivery failed.\n\n` +
+            `User: ${user_name || "Unknown"} (${user_email || "N/A"})\n` +
+            `Service: ${service}\n` +
+            `Amount: ₦${amount?.toLocaleString() || "?"}\n` +
+            `Paystack Reference: ${ps_ref}\n` +
+            `Provider Error: ${ck_error}\n\n` +
+            `ACTION REQUIRED: Verify provider wallet balance and manually fulfill or refund.`;
 
         await sb.from("support_tickets").insert({
           subject:    ticketSubject,
           description,
           type:       "payment",
-          priority:   "critical",
+          priority:   hold ? "high" : "critical",
           status:     "open",
           user_id:    user_id || null,
           user_email: user_email || null,
@@ -777,9 +890,11 @@ serve(async (req) => {
         });
 
         await sb.from("admin_tasks").insert({
-          title:       `Service wallet failure — ${service}`,
-          description: `Paystack ref ${ps_ref} was charged ₦${amount?.toLocaleString() || "?"} but provider returned: "${ck_error}". Check wallet balance and fulfill manually.`,
-          priority: "critical",
+          title:       hold ? `Bill unconfirmed — ${service}` : `Service wallet failure — ${service}`,
+          description: hold
+            ? `Paystack ref ${ps_ref} was charged ₦${amount?.toLocaleString() || "?"}. Provider call disrupted (${ck_error}) — outcome UNKNOWN. Requery CK RequestID ${ps_ref} and settle (mark success or refund).`
+            : `Paystack ref ${ps_ref} was charged ₦${amount?.toLocaleString() || "?"} but provider returned: "${ck_error}". Check wallet balance and fulfill manually.`,
+          priority: hold ? "high" : "critical",
           status:   "pending",
         });
 
@@ -845,9 +960,11 @@ serve(async (req) => {
         // Initiating a refund here means every definite fulfillment failure (after
         // the customer was charged) triggers an automatic full refund. Electricity
         // PENDING does not reach this path — that stays as "check meter" polling.
+        // `hold` also skips the refund: the outcome is unknown (network disruption)
+        // and the order may have been delivered — a human reconciles instead.
         let refundInitiated = false;
         let refundId: string | null = null;
-        if (ps_ref && amount && Number(amount) > 0) {
+        if (!hold && ps_ref && amount && Number(amount) > 0) {
           try {
             const rfRes = await fetch(`${SUPABASE_URL}/functions/v1/paystack`, {
               method: "POST",

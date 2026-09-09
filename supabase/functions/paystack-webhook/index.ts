@@ -211,14 +211,31 @@ async function handleBillPayment(
   const cat      = pb.cat as string;
   const formData = (pb.form_data ?? {}) as Record<string, string>;
 
+  // POST to the ClubKonnect edge function (service role key bypasses the user JWT
+  // check). Retries on a network-shaped failure — the pending_bills.reference is
+  // passed as requestId so CK dedupes and never double-charges on retry.
+  const NET_ERR = /network|timeout|timed ?out|fetch failed|failed to fetch|connection|aborted|ECONNRESET|socket|dns|gateway|50[234]/i;
+  const ckPost = async (payload: Record<string, unknown>, tries = 3): Promise<Record<string, unknown>> => {
+    let lastErr: unknown;
+    for (let i = 0; i < tries; i++) {
+      if (i > 0) await new Promise(r => setTimeout(r, 3000 * i));
+      try {
+        const resp = await fetch(`${supabaseUrl}/functions/v1/clubkonnect`, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${serviceKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        return await resp.json() as Record<string, unknown>;
+      } catch (e) {
+        lastErr = e;
+        if (!NET_ERR.test((e as Error).message || "")) break;
+      }
+    }
+    throw lastErr ?? new Error("clubkonnect unreachable");
+  };
+
   try {
-    // Call the ClubKonnect edge function using the service role key (bypasses user JWT check).
-    const ckResp = await fetch(`${supabaseUrl}/functions/v1/clubkonnect`, {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${serviceKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ action: cat, ...formData }),
-    });
-    const ck = await ckResp.json() as Record<string, unknown>;
+    const ck = await ckPost({ action: cat, requestId: reference, ...formData });
 
     if (ck?.error) throw new Error(String(ck.error));
 
@@ -286,14 +303,64 @@ async function handleBillPayment(
     const msg = err instanceof Error ? err.message : "Unknown error";
     console.error(`[webhook/bill] ClubKonnect failed for ${reference}: ${msg}`);
 
-    // _charged:true tells the client to show "We're Sorting This Out" (not "You were not charged"),
-    // because the payment was confirmed by Paystack before the webhook tried to fulfill.
+    // Was this a disruption rather than a provider rejection? If so, ask CK
+    // directly whether the order was fulfilled before writing it off.
+    let verdict: "FAILED" | "SUCCESS" | "HOLD" = "FAILED";
+    let vr: Record<string, unknown> = {};
+    if (NET_ERR.test(msg) || /unreachable|non-2xx|edge function/i.test(msg)) {
+      try {
+        vr = await ckPost({ action: "verify", requestId: reference, service: cat }, 2);
+        const vs = String(vr?.status ?? "").toUpperCase();
+        if (vs === "SUCCESS")                       verdict = "SUCCESS";
+        else if (vs === "PENDING" || vs === "UNKNOWN") verdict = "HOLD";
+        // FAILED / NOT_FOUND → verdict stays "FAILED"
+      } catch {
+        verdict = "HOLD"; // verify itself unreachable — hold, don't refund
+      }
+    }
+
+    const { data: uProf } = await sb.from("profiles")
+      .select("email, owner_name, business_name")
+      .eq("id", pb.user_id).maybeSingle();
+    const uEmail = (uProf as Record<string, unknown> | null)?.email ?? null;
+    const uName  = (uProf as Record<string, unknown> | null)?.owner_name
+                ?? (uProf as Record<string, unknown> | null)?.business_name ?? null;
+
+    // ── Recovered: CK confirms it WAS delivered ────────────────────────────────
+    if (verdict === "SUCCESS") {
+      const apiRef = String(vr.reference ?? reference);
+      const note   = `${cat} | recovered via requery${apiRef ? ` | Ref: ${apiRef}` : ""} | PS: ${reference}`;
+      await sb.from("pending_bills").update({
+        status: "fulfilled",
+        fulfillment: {
+          ok: true, label: cat, detail: note, psRef: reference, apiRef, cat,
+          amount: amountNgn, pinsArr: Array.isArray(vr.pins) ? vr.pins : [],
+          cardDetails: String(vr.cardDetails ?? ""), elecToken: String(vr.token ?? ""),
+          elecOrderId: "", elecUnits: "", txnHistoryPending: false, formSnap: formData,
+        },
+        fulfilled_at: new Date().toISOString(),
+      }).eq("reference", reference);
+      await sb.from("transactions").insert({
+        user_id: pb.user_id, type: "expense", category: cat, amount: amountNgn,
+        item_name: cat, payment_type: "paystack", note,
+        transaction_date: new Date().toISOString().slice(0, 10),
+        bill_status: "completed", client_txn_id: reference,
+      }).onConflict("client_txn_id").ignore();
+      console.log(`[webhook/bill] Recovered via requery: ref=${reference} cat=${cat}`);
+      return;
+    }
+
+    const hold = verdict === "HOLD";
+
+    // status stays 'failed' (the only non-terminal-failure value the CHECK allows);
+    // _hold in the fulfillment payload tells the client this is "confirming", not
+    // "failed + refunded". _charged:true → payment was real.
     await sb.from("pending_bills").update({
       status: "failed",
-      fulfillment: { detail: msg, _charged: true },
+      fulfillment: { detail: msg, _charged: true, _hold: hold },
     }).eq("reference", reference);
 
-    // Record the failed transaction so it appears in the owner's bill history.
+    // Record the transaction so it appears in the owner's bill history.
     await sb.from("transactions").insert({
       user_id:          pb.user_id,
       type:             "expense",
@@ -301,27 +368,27 @@ async function handleBillPayment(
       amount:           amountNgn,
       item_name:        cat,
       payment_type:     "paystack",
-      note:             `FAILED (webhook): ${msg} | PS: ${reference}`,
+      note:             hold
+        ? `PENDING CONFIRMATION (webhook): ${msg} | PS: ${reference}`
+        : `FAILED (webhook): ${msg} | PS: ${reference}`,
       transaction_date: new Date().toISOString().slice(0, 10),
-      bill_status:      "failed",
+      bill_status:      hold ? "pending" : "failed",
       client_txn_id:    `wh_${reference}`,
     }).onConflict("client_txn_id").ignore();
 
-    // Fire the same bill-failure-alert as the client-side path:
-    // creates a critical support ticket, emails admins, and initiates auto-refund.
+    // Alert admins. hold=true raises a reconciliation ticket WITHOUT auto-refunding —
+    // the order may have been delivered. hold=false is the definite-failure path
+    // (critical ticket + automatic refund).
     try {
-      const { data: uProf } = await sb.from("profiles")
-        .select("email, owner_name, business_name")
-        .eq("id", pb.user_id).maybeSingle();
       await fetch(`${supabaseUrl}/functions/v1/clubkonnect`, {
         method: "POST",
         headers: { "Authorization": `Bearer ${serviceKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({
           action:     "bill-failure-alert",
+          hold,
           user_id:    pb.user_id,
-          user_email: (uProf as Record<string, unknown> | null)?.email ?? null,
-          user_name:  (uProf as Record<string, unknown> | null)?.owner_name
-                      ?? (uProf as Record<string, unknown> | null)?.business_name ?? null,
+          user_email: uEmail,
+          user_name:  uName,
           service:    cat,
           amount:     amountNgn,
           ps_ref:     reference,

@@ -543,7 +543,7 @@ function Overview({ bills }) {
   const t = useT();
   const todayStr   = new Date().toISOString().slice(0, 10);
   const weekAgoStr = (() => { const d = new Date(); d.setDate(d.getDate() - 7); return d.toISOString().slice(0, 10); })();
-  const successful = bills.filter(b => b.bill_status !== "failed");
+  const successful = bills.filter(b => b.bill_status !== "failed" && b.bill_status !== "pending");
   const todayTotal = successful.filter(b => (b.transaction_date || "") === todayStr).reduce((s, b) => s + b.amount, 0);
   const weekTotal  = successful.filter(b => (b.transaction_date || "") >= weekAgoStr).reduce((s, b) => s + b.amount, 0);
   return (
@@ -563,19 +563,21 @@ function Overview({ bills }) {
 }
 
 function BillRow({ bill, onOpen }) {
-  const cat    = CATS.find(c => c.id === bill.category) || CATS[0];
-  const failed = bill.bill_status === "failed";
+  const cat     = CATS.find(c => c.id === bill.category) || CATS[0];
+  const failed  = bill.bill_status === "failed";
+  const pending = bill.bill_status === "pending";
   return (
-    <div className={`rounded-2xl border shadow-sm overflow-hidden ${failed ? "bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800/50" : "bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700/50"}`}>
+    <div className={`rounded-2xl border shadow-sm overflow-hidden ${failed ? "bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800/50" : pending ? "bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800/50" : "bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700/50"}`}>
       <div onClick={onOpen}
         className="px-4 py-3.5 flex items-center gap-3 cursor-pointer active:scale-[0.98] transition-transform">
-        <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-gradient-to-br ${failed ? "from-red-500 to-red-700" : cat.tileCls}`}>
+        <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-gradient-to-br ${failed ? "from-red-500 to-red-700" : pending ? "from-amber-400 to-amber-600" : cat.tileCls}`}>
           <Ico d={CAT_ICONS[bill.category] || CAT_ICONS.airtime} size={18} c="white" />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
             <p className="text-sm font-bold text-slate-800 dark:text-white truncate">{bill.item_name}</p>
             {failed && <span className="text-[9px] font-black bg-red-500 text-white px-1.5 py-0.5 rounded-full flex-shrink-0">FAILED</span>}
+            {pending && <span className="text-[9px] font-black bg-amber-500 text-white px-1.5 py-0.5 rounded-full flex-shrink-0">PENDING</span>}
           </div>
           <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">
             {bill.customer_name && `${bill.customer_name} · `}{fmtDT(bill.created_at)}
@@ -739,6 +741,56 @@ function BeneficiaryManagerSheet({ bens, onClose, onDelete, onNicknameSave }) {
 const BILL_PENDING_PREFIX = "ck_bill_pending_";
 const BILL_LAST_RESULT    = "ck_bill_last_result";
 
+// Network-shaped error messages — a disruption, NOT a provider rejection.
+const CK_NET_ERR = /network|timeout|timed ?out|failed to fetch|failed to send a request|load failed|connection|aborted|ECONNRESET|socket|gateway|502|503|504|non-2xx|FunctionsFetchError|FunctionsRelayError|edge function/i;
+
+/**
+ * Run a ClubKonnect purchase with the pending reference as a stable idempotency
+ * key. On a network disruption (not a provider rejection) it retries the same
+ * call — CK dedupes on RequestID so it never double-charges — then, if still
+ * unresolved, asks CK directly whether the order was fulfilled.
+ *
+ * Resolves with the provider result (possibly `{_recovered:true}` when confirmed
+ * via requery). Throws:
+ *   • the original error for a real provider rejection (INVALID_MOBILE_NUMBER …)
+ *   • an Error with `.pending === true` when the outcome cannot be confirmed —
+ *     caller must HOLD (no "failed", no refund).
+ */
+async function ckPurchase(clubkonnect, cat, params, ref) {
+  const maxTries = cat === "electricity" ? 2 : 3;
+  let lastErr;
+  for (let i = 0; i < maxTries; i++) {
+    if (i > 0) await new Promise(r => setTimeout(r, 4000 * i));
+    try {
+      return await clubkonnect(cat, { ...params, requestId: ref });
+    } catch (e) {
+      lastErr = e;
+      if (!CK_NET_ERR.test(e?.message || "")) throw e; // real rejection — stop
+    }
+  }
+  // Retries exhausted — ask the provider what actually happened.
+  let vr;
+  try {
+    vr = await clubkonnect("verify", { requestId: ref, service: cat });
+  } catch {
+    const e = new Error("PENDING_CONFIRMATION"); e.pending = true; throw e;
+  }
+  if (vr?.status === "SUCCESS") {
+    return {
+      status: "SUCCESS", _recovered: true,
+      reference: vr.reference || ref,
+      token: vr.token || "", cardDetails: vr.cardDetails || "",
+      pins: Array.isArray(vr.pins) ? vr.pins : undefined,
+      message: vr.message || "RECOVERED",
+    };
+  }
+  if (vr?.status === "PENDING" || vr?.status === "UNKNOWN") {
+    const e = new Error("PENDING_CONFIRMATION"); e.pending = true; throw e;
+  }
+  // FAILED / NOT_FOUND — genuinely did not go through
+  throw lastErr || new Error(vr?.message || "Bill delivery failed");
+}
+
 /* ─── Map a stored bill transaction to BillReceipt props ─────────────────── */
 function billToReceipt(bill, profile, staffName) {
   const raw  = bill.note || "";
@@ -809,8 +861,8 @@ async function genBillStatement(allBills, catFilter, period, profile) {
 
   const svcName     = catFilter === "all" ? "All Services" : (CATS.find(c => c.id === catFilter)?.label || catFilter);
   const periodLabel = { month: "This Month", last3: "Last 3 Months", year: "This Year", all: "All Time" }[period] || "All Time";
-  const totalAmt    = rows.filter(b => b.bill_status !== "failed").reduce((s, b) => s + (parseFloat(b.amount) || 0), 0);
-  const successCnt  = rows.filter(b => b.bill_status !== "failed").length;
+  const totalAmt    = rows.filter(b => b.bill_status !== "failed" && b.bill_status !== "pending").reduce((s, b) => s + (parseFloat(b.amount) || 0), 0);
+  const successCnt  = rows.filter(b => b.bill_status !== "failed" && b.bill_status !== "pending").length;
 
   const pdf = await createReportPdf({
     title: "Bill Payment Statement",
@@ -1450,8 +1502,8 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
               </div>
             </div>
             <div className="text-center">
-              <p className="text-xl font-black text-slate-800">{t("bp.sortingOut")}</p>
-              <p className="text-xs text-slate-400 mt-1 leading-relaxed">{t("bp.alertedTeam")}</p>
+              <p className="text-xl font-black text-slate-800">{fulfillResult.pendingConfirm ? "Confirming Your Purchase" : t("bp.sortingOut")}</p>
+              <p className="text-xs text-slate-400 mt-1 leading-relaxed">{fulfillResult.pendingConfirm ? "Payment received — this won't take long" : t("bp.alertedTeam")}</p>
             </div>
           </div>
 
@@ -1462,7 +1514,9 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
             </div>
             <div className="bg-white px-4 py-3">
               <p className="text-sm text-slate-700 leading-relaxed">
-                Your payment was received but the service couldn&apos;t be delivered right now. A <strong>refund has been automatically initiated</strong> — expect it within 24 hours. Our team has also been notified and will follow up if needed.
+                {fulfillResult.pendingConfirm
+                  ? <>Your payment went through, but a network fault interrupted the confirmation from the provider. We&apos;re verifying whether it was delivered and will <strong>email you the outcome shortly</strong>. <strong>Please don&apos;t pay again</strong> — if it wasn&apos;t delivered you&apos;ll be refunded automatically.</>
+                  : <>Your payment was received but the service couldn&apos;t be delivered right now. A <strong>refund has been automatically initiated</strong> — expect it within 24 hours. Our team has also been notified and will follow up if needed.</>}
               </p>
             </div>
           </div>
@@ -1703,7 +1757,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     if (histCat    !== "all") r = r.filter(b => b.category === histCat);
     if (histStatus !== "all") r = histStatus === "failed"
       ? r.filter(b => b.bill_status === "failed")
-      : r.filter(b => b.bill_status !== "failed");
+      : r.filter(b => b.bill_status !== "failed" && b.bill_status !== "pending");
     return applyPeriodFilter(r, histPeriod, histDateFrom, histDateTo, b => b.created_at || b.transaction_date);
   }, [bills, histCat, histStatus, histPeriod, histDateFrom, histDateTo]);
 
@@ -2322,9 +2376,14 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         if (pbRow?.status === "failed" && pbRow.fulfillment) {
           localStorage.removeItem(BILL_PENDING_PREFIX + ref);
           setSaving(false);
-          // Payment WAS confirmed by Paystack before the webhook tried to fulfill — show
-          // "We're Sorting This Out" (not "disrupted / not charged"). A refund is auto-initiated.
-          setFulfillResult({ ok: false, ...pbRow.fulfillment, psRef: ref });
+          if (pbRow.fulfillment._hold) {
+            // Webhook's provider call was disrupted — outcome unconfirmed, NOT refunded.
+            setFulfillResult({ ok: false, pendingConfirm: true, psRef: ref, detail: `Your payment went through and we're confirming delivery with the provider. You'll get an email as soon as it's done — please don't pay again. Quote reference ${ref} if you contact support.` });
+          } else {
+            // Payment WAS confirmed by Paystack before the webhook tried to fulfill — show
+            // "We're Sorting This Out" (not "disrupted / not charged"). A refund is auto-initiated.
+            setFulfillResult({ ok: false, ...pbRow.fulfillment, psRef: ref });
+          }
           return;
         }
       } catch (_) { /* non-fatal — proceed with normal fulfillment */ }
@@ -2430,24 +2489,24 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       const amount = parseFloat(f.amount) || 0;
 
       if (cat === "airtime") {
-        const r = await clubkonnect("airtime", { phone: f.phone, network: f.network, amount: String(f.amount) });
+        const r = await ckPurchase(clubkonnect, "airtime", { phone: f.phone, network: f.network, amount: String(f.amount) }, ref);
         apiRef = r.reference; itemName = `${f.network} Airtime`; customerRef = f.phone;
         note = `Phone: ${f.phone} | Network: ${f.network}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
 
       } else if (cat === "data") {
-        const r = await clubkonnect("data", { phone: f.phone, network: f.network, planId: f.planId });
+        const r = await ckPurchase(clubkonnect, "data", { phone: f.phone, network: f.network, planId: f.planId }, ref);
         apiRef = r.reference; itemName = `${f.network} ${f.planName} Data`; customerRef = f.phone;
         note = `Phone: ${f.phone} | Network: ${f.network} | Plan: ${f.planName}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
 
       } else if (cat === "cable") {
-        const r = await clubkonnect("cable", { provider: f.provider, packageId: f.packageId, smartcard: f.smartcard, phone: f.phone });
+        const r = await ckPurchase(clubkonnect, "cable", { provider: f.provider, packageId: f.packageId, smartcard: f.smartcard, phone: f.phone }, ref);
         apiRef = r.reference;
         const provName = CABLE_PROVIDERS.find(p => p.code === f.provider)?.name || f.provider;
         itemName = `${provName} ${f.packageName}`; customerRef = f.smartcard;
         note = `Provider: ${provName} | Package: ${f.packageName} | Smartcard: ${f.smartcard} | ${vName}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
 
       } else if (cat === "electricity") {
-        const r = await clubkonnect("electricity", { company: f.company, meterType: f.meterType, meterNo: f.meterNo, amount: String(f.amount), phone: f.phone });
+        const r = await ckPurchase(clubkonnect, "electricity", { company: f.company, meterType: f.meterType, meterNo: f.meterNo, amount: String(f.amount), phone: f.phone }, ref);
         apiRef = r.reference;
         const compName = ELECTRICITY_COMPANIES.find(c => c.code === f.company)?.name || f.company;
         const mTypeName = f.meterType === "01" ? "Prepaid" : "Postpaid";
@@ -2471,43 +2530,43 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         }
 
       } else if (cat === "betting") {
-        const r = await clubkonnect("betting", { company: f.company, customerId: f.customerId, amount: String(f.amount) });
+        const r = await ckPurchase(clubkonnect, "betting", { company: f.company, customerId: f.customerId, amount: String(f.amount) }, ref);
         apiRef = r.reference;
         const compName = BETTING_COMPANIES.find(c => c.code === f.company)?.name || f.company;
         itemName = `${compName} Wallet Top-up`; customerRef = f.customerId;
         note = `Platform: ${compName} | Customer: ${f.customerId} | ${vName}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
 
       } else if (cat === "waec") {
-        const r = await clubkonnect("waec", { examType: f.examType, phone: f.phone });
+        const r = await ckPurchase(clubkonnect, "waec", { examType: f.examType, phone: f.phone }, ref);
         apiRef = r.reference; cardDetails = r.cardDetails || "";
         itemName = `WAEC ${WAEC_TYPES.find(t => t.code === f.examType)?.name || f.examType}`; customerRef = f.phone;
         note = `Phone: ${f.phone}${cardDetails ? ` | ${cardDetails}` : ""}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
 
       } else if (cat === "jamb") {
-        const r = await clubkonnect("jamb", { examType: f.examType, phone: f.phone });
+        const r = await ckPurchase(clubkonnect, "jamb", { examType: f.examType, phone: f.phone }, ref);
         apiRef = r.reference; cardDetails = r.cardDetails || "";
         itemName = `JAMB ${JAMB_TYPES.find(t => t.code === f.examType)?.name || f.examType}`; customerRef = f.phone;
         note = `Phone: ${f.phone}${cardDetails ? ` | ${cardDetails}` : ""}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
 
       } else if (cat === "spectranet") {
-        const r = await clubkonnect("spectranet", { accountNo: f.accountNo, planId: f.planId });
+        const r = await ckPurchase(clubkonnect, "spectranet", { accountNo: f.accountNo, planId: f.planId }, ref);
         apiRef = r.reference; itemName = `Spectranet ${f.planName}`; customerRef = f.accountNo;
         note = `Account: ${f.accountNo} | Plan: ${f.planName}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
 
       } else if (cat === "smile") {
-        const r = await clubkonnect("smile", { accountNo: f.accountNo, planId: f.planId });
+        const r = await ckPurchase(clubkonnect, "smile", { accountNo: f.accountNo, planId: f.planId }, ref);
         apiRef = r.reference; itemName = `Smile ${f.planName}`; customerRef = f.accountNo;
         note = `Account: ${f.accountNo} | ${vName}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
 
       } else if (cat === "print-airtime") {
-        const r = await clubkonnect("print-airtime", { network: f.network, value: f.value, quantity: f.quantity });
+        const r = await ckPurchase(clubkonnect, "print-airtime", { network: f.network, value: f.value, quantity: f.quantity }, ref);
         apiRef = r.reference; pinsArr = (r.pins || []).map(p => ({ ...p, network: f.network }));
         const qty = parseInt(f.quantity, 10);
         itemName = `${f.network} ₦${f.value} Airtime Print x${qty}`; customerRef = `${qty} pins`;
         note = `Network: ${f.network} | Value: ₦${f.value} x${qty}${apiRef ? ` | Ref: ${apiRef}` : ""}__PINS__${JSON.stringify(pinsArr)}`;
 
       } else if (cat === "print-data") {
-        const r = await clubkonnect("print-data", { network: f.network, planId: f.planId, quantity: f.quantity });
+        const r = await ckPurchase(clubkonnect, "print-data", { network: f.network, planId: f.planId, quantity: f.quantity }, ref);
         apiRef = r.reference; pinsArr = (r.pins || []).map(p => ({ ...p, network: f.network }));
         const qty = parseInt(f.quantity, 10);
         itemName = `${f.network} ${f.planName} Data Print x${qty}`; customerRef = `${qty} pins`;
@@ -2516,10 +2575,10 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       } else if (cat === "airtime-bundle") {
         const sets = parseInt(f.sets || "1", 10);
         const [mtn, airtel, nm, glo] = await Promise.all([
-          clubkonnect("print-airtime", { network: "MTN",     value: "1000", quantity: String(sets) }),
-          clubkonnect("print-airtime", { network: "Airtel",  value: "1000", quantity: String(sets) }),
-          clubkonnect("print-airtime", { network: "9mobile", value: "1000", quantity: String(sets) }),
-          clubkonnect("print-airtime", { network: "Glo",     value: "1000", quantity: String(sets) }),
+          ckPurchase(clubkonnect, "print-airtime", { network: "MTN",     value: "1000", quantity: String(sets) }, `${ref}-MTN`),
+          ckPurchase(clubkonnect, "print-airtime", { network: "Airtel",  value: "1000", quantity: String(sets) }, `${ref}-AIR`),
+          ckPurchase(clubkonnect, "print-airtime", { network: "9mobile", value: "1000", quantity: String(sets) }, `${ref}-9MB`),
+          ckPurchase(clubkonnect, "print-airtime", { network: "Glo",     value: "1000", quantity: String(sets) }, `${ref}-GLO`),
         ]);
         pinsArr = [
           ...(mtn.pins    || []).map(p => ({ ...p, network: "MTN"     })),
@@ -2670,6 +2729,43 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       // listener would otherwise re-trigger fulfillAfterPayment every time the user opens
       // the Bills page or the app returns from background.
       localStorage.removeItem(BILL_PENDING_PREFIX + ref);
+
+      // ── Network disruption, outcome unknown ──────────────────────────────────
+      // ckPurchase exhausted its retries and could not confirm with the provider.
+      // The order MAY have been delivered — record it as "pending", raise a hold
+      // ticket for reconciliation, and DO NOT auto-refund or mark it failed.
+      if (err?.pending && paymentVerified) {
+        const { cat: hCat, form: hf, paidAmount: hPaid } = pending;
+        const hSvc = CATS.find(c => c.id === hCat)?.label || hCat || "Bill";
+        const hAmt = hPaid || parseFloat(hf.amount || "0") || 0;
+        try {
+          await addTransaction({
+            type: "out", category: hCat, payment_type: "bill_payment",
+            item_name: hSvc,
+            customer_name: hf.phone || hf.meterNo || hf.smartcard || hf.customerId || hf.accountNo || "",
+            amount: hAmt,
+            note: `PENDING CONFIRMATION: provider outcome unverified (network) | PS: ${ref}`,
+            transaction_date: today(),
+            bill_status: "pending",
+          });
+        } catch (_) {}
+        try {
+          await supabase.functions.invoke("clubkonnect", { body: {
+            action: "bill-failure-alert", hold: true,
+            user_id: profile?.id || null, user_email: profile?.email || null,
+            user_name: profile?.owner_name || profile?.business_name || null,
+            service: hSvc, amount: hAmt, ps_ref: ref, ck_error: ckError,
+          }});
+        } catch (_) {}
+        if (staffEmail && staffEmail !== profile?.email) {
+          try {
+            supabase.functions.invoke("clubkonnect", { body: { action: "bill-staff-email", staff_email: staffEmail, staff_name: staffName, business_name: businessName || profile?.business_name, service: hSvc, amount: hAmt, reference: ref, outcome: "pending" } });
+          } catch (_) {}
+        }
+        setFulfillResult({ ok: false, pendingConfirm: true, psRef: ref, detail: `Your payment went through and we're confirming delivery with the provider. You'll get an email as soon as it's done — please don't pay again. Quote reference ${ref} if you contact support.` });
+        return;
+      }
+
       if (paymentVerified) {
         // Payment was confirmed by Paystack but service delivery failed.
         // Show "We're Sorting This Out" — the user WAS charged and we'll make it right.
@@ -2895,11 +2991,11 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         <div className="bg-gradient-to-br from-green-600 to-emerald-700 rounded-2xl px-5 py-4 text-white flex items-center justify-between shadow-md">
           <div>
             <p className="text-[10px] font-bold text-green-100 uppercase tracking-widest">{t("bp.totalSpent")}</p>
-            <AmountDisplay amount={bills.filter(b => b.bill_status !== "failed").reduce((s, b) => s + b.amount, 0)} size="hero" align="left" className="text-white mt-0.5" />
+            <AmountDisplay amount={bills.filter(b => b.bill_status !== "failed" && b.bill_status !== "pending").reduce((s, b) => s + b.amount, 0)} size="hero" align="left" className="text-white mt-0.5" />
           </div>
           <div className="text-right">
             <p className="text-[10px] font-bold text-green-100 uppercase tracking-widest">{t("bp.txnCountLabel")}</p>
-            <p className="text-2xl font-black mt-0.5">{bills.filter(b => b.bill_status !== "failed").length}</p>
+            <p className="text-2xl font-black mt-0.5">{bills.filter(b => b.bill_status !== "failed" && b.bill_status !== "pending").length}</p>
           </div>
         </div>
 
