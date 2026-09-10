@@ -127,14 +127,16 @@ async function flwDisburse(o: {
     body: JSON.stringify(payload),
   });
   const d = r.data as any;
+  const t = d?.data ?? d;                 // FLW wraps the transfer in `data`
   const vErrs = (d?.error?.validation_errors || []).map((e: any) => `${e.field_name || e.field || "?"}: ${e.message}`).join("; ");
+  console.log("FLW disburse resp:", r.status, JSON.stringify(d).slice(0, 400));
   return {
     ok: r.ok,
     error: (d?.error?.message || "Transfer failed") + (vErrs ? ` (${vErrs})` : ""),
     detail: d,
-    transfer_id: d?.id || "",
-    status: d?.status || "NEW",
-    fee_kobo: Math.round(Number(d?.fee?.value || 0) * 100),
+    transfer_id: t?.id || "",
+    status: t?.status || "NEW",
+    fee_kobo: Math.round(Number(t?.fee?.value ?? t?.fee_charged ?? 0) * 100),
   };
 }
 
