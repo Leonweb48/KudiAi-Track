@@ -8,8 +8,11 @@ const ITEMS = [
   { id: "settings", icon: "settings", tkey: "settings.title" },
 ];
 
-export default function MoreSheet({ open, onClose, onNavigate }) {
+export default function MoreSheet({ open, onClose, onNavigate, showWallet = false }) {
   const t = useT();
+  const items = showWallet
+    ? [...ITEMS.slice(0, 2), { id: "wallet", icon: "wallet", label: "Wallet" }, ...ITEMS.slice(2)]
+    : ITEMS;
   const [show, setShow] = useState(false);
   const [anim, setAnim] = useState(false);
   const dragRef = useRef({ startY: 0, dragging: false });
@@ -82,7 +85,7 @@ export default function MoreSheet({ open, onClose, onNavigate }) {
         <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-3 px-1">More</p>
 
         <div className="space-y-1">
-          {ITEMS.map(item => (
+          {items.map(item => (
             <button
               key={item.id}
               onClick={() => go(item.id)}
@@ -92,7 +95,7 @@ export default function MoreSheet({ open, onClose, onNavigate }) {
                 <Icon name={item.icon} size={20} className="text-slate-600 dark:text-slate-300" />
               </div>
               <span className="text-[15px] font-semibold text-slate-800 dark:text-slate-100 flex-1">
-                {t(item.tkey)}
+                {item.tkey ? t(item.tkey) : item.label}
               </span>
               {/* Chevron — contrast: text-slate-400 dark:text-slate-500 (≈ 3.1:1 on white, 4.7:1 on dark bg) */}
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none"

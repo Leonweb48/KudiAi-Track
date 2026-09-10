@@ -39,6 +39,10 @@ export function usePlatformConfig() {
     coopEnabled: config?.coop_module_enabled === "true",
     ckDiscounts,                                            // { airtime:{NET:pct}, epin:{NET:pct}, epin_live:{}, ... }
     enterpriseFeePct: Number(config?.enterprise_bill_fee_pct ?? "0.01") || 0.01,
+    walletEnabled: config?.wallet_enabled === "true",
+    walletTestMode: config?.wallet_test_mode !== "false",   // default on until explicitly disabled
+    walletMinTopupKobo: Number(config?.wallet_min_topup_kobo ?? "10000") || 10000,
+    walletMaxWithdrawalKobo: Number(config?.wallet_max_withdrawal_kobo ?? "5000000") || 5000000,
     configLoading: loading,
   };
 }

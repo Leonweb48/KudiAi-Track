@@ -11,6 +11,7 @@ import { saveBeneficiary, getBeneficiaries, getRecentBeneficiaries, deleteBenefi
 import { clubkonnect } from "../utils/clubkonnect";
 import { canDo, getLowestPlanWithFeature } from "../utils/plans";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
+import { useWallet } from "../hooks/useWallet";
 import TransactionDetailModal from "../components/shared/TransactionDetailModal";
 import { buildBillReceipt } from "../utils/receiptConfig";
 import { ReceiptCard } from "../components/shared/ReceiptCard";
@@ -1667,7 +1668,11 @@ export default function BillPayments({ store, plan, session = null, staffName = 
   // ── ClubKonnect wholesale pricing ────────────────────────────────────────
   // Enterprise owners buy airtime/data/print at CK cost + a small platform fee
   // so they can resell below face. Everyone else keeps retail pricing.
-  const { ckDiscounts, enterpriseFeePct } = usePlatformConfig();
+  const { ckDiscounts, enterpriseFeePct, walletEnabled } = usePlatformConfig();
+
+  // ── Digital wallet (test build) — an alternative funding source to Paystack ──
+  const wallet = useWallet(session?.user?.id || null, walletEnabled);
+  const [payMethod, setPayMethod] = useState("paystack");   // "paystack" | "wallet"
 
   const bundleFacePerSet   = (denom) => (parseInt(denom || "1000", 10) || 0) * BUNDLE_NETWORKS.length;
   const bundleChargePerSet = (denom) => {
@@ -2347,6 +2352,36 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         return;
       }
 
+      // ── Pay from wallet balance — no gateway, no fee ───────────────────────
+      if (walletEnabled && payMethod === "wallet") {
+        const koboNeeded = Math.round(finalAmount * 100);
+        if (wallet.balanceKobo < koboNeeded) {
+          localStorage.removeItem(BILL_PENDING_PREFIX + ref);
+          throw new Error("Your wallet balance is too low for this payment.");
+        }
+        let ledgerId;
+        try {
+          const { data, error: dErr } = await supabase.rpc("wallet_debit_for_bill", {
+            p_amount_kobo: koboNeeded,
+            p_reference:   ref,
+            p_narration:   `${CAT_LABELS[selectedCat] || selectedCat}`,
+          });
+          if (dErr) throw dErr;
+          ledgerId = data;
+        } catch (dErr) {
+          localStorage.removeItem(BILL_PENDING_PREFIX + ref);
+          throw new Error(/insufficient/i.test(dErr.message || "") ? "Insufficient wallet balance." : (dErr.message || "Wallet payment failed."));
+        }
+        pending.walletPaid = true;
+        pending.walletLedgerId = ledgerId;
+        localStorage.setItem(BILL_PENDING_PREFIX + ref, JSON.stringify(pending));
+        setInitPaying(false);
+        setSelectedCat(null);
+        setSaving(true);
+        await fulfillAfterPaymentRef.current(ref, pending);
+        return;
+      }
+
       // Write full bill intent to DB so the webhook can fulfill if user never returns.
       supabase.from("pending_bills").insert({
         reference: ref, user_id: profile?.id || null, cat: selectedCat,
@@ -2402,7 +2437,8 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
     // If the webhook already fulfilled this bill server-side, show its stored result
     // instead of calling ClubKonnect again. This handles the "user never returned" path.
-    if (!pending.isFree) {
+    // Wallet-paid bills have no webhook fulfilment — skip this check.
+    if (!pending.isFree && !pending.walletPaid) {
       try {
         const { data: pbRow } = await supabase
           .from("pending_bills")
@@ -2434,9 +2470,11 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     // Tracks whether Paystack confirmed the charge before ClubKonnect was called.
     // Used in the catch block to decide between "We're Sorting This Out" (payment was
     // real, service failed) vs "Payment Disrupted" (payment never confirmed, NOT CHARGED).
-    let paymentVerified = pending.isFree; // free items need no payment verification
+    // Wallet-paid bills are already "paid" (the debit succeeded before we got here);
+    // free items need no verification either.
+    let paymentVerified = pending.isFree || !!pending.walletPaid;
     try {
-      if (!pending.isFree) {
+      if (!pending.isFree && !pending.walletPaid) {
         // Verify payment with Paystack (server-side; edge function requires auth)
         const { data: vd } = await supabase.functions.invoke("paystack", {
           body: { action: "verify", reference: ref },
@@ -2651,13 +2689,21 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       const payload = {
         type: "out", category: cat, payment_type: "bill_payment",
         item_name: itemName, customer_name: customerRef,
-        amount: totalAmount || amount, note,
+        amount: totalAmount || amount,
+        note: pending.walletPaid ? `${note}${note ? " | " : ""}Paid from wallet` : note,
         transaction_date: today(),
         bill_status: "success",
         bill_details,
       };
 
       const savedTxn = await addTransaction(payload);
+
+      // Wallet-paid: settle the pending debit and link it to this transaction.
+      if (pending.walletPaid && pending.walletLedgerId) {
+        try {
+          await supabase.rpc("wallet_settle_bill", { p_ledger_id: pending.walletLedgerId, p_txn_id: savedTxn?.id || null });
+        } catch (se) { console.warn("[wallet] settle failed:", se?.message); }
+      }
 
       // Cashback: record redeemed amount (if used) and earned amount (1% of paid)
       const { cashbackUsed = 0 } = pending;
@@ -2805,11 +2851,32 @@ export default function BillPayments({ store, plan, session = null, staffName = 
             supabase.functions.invoke("clubkonnect", { body: { action: "bill-staff-email", staff_email: staffEmail, staff_name: staffName, business_name: businessName || profile?.business_name, service: hSvc, amount: hAmt, reference: ref, outcome: "pending" } });
           } catch (_) {}
         }
-        setFulfillResult({ ok: false, pendingConfirm: true, psRef: ref, detail: `Your payment went through and we're confirming delivery with the provider. You'll get an email as soon as it's done — please don't pay again. Quote reference ${ref} if you contact support.` });
+        setFulfillResult({ ok: false, pendingConfirm: true, psRef: ref, detail: pending.walletPaid
+          ? `Your wallet was debited and we're confirming delivery with the provider. If it didn't go through, the amount returns to your wallet automatically. Quote reference ${ref} if you contact support.`
+          : `Your payment went through and we're confirming delivery with the provider. You'll get an email as soon as it's done — please don't pay again. Quote reference ${ref} if you contact support.` });
         return;
       }
 
-      if (paymentVerified) {
+      if (paymentVerified && pending.walletPaid) {
+        // Wallet-paid, delivery failed and confirmed failed → reverse straight
+        // back to the wallet. No gateway refund needed.
+        let reversed = false;
+        if (pending.walletLedgerId) {
+          try {
+            const { error: rErr } = await supabase.rpc("wallet_reverse_bill", {
+              p_ledger_id: pending.walletLedgerId,
+              p_reason: `Bill delivery failed (${ckError}) — refunded to wallet`,
+            });
+            reversed = !rErr;
+          } catch (re) { console.warn("[wallet] reverse failed:", re?.message); }
+        }
+        setFulfillResult({
+          ok: false, label: "", psRef: ref, apiRef: "",
+          detail: reversed
+            ? `That didn't go through (${ckError}). ${fmt((pending.paidAmount || 0))} has been refunded to your wallet.`
+            : `That didn't go through (${ckError}). We're refunding your wallet — contact support with reference ${ref} if you don't see it shortly.`,
+        });
+      } else if (paymentVerified) {
         // Payment was confirmed by Paystack but service delivery failed.
         // Show "We're Sorting This Out" — the user WAS charged and we'll make it right.
         setFulfillResult({ ok: false, label: "", detail: ckError, psRef: ref, apiRef: "" });
@@ -3675,6 +3742,29 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                 </div>
               )}
 
+              {/* Payment method — Paystack or wallet balance */}
+              {walletEnabled && wallet.hasAccount && (() => {
+                const due = Math.max(0, uiChargeAmt - ptsSavings - cbSavings - billCouponSavings);
+                if (due <= 0) return null;
+                const walletShort = wallet.balanceKobo < Math.round(due * 100);
+                return (
+                  <div className="grid grid-cols-2 gap-2">
+                    <button type="button" onClick={() => setPayMethod("paystack")}
+                      className={`rounded-xl border px-3 py-2.5 text-left transition-colors ${payMethod === "paystack"
+                        ? "border-green-500 bg-green-50 dark:bg-green-900/20" : "border-slate-200 dark:border-slate-700"}`}>
+                      <p className="text-[12px] font-bold text-slate-700 dark:text-slate-200">Paystack</p>
+                      <p className="text-[10px] text-slate-400">Card / transfer</p>
+                    </button>
+                    <button type="button" disabled={walletShort} onClick={() => setPayMethod("wallet")}
+                      className={`rounded-xl border px-3 py-2.5 text-left transition-colors disabled:opacity-40 ${payMethod === "wallet"
+                        ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20" : "border-slate-200 dark:border-slate-700"}`}>
+                      <p className="text-[12px] font-bold text-slate-700 dark:text-slate-200">Wallet</p>
+                      <p className="text-[10px] text-slate-400">{walletShort ? "Balance too low" : `${fmt(wallet.balanceNaira)} available`}</p>
+                    </button>
+                  </div>
+                );
+              })()}
+
               {staffName && (
                 <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl px-4 py-2.5 flex items-center gap-2">
                   <Ico d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2|M12 11a4 4 0 100-8 4 4 0 000 8" size={14} c="#3b82f6" />
@@ -3690,13 +3780,17 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                   setTxnPinAmount(finalAmt * 100);
                 }} disabled={saving || initPaying}
                   className="w-full text-white font-bold rounded-xl py-3.5 text-sm transition-all disabled:opacity-60 bg-gradient-to-br from-green-600 to-green-700">
-                  {initPaying ? "Connecting to Paystack…" : saving ? (billAppliedCoupon && uiChargeAmt - ptsSavings - cbSavings - billCouponSavings <= 0 ? "Processing free bill…" : "Processing…") : (
-                    selectedCat === "print-airtime"   ? (uiChargeAmt > 0 ? `Pay ₦${uiChargeAmt.toLocaleString()} · ${form.quantity || 1} × ₦${form.value}` : "Select denomination") :
-                    selectedCat === "print-data"      ? `Pay with Paystack · ${form.quantity || 1} Plan${parseInt(form.quantity||"1")>1?"s":""}` :
-                    selectedCat === "airtime-bundle"  ? (parseInt(form.sets||"0")>0 ? `Pay ₦${uiChargeAmt.toLocaleString()} · ${form.sets} Bundle Set${parseInt(form.sets)>1?"s":""}` : "Select number of sets") :
-                    form.amount && uiChargeAmt - ptsSavings - cbSavings - billCouponSavings <= 0 ? "Activate Free — Coupon Applied" :
-                    form.amount ? `Pay ${fmt(uiChargeAmt - ptsSavings - cbSavings - billCouponSavings)} with Paystack${ptsSavings > 0 || cbSavings > 0 || billCouponSavings > 0 ? ` · savings applied` : ""}` : `Pay with Paystack`
-                  )}
+                  {(() => {
+                    const payWith = (walletEnabled && payMethod === "wallet") ? "from Wallet" : "with Paystack";
+                    const connecting = (walletEnabled && payMethod === "wallet") ? "Charging wallet…" : "Connecting to Paystack…";
+                    return initPaying ? connecting : saving ? (billAppliedCoupon && uiChargeAmt - ptsSavings - cbSavings - billCouponSavings <= 0 ? "Processing free bill…" : "Processing…") : (
+                      selectedCat === "print-airtime"   ? (uiChargeAmt > 0 ? `Pay ₦${uiChargeAmt.toLocaleString()} · ${form.quantity || 1} × ₦${form.value}` : "Select denomination") :
+                      selectedCat === "print-data"      ? `Pay ${payWith} · ${form.quantity || 1} Plan${parseInt(form.quantity||"1")>1?"s":""}` :
+                      selectedCat === "airtime-bundle"  ? (parseInt(form.sets||"0")>0 ? `Pay ₦${uiChargeAmt.toLocaleString()} · ${form.sets} Bundle Set${parseInt(form.sets)>1?"s":""}` : "Select number of sets") :
+                      form.amount && uiChargeAmt - ptsSavings - cbSavings - billCouponSavings <= 0 ? "Activate Free — Coupon Applied" :
+                      form.amount ? `Pay ${fmt(uiChargeAmt - ptsSavings - cbSavings - billCouponSavings)} ${payWith}${ptsSavings > 0 || cbSavings > 0 || billCouponSavings > 0 ? ` · savings applied` : ""}` : `Pay ${payWith}`
+                    );
+                  })()}
                 </button>
               </div>
 

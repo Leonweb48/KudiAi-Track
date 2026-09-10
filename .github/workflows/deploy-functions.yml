@@ -56,6 +56,8 @@ jobs:
           deploy pin-manager
           deploy notify-send
           deploy verify-identity       --no-verify-jwt
+          deploy flutterwave           --no-verify-jwt
+          deploy flutterwave-webhook   --no-verify-jwt
 
           if [ -n "$FAILED" ]; then
             echo ""

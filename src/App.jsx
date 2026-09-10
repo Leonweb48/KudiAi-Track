@@ -53,6 +53,7 @@ const AIAssistant    = lazy(() => import("./screens/AIAssistant"));
 const Transactions   = lazy(() => import("./screens/Transactions"));
 const Finance        = lazy(() => import("./screens/Finance"));
 const BillPayments   = lazy(() => import("./screens/BillPayments"));
+const Wallet         = lazy(() => import("./screens/Wallet"));
 const Inventory      = lazy(() => import("./screens/Inventory"));
 const Insights       = lazy(() => import("./screens/Insights"));
 const Settings       = lazy(() => import("./screens/Settings"));
@@ -112,7 +113,7 @@ export default function App() {
   const rawTab = location.pathname === "/" ? "home" : location.pathname.slice(1).split("/")[0];
   const tab    = (rawTab === "credit" || rawTab === "aso") ? "finance" : rawTab;
 
-  const MORE_TABS = new Set(["finance", "insights", "settings"]);
+  const MORE_TABS = new Set(["finance", "insights", "settings", "wallet"]);
 
   // Close MoreSheet on any navigation (covers notification deep links)
   useEffect(() => { setMoreSheetOpen(false); }, [location.pathname]);
@@ -173,7 +174,7 @@ export default function App() {
   const pinLock = usePinLock(userId);
 
   // Feature flags — fetched once per session from platform_config table, no rebuild to toggle
-  const { coopEnabled, configLoading } = usePlatformConfig();
+  const { coopEnabled, walletEnabled, configLoading } = usePlatformConfig();
 
   // Notification engine — owner portal only. Pass null for ajo_client to prevent a
   // ghost realtime subscription when AjoMemberPortal's NotificationCenter is live.
@@ -597,6 +598,7 @@ export default function App() {
                     onUpgrade={openUpgrade}
                     onReports={() => setShowReports(true)}
                     onAIOpen={q => { setAiQuery(q || ""); setShowAI(true); }} /></S>,
+    wallet:       <S><Wallet session={session} store={store} plan={plan} /></S>,
     loyalty:      <S><Loyalty
                     loyalty={loyalty}
                     plan={plan}
@@ -680,6 +682,7 @@ export default function App() {
               <Route path="/aso"          element={SCREENS.finance}       />
               <Route path="/inventory"    element={SCREENS.inventory}     />
               <Route path="/bills"        element={SCREENS.bills}         />
+              {walletEnabled && <Route path="/wallet" element={SCREENS.wallet} />}
               <Route path="/insights"     element={SCREENS.insights}      />
               <Route path="/loyalty"      element={SCREENS.loyalty}       />
               <Route path="/settings"     element={SCREENS.settings}      />
@@ -698,6 +701,7 @@ export default function App() {
             open={moreSheetOpen}
             onClose={() => setMoreSheetOpen(false)}
             onNavigate={setTab}
+            showWallet={walletEnabled}
           />
 
           {voiceOpen && (
