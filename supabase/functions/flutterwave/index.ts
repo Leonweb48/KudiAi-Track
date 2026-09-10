@@ -107,28 +107,30 @@ async function flwDisburse(o: {
   account_name?: string; narration?: string;
 }) {
   const naira = Math.round(Number(o.amount_kobo) / 100);
-  const [first, ...rest] = String(o.account_name || "KudiAI Wallet").trim().split(/\s+/);
+  // NGN payouts: Flutterwave runs its own name enquiry — only bank code + account
+  // number are needed. A supplied name (esp. one with "/" from NIBSS) trips
+  // REQUEST_NOT_VALID, so we don't send it.
+  const payload = {
+    action: "instant", type: "bank", reference: o.reference,
+    narration: String(o.narration || "KudiAI wallet transfer").replace(/[^\w .,-]/g, " ").slice(0, 100).trim() || "Wallet transfer",
+    payment_instruction: {
+      amount: { value: naira, applies_to: "destination_currency" },
+      source_currency: "NGN", destination_currency: "NGN",
+      recipient: { bank: { code: o.bank_code, account_number: o.account_number } },
+    },
+  };
+  console.log("FLW disburse payload:", JSON.stringify(payload));
   const r = await flwFetch("/direct-transfers", {
     method: "POST",
     relay: true,
     headers: { "X-Idempotency-Key": o.reference, "X-Trace-Id": `${o.reference}-tr` },
-    body: JSON.stringify({
-      action: "instant", type: "bank", reference: o.reference,
-      narration: String(o.narration || "KudiAI wallet transfer").slice(0, 100),
-      payment_instruction: {
-        amount: { value: naira, applies_to: "destination_currency" },
-        source_currency: "NGN", destination_currency: "NGN",
-        recipient: {
-          bank: { code: o.bank_code, account_number: o.account_number },
-          name: { first: first || "KudiAI", last: rest.join(" ") || "Wallet" },
-        },
-      },
-    }),
+    body: JSON.stringify(payload),
   });
   const d = r.data as any;
+  const vErrs = (d?.error?.validation_errors || []).map((e: any) => `${e.field_name || e.field || "?"}: ${e.message}`).join("; ");
   return {
     ok: r.ok,
-    error: d?.error?.message || "Transfer failed",
+    error: (d?.error?.message || "Transfer failed") + (vErrs ? ` (${vErrs})` : ""),
     detail: d,
     transfer_id: d?.id || "",
     status: d?.status || "NEW",
