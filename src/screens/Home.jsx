@@ -280,7 +280,9 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
               </button>
               {/* mini actions */}
               <div className="flex items-center gap-1.5 mt-3">
-                {!wallet.hasAccount ? (
+                {wallet.loading ? (
+                  <div className="flex-1 h-9 bg-white/10 rounded-xl animate-pulse" />
+                ) : !wallet.hasAccount ? (
                   <button onClick={() => setTab("wallet")}
                     className="flex-1 bg-white text-slate-900 text-[12px] font-bold rounded-xl py-2.5">
                     Activate wallet

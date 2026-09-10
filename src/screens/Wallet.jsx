@@ -37,7 +37,21 @@ export default function Wallet({ session }) {
   };
 
   if (configLoading || w.loading) {
-    return <div className="p-6 text-center text-slate-400 text-sm">Loading wallet…</div>;
+    return (
+      <div className="pb-28">
+        <div className="flex items-center gap-3 px-4 pt-3 pb-2">
+          <button onClick={() => navigate(-1)} className="w-9 h-9 -ml-1 flex items-center justify-center rounded-full">
+            <Icon name="chevron-left" size={20} className="text-slate-500 dark:text-slate-400" />
+          </button>
+          <h1 className="text-[17px] font-bold text-slate-800 dark:text-slate-100">Wallet</h1>
+        </div>
+        <div className="px-4 space-y-4">
+          <div className="h-[168px] rounded-3xl bg-slate-100 dark:bg-slate-800 animate-pulse" />
+          <div className="h-[92px] rounded-2xl bg-slate-100 dark:bg-slate-800 animate-pulse" />
+          <div className="h-[220px] rounded-2xl bg-slate-100 dark:bg-slate-800 animate-pulse" />
+        </div>
+      </div>
+    );
   }
   if (!walletEnabled) {
     return (

@@ -27,10 +27,15 @@ export function useWallet(userId, enabled = true) {
   const [loading, setLoading]   = useState(true);
   const [busy, setBusy]         = useState(false);
   const loadRef = useRef(() => {});
+  const loadedOnceRef = useRef(false);
   const active = !!userId && enabled;
 
   const load = useCallback(async () => {
-    if (!active) { setWallet(null); setLedger([]); setPayReq(null); setLoading(false); return; }
+    // Feature genuinely off → settle empty.
+    if (!enabled) { setWallet(null); setLedger([]); setPayReq(null); setLoading(false); loadedOnceRef.current = false; return; }
+    // Enabled but the session hasn't hydrated yet (e.g. right after a refresh) —
+    // stay in the loading state, don't flash the "activate wallet" screen.
+    if (!userId) { setLoading(!loadedOnceRef.current); return; }
     try {
       const [{ data: w }, { data: l }, { data: pr }] = await Promise.all([
         supabase.from("wallets").select("*").eq("user_id", userId).maybeSingle(),
@@ -42,15 +47,16 @@ export function useWallet(userId, enabled = true) {
       setWallet(w || null);
       setLedger(l || []);
       setPayReq(pr && new Date(pr.expires_at) > new Date() ? pr : null);
+      loadedOnceRef.current = true;
     } catch {
       /* leave prior state */
     } finally {
       setLoading(false);
     }
-  }, [active, userId]);
+  }, [enabled, userId]);
 
   useEffect(() => { loadRef.current = load; }, [load]);
-  useEffect(() => { setLoading(true); load(); }, [load]);
+  useEffect(() => { if (!loadedOnceRef.current) setLoading(true); load(); }, [load]);
 
   // ── realtime ──────────────────────────────────────────────────────────────
   useEffect(() => {
