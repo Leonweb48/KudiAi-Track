@@ -1,11 +1,11 @@
-# Fly.io — gives you ONE dedicated static IPv4 that outbound calls use.
+# Fly.io — static EGRESS IP for outbound calls (~$3.60/mo/region).
 # Deploy:
 #   cd flw-relay
-#   fly launch --no-deploy --name kudi-flw-relay --region lhr
-#   fly ips allocate-v4 --yes                # ~$2/mo, this is the IP you whitelist
-#   fly ips list                             # copy the v4 address
-#   fly secrets set RELAY_KEY=<long-random>  FLW_BASE_URL=https://f4bexperience.flutterwave.com
+#   fly launch --no-deploy --name kudi-flw-relay --region lhr --org <your-org>
+#   fly secrets set RELAY_KEY=<long-random> FLW_BASE_URL=https://f4bexperience.flutterwave.com
 #   fly deploy
+#   fly ips allocate-egress --region lhr      # <- the IPv4 it prints is what you whitelist
+#   fly ips list                              # confirm; use the "egress" v4
 #   curl https://kudi-flw-relay.fly.dev/health   # -> ok
 
 app = "kudi-flw-relay"

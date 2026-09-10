@@ -11,17 +11,20 @@ Only `POST /direct-transfers` (and transfer retry) are proxied.
 
 ## 1. Deploy it (pick one)
 
-### Fly.io — one dedicated IPv4, ~$2/mo  *(recommended — the IP is exactly one address)*
+### Fly.io — static egress IP, ~$3.60/mo  *(recommended — one address to whitelist)*
 ```
 cd flw-relay
+fly auth login
 fly launch --no-deploy --name kudi-flw-relay --region lhr
-fly ips allocate-v4 --yes          # allocates the dedicated IPv4 (this is what you whitelist)
-fly ips list                       # copy the "v4" address
 fly secrets set RELAY_KEY=$(openssl rand -hex 24) FLW_BASE_URL=https://f4bexperience.flutterwave.com
 fly deploy
-fly secrets list                   # note the RELAY_KEY value you set (or set a known one)
+fly ips allocate-egress --region lhr    # prints the static EGRESS IPv4 — whitelist this
+fly ips list
+fly secrets list                        # (RELAY_KEY value you set above)
 curl https://kudi-flw-relay.fly.dev/health      # -> ok
 ```
+`allocate-egress` is the outbound IP; a normal `allocate-v4` is inbound-only and
+won't help. The relay forces IPv4 (`dns.setDefaultResultOrder("ipv4first")`).
 
 ### Render.com — Starter plan $7/mo, ~3 fixed outbound IPs
 1. Push this repo to GitHub.

@@ -14,6 +14,11 @@
 // Auth: every forwarded request must carry  x-relay-key: <RELAY_KEY>.
 
 import { createServer } from "node:http";
+import dns from "node:dns";
+
+// Prefer IPv4 for outbound so the whitelisted (IPv4) address is the source —
+// some hosts otherwise egress over IPv6, which Flutterwave's form can't accept.
+dns.setDefaultResultOrder("ipv4first");
 
 const RELAY_KEY = process.env.RELAY_KEY || "";
 const FLW_BASE  = (process.env.FLW_BASE_URL || "https://f4bexperience.flutterwave.com").replace(/\/$/, "");
