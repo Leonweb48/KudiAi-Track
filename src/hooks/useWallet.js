@@ -1,5 +1,18 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { supabase } from "../utils/supabase";
+
+// Lightweight read-only edge call — no busy toggle, no post-refresh (used for
+// bank list + account name lookup, which must not churn the consuming screen).
+async function fwRead(action, extra = {}) {
+  const { data, error } = await supabase.functions.invoke("flutterwave", { body: { action, ...extra } });
+  if (error) {
+    let msg = error.message || "Wallet request failed";
+    try { const b = await error.context?.json?.(); if (b?.error) msg = b.error; } catch { /* keep msg */ }
+    throw new Error(msg);
+  }
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
 
 // Digital-wallet state for a business owner.
 // - reads `wallets` + recent `wallet_ledger` via RLS (owner sees own only)
@@ -91,8 +104,8 @@ export function useWallet(userId, enabled = true) {
 
   const provisionAccount = useCallback((bvn = "", nin = "") => invoke("provision-account", { bvn, nin }), [invoke]);
   const simulateTopup    = useCallback((amount_naira = 2000) => invoke("simulate-topup", { amount_naira }), [invoke]);
-  const listBanks        = useCallback(() => invoke("list-banks"), [invoke]);
-  const resolveAccount   = useCallback((bank_code, account_number) => invoke("resolve-account", { bank_code, account_number }), [invoke]);
+  const listBanks        = useCallback(() => fwRead("list-banks"), []);
+  const resolveAccount   = useCallback((bank_code, account_number) => fwRead("resolve-account", { bank_code, account_number }), []);
   // Instant transfer, confirmed with the transaction PIN. Holds funds + pays out.
   const transfer = useCallback((amount_kobo, bank_code, account_number, pin, narration = "", book_expense = false, confirmed_name = "") =>
     invoke("transfer", { amount_kobo, bank_code, account_number, pin, narration, book_expense, confirmed_name }), [invoke]);
@@ -113,14 +126,19 @@ export function useWallet(userId, enabled = true) {
   }, []);
 
   const balanceKobo = Number(wallet?.balance_kobo || 0);
+  const hasAccount = !!(wallet?.flw_virtual_account_id && wallet?.flw_account_number);
 
-  return {
+  // Stable object identity — only changes when real data does, so screens/modals
+  // that read the hook don't re-render (and re-run effects) on every tick.
+  return useMemo(() => ({
     wallet, ledger, payRequest, loading, busy,
-    hasAccount: !!(wallet?.flw_virtual_account_id && wallet?.flw_account_number),
-    balanceKobo,
-    balanceNaira: balanceKobo / 100,
+    hasAccount, balanceKobo, balanceNaira: balanceKobo / 100,
     refresh: load,
     provisionAccount, simulateTopup, listBanks, resolveAccount, transfer,
     createPaymentRequest, cancelPaymentRequest,
-  };
+  }), [
+    wallet, ledger, payRequest, loading, busy, hasAccount, balanceKobo,
+    load, provisionAccount, simulateTopup, listBanks, resolveAccount, transfer,
+    createPaymentRequest, cancelPaymentRequest,
+  ]);
 }

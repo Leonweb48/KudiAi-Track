@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Icon from "./Icon";
 import TransactionPinModal from "./TransactionPinModal";
+import BankSelect from "./shared/BankSelect";
 import { fmt, fmtDateTime } from "../utils/helpers";
 
 // Flutterwave returns e.g. "Flutterwave MFB (Formerly OK MFB)" — drop the aside.
@@ -214,7 +215,6 @@ export function FundWalletSheet({ open, onClose, wallet, testMode, api }) {
 // ── Transfer — bank-transfer style, PIN-confirmed, instant ─────────────────
 export function TransferSheet({ open, onClose, balanceKobo, maxKobo, banks, api, onDone }) {
   const [step, setStep] = useState("to");     // to | amount | review | pin | done
-  const [bankOpen, setBankOpen] = useState(false);
   const [acctNo, setAcctNo] = useState("");
   const [bank, setBank] = useState(null);
   const [name, setName] = useState("");
@@ -227,30 +227,64 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, banks, api,
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [fee, setFee] = useState(0);
+  const reqRef = useRef(0);       // guards against a stale lookup clobbering a newer one
+  const doneKeyRef = useRef("");  // one lookup per unique (bank, account) pair
 
   useEffect(() => {
     if (open) return;
     setStep("to"); setAcctNo(""); setBank(null); setName(""); setAmount(""); setManual(false); setManualName("");
-    setNarration(""); setBookExpense(false); setErr(""); setFee(0);
+    setNarration(""); setBookExpense(false); setErr(""); setFee(0); setResolving(false);
+    doneKeyRef.current = "";
   }, [open]);
 
-  const resolve = useCallback(async () => {
-    setName(""); setErr(""); setManual(false);
-    if (!bank || acctNo.replace(/\D/g, "").length !== 10) return;
-    setResolving(true);
+  const runResolve = useCallback(async (code, acct) => {
+    const id = ++reqRef.current;
+    setName(""); setErr(""); setManual(false); setResolving(true);
     try {
-      const d = await api.resolveAccount(bank.code, acctNo.trim());
+      const d = await api.resolveAccount(code, acct);
+      if (id !== reqRef.current) return;                 // a newer lookup started
       if (d?.account_name) setName(d.account_name);
+      else setManual(true);
     } catch (e) {
-      // transient name-service failure → let the owner confirm the name manually
+      if (id !== reqRef.current) return;
       if (/verify right now|confirm the name|try again in a moment/i.test(e.message || "")) setManual(true);
       else setErr(e.message || "Couldn't verify that account");
-    } finally { setResolving(false); }
-  }, [api, bank, acctNo]);
+    } finally {
+      if (id === reqRef.current) setResolving(false);
+    }
+  }, [api]);
 
-  useEffect(() => { if (bank && acctNo.replace(/\D/g, "").length === 10) resolve(); }, [bank, acctNo, resolve]);
+  // Auto-verify once per unique bank+account. Deps are primitives only, so this
+  // never re-fires on an unrelated re-render.
+  useEffect(() => {
+    const digits = acctNo.replace(/\D/g, "");
+    const key = bank?.code && digits.length === 10 ? `${bank.code}:${digits}` : "";
+    if (!key || key === doneKeyRef.current) return;
+    doneKeyRef.current = key;
+    runResolve(bank.code, digits);
+  }, [bank?.code, acctNo, runResolve]);
+
+  const retryResolve = () => {
+    const digits = acctNo.replace(/\D/g, "");
+    if (bank?.code && digits.length === 10) { doneKeyRef.current = `${bank.code}:${digits}`; runResolve(bank.code, digits); }
+  };
 
   const recipientName = name || (manual ? manualName.trim() : "");
+
+  // Flutterwave ships the 700-bank list with several codes per bank (old CBN +
+  // new NIP), and the "0000xx" ones don't resolve. Collapse to one entry per
+  // bank, preferring a code that works.
+  const bankList = useMemo(() => {
+    const by = new Map();
+    for (const b of banks || []) {
+      if (!b?.code || !b?.name) continue;
+      const k = b.name.trim().toLowerCase();
+      const cur = by.get(k);
+      const bad = /^0000\d\d$/.test(b.code);
+      if (!cur || (/^0000\d\d$/.test(cur.code) && !bad)) by.set(k, b);
+    }
+    return [...by.values()];
+  }, [banks]);
 
   const kobo = Math.round((parseFloat(amount) || 0) * 100);
   const cap = Math.min(balanceKobo, maxKobo);
@@ -348,13 +382,19 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, banks, api,
             </div>
             <div>
               <label className={labelCls}>Bank</label>
-              <button onClick={() => setBankOpen(true)}
-                className={inputCls + " flex items-center justify-between text-left " + (bank ? "" : "text-slate-400 font-normal")}>
-                {bank ? bank.name : "Select bank"}
-                <Icon name="chevron-down" size={16} className="text-slate-400" />
-              </button>
+              <BankSelect
+                banks={bankList}
+                value={bank?.code || ""}
+                onChange={(code, b) => { setBank(b); setName(""); setManual(false); setErr(""); doneKeyRef.current = ""; }}
+                placeholder="Select bank"
+                className="h-[52px] mt-1.5"
+              />
             </div>
-            {resolving && <p className="text-[12px] text-slate-400">Verifying account…</p>}
+            {resolving && (
+              <p className="text-[12px] text-slate-400 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-brand-400 animate-pulse" /> Verifying account…
+              </p>
+            )}
             {name && (
               <div className="rounded-2xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200/70 dark:border-emerald-800/50 px-4 py-3">
                 <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold uppercase tracking-wide">Account name</p>
@@ -370,7 +410,7 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, banks, api,
                 </div>
                 <label className={labelCls}>Account holder name</label>
                 <input value={manualName} onChange={(e) => setManualName(e.target.value)} placeholder="Full name on the account" className={inputCls} />
-                <button onClick={resolve} className="text-[12px] font-bold text-brand-600 dark:text-brand-400 mt-2">Try verifying again</button>
+                <button onClick={retryResolve} className="text-[12px] font-bold text-brand-600 dark:text-brand-400 mt-2">Try verifying again</button>
               </div>
             )}
             {err && <p className="text-[12px] text-red-500">{err}</p>}
@@ -381,8 +421,6 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, banks, api,
           </div>
         )}
       </BottomSheet>
-
-      <BankPickerSheet open={bankOpen} onClose={() => setBankOpen(false)} banks={banks} onPick={setBank} />
 
       {open && step === "pin" && (
         <TransactionPinModal
