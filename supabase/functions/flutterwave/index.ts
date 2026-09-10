@@ -28,6 +28,7 @@ const FLW_CLIENT_SECRET = Deno.env.get("FLW_CLIENT_SECRET") ?? "";
 const FLW_TEST_BVN  = Deno.env.get("FLW_TEST_BVN") || "22222222222";
 const SUPABASE_URL  = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY   = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const ANON_KEY      = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 
 // ── OAuth token cache (survives across invocations in the same isolate) ──────
 let _tok = { value: "", exp: 0 };
@@ -125,6 +126,12 @@ serve(async (req) => {
     if (!user) return json({ error: "Unauthorized" }, 401);
     const uid = user.id;
 
+    // A client bound to the caller's JWT — the owner-callable RPCs use auth.uid().
+    const asUser = createClient(SUPABASE_URL, ANON_KEY, {
+      global: { headers: { Authorization: `Bearer ${token}` } },
+      auth: { persistSession: false },
+    });
+
     if ((await cfg("wallet_enabled", "false")) !== "true") {
       return json({ error: "Wallet is not enabled" }, 403);
     }
@@ -153,7 +160,8 @@ serve(async (req) => {
 
     // ── provision-account ────────────────────────────────────────────────
     if (action === "provision-account") {
-      await sb.rpc("wallet_get_or_create");
+      const { error: initErr } = await asUser.rpc("wallet_get_or_create");
+      if (initErr) { console.error("[flutterwave] wallet_get_or_create:", initErr.message); return json({ error: "Wallet init failed" }, 500); }
       const { data: w } = await sb.from("wallets").select("*").eq("user_id", uid).maybeSingle();
       if (!w) return json({ error: "Wallet init failed" }, 500);
       if (w.flw_virtual_account_id && w.flw_account_number) {
@@ -164,9 +172,9 @@ serve(async (req) => {
       }
 
       const { data: profile } = await sb.from("profiles")
-        .select("email, owner_name, business_name, phone").eq("id", uid).maybeSingle();
+        .select("email, full_name, business_name, phone").eq("id", uid).maybeSingle();
       const email = profile?.email || user.email || `wallet+${uid.slice(0, 8)}@kudiai.app`;
-      const fullName = (profile?.owner_name || profile?.business_name || "KudiAI Owner").trim();
+      const fullName = (profile?.full_name || profile?.business_name || "KudiAI Owner").trim();
       const [fn, ...ln] = fullName.split(/\s+/);
 
       let customerId = w.flw_customer_id as string | null;
@@ -185,7 +193,7 @@ serve(async (req) => {
         headers: { "X-Idempotency-Key": `va-${uid}` },
         body: JSON.stringify({
           customer_id: customerId,
-          reference: `kudi-wallet-${uid}`,
+          reference: `kdt-${uid}`,                 // ≤42 chars, stable per user
           currency: "NGN",
           account_type: "static",
           amount: 0,
@@ -225,7 +233,7 @@ serve(async (req) => {
         headers: { "X-Idempotency-Key": `sim-${uid}-${Date.now()}` },
         body: JSON.stringify({
           customer_id: w.flw_customer_id,
-          reference: `kudi-sim-${uid}-${Date.now()}`,
+          reference: `sim-${uid.slice(0, 8)}-${Date.now().toString(36)}`,
           currency: "NGN", account_type: "dynamic", amount: naira, expiry: 600,
           narration: "KudiAI test top-up",
         }),
@@ -250,7 +258,7 @@ serve(async (req) => {
       if (!nr.ok) return json({ error: "Could not verify that bank account" }, 422);
       const accountName = (nr.data as any)?.data?.account_name || "";
 
-      const { data: reqId, error } = await sb.rpc("wallet_submit_withdrawal", {
+      const { data: reqId, error } = await asUser.rpc("wallet_submit_withdrawal", {
         p_amount_kobo: Math.round(amount_kobo),
         p_bank_code: bank_code,
         p_account_number: account_number,
