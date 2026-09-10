@@ -773,7 +773,7 @@ serve(async (req) => {
       if (!netId) return json({ error: `Unknown network: ${network}` });
       const qty = parseInt(quantity, 10);
       if (qty < 1 || qty > 100) return json({ error: "Quantity must be between 1 and 100" });
-      if (!["100", "200", "500"].includes(String(value))) return json({ error: "Value must be 100, 200 or 500" });
+      if (!["100", "200", "300", "500", "1000"].includes(String(value))) return json({ error: "Value must be 100, 200, 300, 500 or 1000" });
       const data = await ck("APIEPINV1.asp", {
         APIKey: PRINT_AIRTIME_K, MobileNetwork: netId, Value: String(value),
         Quantity: String(qty), RequestID: rid, CallBackURL: "https://kudiai.app/",
@@ -1224,6 +1224,185 @@ serve(async (req) => {
       }
 
       return json({ ok: true, balance, threshold, alerted: true, admins_notified: (admins || []).length });
+    }
+
+    // ── Read the CK wallet balance (naira), or null if it can't be determined ──
+    const readWalletBalance = async (): Promise<number | null> => {
+      const useKey = AIRTIME_K || DATA_K || ELECTRICITY_K || CABLETV_K || PRINT_AIRTIME_K;
+      if (!USER_ID || !useKey) return null;
+      try {
+        const d = await ck("APIWalletBalanceV1.asp", { APIKey: useKey }, { retries: 1, timeoutMs: 12000 });
+        for (const f of ["WalletBalance","walletbalance","wallet_balance","Balance","balance",
+                         "AccountBalance","Wallet_Balance","WALLETBALANCE","available_balance","AvailableBalance"]) {
+          const v = d[f];
+          if (v !== null && v !== undefined && v !== "") {
+            const n = Number(String(v).replace(/[^0-9.]/g, ""));
+            if (!isNaN(n)) return n;
+          }
+        }
+      } catch (e) { console.warn("readWalletBalance failed:", (e as Error).message); }
+      return null;
+    };
+
+    // ── Email super_admin + finance about a low provider wallet ───────────────
+    const notifyWalletLow = async (balance: number | null, needed: number, ctx: string) => {
+      try {
+        const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+        // throttle: at most one wallet-low email per 30 min
+        const { data: recent } = await sb.from("admin_notifications")
+          .select("id").eq("type", "warning").ilike("title", "%wallet%")
+          .gte("created_at", new Date(Date.now() - 30 * 60 * 1000).toISOString()).limit(1);
+        if (recent && recent.length) return;
+
+        await sb.from("admin_notifications").insert({
+          type: "warning", title: "CK Wallet Too Low For Operations",
+          message: `Provider wallet ₦${balance ?? "?"} cannot cover a ₦${Math.ceil(needed)} ${ctx}. Customers are being told to try again later. Top up now.`,
+        });
+
+        const { data: admins } = await sb.from("admin_users")
+          .select("email").in("role", ["super_admin", "finance_admin"]).eq("is_active", true).not("email", "is", null);
+        const html = billEmailHtml({
+          accentColor: "linear-gradient(135deg,#dc2626,#b91c1c)", icon: "⚠",
+          title: "Provider Wallet Too Low — Load It Now",
+          subtitle: "Customers are being blocked from paying",
+          body: `<p style="margin:0 0 14px;color:#374151;font-size:14px;">A customer just tried to buy <strong>${ctx}</strong> but the Clubkonnect wallet does not have enough balance to fulfil it. The payment was <strong>not taken</strong> — the customer was asked to try again later.</p>
+            <table style="width:100%;border-collapse:collapse;font-size:14px;margin:0 0 16px;">
+              <tr><td style="padding:7px 0;color:#6b7280;width:170px;font-weight:600;">Current wallet balance</td><td style="padding:7px 0;font-weight:800;color:#dc2626;">₦${(balance ?? 0).toLocaleString()}</td></tr>
+              <tr style="background:#fef9c3;"><td style="padding:7px 8px;color:#6b7280;font-weight:600;">Needed for this order</td><td style="padding:7px 8px;font-weight:700;color:#92400e;">₦${Math.ceil(needed).toLocaleString()}</td></tr>
+            </table>
+            <div style="padding:14px 16px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;">
+              <p style="margin:0;font-weight:700;color:#991b1b;font-size:14px;">Action Required</p>
+              <p style="margin:8px 0 0;color:#991b1b;font-size:13px;">Top up the Clubkonnect wallet at <a href="https://www.nellobytesystems.com" style="color:#dc2626;font-weight:600;">nellobytesystems.com</a>. Bill payments will keep failing until it is funded.</p>
+            </div>`,
+        });
+        for (const a of (admins || [])) {
+          if (a.email) {
+            try { await sendEmail(sb, { to: a.email, subject: "[KudiTrack] URGENT: Load the bill-payment wallet — it's too low", html }); }
+            catch (e) { console.error("wallet-low email failed:", a.email, (e as Error).message); }
+          }
+        }
+      } catch (e) { console.error("notifyWalletLow error:", (e as Error).message); }
+    };
+
+    // ── Refresh ClubKonnect wholesale discount rates into platform_config ─────
+    // Stores the raw CK responses plus a normalised { airtime:{NET:pct},
+    // epin:{NET:pct} } map used for Enterprise pricing and the availability
+    // pre-flight. Fallbacks (last known CK spread) fill in any network CK omits.
+    const FALLBACK_AIRTIME: Record<string, number> = { MTN: 0.03, Airtel: 0.03, "9mobile": 0.07, Glo: 0.08 };
+    const FALLBACK_EPIN:    Record<string, number> = { MTN: 0.01, Airtel: 0.02, "9mobile": 0.05, Glo: 0.02 };
+    const refreshCkPrices = async (sb: ReturnType<typeof createClient>) => {
+      const parsePct = (v: unknown): number | null => {
+        if (v === null || v === undefined) return null;
+        const n = Number(String(v).replace(/[^0-9.]/g, ""));
+        return isNaN(n) ? null : (n > 1 ? n / 100 : n);
+      };
+      const NET_ALIAS: Record<string, string> = {
+        MTN: "MTN", GLO: "Glo", AIRTEL: "Airtel",
+        "9MOBILE": "9mobile", "M_9MOBILE": "9mobile", "M-9MOBILE": "9mobile", "9-MOBILE": "9mobile", ETISALAT: "9mobile",
+      };
+      // CK shape: { MOBILE_NETWORK: { MTN: [{ PRODUCT_DISCOUNT_AMOUNT: "0.97", PRODUCT_DISCOUNT: "3%" }] } }
+      const discOf = (row: unknown): number | null => {
+        const r = (Array.isArray(row) ? row[0] : row) as Record<string, unknown> | undefined;
+        if (!r || typeof r !== "object") return null;
+        const amt = Number(String(r.PRODUCT_DISCOUNT_AMOUNT ?? "").replace(/[^0-9.]/g, ""));
+        if (!isNaN(amt) && amt > 0 && amt <= 1) return Number((1 - amt).toFixed(4)); // "0.97" → 0.03
+        return parsePct(r.PRODUCT_DISCOUNT ?? r.DISCOUNT ?? r.discount);
+      };
+      const normalise = (raw: Record<string, unknown>): Record<string, number> => {
+        const out: Record<string, number> = {};
+        const mn = (raw?.MOBILE_NETWORK ?? raw?.mobile_network ?? raw) as Record<string, unknown> | undefined;
+        if (!mn || typeof mn !== "object") return out;
+        for (const [k, v] of Object.entries(mn)) {
+          const net = NET_ALIAS[k.toUpperCase().replace(/\s+/g, "")];
+          const p = discOf(v);
+          if (net && p !== null && p >= 0 && p < 0.5) out[net] = p;
+        }
+        return out;
+      };
+      const [rawAirtime, rawEpin] = await Promise.all([
+        ck("APIAirtimeDiscountV1.asp", { APIKey: AIRTIME_K }, { retries: 1, timeoutMs: 15000 }).catch(() => ({})),
+        ck("APIEPINDiscountV2.asp",    { APIKey: PRINT_AIRTIME_K }, { retries: 1, timeoutMs: 15000 }).catch(() => ({})),
+      ]);
+      const airtimeLive = normalise(rawAirtime as Record<string, unknown>);
+      const epinLive    = normalise(rawEpin as Record<string, unknown>);
+      const discounts = {
+        // for pricing — always covers all 4 networks
+        airtime: { ...FALLBACK_AIRTIME, ...airtimeLive },
+        epin:    { ...FALLBACK_EPIN, ...epinLive },
+        // for availability — only what CK actually returned this refresh
+        airtime_live: airtimeLive,
+        epin_live:    epinLive,
+        raw_airtime: rawAirtime, raw_epin: rawEpin,
+      };
+      await sb.from("platform_config").upsert([
+        { key: "ck_discounts", value: JSON.stringify(discounts), description: "ClubKonnect wholesale discounts (auto)" },
+        { key: "ck_discounts_updated", value: new Date().toISOString(), description: "Last ck_discounts refresh" },
+      ], { onConflict: "key" });
+      return discounts;
+    };
+
+    if (action === "refresh-ck-prices") {
+      const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+      const discounts = await refreshCkPrices(sb);
+      return json({ ok: true, discounts });
+    }
+
+    // ── Pre-flight a bill before the customer is charged ──────────────────────
+    // Confirms the provider wallet can cover the order and (for print/EPIN) that
+    // the requested network is actually available. Never takes a payment.
+    if (action === "bill-preflight") {
+      const { cat, network, amount, denom } = body as {
+        cat: string; network?: string; amount: number; denom?: string;
+      };
+      const cost = Number(amount) || 0;
+      if (!cat || cost <= 0) return json({ ok: false, reason: "bad_request", message: "Invalid request." });
+
+      const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+      const { data: cfgRows } = await sb.from("platform_config").select("key, value").in("key", ["ck_discounts", "ck_discounts_updated", "ck_wallet_min_buffer"]);
+      const cfg: Record<string, string> = {};
+      (cfgRows || []).forEach((r) => { cfg[r.key] = r.value; });
+      let disc: { epin?: Record<string, number>; epin_live?: Record<string, number>; airtime?: Record<string, number> } = {};
+      try { disc = JSON.parse(cfg.ck_discounts || "{}"); } catch { /* keep {} */ }
+      const buffer = Number(cfg.ck_wallet_min_buffer || "0") || 0;
+
+      // Lazily refresh discount + availability data when missing or older than 24h.
+      const stale = !cfg.ck_discounts_updated ||
+        (Date.now() - Date.parse(cfg.ck_discounts_updated) > 24 * 60 * 60 * 1000);
+      if (!disc.epin || Object.keys(disc.epin).length === 0 || stale) {
+        try { disc = await refreshCkPrices(sb); } catch (e) { console.warn("lazy price refresh failed:", (e as Error).message); }
+      }
+
+      // Availability: for the resale products, a network CK didn't return this
+      // refresh (epin_live) is treated as out of stock — only enforced when we
+      // actually got a live list back.
+      if ((cat === "print-airtime" || cat === "airtime-bundle") && network) {
+        const live = disc.epin_live || {};
+        if (Object.keys(live).length > 0) {
+          const nets = cat === "airtime-bundle" ? ["MTN", "Airtel", "9mobile", "Glo"] : [network];
+          const missing = nets.filter((n) => live[n] == null);
+          if (missing.length) {
+            return json({
+              ok: false, reason: "unavailable",
+              message: `${missing.join(", ")} print recharge isn't available right now. Please try again later — you have not been charged.`,
+            });
+          }
+        }
+      }
+
+      // Wallet: block (and alert) if it can't cover the order.
+      const balance = await readWalletBalance();
+      if (balance !== null && balance < cost + buffer) {
+        const label = cat === "airtime-bundle" ? `bundle set${denom ? ` (₦${denom})` : ""}`
+          : cat === "print-airtime" ? "airtime print"
+          : cat === "print-data" ? "data print" : cat;
+        await notifyWalletLow(balance, cost + buffer, label);
+        return json({
+          ok: false, reason: "wallet_low",
+          message: "This service is temporarily unavailable. Please try again later — you have not been charged.",
+        });
+      }
+
+      return json({ ok: true, balance, discounts: { airtime: disc.airtime ?? {}, epin: disc.epin ?? {} } });
     }
 
     // ── Health check — test every service key in parallel ─────────────────────

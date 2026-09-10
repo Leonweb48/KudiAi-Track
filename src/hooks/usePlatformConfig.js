@@ -32,8 +32,13 @@ export function usePlatformConfig() {
     fetchConfig().then(cfg => { setConfig(cfg); setLoading(false); });
   }, []);
 
+  let ckDiscounts = null;
+  try { ckDiscounts = config?.ck_discounts ? JSON.parse(config.ck_discounts) : null; } catch { ckDiscounts = null; }
+
   return {
     coopEnabled: config?.coop_module_enabled === "true",
+    ckDiscounts,                                            // { airtime:{NET:pct}, epin:{NET:pct}, epin_live:{}, ... }
+    enterpriseFeePct: Number(config?.enterprise_bill_fee_pct ?? "0.01") || 0.01,
     configLoading: loading,
   };
 }

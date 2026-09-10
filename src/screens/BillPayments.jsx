@@ -10,6 +10,7 @@ import { calcPointsDiscount, calcCashbackDiscount, calcCouponDiscount, calcBillA
 import { saveBeneficiary, getBeneficiaries, getRecentBeneficiaries, deleteBeneficiary, benDisplayName, benSubLabel, BEN_CATS, upsertRemote, syncLocalToRemote, fetchRemoteRecent, fetchAllRemote, deleteRemote, updateRemoteNickname } from "../utils/billBeneficiaries";
 import { clubkonnect } from "../utils/clubkonnect";
 import { canDo, getLowestPlanWithFeature } from "../utils/plans";
+import { usePlatformConfig } from "../hooks/usePlatformConfig";
 import TransactionDetailModal from "../components/shared/TransactionDetailModal";
 import { buildBillReceipt } from "../utils/receiptConfig";
 import { ReceiptCard } from "../components/shared/ReceiptCard";
@@ -100,15 +101,25 @@ const JAMB_TYPES = [
   { code: "de",           name: "Direct Entry (DE)" },
 ];
 
-const PRINT_VALUES = ["100", "200", "500"];
+const PRINT_VALUES = ["100", "200", "300", "500", "1000"];
 
 /* ─── Airtime bundle (all-network set) ────────────────────────────────────── */
-const BUNDLE_NETWORKS      = ["MTN", "Airtel", "9mobile", "Glo"];
-const BUNDLE_CK_COSTS      = { MTN: 970, Airtel: 968, "9mobile": 930, Glo: 920 }; // Distributor rates per ₦1,000
-const BUNDLE_FACE_PER_SET   = 4000;  // ₦1,000 × 4 networks
-const BUNDLE_CK_PER_SET     = Object.values(BUNDLE_CK_COSTS).reduce((s, c) => s + c, 0); // 3788
-const BUNDLE_PROFIT_PER_SET = BUNDLE_FACE_PER_SET - BUNDLE_CK_PER_SET; // 212
-const BUNDLE_SET_OPTIONS   = [1, 2, 3, 5, 10];
+const BUNDLE_NETWORKS    = ["MTN", "Airtel", "9mobile", "Glo"];
+const BUNDLE_DENOMS      = ["100", "200", "300", "500", "1000"];
+const BUNDLE_SET_OPTIONS = [1, 2, 3, 5, 10];
+
+// Last-known ClubKonnect EPIN discount per network — fallback when platform_config
+// (ck_discounts, refreshed from CK) hasn't loaded yet.
+const FALLBACK_EPIN_DISC    = { MTN: 0.01, Airtel: 0.02, "9mobile": 0.05, Glo: 0.02 };
+const FALLBACK_AIRTIME_DISC = { MTN: 0.03, Airtel: 0.03, "9mobile": 0.07, Glo: 0.08 };
+
+// ClubKonnect cost for `face` naira of `product` ("airtime" | "epin") on a network.
+function ckUnitCost(face, network, product, ckDiscounts) {
+  const fb = product === "epin" ? FALLBACK_EPIN_DISC : FALLBACK_AIRTIME_DISC;
+  const raw = ckDiscounts?.[product]?.[network];
+  const disc = (typeof raw === "number" && raw >= 0 && raw < 0.5) ? raw : (fb[network] ?? 0);
+  return face * (1 - disc);
+}
 
 /* ─── Helpers ─────────────────────────────────────────────────────────────── */
 
@@ -1622,7 +1633,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
   );
 }
 
-export default function BillPayments({ store, plan, session = null, staffName = null, staffEmail = null, businessName = null, autoService = null, onAutoOpened = null, excludeCats = [], markup = 1.0, airtimeDiscount = 0, cashback = 0, pointsEnabled = false, bundleAppPct = 0.3 }) {
+export default function BillPayments({ store, plan, session = null, staffName = null, staffEmail = null, businessName = null, autoService = null, onAutoOpened = null, excludeCats = [], markup = 1.0, cashback = 0, pointsEnabled = false }) {
   const t = useT();
   const CAT_LABELS = useMemo(() => ({
     airtime:        t("bill.airtime"),
@@ -1653,9 +1664,37 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     : 0;
   const isLoanEligible = isEnterprise && accountAgeMonths >= 4;
 
-  // Bundle pricing: platform keeps bundleAppPct of gross profit, subscriber saves the rest
-  const bundleSubscriberSavings = Math.round(BUNDLE_PROFIT_PER_SET * (1 - bundleAppPct));
-  const bundleChargePerSet = BUNDLE_FACE_PER_SET - bundleSubscriberSavings;
+  // ── ClubKonnect wholesale pricing ────────────────────────────────────────
+  // Enterprise owners buy airtime/data/print at CK cost + a small platform fee
+  // so they can resell below face. Everyone else keeps retail pricing.
+  const { ckDiscounts, enterpriseFeePct } = usePlatformConfig();
+
+  const bundleFacePerSet   = (denom) => (parseInt(denom || "1000", 10) || 0) * BUNDLE_NETWORKS.length;
+  const bundleChargePerSet = (denom) => {
+    const d = parseInt(denom || "1000", 10) || 0;
+    const ck = BUNDLE_NETWORKS.reduce((s, n) => s + ckUnitCost(d, n, "epin", ckDiscounts), 0);
+    return Math.ceil(ck * (1 + enterpriseFeePct));
+  };
+
+  // The naira the owner is charged for the current bill form.
+  const priceFor = (cat, f) => {
+    const q = parseInt(f.quantity || "1", 10) || 1;
+    if (cat === "print-airtime") {
+      const face = parseInt(f.value || "0", 10) || 0;
+      if (!face || !f.network) return 0;
+      return Math.ceil(ckUnitCost(face, f.network, "epin", ckDiscounts) * (1 + enterpriseFeePct)) * q;
+    }
+    if (cat === "airtime-bundle") {
+      const sets = parseInt(f.sets || "0", 10) || 0;
+      return sets * bundleChargePerSet(f.denom);
+    }
+    if (cat === "airtime") {
+      const amt = parseFloat(f.amount || "0") || 0;
+      if (!amt) return 0;
+      return isEnterprise ? Math.ceil(ckUnitCost(amt, f.network, "airtime", ckDiscounts) * (1 + enterpriseFeePct)) : amt;
+    }
+    return 0; // other cats priced inline
+  };
 
   const [selectedCat,   setSelectedCat]   = useState(null);
   const savedScrollRef = useRef(0);
@@ -1694,9 +1733,6 @@ export default function BillPayments({ store, plan, session = null, staffName = 
   const pointsBalanceRef     = useRef(0);
   const cashbackBalanceRef   = useRef(0);
   const billAppliedCouponRef = useRef(null);
-
-  // CK wallet balance cache — checked before every Paystack init (60s TTL)
-  const ckWalletCacheRef = useRef({ balance: null, ts: 0 });
 
   // Ref for updating DB + sending email when electricity token arrives via polling
   const elecPendingCbRef = useRef(null);
@@ -1775,7 +1811,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     setForm({ network: "MTN", phone: "", amount: "", planId: "", planName: "",
                provider: "", smartcard: "", meterNo: "", meterType: "01",
                company: "", customerId: "", examType: "", profileId: "",
-               accountNo: "", value: "100", quantity: "1", sets: "1" });
+               accountNo: "", value: "100", quantity: "1", sets: "1", denom: "1000" });
     setError(""); setPins(null); resetVerify(); setPlans([]); setPlansError(""); setPkgs([]); setPkgsError("");
     if (catId === "data") loadPlans("data-plans", { network: "MTN" });
     if (catId === "spectranet") loadPlans("spectranet-plans", {});
@@ -2245,32 +2281,38 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
       // Calculate charge amount
       const chargeAmount = selectedCat === "print-airtime"
-        ? parseInt(form.value, 10) * parseInt(form.quantity || "1", 10)
+        ? priceFor("print-airtime", form)
         : selectedCat === "print-data"
           ? amount * parseInt(form.quantity || "1", 10)
           : selectedCat === "airtime-bundle"
-            ? parseInt(form.sets || "1", 10) * bundleChargePerSet
-            : amount;
+            ? priceFor("airtime-bundle", form)
+            : selectedCat === "airtime"
+              ? priceFor("airtime", form)
+              : amount;
 
       if (!chargeAmount || chargeAmount <= 0) throw new Error("Invalid amount");
 
-      // ── CK wallet balance guard ─────────────────────────────────────────────
-      // Fetch wallet balance (cached 60s) and block payment if the provider wallet
-      // can't cover the purchase. This prevents the worst failure: customer pays,
-      // CK rejects with "LOW_WALLET", customer has no service and no automatic recovery.
-      {
-        const cache = ckWalletCacheRef.current;
-        if (Date.now() - cache.ts > 60_000) {
-          try {
-            const { data: wb } = await supabase.functions.invoke("clubkonnect", { body: { action: "wallet-balance" } });
-            if (wb?.balance != null) { cache.balance = wb.balance; cache.ts = Date.now(); }
-          } catch (_) { /* non-fatal — proceed if balance check fails */ }
+      // ── Pre-flight: never charge if the service can't be delivered ──────────
+      // Confirms the provider is in stock for this request and that the provider
+      // wallet can cover it. A low wallet also emails the admins to top it up.
+      try {
+        const { data: pf } = await supabase.functions.invoke("clubkonnect", {
+          body: {
+            action:  "bill-preflight",
+            cat:     selectedCat,
+            network: form.network || undefined,
+            denom:   form.denom || undefined,
+            amount:  chargeAmount,
+          },
+        });
+        if (pf && pf.ok === false) {
+          throw new Error(pf.message || "This service is temporarily unavailable. Please try again later — you have not been charged.");
         }
-        if (cache.balance !== null && chargeAmount > cache.balance) {
-          throw new Error(
-            `Your bill-payment wallet (₦${Math.floor(cache.balance).toLocaleString("en-NG")}) doesn't have enough balance for this ₦${chargeAmount.toLocaleString("en-NG")} purchase — top up your Clubkonnect wallet to continue.`
-          );
-        }
+      } catch (pfErr) {
+        // A thrown pf.ok===false message must surface; a network failure of the
+        // check itself should not block (rare, and fulfilment still has guards).
+        if (pfErr?.message && /try again later|not been charged|unavailable/i.test(pfErr.message)) throw pfErr;
+        console.warn("[preflight] check failed, proceeding:", pfErr?.message);
       }
 
       const { pointsDiscount, cashbackDiscount, couponDiscount, afterDiscounts, finalAmount } = calcBillAmounts({
@@ -2573,12 +2615,13 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         note = `Network: ${f.network} | Plan: ${f.planName} x${qty}${apiRef ? ` | Ref: ${apiRef}` : ""}__PINS__${JSON.stringify(pinsArr)}`;
 
       } else if (cat === "airtime-bundle") {
-        const sets = parseInt(f.sets || "1", 10);
+        const sets   = parseInt(f.sets || "1", 10);
+        const bDenom = String(parseInt(f.denom || "1000", 10) || 1000);
         const [mtn, airtel, nm, glo] = await Promise.all([
-          ckPurchase(clubkonnect, "print-airtime", { network: "MTN",     value: "1000", quantity: String(sets) }, `${ref}-MTN`),
-          ckPurchase(clubkonnect, "print-airtime", { network: "Airtel",  value: "1000", quantity: String(sets) }, `${ref}-AIR`),
-          ckPurchase(clubkonnect, "print-airtime", { network: "9mobile", value: "1000", quantity: String(sets) }, `${ref}-9MB`),
-          ckPurchase(clubkonnect, "print-airtime", { network: "Glo",     value: "1000", quantity: String(sets) }, `${ref}-GLO`),
+          ckPurchase(clubkonnect, "print-airtime", { network: "MTN",     value: bDenom, quantity: String(sets) }, `${ref}-MTN`),
+          ckPurchase(clubkonnect, "print-airtime", { network: "Airtel",  value: bDenom, quantity: String(sets) }, `${ref}-AIR`),
+          ckPurchase(clubkonnect, "print-airtime", { network: "9mobile", value: bDenom, quantity: String(sets) }, `${ref}-9MB`),
+          ckPurchase(clubkonnect, "print-airtime", { network: "Glo",     value: bDenom, quantity: String(sets) }, `${ref}-GLO`),
         ]);
         pinsArr = [
           ...(mtn.pins    || []).map(p => ({ ...p, network: "MTN"     })),
@@ -2589,12 +2632,12 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         apiRef = [mtn.reference, airtel.reference, nm.reference, glo.reference].filter(Boolean).join(" | ");
         itemName    = `All-Network Bundle ×${sets} Set${sets > 1 ? "s" : ""}`;
         customerRef = `${sets * 4} PINs (${sets} per network)`;
-        note = `Sets: ${sets} | Networks: MTN, Airtel, 9mobile, Glo | Face value: ₦${(sets * BUNDLE_FACE_PER_SET).toLocaleString()}${apiRef ? ` | Refs: ${apiRef}` : ""}__PINS__${JSON.stringify(pinsArr)}`;
+        note = `Sets: ${sets} × ₦${bDenom} | Networks: MTN, Airtel, 9mobile, Glo | Face value: ₦${(sets * bundleFacePerSet(bDenom)).toLocaleString()}${apiRef ? ` | Refs: ${apiRef}` : ""}__PINS__${JSON.stringify(pinsArr)}`;
       }
 
       const totalAmount = cat === "print-airtime"
-        ? parseInt(f.value, 10) * parseInt(f.quantity || "1", 10)
-        : cat === "print-data"     ? amount * parseInt(f.quantity || "1", 10)
+        ? (paidAmount || parseInt(f.value, 10) * parseInt(f.quantity || "1", 10))
+        : cat === "print-data"     ? (paidAmount || amount * parseInt(f.quantity || "1", 10))
         : cat === "airtime-bundle" ? paidAmount
         : paidAmount || amount;
 
@@ -2780,13 +2823,11 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       try {
         const { cat: fCat, form: f, paidAmount: fPaid } = pending;
         const catLabel = CATS.find(c => c.id === fCat)?.label || fCat;
-        const failAmount = fCat === "print-airtime"
-          ? parseInt(f.value || "0", 10) * parseInt(f.quantity || "1", 10)
-          : fCat === "print-data"
-            ? parseFloat(f.amount || "0") * parseInt(f.quantity || "1", 10)
-          : fCat === "airtime-bundle"
-            ? fPaid || (parseInt(f.sets || "1", 10) * BUNDLE_FACE_PER_SET)
-            : fPaid || parseFloat(f.amount || "0");
+        const failAmount = fPaid
+          || (fCat === "print-airtime" ? parseInt(f.value || "0", 10) * parseInt(f.quantity || "1", 10)
+          :   fCat === "print-data"    ? parseFloat(f.amount || "0") * parseInt(f.quantity || "1", 10)
+          :   fCat === "airtime-bundle" ? parseInt(f.sets || "1", 10) * bundleFacePerSet(f.denom)
+          :   parseFloat(f.amount || "0"));
         await addTransaction({
           type: "out", category: fCat, payment_type: "bill_payment",
           item_name: catLabel,
@@ -2855,9 +2896,10 @@ export default function BillPayments({ store, plan, session = null, staffName = 
   // Pre-compute UI charge amount so points savings displays correctly before submission
   const uiChargeAmt = (() => {
     const a = parseFloat(form.amount) || 0;
-    if (selectedCat === "print-airtime")  return parseInt(form.value || "0", 10) * parseInt(form.quantity || "1", 10);
+    if (selectedCat === "print-airtime")  return priceFor("print-airtime", form);
     if (selectedCat === "print-data")     return a * parseInt(form.quantity || "1", 10);
-    if (selectedCat === "airtime-bundle") return parseInt(form.sets || "0", 10) * bundleChargePerSet;
+    if (selectedCat === "airtime-bundle") return priceFor("airtime-bundle", form);
+    if (selectedCat === "airtime")        return priceFor("airtime", form);
     return a;
   })();
   // Saved beneficiaries for the active category
@@ -3456,10 +3498,10 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                 <NetworkSelector value={form.network} onChange={v => setF("network", v)} detected={null} />
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">Denomination *</label>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap">
                     {PRINT_VALUES.map(v => (
                       <button key={v} type="button" onClick={() => setF("value", v)}
-                        className={`flex-1 py-2.5 rounded-xl border-2 text-sm font-bold transition-colors ${form.value === v ? "border-slate-600 bg-slate-600 text-white" : "border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400"}`}>
+                        className={`flex-1 min-w-[56px] py-2.5 rounded-xl border-2 text-sm font-bold transition-colors ${form.value === v ? "border-slate-600 bg-slate-600 text-white" : "border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400"}`}>
                         ₦{v}
                       </button>
                     ))}
@@ -3470,13 +3512,20 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                   <input type="number" value={form.quantity} onChange={e => setF("quantity", e.target.value)} min="1" max="100" placeholder="1"
                     className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-slate-500" />
                 </div>
-                <div className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3">
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Total cost: <strong className="text-slate-800 dark:text-white">₦{(parseInt(form.value || 0) * parseInt(form.quantity || 0)).toLocaleString()}</strong>
-                    {" "}({form.quantity} × ₦{form.value})
-                  </p>
-                  <p className="text-[10px] text-slate-400 mt-0.5">PINs will be shown after purchase</p>
-                </div>
+                {(() => {
+                  const face = parseInt(form.value || 0, 10) * parseInt(form.quantity || 0, 10);
+                  const pay  = priceFor("print-airtime", form);
+                  const save = Math.max(0, face - pay);
+                  return (
+                    <div className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3">
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        You pay: <strong className="text-slate-800 dark:text-white">₦{pay.toLocaleString()}</strong>
+                        {" "}({form.quantity} × ₦{form.value} face{save > 0 ? `, ₦${save.toLocaleString()} wholesale saving` : ""})
+                      </p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">PINs will be shown after purchase · resell at up to ₦{face.toLocaleString()}</p>
+                    </div>
+                  );
+                })()}
               </>}
 
               {/* ── PRINT DATA ── */}
@@ -3499,30 +3548,18 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
               {/* ── AIRTIME BUNDLE ── */}
               {selectedCat === "airtime-bundle" && <>
-                {/* Network breakdown card */}
-                <div className="rounded-2xl overflow-hidden border border-violet-200 dark:border-violet-800">
-                  <div className="px-4 py-3 bg-gradient-to-br from-violet-600 to-violet-900">
-                    <p className="text-xs font-black text-white">All-Network Bundle Set</p>
-                    <p className="text-[10px] text-violet-200 mt-0.5">₦1,000 per network · MTN, Airtel, 9mobile & Glo</p>
+                {/* Denomination selector */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">Denomination per network *</label>
+                  <div className="flex gap-2 flex-wrap">
+                    {BUNDLE_DENOMS.map(d => (
+                      <button key={d} type="button" onClick={() => setF("denom", d)}
+                        className={`flex-1 min-w-[56px] py-2.5 rounded-xl border-2 text-sm font-bold transition-colors ${(form.denom || "1000") === d ? "border-violet-600 bg-violet-600 text-white" : "border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400"}`}>
+                        ₦{d}
+                      </button>
+                    ))}
                   </div>
-                  <div className="grid grid-cols-4 gap-0 bg-white dark:bg-slate-800 divide-x divide-slate-100 dark:divide-slate-700">
-                    {BUNDLE_NETWORKS.map(n => {
-                      const cfg = NET_CONFIG[n];
-                      return (
-                        <div key={n} className="flex flex-col items-center py-3 px-1 gap-1.5">
-                          <div className="w-full h-8 rounded-lg flex items-center justify-center overflow-hidden" style={{ background: cfg.bg + "18", border: `1px solid ${cfg.bg}40` }}>
-                            <img src={cfg.logo} alt={n} className="h-6 w-full object-contain" draggable={false} />
-                          </div>
-                          <p className="text-[9px] text-slate-400 leading-none">face ₦1,000</p>
-                          <p className="text-[9px] font-bold text-green-600 leading-none">cost ₦{BUNDLE_CK_COSTS[n]}</p>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div className="px-4 py-2 bg-violet-50 dark:bg-violet-900/20 border-t border-violet-100 dark:border-violet-800 flex items-center justify-between">
-                    <span className="text-[10px] text-violet-600 dark:text-violet-400 font-semibold">Profit per set</span>
-                    <span className="text-[10px] font-black text-violet-700 dark:text-violet-300">₦{BUNDLE_PROFIT_PER_SET} gross</span>
-                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1.5">A set = ₦{(form.denom || "1000")} on each of MTN, Airtel, 9mobile & Glo</p>
                 </div>
 
                 {/* Set selector */}
@@ -3540,16 +3577,16 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
                 {/* Price breakdown */}
                 {parseInt(form.sets || "0", 10) > 0 && (() => {
-                  const s = parseInt(form.sets, 10);
-                  const faceTotal   = s * BUNDLE_FACE_PER_SET;
-                  const discount    = s * bundleSubscriberSavings;
-                  const youPay      = s * bundleChargePerSet;
-                  const appEarns    = Math.round(s * BUNDLE_PROFIT_PER_SET * bundleAppPct);
+                  const s      = parseInt(form.sets, 10);
+                  const denom  = form.denom || "1000";
+                  const faceTotal = s * bundleFacePerSet(denom);
+                  const youPay    = s * bundleChargePerSet(denom);
+                  const discount  = Math.max(0, faceTotal - youPay);
                   return (
                     <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700">
                       {[
-                        ["Face value",    `₦${faceTotal.toLocaleString()}`, "text-slate-700 dark:text-slate-200"],
-                        ["Your discount", `-₦${discount.toLocaleString()}`, "text-green-600 dark:text-green-400"],
+                        ["Face value",      `₦${faceTotal.toLocaleString()}`, "text-slate-700 dark:text-slate-200"],
+                        ["Wholesale saving", `-₦${discount.toLocaleString()}`, "text-green-600 dark:text-green-400"],
                       ].map(([label, val, cls]) => (
                         <div key={label} className="flex justify-between items-center px-4 py-2.5 border-b border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800">
                           <span className="text-xs text-slate-500 dark:text-slate-400">{label}</span>
@@ -3560,12 +3597,8 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                         <span className="text-sm font-black text-slate-700 dark:text-white">You pay</span>
                         <span className="text-lg font-black text-violet-700 dark:text-violet-300">₦{youPay.toLocaleString()}</span>
                       </div>
-                      <div className="px-4 py-2 bg-slate-50 dark:bg-slate-700/50 flex items-center justify-between">
-                        <span className="text-[10px] text-slate-400">Platform earns</span>
-                        <span className="text-[10px] font-bold text-slate-500">₦{appEarns.toLocaleString()} (after Paystack on you)</span>
-                      </div>
                       <p className="text-[10px] text-slate-400 px-4 py-2 text-center">
-                        {s * 4} PINs across all 4 networks · shown after purchase
+                        {s * 4} PINs (₦{denom} each) across all 4 networks · shown after purchase
                       </p>
                     </div>
                   );
@@ -3658,7 +3691,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                 }} disabled={saving || initPaying}
                   className="w-full text-white font-bold rounded-xl py-3.5 text-sm transition-all disabled:opacity-60 bg-gradient-to-br from-green-600 to-green-700">
                   {initPaying ? "Connecting to Paystack…" : saving ? (billAppliedCoupon && uiChargeAmt - ptsSavings - cbSavings - billCouponSavings <= 0 ? "Processing free bill…" : "Processing…") : (
-                    selectedCat === "print-airtime"   ? `Pay with Paystack · ${form.quantity || 1} × ₦${form.value}` :
+                    selectedCat === "print-airtime"   ? (uiChargeAmt > 0 ? `Pay ₦${uiChargeAmt.toLocaleString()} · ${form.quantity || 1} × ₦${form.value}` : "Select denomination") :
                     selectedCat === "print-data"      ? `Pay with Paystack · ${form.quantity || 1} Plan${parseInt(form.quantity||"1")>1?"s":""}` :
                     selectedCat === "airtime-bundle"  ? (parseInt(form.sets||"0")>0 ? `Pay ₦${uiChargeAmt.toLocaleString()} · ${form.sets} Bundle Set${parseInt(form.sets)>1?"s":""}` : "Select number of sets") :
                     form.amount && uiChargeAmt - ptsSavings - cbSavings - billCouponSavings <= 0 ? "Activate Free — Coupon Applied" :
