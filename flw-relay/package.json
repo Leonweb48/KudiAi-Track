@@ -1,0 +1,10 @@
+{
+  "name": "kudi-flw-relay",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Static-IP forwarder for Flutterwave payouts",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=20" }
+}

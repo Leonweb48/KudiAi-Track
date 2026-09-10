@@ -1,0 +1,29 @@
+# Fly.io — gives you ONE dedicated static IPv4 that outbound calls use.
+# Deploy:
+#   cd flw-relay
+#   fly launch --no-deploy --name kudi-flw-relay --region lhr
+#   fly ips allocate-v4 --yes                # ~$2/mo, this is the IP you whitelist
+#   fly ips list                             # copy the v4 address
+#   fly secrets set RELAY_KEY=<long-random>  FLW_BASE_URL=https://f4bexperience.flutterwave.com
+#   fly deploy
+#   curl https://kudi-flw-relay.fly.dev/health   # -> ok
+
+app = "kudi-flw-relay"
+primary_region = "lhr"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8080"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"      # must stay up — payouts are synchronous
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

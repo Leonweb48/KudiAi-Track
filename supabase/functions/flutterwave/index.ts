@@ -26,6 +26,9 @@ const FLW_BASE      = Deno.env.get("FLW_BASE_URL") || "https://developersandbox-
 const FLW_CLIENT_ID = Deno.env.get("FLW_CLIENT_ID") ?? "";
 const FLW_CLIENT_SECRET = Deno.env.get("FLW_CLIENT_SECRET") ?? "";
 const FLW_TEST_BVN  = Deno.env.get("FLW_TEST_BVN") || "22222222222";
+// Optional static-IP relay for payouts (Flutterwave IP-whitelists transfers).
+const FLW_RELAY_URL = (Deno.env.get("FLW_RELAY_URL") || "").replace(/\/$/, "");
+const FLW_RELAY_KEY = Deno.env.get("FLW_RELAY_KEY") ?? "";
 const SUPABASE_URL  = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY   = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const ANON_KEY      = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
@@ -55,7 +58,7 @@ async function flwToken(): Promise<string> {
   return _tok.value;
 }
 
-async function flwFetch(path: string, init: RequestInit & { scenario?: string } = {}) {
+async function flwFetch(path: string, init: RequestInit & { scenario?: string; relay?: boolean } = {}) {
   const token = await flwToken();
   const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`,
@@ -63,11 +66,18 @@ async function flwFetch(path: string, init: RequestInit & { scenario?: string } 
     ...(init.headers as Record<string, string> || {}),
   };
   if (init.scenario) headers["X-Scenario-Key"] = init.scenario;
-  const res = await fetch(`${FLW_BASE}${path}`, { ...init, headers });
+
+  // Payouts must leave from a whitelisted IP — send them via the static-IP relay
+  // when one is configured. Everything else goes direct.
+  const useRelay = init.relay && FLW_RELAY_URL && FLW_RELAY_KEY;
+  const target = useRelay ? `${FLW_RELAY_URL}${path}` : `${FLW_BASE}${path}`;
+  if (useRelay) headers["x-relay-key"] = FLW_RELAY_KEY;
+
+  const res = await fetch(target, { ...init, headers });
   const text = await res.text();
   let data: Record<string, unknown> = {};
   try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
-  console.log(`FLW ${init.method || "GET"} ${path} → ${res.status} ${text.slice(0, 300)}`);
+  console.log(`FLW ${init.method || "GET"} ${path} ${useRelay ? "(relay) " : ""}→ ${res.status} ${text.slice(0, 300)}`);
   return { ok: res.ok, status: res.status, data };
 }
 
@@ -100,6 +110,7 @@ async function flwDisburse(o: {
   const [first, ...rest] = String(o.account_name || "KudiAI Wallet").trim().split(/\s+/);
   const r = await flwFetch("/direct-transfers", {
     method: "POST",
+    relay: true,
     headers: { "X-Idempotency-Key": o.reference, "X-Trace-Id": `${o.reference}-tr` },
     body: JSON.stringify({
       action: "instant", type: "bank", reference: o.reference,

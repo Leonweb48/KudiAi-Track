@@ -1,0 +1,21 @@
+# Render.com — a Starter web service ($7/mo) has a fixed set of outbound IPs
+# (Dashboard → your service → "Connect" / "Outbound IP Addresses" — usually 3).
+# Whitelist ALL of them in Flutterwave.
+#
+# Deploy: push flw-relay/ to a repo → New + Web Service → point it at that repo,
+# root dir "flw-relay" → Instance type Starter → set RELAY_KEY + FLW_BASE_URL.
+
+services:
+  - type: web
+    name: kudi-flw-relay
+    runtime: node
+    plan: starter
+    rootDir: flw-relay
+    buildCommand: npm install --omit=dev || true
+    startCommand: node server.js
+    healthCheckPath: /health
+    envVars:
+      - key: RELAY_KEY
+        sync: false
+      - key: FLW_BASE_URL
+        value: https://f4bexperience.flutterwave.com
