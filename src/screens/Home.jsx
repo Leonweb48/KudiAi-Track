@@ -291,7 +291,7 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
                     </button>
                     <button onClick={() => setWalletSheet("withdraw")}
                       className="flex-1 bg-white/15 active:bg-white/25 rounded-xl py-2 flex flex-col items-center gap-0.5 transition-colors">
-                      <Svg d={P.out} size={13} color="white" /><span className="text-[9px] font-semibold text-white/90">Withdraw</span>
+                      <Svg d={P.out} size={13} color="white" /><span className="text-[9px] font-semibold text-white/90">Send</span>
                     </button>
                     <button onClick={() => setTab("bills")}
                       className="flex-1 bg-white/15 active:bg-white/25 rounded-xl py-2 flex flex-col items-center gap-0.5 transition-colors">

@@ -256,6 +256,8 @@ export function WithdrawSheet({ open, onClose, balanceKobo, maxKobo, api, onSubm
   const [bankCode, setBankCode] = useState("");
   const [acctNo, setAcctNo] = useState("");
   const [acctName, setAcctName] = useState("");
+  const [narration, setNarration] = useState("");
+  const [bookExpense, setBookExpense] = useState(false);
   const [resolving, setResolving] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -267,7 +269,7 @@ export function WithdrawSheet({ open, onClose, balanceKobo, maxKobo, api, onSubm
     api.listBanks().then(d => setBanks(d?.banks || [])).catch(() => {});
   }, [open, api]);
 
-  useEffect(() => { if (!open) { setStep("form"); setAmount(""); setBankCode(""); setAcctNo(""); setAcctName(""); setErr(""); } }, [open]);
+  useEffect(() => { if (!open) { setStep("form"); setAmount(""); setBankCode(""); setAcctNo(""); setAcctName(""); setNarration(""); setBookExpense(false); setErr(""); } }, [open]);
 
   const resolve = useCallback(async () => {
     setAcctName(""); setErr("");
@@ -286,7 +288,7 @@ export function WithdrawSheet({ open, onClose, balanceKobo, maxKobo, api, onSubm
 
   const submit = async () => {
     setErr(""); setBusy(true);
-    try { await api.submitWithdrawal(kobo, bankCode, acctNo.trim()); setStep("done"); onSubmitted?.(); }
+    try { await api.submitWithdrawal(kobo, bankCode, acctNo.trim(), narration.trim(), bookExpense); setStep("done"); onSubmitted?.(); }
     catch (e) { setErr(e.message || "Could not submit"); }
     finally { setBusy(false); }
   };
@@ -294,13 +296,13 @@ export function WithdrawSheet({ open, onClose, balanceKobo, maxKobo, api, onSubm
   const inputCls = "w-full mt-1 px-3.5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-[15px]";
 
   return (
-    <BottomSheet open={open} onClose={onClose} title={step === "done" ? "" : "Withdraw to bank"}>
+    <BottomSheet open={open} onClose={onClose} title={step === "done" ? "" : "Send money"}>
       {step === "done" ? (
         <div className="text-center py-2">
           <div className="w-14 h-14 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center mx-auto mb-3">
             <Icon name="clock" size={24} className="text-amber-500" />
           </div>
-          <p className="text-[15px] font-bold text-slate-800 dark:text-slate-100 mb-1">Withdrawal submitted</p>
+          <p className="text-[15px] font-bold text-slate-800 dark:text-slate-100 mb-1">Transfer submitted</p>
           <p className="text-[13px] text-slate-500 dark:text-slate-400">
             {fmt(kobo / 100)} to <b>{acctName}</b> is awaiting admin approval. The amount is held and
             will be sent once approved — or returned to your wallet if declined.
@@ -309,10 +311,13 @@ export function WithdrawSheet({ open, onClose, balanceKobo, maxKobo, api, onSubm
         </div>
       ) : (
         <div className="space-y-3">
+          <p className="text-[13px] text-slate-500 dark:text-slate-400">
+            Send to any Nigerian bank account. Every transfer is confirmed by an admin before it goes out.
+          </p>
           <div>
             <label className="text-[12px] text-slate-400">Amount</label>
             <input inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value.replace(/[^\d.]/g, ""))} placeholder="0" className={inputCls} />
-            <p className="text-[11px] text-slate-400 mt-1">Balance {fmt(balanceKobo / 100)} · up to {fmt(cap / 100)} per withdrawal</p>
+            <p className="text-[11px] text-slate-400 mt-1">Balance {fmt(balanceKobo / 100)} · up to {fmt(cap / 100)} per transfer</p>
           </div>
           <div>
             <label className="text-[12px] text-slate-400">Bank</label>
@@ -329,9 +334,17 @@ export function WithdrawSheet({ open, onClose, balanceKobo, maxKobo, api, onSubm
             {resolving && <p className="text-[11px] text-slate-400 mt-1">Checking…</p>}
             {acctName && <p className="text-[13px] font-bold text-green-600 dark:text-green-400 mt-1">{acctName}</p>}
           </div>
+          <div>
+            <label className="text-[12px] text-slate-400">Narration <span className="text-slate-300">(optional)</span></label>
+            <input value={narration} onChange={e => setNarration(e.target.value.slice(0, 100))} placeholder="What's it for?" className={inputCls} />
+          </div>
+          <label className="flex items-center gap-2 text-[13px] text-slate-600 dark:text-slate-300">
+            <input type="checkbox" checked={bookExpense} onChange={e => setBookExpense(e.target.checked)} className="w-4 h-4 rounded" />
+            Record this as a business expense
+          </label>
           {err && <p className="text-[12px] text-red-500">{err}</p>}
           <button onClick={submit} disabled={!canSubmit} className="w-full bg-brand-600 disabled:opacity-40 text-white font-bold rounded-xl py-3.5">
-            {busy ? "Submitting…" : "Withdraw"}
+            {busy ? "Submitting…" : "Send money"}
           </button>
         </div>
       )}

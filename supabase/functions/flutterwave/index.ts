@@ -92,9 +92,9 @@ serve(async (req) => {
     // ═══ disburse — service-role only (called by the admin approval API) ═════
     if (action === "disburse") {
       if (token !== SERVICE_KEY) return json({ error: "Unauthorized" }, 401);
-      const { reference, amount_kobo, bank_code, account_number, account_name } = body as {
+      const { reference, amount_kobo, bank_code, account_number, account_name, narration } = body as {
         reference: string; amount_kobo: number; bank_code: string;
-        account_number: string; account_name?: string;
+        account_number: string; account_name?: string; narration?: string;
       };
       const naira = Math.round(Number(amount_kobo) / 100);
       const [first, ...rest] = String(account_name || "KudiAI Wallet").trim().split(/\s+/);
@@ -103,7 +103,7 @@ serve(async (req) => {
         headers: { "X-Idempotency-Key": reference, "X-Trace-Id": `${reference}-tr` },
         body: JSON.stringify({
           action: "instant", type: "bank", reference,
-          narration: "KudiAI wallet withdrawal",
+          narration: String(narration || "KudiAI wallet transfer").slice(0, 100),
           payment_instruction: {
             amount: { value: naira, applies_to: "destination_currency" },
             source_currency: "NGN", destination_currency: "NGN",
@@ -242,10 +242,11 @@ serve(async (req) => {
       return json({ ok: true, simulated: true, amount_naira: naira });
     }
 
-    // ── submit-withdrawal ────────────────────────────────────────────────
+    // ── submit-withdrawal / send money ──────────────────────────────────
     if (action === "submit-withdrawal") {
-      const { amount_kobo, bank_code, account_number } = body as {
+      const { amount_kobo, bank_code, account_number, narration, book_expense } = body as {
         amount_kobo: number; bank_code: string; account_number: string;
+        narration?: string; book_expense?: boolean;
       };
       if (!amount_kobo || amount_kobo <= 0) return json({ error: "Enter an amount" }, 400);
       if (!bank_code || !account_number) return json({ error: "Bank and account number required" }, 400);
@@ -263,6 +264,8 @@ serve(async (req) => {
         p_bank_code: bank_code,
         p_account_number: account_number,
         p_account_name: accountName,
+        p_narration: String(narration || "").slice(0, 100),
+        p_book_expense: !!book_expense,
       });
       if (error) return json({ error: error.message.replace(/^.*:\s*/, "") }, 400);
       return json({ ok: true, request_id: reqId, account_name: accountName });

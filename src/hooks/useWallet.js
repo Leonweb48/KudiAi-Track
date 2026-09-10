@@ -88,8 +88,8 @@ export function useWallet(userId, enabled = true) {
   const simulateTopup    = useCallback((amount_naira = 2000) => invoke("simulate-topup", { amount_naira }), [invoke]);
   const listBanks        = useCallback(() => invoke("list-banks"), [invoke]);
   const resolveAccount   = useCallback((bank_code, account_number) => invoke("resolve-account", { bank_code, account_number }), [invoke]);
-  const submitWithdrawal = useCallback((amount_kobo, bank_code, account_number) =>
-    invoke("submit-withdrawal", { amount_kobo, bank_code, account_number }), [invoke]);
+  const submitWithdrawal = useCallback((amount_kobo, bank_code, account_number, narration = "", book_expense = false) =>
+    invoke("submit-withdrawal", { amount_kobo, bank_code, account_number, narration, book_expense }), [invoke]);
 
   const createPaymentRequest = useCallback(async (amountKobo, customerName = "", note = "") => {
     const { data, error } = await supabase.rpc("wallet_create_payment_request", {

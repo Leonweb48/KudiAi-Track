@@ -110,7 +110,7 @@ export default function Wallet({ session }) {
               <div className="flex items-start gap-1">
                 <ActionButton icon="plus"        label="Add money" onClick={() => setSheet("fund")} />
                 <ActionButton icon="arrow-down"  label="Receive"   onClick={() => setSheet("receive")} />
-                <ActionButton icon="bank"        label="Withdraw"  onClick={() => setSheet("withdraw")} />
+                <ActionButton icon="send"        label="Send"      onClick={() => setSheet("withdraw")} />
                 <ActionButton icon="bills"       label="Pay bills" onClick={() => navigate("/bills")} tone="slate" />
               </div>
             </div>
