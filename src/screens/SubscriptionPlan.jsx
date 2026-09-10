@@ -345,19 +345,24 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
       const userName = profile?.full_name || session.user.email;
       const bizName  = profile?.business_name || "";
 
+      const redeemCoupon = async () => {
+        if (!couponInfo?.couponCode || (couponInfo.discountAmount ?? 0) <= 0) return;
+        try {
+          await supabase.rpc("redeem_coupon", {
+            p_code: couponInfo.couponCode, p_plan_slug: planSlug,
+            p_billing_cycle: isYearly ? "yearly" : "monthly",
+            p_original_amount: couponInfo.originalAmount, p_discount_amount: couponInfo.discountAmount,
+            p_final_amount: couponInfo.finalAmount, p_reference: reference || "",
+          });
+        } catch (ce) { console.warn("[Coupon] redemption failed:", ce); }
+      };
+
       // ── Free plan / fully-discounted coupon → activate immediately ──────────
       if (isFreeOrder) {
         const freeSlug = isFree ? planSlug : "kobo";
         const { error: freeErr } = await supabase.rpc("activate_free_subscription", { p_plan_slug: freeSlug });
         if (freeErr) throw freeErr;
-        if (couponInfo?.couponCode && (couponInfo.discountAmount ?? 0) > 0) {
-          supabase.rpc("redeem_coupon", {
-            p_code: couponInfo.couponCode, p_plan_slug: planSlug,
-            p_billing_cycle: isYearly ? "yearly" : "monthly",
-            p_original_amount: couponInfo.originalAmount, p_discount_amount: couponInfo.discountAmount,
-            p_final_amount: couponInfo.finalAmount, p_reference: reference || "",
-          }).catch(() => {});
-        }
+        await redeemCoupon();
         sendEmailTrigger("business_welcome", { user_email: session.user.email, user_name: userName, business_name: bizName, current_plan: freeSlug });
         clearPendingLocal();
         setAppliedCoupon(null); setCouponCode(""); setCouponMsg(null);
@@ -403,6 +408,7 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
       // "already awaiting approval" / "already been submitted" → the request exists, that's fine
       if (reqErr && !/awaiting approval|already been submitted/i.test(reqErr.message || "")) throw reqErr;
 
+      await redeemCoupon();
       clearPendingLocal();
       setAppliedCoupon(null); setCouponCode(""); setCouponMsg(null);
       setSaving(false);
