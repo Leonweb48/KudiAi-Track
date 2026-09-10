@@ -223,12 +223,14 @@ serve(async (req) => {
           || vErrs.some((e: any) => /bvn|nin/i.test(e?.field_name || ""));
         const acctHold = /under review|irregular|contact support|not enabled|not permitted|compliance|restricted/.test(msg);
         if (acctHold) {
-          await sb.from("admin_notifications").insert({
-            type: "error", category: "finance", target_roles: ["finance_admin", "super_admin"],
-            title: "Wallet activation blocked by Flutterwave",
-            message: `Flutterwave rejected virtual-account creation: "${(va.data as any)?.error?.message}". The wallet product may not be enabled or the account is under review — contact Flutterwave support.`,
-            metadata: { detail: va.data },
-          }).catch(() => {});
+          try {
+            await sb.from("admin_notifications").insert({
+              type: "error", category: "finance", target_roles: ["finance_admin", "super_admin"],
+              title: "Wallet activation blocked by Flutterwave",
+              message: `Flutterwave rejected virtual-account creation: "${(va.data as any)?.error?.message}". The wallet product may not be enabled or the account is under review — contact Flutterwave support.`,
+              metadata: { detail: va.data },
+            });
+          } catch { /* non-fatal */ }
         }
         return json({
           error: bvnBad
