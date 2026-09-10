@@ -22,7 +22,7 @@ import PaidProfileBanner from "../components/PaidProfileBanner";
 import ProfileCompleteFlow from "../components/ProfileCompleteFlow";
 import { isPaidPlan } from "../utils/paidCompliance";
 import TransactionDetailModal from "../components/shared/TransactionDetailModal";
-import { buildTransactionReceipt, buildWalletReceipt } from "../utils/receiptConfig";
+import { buildTransactionReceipt } from "../utils/receiptConfig";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
 import { useWallet } from "../hooks/useWallet";
 import { FundWalletSheet, TransferSheet, ReceivePaymentSheet, WalletTxRow, cleanBankName } from "../components/WalletPanel";
@@ -127,14 +127,8 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
   const [heroView, setHeroView] = useState(() =>
     localStorage.getItem("kt_home_hero") === "wallet" ? "wallet" : "sales");
   const [walletSheet, setWalletSheet] = useState(null);   // "fund" | "transfer" | "receive" | null
-  const [walletBanks, setWalletBanks] = useState([]);
   const showWallet = walletEnabled && heroView === "wallet";
   const pickHero = (v) => { try { localStorage.setItem("kt_home_hero", v); } catch {} setHeroView(v); };
-
-  useEffect(() => {
-    if (walletSheet !== "transfer" || walletBanks.length) return;
-    wallet.listBanks().then((d) => setWalletBanks(d?.banks || [])).catch(() => {});
-  }, [walletSheet]); // eslint-disable-line
 
   const toggleBalanceHidden = () => {
     const next = !balanceHidden;
@@ -378,11 +372,7 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
             <div className="divide-y divide-slate-100 dark:divide-slate-800">
               {wallet.ledger.slice(0, 4).map(row => (
                 <WalletTxRow key={row.id} row={row} hidden={balanceHidden}
-                  onOpen={(r) => setReceipt(buildWalletReceipt(r, {
-                    businessName: profile?.business_name,
-                    accountNumber: wallet.wallet?.flw_account_number,
-                    bankName: cleanBankName(wallet.wallet?.flw_account_bank),
-                  }))} />
+                  onOpen={(r) => setReceipt(wallet.receiptFor(r, profile?.business_name))} />
               ))}
             </div>
           )}
@@ -719,7 +709,7 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
           <ReceivePaymentSheet open={walletSheet === "receive"} onClose={() => setWalletSheet(null)}
             wallet={wallet.wallet} payRequest={wallet.payRequest} testMode={walletTestMode} api={wallet} />
           <TransferSheet open={walletSheet === "transfer"} onClose={() => setWalletSheet(null)}
-            balanceKobo={wallet.balanceKobo} maxKobo={walletMaxWithdrawalKobo} banks={walletBanks} api={wallet} onDone={wallet.refresh} />
+            balanceKobo={wallet.balanceKobo} maxKobo={walletMaxWithdrawalKobo} banks={wallet.banks} api={wallet} onDone={wallet.refresh} />
         </>
       )}
     </div>

@@ -1,15 +1,14 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Icon from "../components/Icon";
 import AmountDisplay from "../components/shared/AmountDisplay";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
 import { useWallet } from "../hooks/useWallet";
 import {
-  ActionButton, AccountCard, WalletTxRow, cleanBankName,
+  ActionButton, AccountCard, WalletTxRow,
   FundWalletSheet, TransferSheet, ReceivePaymentSheet,
 } from "../components/WalletPanel";
 import TransactionDetailModal from "../components/shared/TransactionDetailModal";
-import { buildWalletReceipt } from "../utils/receiptConfig";
 import { fmt } from "../utils/helpers";
 
 export default function Wallet({ session, store }) {
@@ -24,17 +23,7 @@ export default function Wallet({ session, store }) {
   const [bvn, setBvn] = useState("");
   const [nin, setNin] = useState("");
 
-  const openReceipt = (row) => setReceipt(buildWalletReceipt(row, {
-    businessName: store?.profile?.business_name,
-    accountNumber: w.wallet?.flw_account_number,
-    bankName: cleanBankName(w.wallet?.flw_account_bank),
-  }));
-  const [banks, setBanks] = useState([]);
-
-  useEffect(() => {
-    if (!w.hasAccount) return;
-    w.listBanks().then((d) => setBanks(d?.banks || [])).catch(() => {});
-  }, [w.hasAccount]); // eslint-disable-line
+  const openReceipt = (row) => setReceipt(w.receiptFor(row, store?.profile?.business_name));
 
   const toggleHidden = () => {
     const n = !hidden; sessionStorage.setItem("kt_balance_hidden", n ? "1" : "0"); setHidden(n);
@@ -185,7 +174,7 @@ export default function Wallet({ session, store }) {
       <FundWalletSheet open={sheet === "fund"} onClose={() => setSheet(null)}
         wallet={w.wallet} testMode={walletTestMode} api={w} />
       <TransferSheet open={sheet === "transfer"} onClose={() => setSheet(null)}
-        balanceKobo={w.balanceKobo} maxKobo={walletMaxWithdrawalKobo} banks={banks} api={w} onDone={w.refresh} />
+        balanceKobo={w.balanceKobo} maxKobo={walletMaxWithdrawalKobo} banks={w.banks} api={w} onDone={w.refresh} />
       <ReceivePaymentSheet open={sheet === "receive"} onClose={() => setSheet(null)}
         wallet={w.wallet} payRequest={w.payRequest} testMode={walletTestMode} api={w} />
 

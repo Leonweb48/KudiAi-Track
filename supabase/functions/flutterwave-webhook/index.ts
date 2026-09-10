@@ -249,6 +249,26 @@ serve(async (req) => {
       const { error } = await sb.rpc("wallet_mark_withdrawal", { p_flw_transfer_id: transferId, p_status: st, p_reference: ref });
       if (error) console.error("[flw-webhook] wallet_mark_withdrawal:", error.message);
 
+      // stamp the bank name + NIP session id onto the row for the receipt.
+      // Flutterwave puts the session id in a few different places depending on
+      // the rail — take the first that looks right.
+      const bankObj  = (data.bank ?? {}) as Record<string, unknown>;
+      const metaObj  = (data.meta ?? {}) as Record<string, unknown>;
+      const sessionId = String(
+        data.session_id || data.nip_session_id || data.reference_number ||
+        metaObj.session_id || metaObj.sessionId || metaObj.nip_session_id || "",
+      ).trim();
+      const bankNm = String(bankObj.name || "").trim();
+      try {
+        const patch: Record<string, string> = {};
+        if (bankNm)    patch.bank_name  = bankNm;
+        if (sessionId) patch.session_id = sessionId;
+        if (Object.keys(patch).length) {
+          await sb.from("wallet_withdrawals").update(patch)
+            .or(`flw_transfer_id.eq.${transferId}${ref ? `,id.eq.${ref}` : ""}`);
+        }
+      } catch (e) { console.warn("[flw-webhook] wd meta patch:", (e as Error).message); }
+
       // branded receipt to the sender (the wallet owner)
       try {
         const { data: wd } = await sb.from("wallet_withdrawals")
@@ -256,7 +276,7 @@ serve(async (req) => {
           .or(`flw_transfer_id.eq.${transferId}${ref ? `,id.eq.${ref}` : ""}`).limit(1).maybeSingle();
         if (wd) {
           const { data: o } = await sb.from("profiles").select("email").eq("id", wd.user_id).maybeSingle();
-          const bankName = (data.bank as Record<string, unknown>)?.name as string || wd.bank_code;
+          const bankName = bankNm || wd.bank_code;
           if (st === "successful") {
             await sendWalletEmail(sb, o?.email || "", `Transfer sent — ${fmtNgn(wd.amount_kobo)}`,
               walletEmailHtml({
@@ -264,6 +284,8 @@ serve(async (req) => {
                 rows: [["Amount", fmtNgn(wd.amount_kobo)], ["To", wd.account_name || wd.account_number],
                        ["Account", `${wd.account_number} · ${bankName}`],
                        ...(wd.fee_kobo ? [["Fee", fmtNgn(wd.fee_kobo)] as [string, string]] : []),
+                       ...(sessionId ? [["Session ID", sessionId] as [string, string]] : []),
+                       ["Transaction No.", transferId],
                        ["Reference", `KDT-${transferId}`], ["Time", new Date().toLocaleString("en-NG")]],
                 foot: "Sent from your KudiAI Track wallet. The recipient's bank will show \"KudiAI Track\" and this reference.",
               }));

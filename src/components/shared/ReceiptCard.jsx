@@ -342,22 +342,38 @@ export function ReceiptCard({ data, innerRef }) {
 
         <DashedDivider />
 
-        {/* Detail field rows */}
+        {/* Detail field rows — a value may carry \n for a muted second line
+            (OPay-style "Name / Bank • Account"). Rendered as stacked <div>s,
+            which html2canvas captures reliably. */}
         <div style={{ position: 'relative', zIndex: 2 }}>
-          {printFields.map((field, i) => (
-            <div key={i} style={{
-              display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-              padding: '7px 0',
-              borderBottom: i < printFields.length - 1 ? '0.5px solid #f1f5f9' : 'none',
-            }}>
-              <span style={{ fontSize: 10.5, color: '#94a3b8', fontWeight: 500, flexShrink: 0, minWidth: 100, paddingRight: 8 }}>
-                {field.label}
-              </span>
-              <span style={{ fontSize: 10.5, color: '#1e293b', fontWeight: 600, textAlign: 'right', wordBreak: 'break-word', maxWidth: '55%', lineHeight: 1.5 }}>
-                {field.value ?? '—'}
-              </span>
-            </div>
-          ))}
+          {printFields.map((field, i) => {
+            const lines = String(field.value ?? '—').split('\n');
+            return (
+              <div key={i} style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+                padding: '7px 0',
+                borderBottom: i < printFields.length - 1 ? '0.5px solid #f1f5f9' : 'none',
+              }}>
+                <span style={{ fontSize: 10.5, color: '#94a3b8', fontWeight: 500, flexShrink: 0, minWidth: 92, paddingRight: 8 }}>
+                  {field.label}
+                </span>
+                <div style={{ maxWidth: '60%', textAlign: 'right' }}>
+                  {lines.map((ln, j) => (
+                    <div key={j} style={{
+                      fontSize:   j === 0 ? 10.5 : 9.5,
+                      color:      j === 0 ? '#1e293b' : '#64748b',
+                      fontWeight: j === 0 ? 600 : 500,
+                      wordBreak:  'break-word',
+                      lineHeight: 1.5,
+                      marginTop:  j === 0 ? 0 : 1,
+                    }}>
+                      {ln}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
 
         <DashedDivider />
