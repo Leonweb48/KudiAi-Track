@@ -37,6 +37,13 @@ const server = createServer(async (req, res) => {
     const url = (req.url || "").split("?")[0];
 
     if (req.method === "GET" && (url === "/health" || url === "/")) return send(res, 200, "ok", "text/plain");
+    if (req.method === "GET" && url === "/whoami") {
+      if (!RELAY_KEY || req.headers["x-relay-key"] !== RELAY_KEY) return send(res, 401, { error: "unauthorized" });
+      try {
+        const ip = await (await fetch("https://api.ipify.org?format=json")).json();
+        return send(res, 200, ip);
+      } catch (e) { return send(res, 502, { error: String(e?.message || e) }); }
+    }
     if (req.method !== "POST") return send(res, 405, { error: "method not allowed" });
     if (!RELAY_KEY || req.headers["x-relay-key"] !== RELAY_KEY) return send(res, 401, { error: "unauthorized" });
     if (!ALLOW.some((re) => re.test(url))) return send(res, 404, { error: "path not allowed" });
