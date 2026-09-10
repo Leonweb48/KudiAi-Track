@@ -181,10 +181,11 @@ serve(async (req) => {
     // ═══ transfer.disburse / transfer.reversal → withdrawal finalisers ══════
     if (type === "transfer.disburse" || type === "transfer.reversal") {
       const transferId = String(data.id || "");
+      const ref = String(data.reference || "");   // = our wallet_withdrawals.id
       const st = type === "transfer.reversal"
         ? "reversed"
         : ["SUCCESSFUL", "successful", "COMPLETED"].includes(String(data.status || "")) ? "successful" : "failed";
-      const { error } = await sb.rpc("wallet_mark_withdrawal", { p_flw_transfer_id: transferId, p_status: st });
+      const { error } = await sb.rpc("wallet_mark_withdrawal", { p_flw_transfer_id: transferId, p_status: st, p_reference: ref });
       if (error) console.error("[flw-webhook] wallet_mark_withdrawal:", error.message);
       return ok(`withdrawal ${st}`);
     }
