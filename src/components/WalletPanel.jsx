@@ -147,12 +147,17 @@ export function WalletTxRow({ row, hidden }) {
 export function BankPickerSheet({ open, onClose, banks, onPick }) {
   const [q, setQ] = useState("");
   useEffect(() => { if (!open) setQ(""); }, [open]);
+  const deduped = useMemo(() => {
+    const seen = new Set();
+    return [...banks]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .filter((b) => { const k = b.name.trim().toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
+  }, [banks]);
   const list = useMemo(() => {
     const s = q.trim().toLowerCase();
-    const base = [...banks].sort((a, b) => a.name.localeCompare(b.name));
-    if (!s) return base.slice(0, 60);
-    return base.filter((b) => b.name.toLowerCase().includes(s)).slice(0, 80);
-  }, [banks, q]);
+    if (!s) return deduped.slice(0, 60);
+    return deduped.filter((b) => b.name.toLowerCase().includes(s)).slice(0, 80);
+  }, [deduped, q]);
   return (
     <BottomSheet open={open} onClose={onClose} title="Select bank">
       <div className="relative mb-2">
@@ -214,6 +219,8 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, banks, api,
   const [bank, setBank] = useState(null);
   const [name, setName] = useState("");
   const [resolving, setResolving] = useState(false);
+  const [manual, setManual] = useState(false);       // name service down → owner types the name
+  const [manualName, setManualName] = useState("");
   const [amount, setAmount] = useState("");
   const [narration, setNarration] = useState("");
   const [bookExpense, setBookExpense] = useState(false);
@@ -223,22 +230,27 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, banks, api,
 
   useEffect(() => {
     if (open) return;
-    setStep("to"); setAcctNo(""); setBank(null); setName(""); setAmount("");
+    setStep("to"); setAcctNo(""); setBank(null); setName(""); setAmount(""); setManual(false); setManualName("");
     setNarration(""); setBookExpense(false); setErr(""); setFee(0);
   }, [open]);
 
   const resolve = useCallback(async () => {
-    setName(""); setErr("");
+    setName(""); setErr(""); setManual(false);
     if (!bank || acctNo.replace(/\D/g, "").length !== 10) return;
     setResolving(true);
     try {
       const d = await api.resolveAccount(bank.code, acctNo.trim());
       if (d?.account_name) setName(d.account_name);
-      else setErr("Couldn't verify that account number");
-    } catch (e) { setErr(e.message); } finally { setResolving(false); }
+    } catch (e) {
+      // transient name-service failure → let the owner confirm the name manually
+      if (/verify right now|confirm the name|try again in a moment/i.test(e.message || "")) setManual(true);
+      else setErr(e.message || "Couldn't verify that account");
+    } finally { setResolving(false); }
   }, [api, bank, acctNo]);
 
   useEffect(() => { if (bank && acctNo.replace(/\D/g, "").length === 10) resolve(); }, [bank, acctNo, resolve]);
+
+  const recipientName = name || (manual ? manualName.trim() : "");
 
   const kobo = Math.round((parseFloat(amount) || 0) * 100);
   const cap = Math.min(balanceKobo, maxKobo);
@@ -246,7 +258,7 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, banks, api,
   const doTransfer = async (pin) => {
     setBusy(true); setErr("");
     try {
-      const r = await api.transfer(kobo, bank.code, acctNo.trim(), pin, narration.trim(), bookExpense);
+      const r = await api.transfer(kobo, bank.code, acctNo.trim(), pin, narration.trim(), bookExpense, recipientName);
       setFee(Number(r?.fee_kobo || 0));
       setStep("done");
       onDone?.();
@@ -269,7 +281,7 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, banks, api,
             </div>
             <p className="text-[17px] font-extrabold text-slate-900 dark:text-slate-50">{fmt(kobo / 100)} sent</p>
             <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-1">
-              to <b>{name}</b> · {bank?.name}
+              to <b>{recipientName}</b> · {bank?.name}
               {fee > 0 ? <><br />Fee {fmt(fee / 100)}</> : null}
             </p>
             <button onClick={onClose} className={primaryBtn + " mt-5"}>Done</button>
@@ -282,7 +294,7 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, banks, api,
               <p className="text-[34px] font-extrabold mt-1 tabular-nums">{fmt(kobo / 100)}</p>
             </div>
             <div className="mt-4 rounded-2xl border border-slate-100 dark:border-slate-700/60 divide-y divide-slate-100 dark:divide-slate-800">
-              {[["Recipient", name], ["Account", acctNo], ["Bank", bank?.name],
+              {[["Recipient", recipientName], ["Account", acctNo], ["Bank", bank?.name],
                 ["Narration", narration || "—"]].map(([k, v]) => (
                 <div key={k} className="flex items-center justify-between px-4 py-3">
                   <span className="text-[12px] text-slate-400">{k}</span>
@@ -299,10 +311,10 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, banks, api,
           <div className="space-y-4">
             <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/60 p-3.5 flex items-center gap-3">
               <span className="w-9 h-9 rounded-full bg-brand-100 dark:bg-brand-900/40 text-brand-600 dark:text-brand-400 flex items-center justify-center text-[12px] font-bold">
-                {name.slice(0, 2).toUpperCase()}
+                {(recipientName||"?").slice(0, 2).toUpperCase()}
               </span>
               <div className="min-w-0">
-                <p className="text-[13px] font-bold text-slate-800 dark:text-slate-100 truncate">{name}</p>
+                <p className="text-[13px] font-bold text-slate-800 dark:text-slate-100 truncate">{recipientName}</p>
                 <p className="text-[11px] text-slate-400">{acctNo} · {bank?.name}</p>
               </div>
             </div>
@@ -331,7 +343,7 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, banks, api,
             <div>
               <label className={labelCls}>Account number</label>
               <input inputMode="numeric" autoFocus value={acctNo}
-                onChange={(e) => { setAcctNo(e.target.value.replace(/\D/g, "").slice(0, 10)); setName(""); }}
+                onChange={(e) => { setAcctNo(e.target.value.replace(/\D/g, "").slice(0, 10)); setName(""); setManual(false); }}
                 placeholder="0123456789" className={inputCls + " tracking-[0.15em]"} />
             </div>
             <div>
@@ -349,8 +361,21 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, banks, api,
                 <p className="text-[15px] font-extrabold text-emerald-800 dark:text-emerald-300">{name}</p>
               </div>
             )}
+            {manual && !name && (
+              <div>
+                <div className="rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-3 py-2 mb-2">
+                  <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                    Couldn't auto-verify the name right now. Enter the account holder's name — you're responsible for it being correct.
+                  </p>
+                </div>
+                <label className={labelCls}>Account holder name</label>
+                <input value={manualName} onChange={(e) => setManualName(e.target.value)} placeholder="Full name on the account" className={inputCls} />
+                <button onClick={resolve} className="text-[12px] font-bold text-brand-600 dark:text-brand-400 mt-2">Try verifying again</button>
+              </div>
+            )}
             {err && <p className="text-[12px] text-red-500">{err}</p>}
-            <button disabled={!name} onClick={() => { setErr(""); setStep("amount"); }} className={primaryBtn}>
+            <button disabled={!recipientName || (manual && !name && manualName.trim().length < 3)}
+              onClick={() => { setErr(""); setStep("amount"); }} className={primaryBtn}>
               Continue
             </button>
           </div>
@@ -363,7 +388,7 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, banks, api,
         <TransactionPinModal
           title="Confirm transfer"
           amount={kobo}
-          recipient={`${name} · ${bank?.name}`}
+          recipient={`${recipientName} · ${bank?.name}`}
           onApprove={(pin) => doTransfer(pin)}
           onCancel={() => setStep("review")}
         />

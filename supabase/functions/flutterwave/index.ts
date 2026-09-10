@@ -74,6 +74,23 @@ async function flwFetch(path: string, init: RequestInit & { scenario?: string } 
 // ── bank list cache ─────────────────────────────────────────────────────────
 let _banks: { list: unknown[]; exp: number } = { list: [], exp: 0 };
 
+// NIBSS name enquiry — retried, since it times out often.
+async function flwResolve(bank_code: string, account_number: string) {
+  let lastType = "", lastMsg = "";
+  for (let i = 0; i < 3; i++) {
+    if (i > 0) await new Promise((r) => setTimeout(r, 700));
+    const r = await flwFetch("/banks/account-resolve", {
+      method: "POST",
+      body: JSON.stringify({ currency: "NGN", account: { code: bank_code, number: account_number } }),
+    });
+    if (r.ok) return { ok: true, name: (r.data as any)?.data?.account_name || "", type: "", msg: "" };
+    const err = (r.data as any)?.error || {};
+    lastType = String(err.type || ""); lastMsg = String(err.message || "");
+    if (/INVALID_ACCOUNT|UNKNOWN_BANK_CODE|not recognized|is invalid/i.test(lastType + " " + lastMsg)) break;
+  }
+  return { ok: false, name: "", type: lastType, msg: lastMsg };
+}
+
 // Run a Flutterwave bank payout.
 async function flwDisburse(o: {
   reference: string; amount_kobo: number; bank_code: string; account_number: string;
@@ -179,12 +196,16 @@ serve(async (req) => {
     if (action === "resolve-account") {
       const { bank_code, account_number } = body as { bank_code: string; account_number: string };
       if (!bank_code || !account_number) return json({ error: "Bank and account number required" }, 400);
-      const r = await flwFetch("/banks/account-resolve", {
-        method: "POST",
-        body: JSON.stringify({ currency: "NGN", account: { code: bank_code, number: account_number } }),
-      });
-      if (!r.ok) return json({ error: "Could not verify that account" }, 422);
-      return json({ ok: true, account_name: (r.data as any)?.data?.account_name || "" });
+      const rr = await flwResolve(bank_code, account_number);
+      if (rr.ok) return json({ ok: true, account_name: rr.name });
+      const bad = /INVALID_ACCOUNT|is invalid/i.test(rr.msg);
+      const badBank = /UNKNOWN_BANK_CODE|not recognized/i.test(rr.msg);
+      return json({
+        error: badBank ? "That bank isn't supported — pick it from the list again."
+             : bad ? "That account number doesn't exist at this bank. Check and try again."
+             : "Couldn't verify right now. Check the details, or continue and confirm the name yourself.",
+        code: bad ? "invalid_account" : badBank ? "bad_bank" : "resolve_unavailable",
+      }, 422);
     }
 
     // ── provision-account ────────────────────────────────────────────────
@@ -313,9 +334,9 @@ serve(async (req) => {
 
     // ── transfer — PIN-confirmed, runs immediately (no admin approval) ───
     if (action === "transfer") {
-      const { amount_kobo, bank_code, account_number, narration, book_expense, pin } = body as {
+      const { amount_kobo, bank_code, account_number, narration, book_expense, pin, confirmed_name } = body as {
         amount_kobo: number; bank_code: string; account_number: string;
-        narration?: string; book_expense?: boolean; pin?: string;
+        narration?: string; book_expense?: boolean; pin?: string; confirmed_name?: string;
       };
       if (!amount_kobo || amount_kobo <= 0) return json({ error: "Enter an amount" }, 400);
       if (!bank_code || !account_number) return json({ error: "Bank and account number required" }, 400);
@@ -337,13 +358,14 @@ serve(async (req) => {
         }, 403);
       }
 
-      // 2. resolve the recipient name (don't trust the client)
-      const nr = await flwFetch("/banks/account-resolve", {
-        method: "POST",
-        body: JSON.stringify({ currency: "NGN", account: { code: bank_code, number: account_number } }),
-      });
-      if (!nr.ok) return json({ error: "Could not verify that bank account" }, 422);
-      const accountName = (nr.data as any)?.data?.account_name || "";
+      // 2. resolve the recipient name. Hard-fail on a bad account/bank; if the
+      //    name service is just down, fall back to the name the owner confirmed.
+      const rr = await flwResolve(bank_code, account_number);
+      if (!rr.ok && /INVALID_ACCOUNT|UNKNOWN_BANK_CODE|not recognized|is invalid/i.test(rr.type + " " + rr.msg)) {
+        return json({ error: "That account or bank isn't valid. Please check and try again." }, 422);
+      }
+      const accountName = rr.ok ? rr.name : String(confirmed_name || "").trim();
+      if (!accountName) return json({ error: "Could not verify that account. Try again in a moment." }, 422);
 
       // 3. hold the funds
       const { data: wdId, error: holdErr } = await asUser.rpc("wallet_hold_transfer", {
