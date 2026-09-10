@@ -15,15 +15,18 @@ export default function Wallet({ session }) {
   const { walletEnabled, walletTestMode, walletMaxWithdrawalKobo, configLoading } = usePlatformConfig();
   const w = useWallet(userId, walletEnabled);
   const [hidden, setHidden] = useState(() => sessionStorage.getItem("kt_balance_hidden") === "1");
-  const [sheet, setSheet] = useState(null);   // "fund" | "withdraw" | null
+  const [sheet, setSheet] = useState(null);   // "fund" | "receive" | "withdraw" | null
   const [err, setErr] = useState("");
+  const [bvn, setBvn] = useState("");
+  const [nin, setNin] = useState("");
 
   const toggleHidden = () => {
     const n = !hidden; sessionStorage.setItem("kt_balance_hidden", n ? "1" : "0"); setHidden(n);
   };
   const activate = async () => {
     setErr("");
-    try { await w.provisionAccount(); } catch (e) { setErr(e.message || "Could not activate wallet"); }
+    if (!walletTestMode && !/^\d{11}$/.test(bvn)) { setErr("Enter your 11-digit BVN"); return; }
+    try { await w.provisionAccount(bvn, nin); } catch (e) { setErr(e.message || "Could not activate wallet"); }
   };
 
   if (configLoading || w.loading) {
@@ -79,14 +82,34 @@ export default function Wallet({ session }) {
 
         {/* ── not activated ── */}
         {!w.hasAccount ? (
-          <div className="rounded-2xl bg-white dark:bg-slate-800 shadow-card border border-slate-100 dark:border-slate-700/50 p-5 text-center">
+          <div className="rounded-2xl bg-white dark:bg-slate-800 shadow-card border border-slate-100 dark:border-slate-700/50 p-5">
             <div className="w-12 h-12 rounded-full bg-brand-50 dark:bg-brand-900/25 flex items-center justify-center mx-auto mb-3">
               <Icon name="wallet" size={22} className="text-brand-600 dark:text-brand-400" />
             </div>
-            <p className="text-[14px] font-semibold text-slate-800 dark:text-slate-100 mb-1">Activate your wallet</p>
-            <p className="text-[12px] text-slate-500 dark:text-slate-400 mb-4">
+            <p className="text-[14px] font-semibold text-slate-800 dark:text-slate-100 mb-1 text-center">Activate your wallet</p>
+            <p className="text-[12px] text-slate-500 dark:text-slate-400 mb-4 text-center">
               Get a dedicated account number. Fund it once, then pay bills with no card fees.
             </p>
+            {!walletTestMode && (
+              <div className="space-y-3 mb-3 text-left">
+                <div>
+                  <label className="text-[12px] text-slate-400">BVN</label>
+                  <input inputMode="numeric" value={bvn} onChange={e => setBvn(e.target.value.replace(/\D/g, "").slice(0, 11))}
+                    placeholder="11-digit BVN"
+                    className="w-full mt-1 px-3.5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-[15px] tracking-wider" />
+                </div>
+                <div>
+                  <label className="text-[12px] text-slate-400">NIN <span className="text-slate-300">(optional)</span></label>
+                  <input inputMode="numeric" value={nin} onChange={e => setNin(e.target.value.replace(/\D/g, "").slice(0, 11))}
+                    placeholder="11-digit NIN"
+                    className="w-full mt-1 px-3.5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-[15px] tracking-wider" />
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  Your BVN is used once to open your account with our banking partner and isn't stored by KudiAI.
+                  The name and date of birth on it must match your profile.
+                </p>
+              </div>
+            )}
             <button onClick={activate} disabled={w.busy}
               className="w-full bg-brand-600 disabled:opacity-40 text-white font-bold rounded-xl py-3.5">
               {w.busy ? "Activating…" : "Activate wallet"}

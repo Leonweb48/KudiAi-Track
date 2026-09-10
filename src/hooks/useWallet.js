@@ -74,7 +74,12 @@ export function useWallet(userId, enabled = true) {
     setBusy(true);
     try {
       const { data, error } = await supabase.functions.invoke("flutterwave", { body: { action, ...extra } });
-      if (error) throw new Error(error.message || "Wallet request failed");
+      if (error) {
+        // Non-2xx: pull the real message out of the response body when we can
+        let msg = error.message || "Wallet request failed";
+        try { const body = await error.context?.json?.(); if (body?.error) msg = body.error; } catch {}
+        throw new Error(msg);
+      }
       if (data?.error) throw new Error(data.error);
       return data;
     } finally {
@@ -84,7 +89,7 @@ export function useWallet(userId, enabled = true) {
     }
   }, []);
 
-  const provisionAccount = useCallback(() => invoke("provision-account"), [invoke]);
+  const provisionAccount = useCallback((bvn = "", nin = "") => invoke("provision-account", { bvn, nin }), [invoke]);
   const simulateTopup    = useCallback((amount_naira = 2000) => invoke("simulate-topup", { amount_naira }), [invoke]);
   const listBanks        = useCallback(() => invoke("list-banks"), [invoke]);
   const resolveAccount   = useCallback((bank_code, account_number) => invoke("resolve-account", { bank_code, account_number }), [invoke]);

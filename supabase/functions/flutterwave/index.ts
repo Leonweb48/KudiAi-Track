@@ -171,18 +171,32 @@ serve(async (req) => {
         });
       }
 
+      // ── BVN / NIN. Live static accounts are validated against NIBSS; in test
+      //    mode a placeholder is fine.
+      const testMode = (await cfg("wallet_test_mode", "true")) === "true";
+      const bvn = String((body as Record<string, unknown>).bvn ?? "").replace(/\D/g, "");
+      const nin = String((body as Record<string, unknown>).nin ?? "").replace(/\D/g, "");
+      const effBvn = bvn || (testMode ? FLW_TEST_BVN : "");
+      if (!/^\d{11}$/.test(effBvn)) {
+        return json({ error: "A valid 11-digit BVN is required to activate your wallet", code: "bvn_required" }, 400);
+      }
+
       const { data: profile } = await sb.from("profiles")
         .select("email, full_name, business_name, phone").eq("id", uid).maybeSingle();
       const email = profile?.email || user.email || `wallet+${uid.slice(0, 8)}@kudiai.app`;
       const fullName = (profile?.full_name || profile?.business_name || "KudiAI Owner").trim();
       const [fn, ...ln] = fullName.split(/\s+/);
+      const phoneRaw = String(profile?.phone ?? "").replace(/\D/g, "");
 
       let customerId = w.flw_customer_id as string | null;
       if (!customerId) {
         const c = await flwFetch("/customers", {
           method: "POST",
           headers: { "X-Idempotency-Key": `cus-${uid}` },
-          body: JSON.stringify({ email, name: { first: fn || "KudiAI", last: ln.join(" ") || "Owner" } }),
+          body: JSON.stringify({
+            email, name: { first: fn || "KudiAI", last: ln.join(" ") || "Owner" },
+            ...(phoneRaw.length >= 10 ? { phone: { country_code: "234", number: phoneRaw.replace(/^234/, "").replace(/^0/, "") } } : {}),
+          }),
         });
         if (!c.ok) return json({ error: "Could not create wallet profile", detail: c.data }, 502);
         customerId = (c.data as any)?.data?.id || "";
@@ -197,11 +211,23 @@ serve(async (req) => {
           currency: "NGN",
           account_type: "static",
           amount: 0,
-          bvn: FLW_TEST_BVN,
+          bvn: effBvn,
+          ...(nin.length === 11 ? { nin } : {}),
           narration: `KudiAI Wallet - ${fullName}`.slice(0, 60),
         }),
       });
-      if (!va.ok) return json({ error: "Could not create virtual account", detail: va.data }, 502);
+      if (!va.ok) {
+        const msg = String((va.data as any)?.error?.message || "").toLowerCase();
+        const vErrs = (va.data as any)?.error?.validation_errors || [];
+        const bvnBad = /bvn|nin|identity|verif/.test(msg) || vErrs.some((e: any) => /bvn|nin/i.test(e?.field_name || ""));
+        return json({
+          error: bvnBad
+            ? "Your BVN could not be verified. Check the number and that the name/date of birth on your BVN match your profile."
+            : "Could not create your wallet account. Please try again shortly.",
+          code: bvnBad ? "bvn_invalid" : "va_failed",
+          detail: va.data,
+        }, bvnBad ? 422 : 502);
+      }
       const v = (va.data as any)?.data || {};
 
       await sb.rpc("wallet_persist_account", {
