@@ -4,7 +4,6 @@ import { fmt, today, applyPeriodFilter } from "../utils/helpers";
 import PeriodFilter from "../components/shared/PeriodFilter";
 import { useCampaigns }    from "../hooks/useCampaigns";
 import AnnouncementBarSlot from "../components/slots/AnnouncementBarSlot";
-import { AmountDisplay } from "../components/shared/AmountDisplay";
 import { useT } from "../contexts/LanguageContext";
 import { calcPointsDiscount, calcCashbackDiscount, calcCouponDiscount, calcBillAmounts } from "../utils/billCalc";
 import { saveBeneficiary, getBeneficiaries, getRecentBeneficiaries, deleteBeneficiary, benDisplayName, benSubLabel, BEN_CATS, upsertRemote, syncLocalToRemote, fetchRemoteRecent, fetchAllRemote, deleteRemote, updateRemoteNickname } from "../utils/billBeneficiaries";
@@ -550,29 +549,6 @@ function DataPlanGrid({ plans, selectedId, onSelect, loading, error, cashback = 
 }
 
 /* ─── Overview / history ───────────────────────────────────────────────────── */
-
-function Overview({ bills }) {
-  const t = useT();
-  const todayStr   = new Date().toISOString().slice(0, 10);
-  const weekAgoStr = (() => { const d = new Date(); d.setDate(d.getDate() - 7); return d.toISOString().slice(0, 10); })();
-  const successful = bills.filter(b => b.bill_status !== "failed" && b.bill_status !== "pending");
-  const todayTotal = successful.filter(b => (b.transaction_date || "") === todayStr).reduce((s, b) => s + b.amount, 0);
-  const weekTotal  = successful.filter(b => (b.transaction_date || "") >= weekAgoStr).reduce((s, b) => s + b.amount, 0);
-  return (
-    <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700/60 overflow-hidden shadow-sm">
-      <div className="grid grid-cols-2 divide-x divide-slate-100 dark:divide-slate-700/60">
-        <div className="px-5 py-4">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t("common.today")}</p>
-          <AmountDisplay amount={todayTotal} size="stat" align="left" className="mt-0.5" />
-        </div>
-        <div className="px-5 py-4">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t("bp.last7Days")}</p>
-          <AmountDisplay amount={weekTotal} size="stat" align="left" className="mt-0.5" />
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function BillRow({ bill, onOpen }) {
   const cat     = CATS.find(c => c.id === bill.category) || CATS[0];
@@ -3096,7 +3072,6 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
       <div className="px-4 pt-4 space-y-4">
 
-        {bills.length > 0 && <Overview bills={bills} />}
 
         {/* Cashback balance widget */}
         {userEmailCB && (
