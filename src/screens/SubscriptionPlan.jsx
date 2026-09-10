@@ -335,10 +335,15 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
     setSaving(true); setError("");
     try {
       const isFree = isFreePlanSlug(planSlug, plans);
-      // A paid plan taken to ₦0 by a 100% coupon: no payment is made, so it does
-      // NOT grant the paid tier — it activates the free plan instead.
-      const isFreeOrder = isFree || (couponInfo != null && (couponInfo.finalAmount === 0 || (couponInfo.discountAmount != null && couponInfo.originalAmount != null && couponInfo.discountAmount >= couponInfo.originalAmount)));
+      // A coupon that brings a paid plan to ₦0 — activate that same paid plan
+      // for free, no payment and no admin approval.
+      const isFullyCovered = couponInfo != null && (
+        couponInfo.finalAmount === 0 ||
+        (couponInfo.discountAmount != null && couponInfo.originalAmount != null && couponInfo.discountAmount >= couponInfo.originalAmount)
+      );
+      const isFreeOrder = isFree || isFullyCovered;
 
+      const cycle    = isYearly ? "yearly" : "monthly";
       const planData = plans.find(p => p.slug === planSlug);
       const { data: profile } = await supabase
         .from("profiles").select("full_name, business_name").eq("id", session.user.id).maybeSingle();
@@ -349,24 +354,33 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
         if (!couponInfo?.couponCode || (couponInfo.discountAmount ?? 0) <= 0) return;
         try {
           await supabase.rpc("redeem_coupon", {
-            p_code: couponInfo.couponCode, p_plan_slug: planSlug,
-            p_billing_cycle: isYearly ? "yearly" : "monthly",
+            p_code: couponInfo.couponCode, p_plan_slug: planSlug, p_billing_cycle: cycle,
             p_original_amount: couponInfo.originalAmount, p_discount_amount: couponInfo.discountAmount,
             p_final_amount: couponInfo.finalAmount, p_reference: reference || "",
           });
         } catch (ce) { console.warn("[Coupon] redemption failed:", ce); }
       };
 
-      // ── Free plan / fully-discounted coupon → activate immediately ──────────
+      // ── Free plan, or a paid plan fully covered by a coupon → activate now ──
       if (isFreeOrder) {
-        const freeSlug = isFree ? planSlug : "kobo";
-        const { error: freeErr } = await supabase.rpc("activate_free_subscription", { p_plan_slug: freeSlug });
-        if (freeErr) throw freeErr;
-        await redeemCoupon();
-        sendEmailTrigger("business_welcome", { user_email: session.user.email, user_name: userName, business_name: bizName, current_plan: freeSlug });
+        if (isFree) {
+          const { error: freeErr } = await supabase.rpc("activate_free_subscription", { p_plan_slug: planSlug });
+          if (freeErr) throw freeErr;
+          await redeemCoupon();
+          sendEmailTrigger("business_welcome", { user_email: session.user.email, user_name: userName, business_name: bizName, current_plan: planSlug });
+        } else {
+          // paid plan, coupon covers 100% — grant the chosen plan (RPC also redeems the coupon)
+          const { error: cErr } = await supabase.rpc("activate_coupon_subscription", {
+            p_plan_slug: planSlug, p_coupon_code: couponInfo.couponCode, p_billing_cycle: cycle,
+          });
+          if (cErr) throw cErr;
+          const features = planData ? getDisplayFeatures(planData) : [];
+          sendEmailTrigger("subscription_welcome", { user_email: session.user.email, user_name: userName, business_name: bizName, plan_name: planData?.name || planSlug, plan_slug: planSlug, plan_price: 0, plan_features: features, billing_cycle: cycle, reference: "", is_first_time: true });
+          sendEmailTrigger("plan_purchased", { user_email: session.user.email, user_name: userName, business_name: bizName, plan_name: planData?.name || planSlug, plan_slug: planSlug, plan_price: 0, reference: "", is_first_time: true });
+        }
         clearPendingLocal();
         setAppliedCoupon(null); setCouponCode(""); setCouponMsg(null);
-        onComplete(freeSlug);
+        onComplete(planSlug);
         return;
       }
 
