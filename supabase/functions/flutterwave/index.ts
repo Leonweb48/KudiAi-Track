@@ -110,9 +110,12 @@ async function flwDisburse(o: {
   // NGN payouts: Flutterwave runs its own name enquiry — only bank code + account
   // number are needed. A supplied name (esp. one with "/" from NIBSS) trips
   // REQUEST_NOT_VALID, so we don't send it.
+  // Narration shows on the recipient's bank alert — brand it KudiAI + a short ref.
+  const shortRef = "KDT" + String(o.reference).replace(/-/g, "").slice(0, 8).toUpperCase();
+  const userNarr = String(o.narration || "").replace(/[^\w .,-]/g, " ").trim();
   const payload = {
     action: "instant", type: "bank", reference: o.reference,
-    narration: String(o.narration || "KudiAI wallet transfer").replace(/[^\w .,-]/g, " ").slice(0, 100).trim() || "Wallet transfer",
+    narration: `KudiAI Track ${shortRef}${userNarr ? ` ${userNarr}` : ""}`.slice(0, 100).trim(),
     payment_instruction: {
       amount: { value: naira, applies_to: "destination_currency" },
       source_currency: "NGN", destination_currency: "NGN",

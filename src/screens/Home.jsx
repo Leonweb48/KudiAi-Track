@@ -25,7 +25,7 @@ import TransactionDetailModal from "../components/shared/TransactionDetailModal"
 import { buildTransactionReceipt } from "../utils/receiptConfig";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
 import { useWallet } from "../hooks/useWallet";
-import { FundWalletSheet, TransferSheet, ReceivePaymentSheet, WalletTxRow } from "../components/WalletPanel";
+import { FundWalletSheet, TransferSheet, ReceivePaymentSheet, WalletTxRow, cleanBankName } from "../components/WalletPanel";
 
 function greetingKey() {
   const h = new Date().getHours();
@@ -271,10 +271,9 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
                     hidden={balanceHidden} className="mt-1.5 mb-3 text-white" />
                 )}
                 {wallet.hasAccount && (
-                  <div className="inline-flex items-center gap-1.5 bg-white/10 rounded-lg px-2 py-1 text-[11px] text-white/80">
-                    <span className="font-semibold tracking-wide">{wallet.wallet.flw_account_number}</span>
-                    <span className="text-white/40">·</span>
-                    <span>{wallet.wallet.flw_account_bank}</span>
+                  <div className="mt-1">
+                    <p className="text-[19px] font-extrabold tracking-[0.14em] text-white tabular-nums leading-none">{wallet.wallet.flw_account_number}</p>
+                    <p className="text-[11px] text-white/60 mt-1">{cleanBankName(wallet.wallet.flw_account_bank)}</p>
                   </div>
                 )}
               </button>

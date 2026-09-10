@@ -12,8 +12,52 @@
 import { serve }        from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient }  from "https://esm.sh/@supabase/supabase-js@2";
 import { createHmac }    from "https://deno.land/std@0.168.0/node/crypto.ts";
+import nodemailer        from "npm:nodemailer@6";
 
 const CORS = { "Access-Control-Allow-Origin": "*" };
+
+// Branded wallet receipt — sent by KudiAI, not Flutterwave, so the owner has a
+// record that shows "KudiAI Track · a product of Amaya & Co. Technologies".
+const walletEmailHtml = (opts: { icon: string; accent: string; title: string; rows: [string, string][]; foot?: string }) => `
+<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:560px;margin:0 auto;background:#f8fafc;padding:16px;">
+  <div style="background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.08);">
+    <div style="background:linear-gradient(135deg,#0F1D42 0%,#1B2A5E 100%);padding:22px;text-align:center;">
+      <img src="https://kudiai.app/logo.png" width="46" style="display:block;margin:0 auto 10px;border-radius:9px;"/>
+      <div style="color:#fff;font-size:18px;font-weight:900;">KudiAI Track</div>
+      <div style="color:rgba(255,255,255,.45);font-size:9px;letter-spacing:2px;text-transform:uppercase;">Business Wallet</div>
+    </div>
+    <div style="background:${opts.accent};padding:16px;text-align:center;">
+      <div style="font-size:24px;">${opts.icon}</div>
+      <div style="color:#fff;font-size:17px;font-weight:800;margin-top:2px;">${opts.title}</div>
+    </div>
+    <div style="padding:22px 24px;background:#fff;">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        ${opts.rows.map(([k, v]) => `<tr><td style="padding:7px 0;color:#64748b;">${k}</td><td style="padding:7px 0;text-align:right;font-weight:700;color:#1e293b;">${v}</td></tr>`).join("")}
+      </table>
+      ${opts.foot ? `<p style="margin:14px 0 0;color:#94a3b8;font-size:12px;">${opts.foot}</p>` : ""}
+    </div>
+    <div style="background:#f8fafc;padding:16px;text-align:center;border-top:1px solid #e2e8f0;">
+      <p style="margin:0 0 3px;color:#94a3b8;font-size:11px;">A product of AMAYA &amp; Co. Technologies — &copy; ${new Date().getFullYear()}</p>
+      <p style="margin:0;color:#cbd5e1;font-size:10px;">Automated message — please do not reply.</p>
+    </div>
+  </div>
+</div>`;
+
+// deno-lint-ignore no-explicit-any
+async function sendWalletEmail(sb: any, to: string, subject: string, html: string) {
+  if (!to) return;
+  try {
+    const { data: smtp } = await sb.from("smtp_config").select("*").limit(1).maybeSingle();
+    if (!smtp) return;
+    const transport = nodemailer.createTransport({
+      host: smtp.host, port: smtp.port, secure: smtp.encryption === "ssl",
+      auth: { user: smtp.username, pass: smtp.password },
+    });
+    await transport.sendMail({ from: `"${smtp.from_name || "KudiAI Track"}" <${smtp.from_email}>`, to, subject, html });
+  } catch (e) { console.warn("[flw-webhook] email failed:", (e as Error).message); }
+}
+
+const fmtNgn = (kobo: number) => `₦${(kobo / 100).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
 const ok  = (m = "ok") => new Response(m, { status: 200, headers: CORS });
 const bad = (m: string, s = 400) =>
   new Response(JSON.stringify({ error: m }), { status: s, headers: { ...CORS, "Content-Type": "application/json" } });
@@ -123,6 +167,9 @@ serve(async (req) => {
         .limit(1)
         .maybeSingle();
 
+      const { data: owner } = await sb.from("profiles").select("email, full_name, business_name").eq("id", wallet.user_id).maybeSingle();
+      const originator = String((pm.bank_transfer as Record<string, unknown>)?.originator_name || "a customer");
+
       if (pr) {
         const { error: sErr } = await sb.rpc("wallet_record_sale", {
           p_request_id: pr.id,
@@ -139,6 +186,13 @@ serve(async (req) => {
             category: "finance", deepLink: { screen: "wallet" },
           }),
         }).catch(() => {});
+        await sendWalletEmail(sb, owner?.email || "", `Payment received — ${fmtNgn(amountKobo)}`,
+          walletEmailHtml({
+            icon: "💰", accent: "#16a34a", title: "Payment received",
+            rows: [["Amount", fmtNgn(amountKobo)], ["From", originator], ["Into", `${wallet.flw_account_number} · KudiAI wallet`],
+                   ["Recorded as", "a sale in your books"], ["Reference", `KDT-${chargeId}`], ["Time", new Date().toLocaleString("en-NG")]],
+            foot: "This payment was received through KudiAI Track and booked to your sales ledger.",
+          }));
         return ok("sale recorded");
       }
 
@@ -174,6 +228,13 @@ serve(async (req) => {
           category: "finance", deepLink: { screen: "wallet" },
         }),
       }).catch(() => {});
+      await sendWalletEmail(sb, owner?.email || "", `Wallet funded — ${fmtNgn(amountKobo)}`,
+        walletEmailHtml({
+          icon: "⬆️", accent: "#2E8020", title: "Wallet funded",
+          rows: [["Amount", fmtNgn(amountKobo)], ["From", originator], ["Wallet balance", fmtNgn(Number(wallet.balance_kobo || 0) + amountKobo)],
+                 ["Reference", `KDT-${chargeId}`], ["Time", new Date().toLocaleString("en-NG")]],
+          foot: "Your KudiAI wallet is ready to use for bills and transfers.",
+        }));
 
       return ok("credited");
     }
@@ -187,6 +248,37 @@ serve(async (req) => {
         : ["SUCCESSFUL", "successful", "COMPLETED"].includes(String(data.status || "")) ? "successful" : "failed";
       const { error } = await sb.rpc("wallet_mark_withdrawal", { p_flw_transfer_id: transferId, p_status: st, p_reference: ref });
       if (error) console.error("[flw-webhook] wallet_mark_withdrawal:", error.message);
+
+      // branded receipt to the sender (the wallet owner)
+      try {
+        const { data: wd } = await sb.from("wallet_withdrawals")
+          .select("user_id, amount_kobo, fee_kobo, account_name, account_number, bank_code")
+          .or(`flw_transfer_id.eq.${transferId}${ref ? `,id.eq.${ref}` : ""}`).limit(1).maybeSingle();
+        if (wd) {
+          const { data: o } = await sb.from("profiles").select("email").eq("id", wd.user_id).maybeSingle();
+          const bankName = (data.bank as Record<string, unknown>)?.name as string || wd.bank_code;
+          if (st === "successful") {
+            await sendWalletEmail(sb, o?.email || "", `Transfer sent — ${fmtNgn(wd.amount_kobo)}`,
+              walletEmailHtml({
+                icon: "✅", accent: "#0F1D42", title: "Transfer completed",
+                rows: [["Amount", fmtNgn(wd.amount_kobo)], ["To", wd.account_name || wd.account_number],
+                       ["Account", `${wd.account_number} · ${bankName}`],
+                       ...(wd.fee_kobo ? [["Fee", fmtNgn(wd.fee_kobo)] as [string, string]] : []),
+                       ["Reference", `KDT-${transferId}`], ["Time", new Date().toLocaleString("en-NG")]],
+                foot: "Sent from your KudiAI Track wallet. The recipient's bank will show \"KudiAI Track\" and this reference.",
+              }));
+          } else {
+            await sendWalletEmail(sb, o?.email || "", `Transfer ${st} — ${fmtNgn(wd.amount_kobo)} returned`,
+              walletEmailHtml({
+                icon: "↩️", accent: "#b91c1c", title: `Transfer ${st}`,
+                rows: [["Amount", fmtNgn(wd.amount_kobo)], ["To", wd.account_name || wd.account_number],
+                       ["Status", "returned to your wallet"], ["Reference", `KDT-${transferId}`]],
+                foot: "The bank could not complete this transfer, so the full amount is back in your wallet.",
+              }));
+          }
+        }
+      } catch (e) { console.warn("[flw-webhook] transfer email:", (e as Error).message); }
+
       return ok(`withdrawal ${st}`);
     }
 
