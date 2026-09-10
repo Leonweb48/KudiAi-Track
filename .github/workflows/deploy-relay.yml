@@ -1,0 +1,26 @@
+name: Deploy Flutterwave Relay
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "flw-relay/**"
+      - ".github/workflows/deploy-relay.yml"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy relay to Fly
+        working-directory: flw-relay
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          flyctl deploy --app kudi-flw-relay --remote-only --now --yes
+          echo "── egress IP (must be whitelisted in Flutterwave) ──"
+          flyctl ips list --app kudi-flw-relay
+          curl -fsS https://kudi-flw-relay.fly.dev/health && echo " ✓ relay healthy"
