@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Icon from "../components/Icon";
 import AmountDisplay from "../components/shared/AmountDisplay";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
 import { useWallet } from "../hooks/useWallet";
 import {
-  ActionButton, WalletTxRow, FundSheet, WithdrawSheet, ReceivePaymentSheet,
+  ActionButton, AccountCard, WalletTxRow,
+  FundWalletSheet, TransferSheet, ReceivePaymentSheet,
 } from "../components/WalletPanel";
 import { fmt } from "../utils/helpers";
 
@@ -15,10 +16,16 @@ export default function Wallet({ session }) {
   const { walletEnabled, walletTestMode, walletMaxWithdrawalKobo, configLoading } = usePlatformConfig();
   const w = useWallet(userId, walletEnabled);
   const [hidden, setHidden] = useState(() => sessionStorage.getItem("kt_balance_hidden") === "1");
-  const [sheet, setSheet] = useState(null);   // "fund" | "receive" | "withdraw" | null
+  const [sheet, setSheet] = useState(null);   // fund | transfer | receive
   const [err, setErr] = useState("");
   const [bvn, setBvn] = useState("");
   const [nin, setNin] = useState("");
+  const [banks, setBanks] = useState([]);
+
+  useEffect(() => {
+    if (!w.hasAccount) return;
+    w.listBanks().then((d) => setBanks(d?.banks || [])).catch(() => {});
+  }, [w.hasAccount]); // eslint-disable-line
 
   const toggleHidden = () => {
     const n = !hidden; sessionStorage.setItem("kt_balance_hidden", n ? "1" : "0"); setHidden(n);
@@ -41,111 +48,110 @@ export default function Wallet({ session }) {
     );
   }
 
+  const idInput = "w-full mt-1.5 px-4 py-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/60 text-slate-900 dark:text-slate-50 text-[16px] font-semibold tracking-wider placeholder:font-normal placeholder:tracking-normal placeholder:text-slate-400 focus:outline-none focus:border-brand-400";
+
   return (
-    <div className="pb-24">
-      {/* ── header ── */}
+    <div className="pb-28">
+      {/* header */}
       <div className="flex items-center gap-3 px-4 pt-3 pb-2">
         <button onClick={() => navigate(-1)} className="w-9 h-9 -ml-1 flex items-center justify-center rounded-full active:bg-slate-100 dark:active:bg-slate-800">
           <Icon name="chevron-left" size={20} className="text-slate-600 dark:text-slate-300" />
         </button>
-        <h1 className="text-[17px] font-bold text-slate-800 dark:text-slate-100">Wallet</h1>
+        <h1 className="text-[18px] font-extrabold text-slate-900 dark:text-slate-50">Wallet</h1>
         {walletTestMode && (
-          <span className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400">TEST MODE</span>
+          <span className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400">TEST</span>
         )}
       </div>
 
       <div className="px-4 space-y-4">
-        {/* ── balance card ── */}
-        <div className="rounded-3xl p-5 text-white relative overflow-hidden shadow-hero"
-          style={{ background: "linear-gradient(145deg,var(--navy) 0%,var(--navy-mid) 55%,var(--navy-dark) 100%)" }}>
-          <div className="absolute -top-10 -right-10 w-36 h-36 rounded-full bg-white/5" />
-          <div className="absolute -bottom-12 -left-8 w-44 h-44 rounded-full bg-white/5" />
+        {/* balance */}
+        <div className="rounded-[28px] p-6 text-white relative overflow-hidden shadow-hero"
+          style={{ background: "linear-gradient(150deg,var(--navy) 0%,var(--navy-mid) 50%,var(--navy-dark) 100%)" }}>
+          <div className="absolute -top-16 -right-12 w-48 h-48 rounded-full bg-white/[0.06]" />
+          <div className="absolute -bottom-16 -left-10 w-52 h-52 rounded-full bg-white/[0.05]" />
           <div className="relative">
             <div className="flex items-center justify-between">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-white/60">Wallet balance</p>
-              <button onClick={toggleHidden} className="w-8 h-8 -mr-1 flex items-center justify-center rounded-lg bg-white/10 active:bg-white/20">
-                <Icon name="eye" size={13} className="text-white" />
+              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/55">Available balance</p>
+              <button onClick={toggleHidden} className="w-9 h-9 -mr-1.5 -mt-1 flex items-center justify-center rounded-xl bg-white/10 active:bg-white/20">
+                <Icon name="eye" size={14} className="text-white" />
               </button>
             </div>
-            <AmountDisplay amount={w.balanceKobo} fromKobo size="hero" align="left" hidden={hidden} className="mt-1.5 text-white" />
+            <AmountDisplay amount={w.balanceKobo} fromKobo size="hero" align="left" hidden={hidden} className="mt-2 text-white" />
             {w.hasAccount && (
-              <div className="mt-3 inline-flex items-center gap-2 bg-white/10 rounded-lg px-2.5 py-1.5">
-                <span className="text-[12px] font-semibold tracking-wide">{w.wallet.flw_account_number}</span>
-                <span className="text-white/40 text-[11px]">·</span>
-                <span className="text-[11px] text-white/70">{w.wallet.flw_account_bank}</span>
-              </div>
+              <p className="mt-2 text-[12px] text-white/60">
+                {w.wallet.flw_account_number} · KudiAI Wallet
+              </p>
             )}
           </div>
         </div>
 
         {err && <p className="text-[12px] text-red-500">{err}</p>}
 
-        {/* ── not activated ── */}
         {!w.hasAccount ? (
-          <div className="rounded-2xl bg-white dark:bg-slate-800 shadow-card border border-slate-100 dark:border-slate-700/50 p-5">
-            <div className="w-12 h-12 rounded-full bg-brand-50 dark:bg-brand-900/25 flex items-center justify-center mx-auto mb-3">
-              <Icon name="wallet" size={22} className="text-brand-600 dark:text-brand-400" />
+          <div className="rounded-3xl bg-white dark:bg-slate-800 shadow-card border border-slate-100 dark:border-slate-700/60 p-6">
+            <div className="w-14 h-14 rounded-2xl bg-brand-50 dark:bg-brand-900/30 flex items-center justify-center mx-auto mb-3">
+              <Icon name="wallet" size={24} className="text-brand-600 dark:text-brand-400" />
             </div>
-            <p className="text-[14px] font-semibold text-slate-800 dark:text-slate-100 mb-1 text-center">Activate your wallet</p>
-            <p className="text-[12px] text-slate-500 dark:text-slate-400 mb-4 text-center">
-              Get a dedicated account number. Fund it once, then pay bills with no card fees.
+            <p className="text-[15px] font-extrabold text-slate-900 dark:text-slate-50 mb-1 text-center">Activate your wallet</p>
+            <p className="text-[12px] text-slate-500 dark:text-slate-400 mb-5 text-center leading-relaxed">
+              Get a dedicated account number. Fund it, get paid into it, transfer out, and pay bills — all fee-free.
             </p>
             {!walletTestMode && (
-              <div className="space-y-3 mb-3 text-left">
+              <div className="space-y-3 mb-4">
                 <div>
-                  <label className="text-[12px] text-slate-400">BVN</label>
-                  <input inputMode="numeric" value={bvn} onChange={e => setBvn(e.target.value.replace(/\D/g, "").slice(0, 11))}
-                    placeholder="11-digit BVN"
-                    className="w-full mt-1 px-3.5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-[15px] tracking-wider" />
+                  <label className="text-[12px] font-semibold text-slate-500 dark:text-slate-400">BVN</label>
+                  <input inputMode="numeric" value={bvn} onChange={(e) => setBvn(e.target.value.replace(/\D/g, "").slice(0, 11))}
+                    placeholder="11-digit BVN" className={idInput} />
                 </div>
                 <div>
-                  <label className="text-[12px] text-slate-400">NIN <span className="text-slate-300">(optional)</span></label>
-                  <input inputMode="numeric" value={nin} onChange={e => setNin(e.target.value.replace(/\D/g, "").slice(0, 11))}
-                    placeholder="11-digit NIN"
-                    className="w-full mt-1 px-3.5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-[15px] tracking-wider" />
+                  <label className="text-[12px] font-semibold text-slate-500 dark:text-slate-400">NIN <span className="text-slate-300 font-normal">optional</span></label>
+                  <input inputMode="numeric" value={nin} onChange={(e) => setNin(e.target.value.replace(/\D/g, "").slice(0, 11))}
+                    placeholder="11-digit NIN" className={idInput} />
                 </div>
-                <p className="text-[11px] text-slate-400">
-                  Your BVN is used once to open your account with our banking partner and isn't stored by KudiAI.
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  Your BVN opens your account with our banking partner and isn't stored by KudiAI.
                   The name and date of birth on it must match your profile.
                 </p>
               </div>
             )}
             <button onClick={activate} disabled={w.busy}
-              className="w-full bg-brand-600 disabled:opacity-40 text-white font-bold rounded-xl py-3.5">
+              className="w-full bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white font-bold rounded-2xl py-4 text-[15px] transition-colors">
               {w.busy ? "Activating…" : "Activate wallet"}
             </button>
           </div>
         ) : (
           <>
+            <AccountCard wallet={w.wallet} />
+
+            {/* quick actions */}
+            <div className="rounded-3xl bg-white dark:bg-slate-800 shadow-card border border-slate-100 dark:border-slate-700/60 p-4">
+              <div className="flex items-start gap-1">
+                <ActionButton icon="plus"       label="Fund wallet" onClick={() => setSheet("fund")} />
+                <ActionButton icon="send"       label="Transfer"    onClick={() => setSheet("transfer")} />
+                <ActionButton icon="arrow-down" label="Receive"     onClick={() => setSheet("receive")} />
+                <ActionButton icon="bills"      label="Pay bills"   onClick={() => navigate("/bills")} tone="slate" />
+              </div>
+            </div>
+
             {w.payRequest && (
               <button onClick={() => setSheet("receive")}
-                className="w-full flex items-center gap-2 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-3 py-2.5 text-left">
+                className="w-full flex items-center gap-2.5 rounded-2xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-4 py-3 text-left">
                 <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />
                 <span className="text-[12px] text-amber-700 dark:text-amber-400 flex-1">
-                  Waiting for a <b>{fmt(w.payRequest.amount_kobo / 100)}</b> payment{w.payRequest.customer_name ? ` from ${w.payRequest.customer_name}` : ""}
+                  Awaiting a <b>{fmt(w.payRequest.amount_kobo / 100)}</b> payment{w.payRequest.customer_name ? ` from ${w.payRequest.customer_name}` : ""}
                 </span>
                 <Icon name="chevron-right" size={14} className="text-amber-400" />
               </button>
             )}
 
-            {/* ── quick actions ── */}
-            <div className="rounded-2xl bg-white dark:bg-slate-800 shadow-card border border-slate-100 dark:border-slate-700/50 p-4">
-              <div className="flex items-start gap-1">
-                <ActionButton icon="plus"        label="Add money" onClick={() => setSheet("fund")} />
-                <ActionButton icon="arrow-down"  label="Receive"   onClick={() => setSheet("receive")} />
-                <ActionButton icon="send"        label="Send"      onClick={() => setSheet("withdraw")} />
-                <ActionButton icon="bills"       label="Pay bills" onClick={() => navigate("/bills")} tone="slate" />
-              </div>
-            </div>
-
-            {/* ── transactions ── */}
-            <div className="rounded-2xl bg-white dark:bg-slate-800 shadow-card border border-slate-100 dark:border-slate-700/50 p-4">
-              <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-1">Transactions</p>
+            {/* transactions */}
+            <div className="rounded-3xl bg-white dark:bg-slate-800 shadow-card border border-slate-100 dark:border-slate-700/60 p-4">
+              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400 mb-1">Transactions</p>
               {w.ledger.length === 0 ? (
-                <p className="text-[13px] text-slate-400 py-6 text-center">No wallet activity yet.</p>
+                <p className="text-[13px] text-slate-400 py-8 text-center">No wallet activity yet.</p>
               ) : (
                 <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {w.ledger.map(row => <WalletTxRow key={row.id} row={row} hidden={hidden} />)}
+                  {w.ledger.map((row) => <WalletTxRow key={row.id} row={row} hidden={hidden} />)}
                 </div>
               )}
             </div>
@@ -153,12 +159,12 @@ export default function Wallet({ session }) {
         )}
       </div>
 
-      <FundSheet open={sheet === "fund"} onClose={() => setSheet(null)}
+      <FundWalletSheet open={sheet === "fund"} onClose={() => setSheet(null)}
         wallet={w.wallet} testMode={walletTestMode} api={w} />
+      <TransferSheet open={sheet === "transfer"} onClose={() => setSheet(null)}
+        balanceKobo={w.balanceKobo} maxKobo={walletMaxWithdrawalKobo} banks={banks} api={w} onDone={w.refresh} />
       <ReceivePaymentSheet open={sheet === "receive"} onClose={() => setSheet(null)}
         wallet={w.wallet} payRequest={w.payRequest} testMode={walletTestMode} api={w} />
-      <WithdrawSheet open={sheet === "withdraw"} onClose={() => setSheet(null)}
-        balanceKobo={w.balanceKobo} maxKobo={walletMaxWithdrawalKobo} api={w} onSubmitted={w.refresh} />
     </div>
   );
 }

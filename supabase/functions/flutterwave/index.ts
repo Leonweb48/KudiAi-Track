@@ -5,7 +5,7 @@
 //   provision-account  → create FLW customer + static virtual account, store on wallets
 //   list-banks         → NG bank list (for the withdraw form)
 //   resolve-account    → name enquiry on a bank account
-//   submit-withdrawal  → validate + hold funds + raise an admin approval request
+//   transfer           → PIN-verified, holds funds + pays out immediately
 //   disburse           → run the payout (service-role only; called by the admin API)
 //   simulate-topup     → TEST MODE only: force a mock charge.completed into the wallet
 //
@@ -74,6 +74,40 @@ async function flwFetch(path: string, init: RequestInit & { scenario?: string } 
 // ── bank list cache ─────────────────────────────────────────────────────────
 let _banks: { list: unknown[]; exp: number } = { list: [], exp: 0 };
 
+// Run a Flutterwave bank payout.
+async function flwDisburse(o: {
+  reference: string; amount_kobo: number; bank_code: string; account_number: string;
+  account_name?: string; narration?: string;
+}) {
+  const naira = Math.round(Number(o.amount_kobo) / 100);
+  const [first, ...rest] = String(o.account_name || "KudiAI Wallet").trim().split(/\s+/);
+  const r = await flwFetch("/direct-transfers", {
+    method: "POST",
+    headers: { "X-Idempotency-Key": o.reference, "X-Trace-Id": `${o.reference}-tr` },
+    body: JSON.stringify({
+      action: "instant", type: "bank", reference: o.reference,
+      narration: String(o.narration || "KudiAI wallet transfer").slice(0, 100),
+      payment_instruction: {
+        amount: { value: naira, applies_to: "destination_currency" },
+        source_currency: "NGN", destination_currency: "NGN",
+        recipient: {
+          bank: { code: o.bank_code, account_number: o.account_number },
+          name: { first: first || "KudiAI", last: rest.join(" ") || "Wallet" },
+        },
+      },
+    }),
+  });
+  const d = r.data as any;
+  return {
+    ok: r.ok,
+    error: d?.error?.message || "Transfer failed",
+    detail: d,
+    transfer_id: d?.id || "",
+    status: d?.status || "NEW",
+    fee_kobo: Math.round(Number(d?.fee?.value || 0) * 100),
+  };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (!FLW_CLIENT_ID || !FLW_CLIENT_SECRET) return json({ error: "Flutterwave not configured" }, 503);
@@ -110,28 +144,9 @@ serve(async (req) => {
         reference: string; amount_kobo: number; bank_code: string;
         account_number: string; account_name?: string; narration?: string;
       };
-      const naira = Math.round(Number(amount_kobo) / 100);
-      const [first, ...rest] = String(account_name || "KudiAI Wallet").trim().split(/\s+/);
-      const r = await flwFetch("/direct-transfers", {
-        method: "POST",
-        headers: { "X-Idempotency-Key": reference, "X-Trace-Id": `${reference}-tr` },
-        body: JSON.stringify({
-          action: "instant", type: "bank", reference,
-          narration: String(narration || "KudiAI wallet transfer").slice(0, 100),
-          payment_instruction: {
-            amount: { value: naira, applies_to: "destination_currency" },
-            source_currency: "NGN", destination_currency: "NGN",
-            recipient: {
-              bank: { code: bank_code, account_number },
-              name: { first: first || "KudiAI", last: rest.join(" ") || "Wallet" },
-            },
-          },
-        }),
-      });
-      if (!r.ok) return json({ error: (r.data as any)?.error?.message || "Payout failed", detail: r.data }, 502);
-      const d = r.data as any;
-      const feeKobo = Math.round(Number(d?.fee?.value || 0) * 100);
-      return json({ ok: true, transfer_id: d?.id || "", status: d?.status || "NEW", fee_kobo: feeKobo });
+      const r = await flwDisburse({ reference, amount_kobo, bank_code, account_number, account_name, narration });
+      if (!r.ok) return json({ error: r.error, detail: r.detail }, 502);
+      return json({ ok: true, transfer_id: r.transfer_id, status: r.status, fee_kobo: r.fee_kobo });
     }
 
     // ═══ everything else needs a signed-in user ═════════════════════════════
@@ -296,16 +311,33 @@ serve(async (req) => {
       return json({ ok: true, simulated: true, amount_naira: naira });
     }
 
-    // ── submit-withdrawal / send money ──────────────────────────────────
-    if (action === "submit-withdrawal") {
-      const { amount_kobo, bank_code, account_number, narration, book_expense } = body as {
+    // ── transfer — PIN-confirmed, runs immediately (no admin approval) ───
+    if (action === "transfer") {
+      const { amount_kobo, bank_code, account_number, narration, book_expense, pin } = body as {
         amount_kobo: number; bank_code: string; account_number: string;
-        narration?: string; book_expense?: boolean;
+        narration?: string; book_expense?: boolean; pin?: string;
       };
       if (!amount_kobo || amount_kobo <= 0) return json({ error: "Enter an amount" }, 400);
       if (!bank_code || !account_number) return json({ error: "Bank and account number required" }, 400);
+      if (!pin || !/^\d{4,6}$/.test(String(pin))) return json({ error: "Enter your transaction PIN", code: "pin_required" }, 400);
 
-      // resolve the name server-side (don't trust a client-supplied name)
+      // 1. verify the transaction PIN server-side
+      const pv = await fetch(`${SUPABASE_URL}/functions/v1/pin-manager`, {
+        method: "POST",
+        headers: { Authorization: authHeader, apikey: ANON_KEY, "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "verify_txn_pin", pin: String(pin) }),
+      });
+      const pj = await pv.json().catch(() => ({}));
+      if (!pj?.success) {
+        return json({
+          error: pj?.locked ? "Too many PIN attempts — try again later."
+               : pj?.error === "Transaction PIN not set" ? "Set a transaction PIN first (Settings → Security)."
+               : "Incorrect PIN.",
+          code: pj?.locked ? "pin_locked" : "pin_bad",
+        }, 403);
+      }
+
+      // 2. resolve the recipient name (don't trust the client)
       const nr = await flwFetch("/banks/account-resolve", {
         method: "POST",
         body: JSON.stringify({ currency: "NGN", account: { code: bank_code, number: account_number } }),
@@ -313,7 +345,8 @@ serve(async (req) => {
       if (!nr.ok) return json({ error: "Could not verify that bank account" }, 422);
       const accountName = (nr.data as any)?.data?.account_name || "";
 
-      const { data: reqId, error } = await asUser.rpc("wallet_submit_withdrawal", {
+      // 3. hold the funds
+      const { data: wdId, error: holdErr } = await asUser.rpc("wallet_hold_transfer", {
         p_amount_kobo: Math.round(amount_kobo),
         p_bank_code: bank_code,
         p_account_number: account_number,
@@ -321,8 +354,20 @@ serve(async (req) => {
         p_narration: String(narration || "").slice(0, 100),
         p_book_expense: !!book_expense,
       });
-      if (error) return json({ error: error.message.replace(/^.*:\s*/, "") }, 400);
-      return json({ ok: true, request_id: reqId, account_name: accountName });
+      if (holdErr) return json({ error: holdErr.message.replace(/^.*:\s*/, "") }, 400);
+
+      // 4. send it
+      const d = await flwDisburse({
+        reference: String(wdId), amount_kobo: Math.round(amount_kobo),
+        bank_code, account_number, account_name: accountName,
+        narration: String(narration || ""),
+      });
+      if (!d.ok) {
+        await sb.rpc("wallet_transfer_failed", { p_withdrawal_id: wdId, p_reason: `Transfer declined: ${d.error}` });
+        return json({ error: `Transfer could not be completed (${d.error}). Your wallet was not charged.`, detail: d.detail }, 502);
+      }
+      await sb.rpc("wallet_transfer_sent", { p_withdrawal_id: wdId, p_flw_transfer_id: d.transfer_id, p_fee_kobo: d.fee_kobo });
+      return json({ ok: true, account_name: accountName, status: d.status, fee_kobo: d.fee_kobo });
     }
 
     return json({ error: `Unknown action: ${action}` }, 400);

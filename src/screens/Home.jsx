@@ -25,7 +25,7 @@ import TransactionDetailModal from "../components/shared/TransactionDetailModal"
 import { buildTransactionReceipt } from "../utils/receiptConfig";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
 import { useWallet } from "../hooks/useWallet";
-import { FundSheet, WithdrawSheet, ReceivePaymentSheet, WalletTxRow } from "../components/WalletPanel";
+import { FundWalletSheet, TransferSheet, ReceivePaymentSheet, WalletTxRow } from "../components/WalletPanel";
 
 function greetingKey() {
   const h = new Date().getHours();
@@ -126,9 +126,15 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
   const wallet = useWallet(profile?.id || null, walletEnabled);
   const [heroView, setHeroView] = useState(() =>
     localStorage.getItem("kt_home_hero") === "wallet" ? "wallet" : "sales");
-  const [walletSheet, setWalletSheet] = useState(null);   // "fund" | "withdraw" | null
+  const [walletSheet, setWalletSheet] = useState(null);   // "fund" | "transfer" | "receive" | null
+  const [walletBanks, setWalletBanks] = useState([]);
   const showWallet = walletEnabled && heroView === "wallet";
   const pickHero = (v) => { try { localStorage.setItem("kt_home_hero", v); } catch {} setHeroView(v); };
+
+  useEffect(() => {
+    if (walletSheet !== "transfer" || walletBanks.length) return;
+    wallet.listBanks().then((d) => setWalletBanks(d?.banks || [])).catch(() => {});
+  }, [walletSheet]); // eslint-disable-line
 
   const toggleBalanceHidden = () => {
     const next = !balanceHidden;
@@ -283,15 +289,15 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
                   <>
                     <button onClick={() => setWalletSheet("fund")}
                       className="flex-1 bg-white/15 active:bg-white/25 rounded-xl py-2 flex flex-col items-center gap-0.5 transition-colors">
-                      <Svg d={P.in} size={13} color="white" /><span className="text-[9px] font-semibold text-white/90">Add</span>
+                      <Svg d={P.in} size={13} color="white" /><span className="text-[9px] font-semibold text-white/90">Fund</span>
+                    </button>
+                    <button onClick={() => setWalletSheet("transfer")}
+                      className="flex-1 bg-white/15 active:bg-white/25 rounded-xl py-2 flex flex-col items-center gap-0.5 transition-colors">
+                      <Svg d={P.out} size={13} color="white" /><span className="text-[9px] font-semibold text-white/90">Transfer</span>
                     </button>
                     <button onClick={() => setWalletSheet("receive")}
                       className="flex-1 bg-white/15 active:bg-white/25 rounded-xl py-2 flex flex-col items-center gap-0.5 transition-colors">
                       <Svg d={P.in} size={13} color="white" /><span className="text-[9px] font-semibold text-white/90">Receive</span>
-                    </button>
-                    <button onClick={() => setWalletSheet("withdraw")}
-                      className="flex-1 bg-white/15 active:bg-white/25 rounded-xl py-2 flex flex-col items-center gap-0.5 transition-colors">
-                      <Svg d={P.out} size={13} color="white" /><span className="text-[9px] font-semibold text-white/90">Send</span>
                     </button>
                     <button onClick={() => setTab("bills")}
                       className="flex-1 bg-white/15 active:bg-white/25 rounded-xl py-2 flex flex-col items-center gap-0.5 transition-colors">
@@ -700,12 +706,12 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
 
       {walletEnabled && (
         <>
-          <FundSheet open={walletSheet === "fund"} onClose={() => setWalletSheet(null)}
+          <FundWalletSheet open={walletSheet === "fund"} onClose={() => setWalletSheet(null)}
             wallet={wallet.wallet} testMode={walletTestMode} api={wallet} />
           <ReceivePaymentSheet open={walletSheet === "receive"} onClose={() => setWalletSheet(null)}
             wallet={wallet.wallet} payRequest={wallet.payRequest} testMode={walletTestMode} api={wallet} />
-          <WithdrawSheet open={walletSheet === "withdraw"} onClose={() => setWalletSheet(null)}
-            balanceKobo={wallet.balanceKobo} maxKobo={walletMaxWithdrawalKobo} api={wallet} onSubmitted={wallet.refresh} />
+          <TransferSheet open={walletSheet === "transfer"} onClose={() => setWalletSheet(null)}
+            balanceKobo={wallet.balanceKobo} maxKobo={walletMaxWithdrawalKobo} banks={walletBanks} api={wallet} onDone={wallet.refresh} />
         </>
       )}
     </div>
