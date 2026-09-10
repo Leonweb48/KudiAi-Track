@@ -8,6 +8,8 @@ on:
       - "flw-relay/**"
       - ".github/workflows/deploy-relay.yml"
 
+concurrency: deploy-relay
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -20,7 +22,15 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
+          set -euo pipefail
           flyctl deploy --app kudi-flw-relay --remote-only --now --yes
+
+          # one-time cleanup: drop the machine created by the pre-flyctl
+          # Machines-API bootstrap (it isn't managed by `flyctl deploy`).
+          flyctl machine destroy 286542d9f11558 --app kudi-flw-relay --force || true
+
+          echo "── machines ──"
+          flyctl machine list --app kudi-flw-relay
           echo "── egress IP (must be whitelisted in Flutterwave) ──"
           flyctl ips list --app kudi-flw-relay
           curl -fsS https://kudi-flw-relay.fly.dev/health && echo " ✓ relay healthy"

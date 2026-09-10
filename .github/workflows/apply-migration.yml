@@ -18,7 +18,7 @@ jobs:
 
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 2.107.0        # pin — match deploy-functions.yml
 
       - name: Link Supabase project
         run: supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
@@ -27,7 +27,7 @@ jobs:
           SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
 
       - name: Push pending migrations to remote DB
-        run: supabase db push --include-all
+        run: supabase db push        # only migrations newer than the remote history
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}

@@ -6,6 +6,12 @@
 -- The webhook payload also echoes data.reference = our wallet_withdrawals.id, so
 -- match on either, and backfill flw_transfer_id when found by reference.
 -- Also finalises the one row that got stuck.
+--
+-- NOTE: this file was first authored as 20261209000000_wallet_mark_by_ref.sql —
+-- a duplicate of the wallet_instant_transfer version, which made `db push` fail
+-- on the schema_migrations pkey. Renamed to 20261210. Every statement below is
+-- idempotent (DROP IF EXISTS / CREATE OR REPLACE / REVOKE / GRANT, and the
+-- finaliser no-ops once the row is 'successful'), so re-applying is harmless.
 -- ═════════════════════════════════════════════════════════════════════════════
 
 -- replace the 2-arg version so a 2-arg call can't resolve to the old logic
