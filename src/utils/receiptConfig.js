@@ -505,7 +505,7 @@ function party(name, bank, account) {
   return tail ? `${head}\n${tail}` : head;
 }
 
-// ctx (all optional): businessName, ownerName, walletAccountNumber, walletBankRaw,
+// ctx (all optional): businessName, walletAccountNumber,
 //   withdrawal (wallet_withdrawals row), request (wallet_payment_requests row),
 //   originator (deposit sender name), recipientBankName (resolved from bank_code)
 export function buildWalletReceipt(row, ctx = {}) {
@@ -518,10 +518,11 @@ export function buildWalletReceipt(row, ctx = {}) {
   const { ref, image, pdf } = receiptFilenames(row.id, row.created_at, title);
   const amount = (row.amount_kobo || 0) / 100;
 
+  // The business's own side of every wallet movement — the receipt shows the
+  // business name (not the BVN name or the "Flutterwave MFB" bank behind the VA).
   const businessName = ctx.businessName || 'My Business';
-  const walletBank   = cleanBankName(ctx.walletBankRaw) || 'KudiAI Wallet';
   const walletAcct   = ctx.walletAccountNumber || '';
-  const walletParty  = party(ctx.ownerName || businessName, walletBank, walletAcct);
+  const walletParty  = party(businessName, 'KudiAI Wallet', walletAcct);
   const wd           = ctx.withdrawal || null;
   const rq           = ctx.request || null;
   const narration    = (wd?.narration || row.narration || '').trim();
@@ -557,7 +558,7 @@ export function buildWalletReceipt(row, ctx = {}) {
     const note = (rq?.note || narration || '').replace(/^Sale —\s*/i, '').trim();
     fields = [
       { label: 'Transaction Type', value: 'Payment received' },
-      { label: 'Recipient Details', value: party(businessName, walletBank, walletAcct) },
+      { label: 'Recipient Details', value: walletParty },
       { label: 'Sender Details',    value: party(rq?.customer_name || ctx.originator || 'Customer', '', '') },
       note && { label: 'For', value: note },
       row.flw_reference && { label: 'Transaction No.', value: row.flw_reference, copy: true },
@@ -570,7 +571,7 @@ export function buildWalletReceipt(row, ctx = {}) {
     fields = [
       { label: 'Transaction Type', value: src === 'bill_reversal' ? 'Bill refund — credited to wallet' : 'Bill payment' },
       narration && { label: src === 'bill_reversal' ? 'Refund for' : 'Paid for', value: narration },
-      { label: src === 'bill_reversal' ? 'Credited to' : 'Paid from', value: party('KudiAI Wallet', walletBank, walletAcct) },
+      { label: src === 'bill_reversal' ? 'Credited to' : 'Paid from', value: walletParty },
       row.flw_reference && { label: 'Provider Ref.', value: row.flw_reference, copy: true },
       row.balance_after_kobo != null && { label: 'Wallet balance after', value: fmtAmt(row.balance_after_kobo / 100) },
       { label: 'Payment Method', value: 'KudiAI Wallet' },

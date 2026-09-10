@@ -178,9 +178,7 @@ export function useWallet(userId, enabled = true) {
       : "";
     return buildWalletReceipt(row, {
       businessName,
-      ownerName:           wallet?.flw_account_name || "",
       walletAccountNumber: wallet?.flw_account_number || "",
-      walletBankRaw:       wallet?.flw_account_bank || "",
       withdrawal:          wd,
       request:             rq,
       originator:          row.meta?.originator || "",
