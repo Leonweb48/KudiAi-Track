@@ -5,8 +5,9 @@ import AmountDisplay from "../components/shared/AmountDisplay";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
 import { useWallet } from "../hooks/useWallet";
 import {
-  ActionButton, WalletTxRow, FundSheet, WithdrawSheet,
+  ActionButton, WalletTxRow, FundSheet, WithdrawSheet, ReceivePaymentSheet,
 } from "../components/WalletPanel";
+import { fmt } from "../utils/helpers";
 
 export default function Wallet({ session }) {
   const userId = session?.user?.id || null;
@@ -93,10 +94,22 @@ export default function Wallet({ session }) {
           </div>
         ) : (
           <>
+            {w.payRequest && (
+              <button onClick={() => setSheet("receive")}
+                className="w-full flex items-center gap-2 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-3 py-2.5 text-left">
+                <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />
+                <span className="text-[12px] text-amber-700 dark:text-amber-400 flex-1">
+                  Waiting for a <b>{fmt(w.payRequest.amount_kobo / 100)}</b> payment{w.payRequest.customer_name ? ` from ${w.payRequest.customer_name}` : ""}
+                </span>
+                <Icon name="chevron-right" size={14} className="text-amber-400" />
+              </button>
+            )}
+
             {/* ── quick actions ── */}
             <div className="rounded-2xl bg-white dark:bg-slate-800 shadow-card border border-slate-100 dark:border-slate-700/50 p-4">
-              <div className="flex items-start gap-2">
+              <div className="flex items-start gap-1">
                 <ActionButton icon="plus"        label="Add money" onClick={() => setSheet("fund")} />
+                <ActionButton icon="arrow-down"  label="Receive"   onClick={() => setSheet("receive")} />
                 <ActionButton icon="bank"        label="Withdraw"  onClick={() => setSheet("withdraw")} />
                 <ActionButton icon="bills"       label="Pay bills" onClick={() => navigate("/bills")} tone="slate" />
               </div>
@@ -119,6 +132,8 @@ export default function Wallet({ session }) {
 
       <FundSheet open={sheet === "fund"} onClose={() => setSheet(null)}
         wallet={w.wallet} testMode={walletTestMode} api={w} />
+      <ReceivePaymentSheet open={sheet === "receive"} onClose={() => setSheet(null)}
+        wallet={w.wallet} payRequest={w.payRequest} testMode={walletTestMode} api={w} />
       <WithdrawSheet open={sheet === "withdraw"} onClose={() => setSheet(null)}
         balanceKobo={w.balanceKobo} maxKobo={walletMaxWithdrawalKobo} api={w} onSubmitted={w.refresh} />
     </div>

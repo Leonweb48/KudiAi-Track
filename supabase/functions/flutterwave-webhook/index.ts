@@ -110,6 +110,38 @@ serve(async (req) => {
       if (!wallet) { console.warn(`[flw-webhook] no wallet for cust=${custId} va=${vaNo}`); return ok("no wallet"); }
 
       const amountKobo = Math.round(amountNaira * 100);
+
+      // ── Is this a customer paying for a sale? Match a pending payment request
+      //    for this wallet with the exact amount, still within its 30-min window.
+      const { data: pr } = await sb.from("wallet_payment_requests")
+        .select("id")
+        .eq("wallet_id", wallet.id)
+        .eq("status", "pending")
+        .eq("amount_kobo", amountKobo)
+        .gte("expires_at", new Date().toISOString())
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (pr) {
+        const { error: sErr } = await sb.rpc("wallet_record_sale", {
+          p_request_id: pr.id,
+          p_flw_charge_id: chargeId,
+          p_amount_kobo: amountKobo,
+        });
+        if (sErr) { console.error("[flw-webhook] wallet_record_sale:", sErr.message); return bad("sale record failed", 500); }
+        fetch(`${SUPABASE_URL}/functions/v1/notify-send`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}` },
+          body: JSON.stringify({
+            action: "notify", userId: wallet.user_id, type: "wallet_sale",
+            title: "Payment received", body: `₦${amountNaira.toLocaleString()} received — recorded as a sale`,
+            category: "finance", deepLink: { screen: "wallet" },
+          }),
+        }).catch(() => {});
+        return ok("sale recorded");
+      }
+
       const { data: cfg } = await sb.from("platform_config").select("value").eq("key", "wallet_max_balance_kobo").maybeSingle();
       const maxBal = Number(cfg?.value || "20000000");
       if (Number(wallet.balance_kobo || 0) + amountKobo > maxBal) {

@@ -25,7 +25,7 @@ import TransactionDetailModal from "../components/shared/TransactionDetailModal"
 import { buildTransactionReceipt } from "../utils/receiptConfig";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
 import { useWallet } from "../hooks/useWallet";
-import { FundSheet, WithdrawSheet, WalletTxRow } from "../components/WalletPanel";
+import { FundSheet, WithdrawSheet, ReceivePaymentSheet, WalletTxRow } from "../components/WalletPanel";
 
 function greetingKey() {
   const h = new Date().getHours();
@@ -273,7 +273,7 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
                 )}
               </button>
               {/* mini actions */}
-              <div className="flex items-center gap-2 mt-3">
+              <div className="flex items-center gap-1.5 mt-3">
                 {!wallet.hasAccount ? (
                   <button onClick={() => wallet.provisionAccount()} disabled={wallet.busy}
                     className="flex-1 bg-white text-slate-900 text-[12px] font-bold rounded-xl py-2.5 disabled:opacity-50">
@@ -283,19 +283,30 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
                   <>
                     <button onClick={() => setWalletSheet("fund")}
                       className="flex-1 bg-white/15 active:bg-white/25 rounded-xl py-2 flex flex-col items-center gap-0.5 transition-colors">
-                      <Svg d={P.in} size={14} color="white" /><span className="text-[10px] font-semibold text-white/90">Add money</span>
+                      <Svg d={P.in} size={13} color="white" /><span className="text-[9px] font-semibold text-white/90">Add</span>
+                    </button>
+                    <button onClick={() => setWalletSheet("receive")}
+                      className="flex-1 bg-white/15 active:bg-white/25 rounded-xl py-2 flex flex-col items-center gap-0.5 transition-colors">
+                      <Svg d={P.in} size={13} color="white" /><span className="text-[9px] font-semibold text-white/90">Receive</span>
                     </button>
                     <button onClick={() => setWalletSheet("withdraw")}
                       className="flex-1 bg-white/15 active:bg-white/25 rounded-xl py-2 flex flex-col items-center gap-0.5 transition-colors">
-                      <Svg d={P.out} size={14} color="white" /><span className="text-[10px] font-semibold text-white/90">Withdraw</span>
+                      <Svg d={P.out} size={13} color="white" /><span className="text-[9px] font-semibold text-white/90">Withdraw</span>
                     </button>
                     <button onClick={() => setTab("bills")}
                       className="flex-1 bg-white/15 active:bg-white/25 rounded-xl py-2 flex flex-col items-center gap-0.5 transition-colors">
-                      <Svg d={P.invoice} size={14} color="white" /><span className="text-[10px] font-semibold text-white/90">Pay bills</span>
+                      <Svg d={P.invoice} size={13} color="white" /><span className="text-[9px] font-semibold text-white/90">Bills</span>
                     </button>
                   </>
                 )}
               </div>
+              {wallet.payRequest && (
+                <button onClick={() => setWalletSheet("receive")}
+                  className="w-full mt-2 flex items-center gap-1.5 bg-white/10 rounded-lg px-2 py-1.5 text-left">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-300 animate-pulse flex-shrink-0" />
+                  <span className="text-[10px] text-white/80 flex-1">Waiting for {fmt(wallet.payRequest.amount_kobo / 100)}</span>
+                </button>
+              )}
             </div>
           ) : (
             <>
@@ -691,6 +702,8 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
         <>
           <FundSheet open={walletSheet === "fund"} onClose={() => setWalletSheet(null)}
             wallet={wallet.wallet} testMode={walletTestMode} api={wallet} />
+          <ReceivePaymentSheet open={walletSheet === "receive"} onClose={() => setWalletSheet(null)}
+            wallet={wallet.wallet} payRequest={wallet.payRequest} testMode={walletTestMode} api={wallet} />
           <WithdrawSheet open={walletSheet === "withdraw"} onClose={() => setWalletSheet(null)}
             balanceKobo={wallet.balanceKobo} maxKobo={walletMaxWithdrawalKobo} api={wallet} onSubmitted={wallet.refresh} />
         </>
