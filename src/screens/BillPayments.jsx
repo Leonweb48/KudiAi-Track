@@ -3096,18 +3096,6 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
       <div className="px-4 pt-4 space-y-4">
 
-        {/* Summary strip */}
-        <div className="bg-gradient-to-br from-green-600 to-emerald-700 rounded-2xl px-5 py-4 text-white flex items-center justify-between shadow-md">
-          <div>
-            <p className="text-[10px] font-bold text-green-100 uppercase tracking-widest">{t("bp.totalSpent")}</p>
-            <AmountDisplay amount={bills.filter(b => b.bill_status !== "failed" && b.bill_status !== "pending").reduce((s, b) => s + b.amount, 0)} size="hero" align="left" className="text-white mt-0.5" />
-          </div>
-          <div className="text-right">
-            <p className="text-[10px] font-bold text-green-100 uppercase tracking-widest">{t("bp.txnCountLabel")}</p>
-            <p className="text-2xl font-black mt-0.5">{bills.filter(b => b.bill_status !== "failed" && b.bill_status !== "pending").length}</p>
-          </div>
-        </div>
-
         {bills.length > 0 && <Overview bills={bills} />}
 
         {/* Cashback balance widget */}
