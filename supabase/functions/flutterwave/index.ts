@@ -29,6 +29,10 @@ const FLW_TEST_BVN  = Deno.env.get("FLW_TEST_BVN") || "22222222222";
 const SUPABASE_URL  = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY   = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const ANON_KEY      = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+// Shared secret between the admin portal and the Supabase functions (also used
+// for email triggers). The admin portal's SERVICE_ROLE_KEY env can differ from
+// the one injected here, so server-to-server calls authenticate with this.
+const INTERNAL_SECRET = Deno.env.get("EMAIL_TRIGGER_SECRET") ?? "";
 
 // ── OAuth token cache (survives across invocations in the same isolate) ──────
 let _tok = { value: "", exp: 0 };
@@ -89,9 +93,19 @@ serve(async (req) => {
   };
 
   try {
-    // ═══ disburse — service-role only (called by the admin approval API) ═════
+    // ═══ disburse — server-to-server only (called by the admin approval API) ═
     if (action === "disburse") {
-      if (token !== SERVICE_KEY) return json({ error: "Unauthorized" }, 401);
+      const internal = req.headers.get("x-internal-secret") ?? "";
+      // A bearer token that decodes to a service_role JWT for this project also passes.
+      let jwtServiceRole = false;
+      try {
+        const p = JSON.parse(atob((token.split(".")[1] || "").replace(/-/g, "+").replace(/_/g, "/")));
+        jwtServiceRole = p?.role === "service_role" && (!p?.ref || SUPABASE_URL.includes(p.ref));
+      } catch { /* not a JWT */ }
+      const authed = (SERVICE_KEY && token === SERVICE_KEY)
+        || (INTERNAL_SECRET && (internal === INTERNAL_SECRET || token === INTERNAL_SECRET))
+        || jwtServiceRole;
+      if (!authed) return json({ error: "Unauthorized" }, 401);
       const { reference, amount_kobo, bank_code, account_number, account_name, narration } = body as {
         reference: string; amount_kobo: number; bank_code: string;
         account_number: string; account_name?: string; narration?: string;
