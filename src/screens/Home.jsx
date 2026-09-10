@@ -23,6 +23,8 @@ import ProfileCompleteFlow from "../components/ProfileCompleteFlow";
 import { isPaidPlan } from "../utils/paidCompliance";
 import TransactionDetailModal from "../components/shared/TransactionDetailModal";
 import { buildTransactionReceipt } from "../utils/receiptConfig";
+import { usePlatformConfig } from "../hooks/usePlatformConfig";
+import { useWallet } from "../hooks/useWallet";
 
 function greetingKey() {
   const h = new Date().getHours();
@@ -117,6 +119,14 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
   const [todayAjo,           setTodayAjo]           = useState(0);
   const [showAITip,          setShowAITip]          = useState(() => !localStorage.getItem("kt_ai_intro_seen"));
   const [showCompleteFlow,   setShowCompleteFlow]   = useState(false);
+
+  // ── Hero card: flip between Today's Sales and the wallet balance ──────────
+  const { walletEnabled, walletTestMode } = usePlatformConfig();
+  const wallet = useWallet(profile?.id || null, walletEnabled);
+  const [heroView, setHeroView] = useState(() =>
+    localStorage.getItem("kt_home_hero") === "wallet" ? "wallet" : "sales");
+  const showWallet = walletEnabled && heroView === "wallet";
+  const pickHero = (v) => { try { localStorage.setItem("kt_home_hero", v); } catch {} setHeroView(v); };
 
   const toggleBalanceHidden = () => {
     const next = !balanceHidden;
@@ -227,48 +237,86 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
             </button>
           </div>
 
-          {/* TODAY'S SALES — total inflows for the day */}
-          <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest">TODAY'S SALES</p>
-          {loading ? (
-            <div className="h-11 w-40 bg-white/20 rounded-xl animate-pulse mt-2 mb-4" />
-          ) : (
-            <AmountDisplay
-              amount={cashIn}
-              size="hero"
-              align="left"
-              hidden={balanceHidden}
-              className="mt-1.5 mb-4 text-white"
-            />
+          {/* Sales ⇄ Wallet toggle */}
+          {walletEnabled && (
+            <div className="inline-flex items-center gap-1 p-0.5 mb-3 rounded-full bg-white/10">
+              <button onClick={() => pickHero("sales")}
+                className={`px-3 py-1 rounded-full text-[11px] font-bold transition-colors ${!showWallet ? "bg-white text-slate-900" : "text-white/70"}`}>
+                Sales
+              </button>
+              <button onClick={() => pickHero("wallet")}
+                className={`px-3 py-1 rounded-full text-[11px] font-bold transition-colors ${showWallet ? "bg-white text-slate-900" : "text-white/70"}`}>
+                Wallet{walletTestMode ? " · TEST" : ""}
+              </button>
+            </div>
           )}
 
-          {/* Compact in/out line — brand-green in, white/70 out, txn count chip */}
-          {loading ? (
-            <div className="h-4 w-40 bg-white/20 rounded animate-pulse" />
-          ) : (
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-[11px] font-bold" style={{ color: "var(--brand-green)" }}>↑</span>
-              <AmountDisplay
-                amount={cashIn}
-                size="small"
-                align="left"
-                hidden={balanceHidden}
-                style={{ color: "var(--brand-green)", maxWidth: 84 }}
-              />
-              <span className="text-white/50 text-[10px]">in</span>
-              <span className="text-white/30 text-[10px] mx-0.5">·</span>
-              <span className="text-white/70 text-[11px] font-bold">↓</span>
-              <AmountDisplay
-                amount={cashOut}
-                size="small"
-                align="left"
-                hidden={balanceHidden}
-                style={{ color: "rgba(255,255,255,0.7)", maxWidth: 84 }}
-              />
-              <span className="text-white/50 text-[10px]">out</span>
-              {todayTx.length > 0 && (
-                <span className="text-[10px] text-white/40 ml-1">· {todayTx.length} txn{todayTx.length !== 1 ? "s" : ""}</span>
+          {showWallet ? (
+            /* ── WALLET BALANCE ── */
+            <button type="button" onClick={() => setTab("wallet")} className="block w-full text-left active:opacity-80 transition-opacity">
+              <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest">WALLET BALANCE</p>
+              {wallet.loading ? (
+                <div className="h-11 w-40 bg-white/20 rounded-xl animate-pulse mt-2 mb-4" />
+              ) : (
+                <AmountDisplay amount={wallet.balanceKobo} fromKobo size="hero" align="left"
+                  hidden={balanceHidden} className="mt-1.5 mb-4 text-white" />
               )}
-            </div>
+              <div className="flex items-center gap-1.5 text-[11px] text-white/70">
+                {!wallet.hasAccount
+                  ? <span className="font-semibold text-white/90">Tap to activate your wallet →</span>
+                  : <>
+                      <span>•••• {String(wallet.wallet?.flw_account_number || "").slice(-4)}</span>
+                      <span className="text-white/30 mx-0.5">·</span>
+                      <span className="font-semibold text-white/90">Fund or withdraw →</span>
+                    </>}
+              </div>
+            </button>
+          ) : (
+            <>
+              {/* TODAY'S SALES — total inflows for the day */}
+              <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest">TODAY'S SALES</p>
+              {loading ? (
+                <div className="h-11 w-40 bg-white/20 rounded-xl animate-pulse mt-2 mb-4" />
+              ) : (
+                <AmountDisplay
+                  amount={cashIn}
+                  size="hero"
+                  align="left"
+                  hidden={balanceHidden}
+                  className="mt-1.5 mb-4 text-white"
+                />
+              )}
+
+              {/* Compact in/out line — brand-green in, white/70 out, txn count chip */}
+              {loading ? (
+                <div className="h-4 w-40 bg-white/20 rounded animate-pulse" />
+              ) : (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[11px] font-bold" style={{ color: "var(--brand-green)" }}>↑</span>
+                  <AmountDisplay
+                    amount={cashIn}
+                    size="small"
+                    align="left"
+                    hidden={balanceHidden}
+                    style={{ color: "var(--brand-green)", maxWidth: 84 }}
+                  />
+                  <span className="text-white/50 text-[10px]">in</span>
+                  <span className="text-white/30 text-[10px] mx-0.5">·</span>
+                  <span className="text-white/70 text-[11px] font-bold">↓</span>
+                  <AmountDisplay
+                    amount={cashOut}
+                    size="small"
+                    align="left"
+                    hidden={balanceHidden}
+                    style={{ color: "rgba(255,255,255,0.7)", maxWidth: 84 }}
+                  />
+                  <span className="text-white/50 text-[10px]">out</span>
+                  {todayTx.length > 0 && (
+                    <span className="text-[10px] text-white/40 ml-1">· {todayTx.length} txn{todayTx.length !== 1 ? "s" : ""}</span>
+                  )}
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
