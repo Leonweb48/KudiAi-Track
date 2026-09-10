@@ -25,6 +25,7 @@ import TransactionDetailModal from "../components/shared/TransactionDetailModal"
 import { buildTransactionReceipt } from "../utils/receiptConfig";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
 import { useWallet } from "../hooks/useWallet";
+import { FundSheet, WithdrawSheet, WalletTxRow } from "../components/WalletPanel";
 
 function greetingKey() {
   const h = new Date().getHours();
@@ -121,10 +122,11 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
   const [showCompleteFlow,   setShowCompleteFlow]   = useState(false);
 
   // ── Hero card: flip between Today's Sales and the wallet balance ──────────
-  const { walletEnabled, walletTestMode } = usePlatformConfig();
+  const { walletEnabled, walletTestMode, walletMaxWithdrawalKobo } = usePlatformConfig();
   const wallet = useWallet(profile?.id || null, walletEnabled);
   const [heroView, setHeroView] = useState(() =>
     localStorage.getItem("kt_home_hero") === "wallet" ? "wallet" : "sales");
+  const [walletSheet, setWalletSheet] = useState(null);   // "fund" | "withdraw" | null
   const showWallet = walletEnabled && heroView === "wallet";
   const pickHero = (v) => { try { localStorage.setItem("kt_home_hero", v); } catch {} setHeroView(v); };
 
@@ -253,24 +255,48 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
 
           {showWallet ? (
             /* ── WALLET BALANCE ── */
-            <button type="button" onClick={() => setTab("wallet")} className="block w-full text-left active:opacity-80 transition-opacity">
-              <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest">WALLET BALANCE</p>
-              {wallet.loading ? (
-                <div className="h-11 w-40 bg-white/20 rounded-xl animate-pulse mt-2 mb-4" />
-              ) : (
-                <AmountDisplay amount={wallet.balanceKobo} fromKobo size="hero" align="left"
-                  hidden={balanceHidden} className="mt-1.5 mb-4 text-white" />
-              )}
-              <div className="flex items-center gap-1.5 text-[11px] text-white/70">
-                {!wallet.hasAccount
-                  ? <span className="font-semibold text-white/90">Tap to activate your wallet →</span>
-                  : <>
-                      <span>•••• {String(wallet.wallet?.flw_account_number || "").slice(-4)}</span>
-                      <span className="text-white/30 mx-0.5">·</span>
-                      <span className="font-semibold text-white/90">Fund or withdraw →</span>
-                    </>}
+            <div>
+              <button type="button" onClick={() => setTab("wallet")} className="block w-full text-left active:opacity-80 transition-opacity">
+                <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest">WALLET BALANCE</p>
+                {wallet.loading ? (
+                  <div className="h-11 w-40 bg-white/20 rounded-xl animate-pulse mt-2 mb-3" />
+                ) : (
+                  <AmountDisplay amount={wallet.balanceKobo} fromKobo size="hero" align="left"
+                    hidden={balanceHidden} className="mt-1.5 mb-3 text-white" />
+                )}
+                {wallet.hasAccount && (
+                  <div className="inline-flex items-center gap-1.5 bg-white/10 rounded-lg px-2 py-1 text-[11px] text-white/80">
+                    <span className="font-semibold tracking-wide">{wallet.wallet.flw_account_number}</span>
+                    <span className="text-white/40">·</span>
+                    <span>{wallet.wallet.flw_account_bank}</span>
+                  </div>
+                )}
+              </button>
+              {/* mini actions */}
+              <div className="flex items-center gap-2 mt-3">
+                {!wallet.hasAccount ? (
+                  <button onClick={() => wallet.provisionAccount()} disabled={wallet.busy}
+                    className="flex-1 bg-white text-slate-900 text-[12px] font-bold rounded-xl py-2.5 disabled:opacity-50">
+                    {wallet.busy ? "Activating…" : "Activate wallet"}
+                  </button>
+                ) : (
+                  <>
+                    <button onClick={() => setWalletSheet("fund")}
+                      className="flex-1 bg-white/15 active:bg-white/25 rounded-xl py-2 flex flex-col items-center gap-0.5 transition-colors">
+                      <Svg d={P.in} size={14} color="white" /><span className="text-[10px] font-semibold text-white/90">Add money</span>
+                    </button>
+                    <button onClick={() => setWalletSheet("withdraw")}
+                      className="flex-1 bg-white/15 active:bg-white/25 rounded-xl py-2 flex flex-col items-center gap-0.5 transition-colors">
+                      <Svg d={P.out} size={14} color="white" /><span className="text-[10px] font-semibold text-white/90">Withdraw</span>
+                    </button>
+                    <button onClick={() => setTab("bills")}
+                      className="flex-1 bg-white/15 active:bg-white/25 rounded-xl py-2 flex flex-col items-center gap-0.5 transition-colors">
+                      <Svg d={P.invoice} size={14} color="white" /><span className="text-[10px] font-semibold text-white/90">Pay bills</span>
+                    </button>
+                  </>
+                )}
               </div>
-            </button>
+            </div>
           ) : (
             <>
               {/* TODAY'S SALES — total inflows for the day */}
@@ -321,8 +347,25 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
         </div>
       </div>
 
+      {/* ── Wallet activity (dashboard wallet view) ─────────────── */}
+      {showWallet && wallet.hasAccount && (
+        <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-card border border-slate-100 dark:border-slate-700/50">
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Recent activity</p>
+            <button onClick={() => setTab("wallet")} className="text-[11px] font-bold text-brand-600 dark:text-brand-400">See all →</button>
+          </div>
+          {wallet.ledger.length === 0 ? (
+            <p className="text-[12px] text-slate-400 py-4 text-center">No wallet activity yet.</p>
+          ) : (
+            <div className="divide-y divide-slate-100 dark:divide-slate-800">
+              {wallet.ledger.slice(0, 4).map(row => <WalletTxRow key={row.id} row={row} hidden={balanceHidden} />)}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── Today's Profit / Deficit card ───────────────────────── */}
-      {!loading && (
+      {!showWallet && !loading && (
         <div className={`rounded-2xl px-4 py-3.5 flex items-center justify-between shadow-card border ${
           profit > 0
             ? "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-100 dark:border-emerald-800/40"
@@ -359,12 +402,12 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
           </div>
         </div>
       )}
-      {loading && (
+      {!showWallet && loading && (
         <div className="h-[62px] rounded-2xl bg-slate-100 dark:bg-slate-800 animate-pulse" />
       )}
 
       {/* ── Ajo chip — today's collections (separate from profit) ─── */}
-      {todayAjo > 0 && (
+      {!showWallet && todayAjo > 0 && (
         <div className="flex justify-center">
           <div className="inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-[11px] font-bold border bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-400 border-violet-100 dark:border-violet-800/40">
             <span>Ajo</span>
@@ -375,7 +418,7 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
       )}
 
       {/* ── Stat strip — 3 fixed cards (hostile-data certified at 320px) ── */}
-      {loading ? (
+      {!showWallet && (loading ? (
         <div className="grid grid-cols-3 gap-2">
           {[1, 2, 3].map(i => (
             <div key={i} className="h-[68px] bg-white dark:bg-slate-800 rounded-2xl animate-pulse border border-slate-100 dark:border-slate-700/50" />
@@ -430,7 +473,7 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
           </button>
 
         </div>
-      )}
+      ))}
 
       {/* ── Quick Actions + Services (single card) ────────────────── */}
       <div className="bg-white dark:bg-slate-800 rounded-3xl p-4 shadow-card border border-slate-100 dark:border-slate-700/50">
@@ -642,6 +685,15 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
 
       {showCompleteFlow && (
         <ProfileCompleteFlow store={store} onClose={() => setShowCompleteFlow(false)} />
+      )}
+
+      {walletEnabled && (
+        <>
+          <FundSheet open={walletSheet === "fund"} onClose={() => setWalletSheet(null)}
+            wallet={wallet.wallet} testMode={walletTestMode} api={wallet} />
+          <WithdrawSheet open={walletSheet === "withdraw"} onClose={() => setWalletSheet(null)}
+            balanceKobo={wallet.balanceKobo} maxKobo={walletMaxWithdrawalKobo} api={wallet} onSubmitted={wallet.refresh} />
+        </>
       )}
     </div>
   );

@@ -1,153 +1,28 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import Icon from "../components/Icon";
-import Modal from "../components/shared/Modal";
 import AmountDisplay from "../components/shared/AmountDisplay";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
 import { useWallet } from "../hooks/useWallet";
-import { fmt, fmtDateTime } from "../utils/helpers";
-
-const SOURCE_LABEL = {
-  topup:                "Top-up",
-  bill_spend:           "Bill payment",
-  bill_reversal:        "Bill refund",
-  withdrawal:           "Withdrawal",
-  withdrawal_reversal:  "Withdrawal refund",
-  adjustment:           "Adjustment",
-};
-
-function LedgerRow({ row }) {
-  const credit = row.direction === "credit";
-  const pending = row.status === "pending";
-  const reversed = row.status === "reversed";
-  return (
-    <div className="flex items-center gap-3 py-3 border-b border-slate-100 dark:border-slate-800 last:border-0">
-      <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${
-        credit ? "bg-green-100 dark:bg-green-900/30" : "bg-slate-100 dark:bg-slate-800"}`}>
-        <Icon name={credit ? "download" : "arrow"} size={16}
-          className={credit ? "text-green-600 dark:text-green-400" : "text-slate-500 dark:text-slate-400"} />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
-          {SOURCE_LABEL[row.source] || row.source}
-          {row.narration ? <span className="font-normal text-slate-400"> · {row.narration}</span> : null}
-        </p>
-        <p className="text-[11px] text-slate-400">{fmtDateTime(row.created_at)}</p>
-      </div>
-      <div className="text-right flex-shrink-0">
-        <p className={`text-sm font-bold ${credit ? "text-green-600 dark:text-green-400" : "text-slate-700 dark:text-slate-200"} ${reversed ? "line-through opacity-60" : ""}`}>
-          {credit ? "+" : "−"}{fmt(row.amount_kobo / 100)}
-        </p>
-        {pending  && <p className="text-[10px] font-semibold text-amber-500">Pending</p>}
-        {reversed && <p className="text-[10px] font-semibold text-slate-400">Reversed</p>}
-      </div>
-    </div>
-  );
-}
-
-function WithdrawModal({ onClose, balanceKobo, maxKobo, api, onSubmitted }) {
-  const [step, setStep] = useState("form");           // form | done
-  const [amount, setAmount] = useState("");
-  const [banks, setBanks] = useState([]);
-  const [bankCode, setBankCode] = useState("");
-  const [acctNo, setAcctNo] = useState("");
-  const [acctName, setAcctName] = useState("");
-  const [resolving, setResolving] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState("");
-
-  useEffect(() => { api.listBanks().then(d => setBanks(d?.banks || [])).catch(() => {}); }, []); // eslint-disable-line
-
-  const resolve = useCallback(async () => {
-    setAcctName(""); setErr("");
-    if (!bankCode || acctNo.replace(/\D/g, "").length < 10) return;
-    setResolving(true);
-    try {
-      const d = await api.resolveAccount(bankCode, acctNo.trim());
-      setAcctName(d?.account_name || "");
-      if (!d?.account_name) setErr("Could not verify that account");
-    } catch (e) { setErr(e.message); } finally { setResolving(false); }
-  }, [api, bankCode, acctNo]);
-
-  const kobo = Math.round((parseFloat(amount) || 0) * 100);
-  const canSubmit = kobo >= 10000 && kobo <= Math.min(balanceKobo, maxKobo) && bankCode && acctName && !busy;
-
-  const submit = async () => {
-    setErr(""); setBusy(true);
-    try {
-      await api.submitWithdrawal(kobo, bankCode, acctNo.trim());
-      setStep("done");
-      onSubmitted?.();
-    } catch (e) { setErr(e.message || "Could not submit"); } finally { setBusy(false); }
-  };
-
-  return (
-    <Modal title={step === "done" ? "Withdrawal submitted" : "Withdraw to bank"} onClose={onClose}>
-      {step === "done" ? (
-        <div className="text-center py-4">
-          <div className="w-14 h-14 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center mx-auto mb-3">
-            <Icon name="lock" size={24} className="text-amber-500" />
-          </div>
-          <p className="text-sm text-slate-600 dark:text-slate-300">
-            Your withdrawal of <b>{fmt(kobo / 100)}</b> is awaiting admin approval. The funds are
-            held and will be sent to <b>{acctName}</b> once approved — or returned to your wallet if declined.
-          </p>
-          <button onClick={onClose} className="mt-4 w-full bg-brand-600 text-white font-semibold rounded-xl py-3">Done</button>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          <div>
-            <label className="text-xs text-slate-400">Amount</label>
-            <input inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value.replace(/[^\d.]/g, ""))}
-              placeholder="0" className="w-full mt-1 px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100" />
-            <p className="text-[11px] text-slate-400 mt-1">
-              Balance {fmt(balanceKobo / 100)} · max {fmt(Math.min(balanceKobo, maxKobo) / 100)} per withdrawal
-            </p>
-          </div>
-          <div>
-            <label className="text-xs text-slate-400">Bank</label>
-            <select value={bankCode} onChange={e => { setBankCode(e.target.value); setAcctName(""); }}
-              className="w-full mt-1 px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100">
-              <option value="">Select bank…</option>
-              {banks.map(b => <option key={b.id || b.code} value={b.code}>{b.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="text-xs text-slate-400">Account number</label>
-            <input inputMode="numeric" value={acctNo} onBlur={resolve}
-              onChange={e => { setAcctNo(e.target.value.replace(/\D/g, "").slice(0, 10)); setAcctName(""); }}
-              placeholder="0123456789" className="w-full mt-1 px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100" />
-            {resolving && <p className="text-[11px] text-slate-400 mt-1">Checking account…</p>}
-            {acctName && <p className="text-[12px] font-semibold text-green-600 dark:text-green-400 mt-1">{acctName}</p>}
-          </div>
-          {err && <p className="text-[12px] text-red-500">{err}</p>}
-          <button onClick={submit} disabled={!canSubmit}
-            className="w-full bg-brand-600 disabled:opacity-40 text-white font-semibold rounded-xl py-3">
-            {busy ? "Submitting…" : "Submit withdrawal"}
-          </button>
-        </div>
-      )}
-    </Modal>
-  );
-}
+import {
+  ActionButton, WalletTxRow, FundSheet, WithdrawSheet,
+} from "../components/WalletPanel";
 
 export default function Wallet({ session }) {
   const userId = session?.user?.id || null;
+  const navigate = useNavigate();
   const { walletEnabled, walletTestMode, walletMaxWithdrawalKobo, configLoading } = usePlatformConfig();
   const w = useWallet(userId, walletEnabled);
+  const [hidden, setHidden] = useState(() => sessionStorage.getItem("kt_balance_hidden") === "1");
+  const [sheet, setSheet] = useState(null);   // "fund" | "withdraw" | null
   const [err, setErr] = useState("");
-  const [copied, setCopied] = useState(false);
-  const [showWithdraw, setShowWithdraw] = useState(false);
 
-  const doProvision = async () => {
+  const toggleHidden = () => {
+    const n = !hidden; sessionStorage.setItem("kt_balance_hidden", n ? "1" : "0"); setHidden(n);
+  };
+  const activate = async () => {
     setErr("");
     try { await w.provisionAccount(); } catch (e) { setErr(e.message || "Could not activate wallet"); }
-  };
-  const doSimulate = async () => {
-    setErr("");
-    try { await w.simulateTopup(2000); } catch (e) { setErr(e.message || "Simulation failed"); }
-  };
-  const copy = () => {
-    try { navigator.clipboard.writeText(w.wallet?.flw_account_number || ""); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch {}
   };
 
   if (configLoading || w.loading) {
@@ -155,7 +30,7 @@ export default function Wallet({ session }) {
   }
   if (!walletEnabled) {
     return (
-      <div className="p-6 text-center">
+      <div className="p-8 text-center">
         <Icon name="wallet" size={40} className="mx-auto text-slate-300 dark:text-slate-600 mb-3" />
         <p className="text-sm text-slate-500 dark:text-slate-400">The wallet isn't available yet.</p>
       </div>
@@ -163,90 +38,89 @@ export default function Wallet({ session }) {
   }
 
   return (
-    <div className="p-4 pb-24 space-y-4">
-      <div className="flex items-center gap-2">
-        <Icon name="wallet" size={22} className="text-brand-600 dark:text-brand-400" />
-        <h1 className="text-lg font-bold text-slate-800 dark:text-slate-100">Wallet</h1>
-      </div>
-
-      {walletTestMode && (
-        <div className="rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-3 py-2.5">
-          <p className="text-[12px] font-semibold text-amber-700 dark:text-amber-400">⚠️ Test mode</p>
-          <p className="text-[11px] text-amber-600 dark:text-amber-300/90 mt-0.5">
-            This wallet is connected to a test system. <b>Do not transfer real money</b> to the account
-            number below — a real transfer will bounce.
-          </p>
-        </div>
-      )}
-
-      {/* Balance */}
-      <div className="rounded-2xl bg-gradient-to-br from-brand-600 to-brand-800 text-white p-5 shadow-lg">
-        <p className="text-[11px] uppercase tracking-widest text-white/60">Wallet balance</p>
-        <AmountDisplay amount={w.balanceKobo} fromKobo size="hero" className="text-white mt-1" />
-        {w.hasAccount && (
-          <button onClick={() => setShowWithdraw(true)}
-            className="mt-3 text-[12px] font-semibold bg-white/15 hover:bg-white/25 rounded-lg px-3 py-1.5 transition-colors">
-            Withdraw to bank
-          </button>
+    <div className="pb-24">
+      {/* ── header ── */}
+      <div className="flex items-center gap-3 px-4 pt-3 pb-2">
+        <button onClick={() => navigate(-1)} className="w-9 h-9 -ml-1 flex items-center justify-center rounded-full active:bg-slate-100 dark:active:bg-slate-800">
+          <Icon name="chevron-left" size={20} className="text-slate-600 dark:text-slate-300" />
+        </button>
+        <h1 className="text-[17px] font-bold text-slate-800 dark:text-slate-100">Wallet</h1>
+        {walletTestMode && (
+          <span className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400">TEST MODE</span>
         )}
       </div>
 
-      {err && <p className="text-[12px] text-red-500">{err}</p>}
-
-      {/* Fund / account details */}
-      {!w.hasAccount ? (
-        <div className="rounded-2xl bg-white dark:bg-slate-800 shadow-sm p-4 text-center">
-          <p className="text-sm text-slate-600 dark:text-slate-300 mb-3">
-            Activate your wallet to get a dedicated account number for funding.
-          </p>
-          <button onClick={doProvision} disabled={w.busy}
-            className="w-full bg-brand-600 disabled:opacity-40 text-white font-semibold rounded-xl py-3">
-            {w.busy ? "Activating…" : "Activate wallet"}
-          </button>
-        </div>
-      ) : (
-        <div className="rounded-2xl bg-white dark:bg-slate-800 shadow-sm p-4 space-y-2">
-          <p className="text-[11px] uppercase tracking-widest text-slate-400">Fund your wallet</p>
-          <p className="text-[12px] text-slate-500 dark:text-slate-400">
-            Transfer to this account — it credits your wallet automatically.
-          </p>
-          <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-900 rounded-xl px-3 py-2.5">
-            <div>
-              <p className="text-lg font-extrabold tracking-wide text-slate-800 dark:text-slate-100">{w.wallet.flw_account_number}</p>
-              <p className="text-[11px] text-slate-400">{w.wallet.flw_account_bank} · {w.wallet.flw_account_name}</p>
+      <div className="px-4 space-y-4">
+        {/* ── balance card ── */}
+        <div className="rounded-3xl p-5 text-white relative overflow-hidden shadow-hero"
+          style={{ background: "linear-gradient(145deg,var(--navy) 0%,var(--navy-mid) 55%,var(--navy-dark) 100%)" }}>
+          <div className="absolute -top-10 -right-10 w-36 h-36 rounded-full bg-white/5" />
+          <div className="absolute -bottom-12 -left-8 w-44 h-44 rounded-full bg-white/5" />
+          <div className="relative">
+            <div className="flex items-center justify-between">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-white/60">Wallet balance</p>
+              <button onClick={toggleHidden} className="w-8 h-8 -mr-1 flex items-center justify-center rounded-lg bg-white/10 active:bg-white/20">
+                <Icon name="eye" size={13} className="text-white" />
+              </button>
             </div>
-            <button onClick={copy} className="text-[12px] font-semibold text-brand-600 dark:text-brand-400">
-              {copied ? "Copied" : "Copy"}
+            <AmountDisplay amount={w.balanceKobo} fromKobo size="hero" align="left" hidden={hidden} className="mt-1.5 text-white" />
+            {w.hasAccount && (
+              <div className="mt-3 inline-flex items-center gap-2 bg-white/10 rounded-lg px-2.5 py-1.5">
+                <span className="text-[12px] font-semibold tracking-wide">{w.wallet.flw_account_number}</span>
+                <span className="text-white/40 text-[11px]">·</span>
+                <span className="text-[11px] text-white/70">{w.wallet.flw_account_bank}</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {err && <p className="text-[12px] text-red-500">{err}</p>}
+
+        {/* ── not activated ── */}
+        {!w.hasAccount ? (
+          <div className="rounded-2xl bg-white dark:bg-slate-800 shadow-card border border-slate-100 dark:border-slate-700/50 p-5 text-center">
+            <div className="w-12 h-12 rounded-full bg-brand-50 dark:bg-brand-900/25 flex items-center justify-center mx-auto mb-3">
+              <Icon name="wallet" size={22} className="text-brand-600 dark:text-brand-400" />
+            </div>
+            <p className="text-[14px] font-semibold text-slate-800 dark:text-slate-100 mb-1">Activate your wallet</p>
+            <p className="text-[12px] text-slate-500 dark:text-slate-400 mb-4">
+              Get a dedicated account number. Fund it once, then pay bills with no card fees.
+            </p>
+            <button onClick={activate} disabled={w.busy}
+              className="w-full bg-brand-600 disabled:opacity-40 text-white font-bold rounded-xl py-3.5">
+              {w.busy ? "Activating…" : "Activate wallet"}
             </button>
           </div>
-          {walletTestMode && (
-            <button onClick={doSimulate} disabled={w.busy}
-              className="w-full mt-1 text-[12px] font-semibold border border-dashed border-brand-300 dark:border-brand-700 text-brand-600 dark:text-brand-400 rounded-xl py-2.5 disabled:opacity-40">
-              {w.busy ? "Simulating…" : "Simulate a ₦2,000 top-up"}
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Ledger */}
-      <div className="rounded-2xl bg-white dark:bg-slate-800 shadow-sm p-4">
-        <p className="text-[11px] uppercase tracking-widest text-slate-400 mb-1">Activity</p>
-        {w.ledger.length === 0 ? (
-          <p className="text-[13px] text-slate-400 py-4 text-center">No wallet activity yet.</p>
         ) : (
-          w.ledger.map(row => <LedgerRow key={row.id} row={row} />)
+          <>
+            {/* ── quick actions ── */}
+            <div className="rounded-2xl bg-white dark:bg-slate-800 shadow-card border border-slate-100 dark:border-slate-700/50 p-4">
+              <div className="flex items-start gap-2">
+                <ActionButton icon="plus"        label="Add money" onClick={() => setSheet("fund")} />
+                <ActionButton icon="bank"        label="Withdraw"  onClick={() => setSheet("withdraw")} />
+                <ActionButton icon="bills"       label="Pay bills" onClick={() => navigate("/bills")} tone="slate" />
+              </div>
+            </div>
+
+            {/* ── transactions ── */}
+            <div className="rounded-2xl bg-white dark:bg-slate-800 shadow-card border border-slate-100 dark:border-slate-700/50 p-4">
+              <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-1">Transactions</p>
+              {w.ledger.length === 0 ? (
+                <p className="text-[13px] text-slate-400 py-6 text-center">No wallet activity yet.</p>
+              ) : (
+                <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {w.ledger.map(row => <WalletTxRow key={row.id} row={row} hidden={hidden} />)}
+                </div>
+              )}
+            </div>
+          </>
         )}
       </div>
 
-      {showWithdraw && (
-        <WithdrawModal
-          onClose={() => setShowWithdraw(false)}
-          balanceKobo={w.balanceKobo}
-          maxKobo={walletMaxWithdrawalKobo}
-          api={w}
-          onSubmitted={w.refresh}
-        />
-      )}
+      <FundSheet open={sheet === "fund"} onClose={() => setSheet(null)}
+        wallet={w.wallet} testMode={walletTestMode} api={w} />
+      <WithdrawSheet open={sheet === "withdraw"} onClose={() => setSheet(null)}
+        balanceKobo={w.balanceKobo} maxKobo={walletMaxWithdrawalKobo} api={w} onSubmitted={w.refresh} />
     </div>
   );
 }
