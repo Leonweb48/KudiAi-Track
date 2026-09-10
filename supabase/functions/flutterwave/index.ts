@@ -219,14 +219,26 @@ serve(async (req) => {
       if (!va.ok) {
         const msg = String((va.data as any)?.error?.message || "").toLowerCase();
         const vErrs = (va.data as any)?.error?.validation_errors || [];
-        const bvnBad = /bvn|nin|identity|verif/.test(msg) || vErrs.some((e: any) => /bvn|nin/i.test(e?.field_name || ""));
+        const bvnBad = /bvn|nin|identity|verif|date of birth|name mismatch/.test(msg)
+          || vErrs.some((e: any) => /bvn|nin/i.test(e?.field_name || ""));
+        const acctHold = /under review|irregular|contact support|not enabled|not permitted|compliance|restricted/.test(msg);
+        if (acctHold) {
+          await sb.from("admin_notifications").insert({
+            type: "error", category: "finance", target_roles: ["finance_admin", "super_admin"],
+            title: "Wallet activation blocked by Flutterwave",
+            message: `Flutterwave rejected virtual-account creation: "${(va.data as any)?.error?.message}". The wallet product may not be enabled or the account is under review — contact Flutterwave support.`,
+            metadata: { detail: va.data },
+          }).catch(() => {});
+        }
         return json({
           error: bvnBad
-            ? "Your BVN could not be verified. Check the number and that the name/date of birth on your BVN match your profile."
-            : "Could not create your wallet account. Please try again shortly.",
-          code: bvnBad ? "bvn_invalid" : "va_failed",
+            ? "Your BVN could not be verified. Check the number and that the name and date of birth on it match your profile."
+            : acctHold
+              ? "Wallet activation is temporarily unavailable. Our team has been notified — please try again later."
+              : "Could not create your wallet account. Please try again shortly.",
+          code: bvnBad ? "bvn_invalid" : acctHold ? "account_hold" : "va_failed",
           detail: va.data,
-        }, bvnBad ? 422 : 502);
+        }, bvnBad ? 422 : acctHold ? 503 : 502);
       }
       const v = (va.data as any)?.data || {};
 
