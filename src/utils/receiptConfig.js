@@ -17,7 +17,9 @@ export function formatReceiptDateTime(dt) {
   } catch { return String(dt); }
 }
 
-export function receiptFilenames(id, createdAt) {
+// Filenames are `<title>_<ref>_<YYYYMMDD-HHMM>.<ext>` e.g.
+//   airtime-top-up_KT260910143012ABC_20260910-1430.pdf
+export function receiptFilenames(id, createdAt, title) {
   const d = createdAt ? new Date(createdAt) : new Date();
   const pad = n => String(n).padStart(2, '0');
   const yy  = String(d.getFullYear()).slice(2);
@@ -28,7 +30,10 @@ export function receiptFilenames(id, createdAt) {
   const ss  = pad(d.getSeconds());
   const suffix = String(id || '').replace(/-/g, '').slice(0, 3).toUpperCase() || '000';
   const ref = `KT${yy}${mm}${dd}${hh}${mi}${ss}${suffix}`;
-  return { ref, image: `receipt_${ref}.png`, pdf: `receipt_${ref}.pdf` };
+  const slug = String(title || 'receipt')
+    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 28) || 'receipt';
+  const base = `${slug}_${ref}_${d.getFullYear()}${mm}${dd}-${hh}${mi}`;
+  return { ref, image: `${base}.png`, pdf: `${base}.pdf` };
 }
 
 // Locale-independent: always produces ₦15,000.00 regardless of WebView locale.
@@ -48,7 +53,6 @@ export function buildTransactionReceipt(txn, profile) {
   const status =
     txn._pending         ? 'pending' :
     txn.bill_status === 'failed' ? 'failed' : 'success';
-  const { ref, image, pdf } = receiptFilenames(txn.id, txn.created_at || txn.transaction_date);
 
   const isMulti = Array.isArray(txn.line_items) && txn.line_items.length > 1;
   const liFields = isMulti
@@ -60,6 +64,7 @@ export function buildTransactionReceipt(txn, profile) {
   const title = isMulti
     ? `${txn.line_items.length} items`
     : txn.item_name || humanize(txn.category) || (isIn ? 'Payment Received' : 'Payment Made');
+  const { ref, image, pdf } = receiptFilenames(txn.id, txn.created_at || txn.transaction_date, title);
 
   return {
     title,
@@ -149,7 +154,7 @@ export function buildAsoContributionReceipt(contribution, clientName, businessNa
 // ── Ajo withdrawal request (from AjoMemberPortal screen) ─────────────────────
 export function buildAjoWithdrawalReceipt(req, clientName, businessName) {
   const statusMap = { pending: 'pending', approved: 'success', rejected: 'failed' };
-  const { ref, image, pdf } = receiptFilenames(req.id, req.requested_at);
+  const { ref, image, pdf } = receiptFilenames(req.id, req.requested_at, 'Withdrawal Request');
   const destination = req.group_name
     ? `From: Released group funds — ${req.group_name}`
     : `From: Personal Savings${req.cycle_label ? ` — ${req.cycle_label}` : ''}`;
@@ -180,7 +185,7 @@ export function buildAjoWithdrawalReceipt(req, clientName, businessName) {
 
 // ── Debt repayment (from Credit screen) ────────────────────────────────────
 export function buildCreditPaymentReceipt(payment, credit, businessName) {
-  const { ref, image, pdf } = receiptFilenames(payment.id, payment.created_at || payment.payment_date);
+  const { ref, image, pdf } = receiptFilenames(payment.id, payment.created_at || payment.payment_date, 'Debt Repayment');
   const remaining = (credit?.outstanding != null && payment.amount != null)
     ? credit.outstanding - payment.amount : null;
 
@@ -239,7 +244,7 @@ export function buildCoopSavingsReceipt(record, memberName, orgName) {
 // ── Coop withdrawal request (from CoopMemberPortal) ──────────────────────────
 export function buildCoopWithdrawalRequestReceipt(request, memberName, orgName) {
   const statusMap = { pending: 'pending', approved: 'success', rejected: 'failed' };
-  const { ref, image, pdf } = receiptFilenames(request.id, request.created_at);
+  const { ref, image, pdf } = receiptFilenames(request.id, request.created_at, 'Withdrawal Request');
 
   return {
     title:     'Withdrawal Request',
@@ -319,8 +324,8 @@ const BILL_CAT_LABELS = {
 };
 export function buildBillReceipt(bill) {
   const businessName = bill.businessName || 'My Business';
-  const { ref, image, pdf } = receiptFilenames(bill.id, bill.created_at || bill.transaction_date);
   const title = BILL_CAT_LABELS[bill.category] || humanize(bill.category) || 'Bill Payment';
+  const { ref, image, pdf } = receiptFilenames(bill.id, bill.created_at || bill.transaction_date, title);
 
   const fields = [
     { label: 'Transaction Type', value: title },
@@ -413,7 +418,7 @@ export function buildCreditStatementReceipt(credit, businessName) {
 
 // ── Ajo/Aso client savings statement (from Aso screen — tap "Statement" on a client) ──
 export function buildAsoClientReceipt(client, businessName) {
-  const { ref, image, pdf } = receiptFilenames(client.id, client.joined_at || client.created_at);
+  const { ref, image, pdf } = receiptFilenames(client.id, client.joined_at || client.created_at, 'Ajo Member Statement');
 
   return {
     title:     'Ajo Member Statement',
@@ -450,7 +455,7 @@ export function buildAsoClientReceipt(client, businessName) {
 
 // ── Coop/Org loan repayment (from CoopDashboard & CoopMemberPortal LoansTab) ──
 export function buildCoopLoanRepaymentReceipt(repayment, loan, memberName, orgName) {
-  const { ref, image, pdf } = receiptFilenames(repayment.id, repayment.created_at);
+  const { ref, image, pdf } = receiptFilenames(repayment.id, repayment.created_at, 'Loan Repayment');
   return {
     title:     'Loan Repayment',
     direction: 'in',
@@ -474,5 +479,49 @@ export function buildCoopLoanRepaymentReceipt(repayment, loan, memberName, orgNa
     filenames:     { image, pdf },
     processorName: null,
     iconType:      'savings',
+  };
+}
+
+// ── Wallet ledger entry (from the Wallet screen — tap a transaction) ─────────
+const WALLET_TITLES = {
+  topup:               'Wallet Funding',
+  sale:                'Payment Received',
+  bill_spend:          'Bill Payment',
+  bill_reversal:       'Bill Refund',
+  withdrawal:          'Transfer',
+  withdrawal_reversal: 'Transfer Refund',
+  adjustment:          'Wallet Adjustment',
+};
+export function buildWalletReceipt(row, ctx = {}) {
+  const credit = row.direction === 'credit';
+  const title  = WALLET_TITLES[row.source] || humanize(row.source);
+  const status = row.status === 'pending' ? 'pending'
+               : row.status === 'reversed' || row.status === 'failed' ? 'failed'
+               : 'success';
+  const { ref, image, pdf } = receiptFilenames(row.id, row.created_at, title);
+
+  return {
+    title,
+    direction: credit ? 'in' : 'out',
+    status,
+    amount:    (row.amount_kobo || 0) / 100,
+    datetime:  formatReceiptDateTime(row.created_at),
+    fields: [
+      { label: 'Transaction Type', value: title },
+      { label: credit ? 'Money in' : 'Money out', value: fmtAmt((row.amount_kobo || 0) / 100) },
+      row.narration       && { label: 'Details',        value: row.narration },
+      row.balance_after_kobo != null && { label: 'Wallet balance', value: fmtAmt(row.balance_after_kobo / 100) },
+      ctx.accountNumber   && { label: 'Wallet account', value: `${ctx.accountNumber}${ctx.bankName ? ` · ${ctx.bankName}` : ''}` },
+      row.flw_reference   && { label: 'Provider Ref.',  value: row.flw_reference, copy: true },
+      { label: 'Status',    value: humanize(row.status) },
+      { label: 'Reference', value: ref, copy: true },
+    ].filter(Boolean),
+    businessName:  ctx.businessName || 'My Business',
+    issuedBy:      ctx.businessName || 'KudiAI Track',
+    fees:          0,
+    receiptRef:    ref,
+    filenames:     { image, pdf },
+    processorName: 'KudiAI Track',
+    iconType:      credit ? 'income' : 'expense',
   };
 }

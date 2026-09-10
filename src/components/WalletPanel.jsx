@@ -117,13 +117,14 @@ export function AccountCard({ wallet }) {
 }
 
 // ── transaction row ────────────────────────────────────────────────────────
-export function WalletTxRow({ row, hidden }) {
+export function WalletTxRow({ row, hidden, onOpen }) {
   const cfg = WALLET_SOURCE[row.source] || { label: row.source, icon: "wallet", credit: row.direction === "credit" };
   const credit = row.direction === "credit";
   const pending = row.status === "pending";
   const reversed = row.status === "reversed";
   return (
-    <div className="flex items-center gap-3 py-3.5">
+    <button type="button" onClick={onOpen ? () => onOpen(row) : undefined}
+      className={`w-full flex items-center gap-3 py-3.5 text-left ${onOpen ? "active:bg-slate-50 dark:active:bg-slate-800/60 -mx-2 px-2 rounded-xl transition-colors" : ""}`}>
       <span className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
         credit ? "bg-emerald-50 dark:bg-emerald-900/25 text-emerald-600 dark:text-emerald-400"
                : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"}`}>
@@ -140,7 +141,7 @@ export function WalletTxRow({ row, hidden }) {
         {pending && <p className="text-[10px] font-bold text-amber-500">Processing</p>}
         {reversed && <p className="text-[10px] font-bold text-slate-400">Reversed</p>}
       </div>
-    </div>
+    </button>
   );
 }
 

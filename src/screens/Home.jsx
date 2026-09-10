@@ -22,7 +22,7 @@ import PaidProfileBanner from "../components/PaidProfileBanner";
 import ProfileCompleteFlow from "../components/ProfileCompleteFlow";
 import { isPaidPlan } from "../utils/paidCompliance";
 import TransactionDetailModal from "../components/shared/TransactionDetailModal";
-import { buildTransactionReceipt } from "../utils/receiptConfig";
+import { buildTransactionReceipt, buildWalletReceipt } from "../utils/receiptConfig";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
 import { useWallet } from "../hooks/useWallet";
 import { FundWalletSheet, TransferSheet, ReceivePaymentSheet, WalletTxRow, cleanBankName } from "../components/WalletPanel";
@@ -376,7 +376,14 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
             <p className="text-[12px] text-slate-400 py-4 text-center">No wallet activity yet.</p>
           ) : (
             <div className="divide-y divide-slate-100 dark:divide-slate-800">
-              {wallet.ledger.slice(0, 4).map(row => <WalletTxRow key={row.id} row={row} hidden={balanceHidden} />)}
+              {wallet.ledger.slice(0, 4).map(row => (
+                <WalletTxRow key={row.id} row={row} hidden={balanceHidden}
+                  onOpen={(r) => setReceipt(buildWalletReceipt(r, {
+                    businessName: profile?.business_name,
+                    accountNumber: wallet.wallet?.flw_account_number,
+                    bankName: cleanBankName(wallet.wallet?.flw_account_bank),
+                  }))} />
+              ))}
             </div>
           )}
         </div>

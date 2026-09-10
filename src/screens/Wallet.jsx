@@ -5,21 +5,30 @@ import AmountDisplay from "../components/shared/AmountDisplay";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
 import { useWallet } from "../hooks/useWallet";
 import {
-  ActionButton, AccountCard, WalletTxRow,
+  ActionButton, AccountCard, WalletTxRow, cleanBankName,
   FundWalletSheet, TransferSheet, ReceivePaymentSheet,
 } from "../components/WalletPanel";
+import TransactionDetailModal from "../components/shared/TransactionDetailModal";
+import { buildWalletReceipt } from "../utils/receiptConfig";
 import { fmt } from "../utils/helpers";
 
-export default function Wallet({ session }) {
+export default function Wallet({ session, store }) {
   const userId = session?.user?.id || null;
   const navigate = useNavigate();
   const { walletEnabled, walletTestMode, walletMaxWithdrawalKobo, configLoading } = usePlatformConfig();
   const w = useWallet(userId, walletEnabled);
   const [hidden, setHidden] = useState(() => sessionStorage.getItem("kt_balance_hidden") === "1");
   const [sheet, setSheet] = useState(null);   // fund | transfer | receive
+  const [receipt, setReceipt] = useState(null);
   const [err, setErr] = useState("");
   const [bvn, setBvn] = useState("");
   const [nin, setNin] = useState("");
+
+  const openReceipt = (row) => setReceipt(buildWalletReceipt(row, {
+    businessName: store?.profile?.business_name,
+    accountNumber: w.wallet?.flw_account_number,
+    bankName: cleanBankName(w.wallet?.flw_account_bank),
+  }));
   const [banks, setBanks] = useState([]);
 
   useEffect(() => {
@@ -165,7 +174,7 @@ export default function Wallet({ session }) {
                 <p className="text-[13px] text-slate-400 py-8 text-center">No wallet activity yet.</p>
               ) : (
                 <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {w.ledger.map((row) => <WalletTxRow key={row.id} row={row} hidden={hidden} />)}
+                  {w.ledger.map((row) => <WalletTxRow key={row.id} row={row} hidden={hidden} onOpen={openReceipt} />)}
                 </div>
               )}
             </div>
@@ -179,6 +188,8 @@ export default function Wallet({ session }) {
         balanceKobo={w.balanceKobo} maxKobo={walletMaxWithdrawalKobo} banks={banks} api={w} onDone={w.refresh} />
       <ReceivePaymentSheet open={sheet === "receive"} onClose={() => setSheet(null)}
         wallet={w.wallet} payRequest={w.payRequest} testMode={walletTestMode} api={w} />
+
+      {receipt && <TransactionDetailModal data={receipt} onClose={() => setReceipt(null)} />}
     </div>
   );
 }
