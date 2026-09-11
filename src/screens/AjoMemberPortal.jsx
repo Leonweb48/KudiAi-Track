@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { friendlyError, moneyError } from "../utils/errorMessages";
-import { openPaystackPopup } from "../utils/paystackCheckout";
 import { supabase } from "../utils/supabase";
 import BillPayments from "./BillPayments";
 import CashbackCard from "../components/CashbackCard";
@@ -1018,7 +1017,6 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], contribu
   // ── Core state (unchanged from original) ──────────────────────────────────
   const [status,          setStatus]         = useState("idle");
   const [message,         setMessage]        = useState("");
-  const [pendingRef,      setPendingRef]     = useState(null);
   const [paidAmt,         setPaidAmt]        = useState(0);
   const [customAmt,       setCustomAmt]      = useState(String(client?.contribution_amount || ""));
   const [txnPin,          setTxnPin]         = useState(null);
@@ -1026,9 +1024,6 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], contribu
   const [contribCtx,      setContribCtx]     = useState("personal_savings");
   const [contribGroupId,  setContribGroupId] = useState(null);
   const [selectedCycleId, setSelectedCycleId] = useState(null);
-  const [payMethod,       setPayMethod]      = useState("paystack");
-  const popupCleanup = useRef(null);
-  useEffect(() => () => popupCleanup.current?.(), []);
 
   // ── Navigation state ──────────────────────────────────────────────────────
   const [mainTab,        setMainTab]        = useState("personal");
@@ -1062,53 +1057,12 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], contribu
     if (personalSubTab === "percent"      && pctCycles.length === 0 && fpCycles.length > 0) setPersonalSubTab("first_period");
   }, [fpCycles.length, pctCycles.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Unchanged handlers ────────────────────────────────────────────────────
-  const doVerify = useCallback(async (ref) => {
-    if (!ref) return;
-    setStatus("verifying");
-    setMessage(t("ajoPt.verifyingPayment"));
-    try {
-      const confirmation = await ajoFn("confirm-payment", { client_id: client.id, reference: ref });
-      setStatus("done");
-      setMessage(`Payment confirmed! Ref: ${ref}`);
-      onSuccess?.(ref, confirmation?.client);
-    } catch (e) {
-      setStatus("awaiting");
-      setMessage(friendlyError(e));
-    }
-  }, [client.id, onSuccess]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handlePay = async () => {
-    const amt = parseFloat(customAmt);
-    if (!amt || amt <= 0) { setMessage("Please enter a valid amount."); return; }
-    setStatus("loading"); setMessage(""); setPendingRef(null);
-    setPaidAmt(amt); setPayMethod("paystack");
-    try {
-      const res = await ajoFn("initialize-payment", {
-        client_id: client.id, amount: amt, contribution_context: contribCtx,
-        group_id: contribGroupId || undefined,
-        ...(contribCtx === "personal_savings" && selectedCycleId ? { cycle_id: selectedCycleId } : {}),
-      });
-      if (!res.authorization_url) throw new Error("Payment initialization failed");
-      const ref = res.reference;
-      setPendingRef(ref);
-      setStatus("awaiting");
-      setMessage(t("ajoPt.paystackIsOpen"));
-      popupCleanup.current?.();
-      popupCleanup.current = openPaystackPopup(res.authorization_url, {
-        onClose: (urlRef) => setTimeout(() => doVerify(urlRef || ref), 600),
-      });
-    } catch (e) {
-      setStatus("error");
-      setMessage(moneyError(e));
-    }
-  };
-
+  // ── Pay from wallet — the only route now (no Paystack for clients) ────────
   const handlePayWallet = async () => {
     const amt = parseFloat(customAmt);
     if (!amt || amt <= 0) { setMessage("Please enter a valid amount."); return; }
-    setStatus("loading"); setMessage(""); setPendingRef(null);
-    setPaidAmt(amt); setPayMethod("wallet");
+    setStatus("loading"); setMessage("");
+    setPaidAmt(amt);
     try {
       const res = await ajoFn("pay-contribution-wallet", {
         client_id: client.id, amount: amt, contribution_context: contribCtx,
@@ -1132,7 +1086,7 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], contribu
         <input
           type="number" inputMode="numeric" min="1"
           value={customAmt} onChange={e => setCustomAmt(e.target.value)}
-          disabled={status === "loading" || status === "awaiting" || status === "verifying"}
+          disabled={status === "loading"}
           placeholder={t("coopMem.enterAmountCoop")}
           className="flex-1 bg-transparent text-xl font-black text-brand-600 dark:text-brand-300 outline-none placeholder:text-brand-200 dark:placeholder:text-brand-500 tabular [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
         />
@@ -1159,46 +1113,22 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], contribu
       })()}
       {message && (
         <p className={`text-xs px-3 py-2 rounded-xl ${
-          status === "error"   ? "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400"
-          : status === "awaiting" ? "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300"
+          status === "error" ? "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400"
           : "bg-slate-50 dark:bg-slate-800 text-slate-500"
         }`}>{message}</p>
       )}
-      {(status === "awaiting" || status === "verifying") && (
-        <button onClick={() => doVerify(pendingRef)} disabled={status === "verifying"}
-          className="w-full py-3.5 bg-brand-500 hover:bg-brand-600 disabled:opacity-60 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2">
-          {status === "verifying"
-            ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> {t("ajoPt.verifyingSpinner")}</>
-            : t("ajoPt.confirmSavings")}
+      {!wallet?.hasAccount ? (
+        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-3 py-2.5">
+          <p className="text-[12px] font-bold text-amber-700 dark:text-amber-300">Your KudiAI Wallet isn't ready yet</p>
+          <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">Contributions are paid from your wallet — check back once it's activated.</p>
+        </div>
+      ) : (parseFloat(customAmt) || 0) * 100 > wallet.balanceKobo ? (
+        <button onClick={() => { onClose(); onTopUpWallet?.(); }}
+          disabled={status === "loading"}
+          className="w-full py-3.5 bg-brand-500 hover:bg-brand-600 disabled:opacity-60 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] shadow-md">
+          Fund Wallet · {fmt(wallet.balanceNaira)} available
         </button>
-      )}
-      <button
-        onClick={() => {
-          const amt = parseFloat(customAmt);
-          if (!amt || amt <= 0) { setMessage("Please enter a valid amount."); return; }
-          setTxnPin({
-            title: t("coopMem.confirmPaymentTitle"),
-            amount: Math.round(amt * 100),
-            description: t("coopMem.savingsContribDesc"),
-            hasPinSet: Boolean(client?.portal_pin_changed_at),
-            onApprove: () => { setTxnPin(null); handlePay(); },
-          });
-        }}
-        disabled={status === "loading" || status === "awaiting" || status === "verifying"}
-        className="w-full py-3.5 bg-brand-500 hover:bg-brand-600 disabled:opacity-60 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2 shadow-md">
-        {status === "loading" && payMethod === "paystack"
-          ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> {t("ajoPt.openingPaystack")}</>
-          : status === "awaiting" ? t("ajoPt.openPaystack")
-          : <>Pay {fmt(parseFloat(customAmt) || 0)} now</>}
-      </button>
-      {wallet?.hasAccount && (
-        (parseFloat(customAmt) || 0) * 100 > wallet.balanceKobo ? (
-          <button onClick={() => { onClose(); onTopUpWallet?.(); }}
-            disabled={status === "loading" || status === "awaiting" || status === "verifying"}
-            className="w-full py-3.5 border-2 border-brand-500 text-brand-600 dark:text-brand-400 disabled:opacity-60 rounded-2xl font-extrabold text-sm transition active:scale-[0.99]">
-            Fund Wallet · {fmt(wallet.balanceNaira)} available
-          </button>
-        ) : (
+      ) : (
         <button
           onClick={() => {
             const amt = parseFloat(customAmt);
@@ -1212,21 +1142,20 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], contribu
               onApprove: () => { setTxnPin(null); handlePayWallet(); },
             });
           }}
-          disabled={status === "loading" || status === "awaiting" || status === "verifying"}
-          className="w-full py-3.5 border-2 border-brand-500 text-brand-600 dark:text-brand-400 disabled:opacity-60 rounded-2xl font-extrabold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2">
-          {status === "loading" && payMethod === "wallet"
-            ? <><div className="w-4 h-4 border-2 border-brand-400 border-t-transparent rounded-full animate-spin" /> Paying…</>
-            : <>Pay from Wallet · {fmt(wallet.balanceNaira)} available</>}
+          disabled={status === "loading"}
+          className="w-full py-3.5 bg-brand-500 hover:bg-brand-600 disabled:opacity-60 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2 shadow-md">
+          {status === "loading"
+            ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Paying…</>
+            : <>Pay {fmt(parseFloat(customAmt) || 0)} from Wallet</>}
         </button>
-        )
       )}
     </div>
   );
 
-  // ── Done / receipt screen (unchanged) ─────────────────────────────────────
+  // ── Done / receipt screen ─────────────────────────────────────────────────
   if (status === "done") {
     const receiptData = buildAjoContributionReceipt(
-      { id: pendingRef, type: "contribution", status: "completed", amount: paidAmt || client?.contribution_amount || 0, created_at: new Date().toISOString(), payment_method: payMethod },
+      { id: null, type: "contribution", status: "completed", amount: paidAmt || client?.contribution_amount || 0, created_at: new Date().toISOString(), payment_method: "wallet" },
       client?.full_name || "—", client?.group_name || "Ajo Group"
     );
     if (showShare) return <TransactionDetailModal data={receiptData} onClose={() => setShowShare(false)} />;
