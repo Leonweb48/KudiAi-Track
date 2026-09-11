@@ -157,6 +157,7 @@ serve(async (req) => {
       "get-client","get-contributions","get-active-cycle","get-owner-info",
       "request-withdrawal","get-withdrawal-requests","submit-manual-claim",
       "initialize-payment","confirm-payment","submit-dispute",
+      "client-open-cycle",
       "get-goal","set-goal","delete-goal","get-txn-pin-status","set-txn-pin","verify-txn-pin",
       "upload-avatar","update-profile","log-profile-update",
       "send-profile-otp","verify-profile-otp",
@@ -305,6 +306,40 @@ serve(async (req) => {
         .eq("status", "active")
         .order("created_at", { ascending: true });
       return json({ cycles: cycles || [] });
+    }
+
+    // ── client-open-cycle — a client opens their own personal-savings card.
+    //    They choose ONLY the fee model (first_period vs percent); the actual
+    //    reg fee / commission percent VALUE always comes from their aso_clients
+    //    row, set by the business at onboarding — never client-entered. ──────
+    if (action === "client-open-cycle") {
+      const { client_id, commission_model: reqModel } = body as { client_id: string; commission_model?: string };
+      if (!client_id) return json({ error: "client_id required" }, 400);
+      // client-open-cycle is caller-restricted to the client themselves —
+      // _clientScoped's requireClientAccess above also lets the owner/staff
+      // through, but this action is specifically the client's self-service path.
+      const { data: cl } = await sb.from("aso_clients")
+        .select("id, user_id, client_user_id, status, archived_at, commission_percent")
+        .eq("id", client_id).maybeSingle();
+      if (!cl) return json({ error: "Client not found" }, 404);
+      if (cl.client_user_id !== callerId) return json({ error: "Forbidden" }, 403);
+      if (cl.archived_at) return json({ error: "This account is archived" }, 400);
+      if (cl.status !== "active") return json({ error: "Your account isn't active yet — contact your savings collector." }, 400);
+
+      const model = reqModel === "percent" ? "percent" : "first_period";
+      if (model === "percent" && !(Number(cl.commission_percent) > 0)) {
+        return json({ error: "Percentage savings isn't set up for your account yet — contact your savings collector." }, 400);
+      }
+
+      const { data: ocData, error: ocErr } = await sb.rpc("ajo_open_cycle", {
+        p_client_id:        client_id,
+        p_owner_id:         cl.user_id,
+        p_commission_model: model,
+        // start/length/amount/pct/label/frequency intentionally omitted — the
+        // RPC fills each from this client's own aso_clients row.
+      });
+      if (ocErr) return json({ ok: false, error: ocErr.message });
+      return json(ocData);
     }
 
     // ── Owner + assigned-staff info ───────────────────────────────

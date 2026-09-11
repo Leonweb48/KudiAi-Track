@@ -36,7 +36,7 @@ import { setCache, getCache } from "../utils/offlineCache";
 import ContributionCard from "../components/ContributionCard";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
 import { useWallet } from "../hooks/useWallet";
-import { BottomSheet, ActionButton, AccountCard, FundWalletSheet, TransferSheet } from "../components/WalletPanel";
+import { BottomSheet, ActionButton, AccountCard, FundWalletSheet, TransferSheet, ReceivePaymentSheet, WalletMiniAction, WALLET_MINI_ICONS, cleanBankName } from "../components/WalletPanel";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import EsusuRotationDashboard from "../components/EsusuRotationDashboard";
 import LegalScreen from "./LegalScreen";
@@ -1070,6 +1070,8 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], contribu
   const [contribGroupId,  setContribGroupId] = useState(null);
   const [selectedCycleId, setSelectedCycleId] = useState(null);
   const [payMethod,       setPayMethod]      = useState("paystack");
+  const [openingCycle,    setOpeningCycle]   = useState(false);
+  const [openCycleErr,    setOpenCycleErr]   = useState("");
   const popupCleanup = useRef(null);
   useEffect(() => () => popupCleanup.current?.(), []);
 
@@ -1164,6 +1166,25 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], contribu
     } catch (e) {
       setStatus("error");
       setMessage(moneyError(e));
+    }
+  };
+
+  // ── Self-service: open a personal savings card ────────────────────────────
+  // Client picks the fee MODEL only — the rate itself (registration_charge /
+  // commission_percent) is always whatever the business already set on their
+  // aso_clients row; the server ignores anything else the client might send.
+  const canOpenPercent = Number(client?.commission_percent) > 0;
+  const openCycle = async (model) => {
+    setOpeningCycle(true); setOpenCycleErr("");
+    try {
+      const res = await ajoFn("client-open-cycle", { client_id: client.id, commission_model: model });
+      if (res?.ok === false) throw new Error(res.error || "Could not open your savings card");
+      // realtime (ajo_cycles INSERT, filtered to this client) refreshes `cycles`
+      // from the parent — no local state to update here.
+    } catch (e) {
+      setOpenCycleErr(friendlyError(e));
+    } finally {
+      setOpeningCycle(false);
     }
   };
 
@@ -1330,7 +1351,37 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], contribu
               onChange={sub => { setPersonalSubTab(sub); setSelectedCycleId(null); setMessage(""); }} />
 
             {personalSubTabs.length === 0 && (
-              <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">{t("ajoPt.noActivePlans")}</p>
+              <div className="py-4">
+                <p className="text-sm text-slate-400 dark:text-slate-500 text-center mb-4">{t("ajoPt.noActivePlans")}</p>
+                <div className="bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800/40 rounded-2xl p-4">
+                  <p className="text-[13px] font-extrabold text-slate-800 dark:text-white mb-1">Open your savings card</p>
+                  <p className="text-[12px] text-slate-500 dark:text-slate-400 mb-3">
+                    Pick how your collector's fee is charged — the rate itself is already set by your business.
+                  </p>
+                  {openCycleErr && <p className="text-[12px] text-red-500 mb-2">{openCycleErr}</p>}
+                  <div className="space-y-2">
+                    <button onClick={() => openCycle("first_period")} disabled={openingCycle}
+                      className="w-full text-left px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 disabled:opacity-50 active:scale-[0.99] transition-transform">
+                      <span className="block text-[13px] font-bold text-slate-800 dark:text-white">First-period fee</span>
+                      <span className="block text-[11px] text-slate-400 dark:text-slate-500">
+                        Your first contribution covers the collector's fee — every payment after that goes fully to your savings.
+                      </span>
+                    </button>
+                    <button onClick={() => openCycle("percent")} disabled={openingCycle || !canOpenPercent}
+                      className="w-full text-left px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 disabled:opacity-50 active:scale-[0.99] transition-transform">
+                      <span className="block text-[13px] font-bold text-slate-800 dark:text-white">
+                        Percentage fee{canOpenPercent ? ` · ${client.commission_percent}%` : ""}
+                      </span>
+                      <span className="block text-[11px] text-slate-400 dark:text-slate-500">
+                        {canOpenPercent
+                          ? "A small percentage is deducted as fee whenever you withdraw."
+                          : "Not set up for your account — ask your collector."}
+                      </span>
+                    </button>
+                  </div>
+                  {openingCycle && <p className="text-[11px] text-slate-400 mt-2 text-center">Opening your card…</p>}
+                </div>
+              </div>
             )}
 
             {personalSubTab === "first_period" && fpCycles.map(cy => (
@@ -2671,7 +2722,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
 }
 
 // ── Overview tab ──────────────────────────────────────────────────────────
-function OverviewTab({ client, contributions, cycles = [], rotationsData = [], rotationLoading, onWithdrawClick, onPayClick, onDepositClick, ownerInfo, withdrawRequests = [], onBillsClick, userEmail, onGoToMe, walletEnabled, wallet, onWalletClick }) {
+function OverviewTab({ client, contributions, cycles = [], rotationsData = [], rotationLoading, onWithdrawClick, onPayClick, onDepositClick, ownerInfo, withdrawRequests = [], onBillsClick, userEmail, onGoToMe, walletEnabled, wallet, onWalletClick, onWalletAction }) {
   const t = useT();
   const { lang } = useLanguage();
   const toast = useToast();
@@ -2781,6 +2832,11 @@ function OverviewTab({ client, contributions, cycles = [], rotationsData = [], r
 
   const recent = contributions.slice(0, 5);
 
+  const [heroView, setHeroView] = useState(() =>
+    localStorage.getItem("ajo_pt_hero") === "wallet" ? "wallet" : "savings");
+  const showWallet = walletEnabled && heroView === "wallet";
+  const pickHero = (v) => { try { localStorage.setItem("ajo_pt_hero", v); } catch {} setHeroView(v); };
+
   return (
     <div className="px-4 pt-5 pb-36 space-y-4">
       {/* Greeting */}
@@ -2838,44 +2894,100 @@ function OverviewTab({ client, contributions, cycles = [], rotationsData = [], r
           }
         </button>
         <div className="relative">
-          <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-0.5">{t("ajoPt.currentBalance")}</p>
-          {balanceHidden
-            ? <p className="text-3xl font-black text-white/50 tracking-widest mb-3 leading-none select-none">₦ • • •</p>
-            : <AmountDisplay amount={client.current_balance || 0} size="hero" align="left" className="text-white mb-3" />
-          }
-          <div className="flex items-center gap-2 mb-4">
-            {streak > 0 && (
-              <span className="bg-white/15 backdrop-blur-sm rounded-full px-2.5 py-1 text-[11px] font-bold text-white">
-                🔥 {streak}mo streak
-              </span>
-            )}
-            <span className="bg-white/15 backdrop-blur-sm rounded-full px-2.5 py-1 text-[11px] font-bold text-white">
-              ⭐ {healthScore}/100
-            </span>
-          </div>
-          <div className="grid grid-cols-3 divide-x divide-white/20">
-            <div className="pr-3 min-w-0">
-              <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">{t("ajoPt.deposited")}</p>
-              {balanceHidden
-                ? <p className="text-sm font-black text-white/40 tracking-widest select-none">• • •</p>
-                : <AmountDisplay amount={client.total_saved || 0} size="small" align="left" className="text-green-200" />
-              }
+          {/* Savings ⇄ Wallet toggle */}
+          {walletEnabled && (
+            <div className="inline-flex items-center gap-1 p-0.5 mb-3 rounded-full bg-white/10">
+              <button onClick={() => pickHero("savings")}
+                className={`px-3 py-1 rounded-full text-[11px] font-bold transition-colors ${!showWallet ? "bg-white text-slate-900" : "text-white/70"}`}>
+                Savings
+              </button>
+              <button onClick={() => pickHero("wallet")}
+                className={`px-3 py-1 rounded-full text-[11px] font-bold transition-colors ${showWallet ? "bg-white text-slate-900" : "text-white/70"}`}>
+                Wallet
+              </button>
             </div>
-            <div className="px-3 min-w-0">
-              <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">{t("ajoPt.withdrawn")}</p>
-              {balanceHidden
-                ? <p className="text-sm font-black text-white/40 tracking-widest select-none">• • •</p>
-                : <AmountDisplay amount={client.total_withdrawn || 0} size="small" align="left" className="text-red-200" />
-              }
+          )}
+
+          {showWallet ? (
+            /* ── WALLET BALANCE — the client's own KudiAI Wallet, used to fund contribution payments ── */
+            <div>
+              <div className="flex items-start justify-between gap-3 pr-7">
+                <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest pt-0.5">Wallet balance</p>
+                {wallet?.hasAccount && (
+                  <div className="text-right flex-shrink-0">
+                    <p className="text-[13px] font-extrabold tracking-[0.1em] text-white tabular-nums leading-none">{wallet.wallet.flw_account_number}</p>
+                    <p className="text-[10px] text-white/60 mt-1">{cleanBankName(wallet.wallet.flw_account_bank)}</p>
+                  </div>
+                )}
+              </div>
+              {wallet?.loading ? (
+                <div className="h-11 w-40 bg-white/20 rounded-xl animate-pulse mt-2 mb-1" />
+              ) : balanceHidden ? (
+                <p className="text-3xl font-black text-white/50 tracking-widest mt-1.5 mb-1 leading-none select-none">₦ • • •</p>
+              ) : (
+                <AmountDisplay amount={wallet?.balanceKobo || 0} fromKobo size="hero" align="left" className="mt-1.5 mb-1 text-white" />
+              )}
+              {/* mini actions — raised "3D" buttons, same style as the owner's Home hero */}
+              <div className="flex items-center gap-1.5 mt-3.5">
+                {wallet?.loading ? (
+                  <div className="flex-1 h-9 bg-white/10 rounded-xl animate-pulse" />
+                ) : !wallet?.hasAccount ? (
+                  <button onClick={onWalletClick}
+                    className="flex-1 bg-white text-slate-900 text-[12px] font-bold rounded-xl py-2.5">
+                    Activate wallet
+                  </button>
+                ) : (
+                  <>
+                    <WalletMiniAction onClick={() => onWalletAction("fund")} d={WALLET_MINI_ICONS.in} label="Fund" />
+                    <WalletMiniAction onClick={() => onWalletAction("transfer")} d={WALLET_MINI_ICONS.out} label="Transfer" />
+                    <WalletMiniAction onClick={() => onWalletAction("receive")} d={WALLET_MINI_ICONS.in} label="Receive" />
+                    <WalletMiniAction onClick={onBillsClick} d={WALLET_MINI_ICONS.invoice} label="Bills" />
+                  </>
+                )}
+              </div>
             </div>
-            <div className="pl-3 min-w-0">
-              <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">{t("common.thisMonth")}</p>
+          ) : (
+            <>
+              <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-0.5">{t("ajoPt.currentBalance")}</p>
               {balanceHidden
-                ? <p className="text-sm font-black text-white/40 tracking-widest select-none">• • •</p>
-                : <AmountDisplay amount={totalThisMonth} size="small" align="left" className="text-blue-200" />
+                ? <p className="text-3xl font-black text-white/50 tracking-widest mb-3 leading-none select-none">₦ • • •</p>
+                : <AmountDisplay amount={client.current_balance || 0} size="hero" align="left" className="text-white mb-3" />
               }
-            </div>
-          </div>
+              <div className="flex items-center gap-2 mb-4">
+                {streak > 0 && (
+                  <span className="bg-white/15 backdrop-blur-sm rounded-full px-2.5 py-1 text-[11px] font-bold text-white">
+                    🔥 {streak}mo streak
+                  </span>
+                )}
+                <span className="bg-white/15 backdrop-blur-sm rounded-full px-2.5 py-1 text-[11px] font-bold text-white">
+                  ⭐ {healthScore}/100
+                </span>
+              </div>
+              <div className="grid grid-cols-3 divide-x divide-white/20">
+                <div className="pr-3 min-w-0">
+                  <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">{t("ajoPt.deposited")}</p>
+                  {balanceHidden
+                    ? <p className="text-sm font-black text-white/40 tracking-widest select-none">• • •</p>
+                    : <AmountDisplay amount={client.total_saved || 0} size="small" align="left" className="text-green-200" />
+                  }
+                </div>
+                <div className="px-3 min-w-0">
+                  <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">{t("ajoPt.withdrawn")}</p>
+                  {balanceHidden
+                    ? <p className="text-sm font-black text-white/40 tracking-widest select-none">• • •</p>
+                    : <AmountDisplay amount={client.total_withdrawn || 0} size="small" align="left" className="text-red-200" />
+                  }
+                </div>
+                <div className="pl-3 min-w-0">
+                  <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">{t("common.thisMonth")}</p>
+                  {balanceHidden
+                    ? <p className="text-sm font-black text-white/40 tracking-widest select-none">• • •</p>
+                    : <AmountDisplay amount={totalThisMonth} size="small" align="left" className="text-blue-200" />
+                  }
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -2934,25 +3046,6 @@ function OverviewTab({ client, contributions, cycles = [], rotationsData = [], r
           />
         </div>
       </div>
-
-      {/* ── KudiAI Wallet — dedicated account number, fund/transfer/pay from it ── */}
-      {walletEnabled && (
-        <button onClick={onWalletClick}
-          className="w-full flex items-center gap-3 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4 shadow-sm text-left active:scale-[0.99] transition-transform">
-          <span className="w-11 h-11 rounded-2xl bg-[linear-gradient(145deg,#16255A_0%,#1D3070_100%)] flex items-center justify-center flex-shrink-0">
-            <Icon name="wallet" size={19} className="text-white" />
-          </span>
-          <span className="flex-1 min-w-0">
-            <span className="block text-[13px] font-extrabold text-slate-800 dark:text-white">KudiAI Wallet</span>
-            <span className="block text-[11px] text-slate-400 dark:text-slate-500 truncate">
-              {wallet?.loading ? "Loading…"
-                : wallet?.hasAccount ? `${fmt(wallet.balanceNaira)} available`
-                : "Activate to fund, pay contributions & transfer"}
-            </span>
-          </span>
-          <Icon name="chevron-right" size={16} className="text-slate-300 dark:text-slate-600 flex-shrink-0" />
-        </button>
-      )}
 
       {/* ── Personal Savings ── */}
       {cycles.length > 0 && (
@@ -5451,7 +5544,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
   const [withdrawRequests, setWithdrawRequests] = useState([]);
   const [showPwdModal,     setShowPwdModal]     = useState(false);
   const [showWallet,       setShowWallet]       = useState(false);
-  const [walletSheet,      setWalletSheet]      = useState(null); // "fund" | "transfer" | null
+  const [walletSheet,      setWalletSheet]      = useState(null); // "fund" | "transfer" | "receive" | null
 
   // KudiAI Wallet — same wallet infra as the owner side. client_user_id IS a
   // real auth.users id, so this "just works" once the platform flag is on.
@@ -5788,6 +5881,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
               walletEnabled={walletEnabled}
               wallet={wallet}
               onWalletClick={() => setShowWallet(true)}
+              onWalletAction={(kind) => setWalletSheet(kind)}
             />
           )}
           {tab === "bills" && client && (
@@ -5928,6 +6022,9 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
           <TransferSheet open={walletSheet === "transfer"} onClose={() => setWalletSheet(null)}
             balanceKobo={wallet.balanceKobo} maxKobo={walletMaxWithdrawalKobo} banks={wallet.banks} api={wallet}
             businessName={client?.full_name} onDone={wallet.refresh} />
+          <ReceivePaymentSheet open={walletSheet === "receive"} onClose={() => setWalletSheet(null)}
+            wallet={wallet.wallet} payRequest={wallet.payRequest} testMode={walletTestMode} api={wallet}
+            businessName={client?.full_name} ownerName={client?.full_name} />
         </>
       )}
       {showWithdraw && client && (

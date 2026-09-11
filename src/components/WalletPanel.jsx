@@ -82,6 +82,39 @@ const labelCls = "text-[12px] font-semibold text-slate-500 dark:text-slate-400";
 const primaryBtn =
   "w-full bg-brand-600 hover:bg-brand-700 disabled:opacity-40 disabled:hover:bg-brand-600 text-white font-bold rounded-2xl py-4 text-[15px] transition-colors active:scale-[0.99]";
 
+// ── Raised "3D" mini-action button (Fund/Transfer/Receive/Bills on a wallet hero) ──
+// Shared between the owner Home hero and the Ajo member portal hero.
+function MiniSvg({ d, size = 14, color = "currentColor" }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      {d.split("|").map((p, i) => <path key={i} d={p} />)}
+    </svg>
+  );
+}
+export const WALLET_MINI_ICONS = {
+  in:      "M12 19V5|M5 12l7-7 7 7",
+  out:     "M12 5v14|M19 12l-7 7-7-7",
+  invoice: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2|M9 5a2 2 0 002 2h2a2 2 0 002-2|M9 5a2 2 0 012-2h2a2 2 0 012 2|M9 13h6|M9 17h4",
+};
+export function WalletMiniAction({ onClick, d, label }) {
+  return (
+    <button onClick={onClick}
+      className="flex-1 rounded-2xl py-2.5 flex flex-col items-center gap-1 border transition-all duration-100 active:translate-y-[1.5px]"
+      style={{
+        background: "linear-gradient(180deg, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0.10) 100%)",
+        borderColor: "rgba(255,255,255,0.18)",
+        boxShadow: "0 2px 0 rgba(0,0,0,0.20), 0 5px 10px -3px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.25)",
+      }}
+      onMouseDown={(e) => { e.currentTarget.style.boxShadow = "0 0 0 rgba(0,0,0,0.2), inset 0 1px 3px rgba(0,0,0,0.25)"; }}
+      onMouseUp={(e) => { e.currentTarget.style.boxShadow = "0 2px 0 rgba(0,0,0,0.20), 0 5px 10px -3px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.25)"; }}
+    >
+      <MiniSvg d={d} size={14} color="white" />
+      <span className="text-[9.5px] font-bold text-white/90">{label}</span>
+    </button>
+  );
+}
+
 // ── quick-action circle ────────────────────────────────────────────────────
 export function ActionButton({ icon, label, onClick, disabled, tone = "brand" }) {
   const ring = tone === "brand"

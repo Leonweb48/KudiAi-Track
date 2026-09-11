@@ -25,7 +25,7 @@ import TransactionDetailModal from "../components/shared/TransactionDetailModal"
 import { buildTransactionReceipt } from "../utils/receiptConfig";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
 import { useWallet } from "../hooks/useWallet";
-import { FundWalletSheet, TransferSheet, ReceivePaymentSheet, WalletTxRow, cleanBankName } from "../components/WalletPanel";
+import { FundWalletSheet, TransferSheet, ReceivePaymentSheet, WalletTxRow, cleanBankName, WalletMiniAction } from "../components/WalletPanel";
 
 function greetingKey() {
   const h = new Date().getHours();
@@ -42,25 +42,6 @@ function Svg({ d, size = 18, color = "currentColor", sw = 2 }) {
       stroke={color} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round">
       {paths.map((p, i) => <path key={i} d={p} />)}
     </svg>
-  );
-}
-
-// ── Raised "3D" mini-action button (Fund/Transfer/Receive/Bills on the wallet hero) ──
-function WalletMiniAction({ onClick, d, label }) {
-  return (
-    <button onClick={onClick}
-      className="flex-1 rounded-2xl py-2.5 flex flex-col items-center gap-1 border transition-all duration-100 active:translate-y-[1.5px]"
-      style={{
-        background: "linear-gradient(180deg, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0.10) 100%)",
-        borderColor: "rgba(255,255,255,0.18)",
-        boxShadow: "0 2px 0 rgba(0,0,0,0.20), 0 5px 10px -3px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.25)",
-      }}
-      onMouseDown={(e) => { e.currentTarget.style.boxShadow = "0 0 0 rgba(0,0,0,0.2), inset 0 1px 3px rgba(0,0,0,0.25)"; }}
-      onMouseUp={(e) => { e.currentTarget.style.boxShadow = "0 2px 0 rgba(0,0,0,0.20), 0 5px 10px -3px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.25)"; }}
-    >
-      <Svg d={d} size={14} color="white" />
-      <span className="text-[9.5px] font-bold text-white/90">{label}</span>
-    </button>
   );
 }
 
