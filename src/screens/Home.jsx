@@ -381,7 +381,7 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
             <div className="divide-y divide-slate-100 dark:divide-slate-800">
               {wallet.ledger.slice(0, 4).map(row => (
                 <WalletTxRow key={row.id} row={row} hidden={balanceHidden}
-                  onOpen={(r) => setReceipt(wallet.receiptFor(r, profile?.business_name))} />
+                  onOpen={(r) => setReceipt(wallet.receiptFor(r, profile?.business_name, profile?.owner_name))} />
               ))}
             </div>
           )}
@@ -717,10 +717,10 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
             wallet={wallet.wallet} testMode={walletTestMode} api={wallet} />
           <ReceivePaymentSheet open={walletSheet === "receive"} onClose={() => setWalletSheet(null)}
             wallet={wallet.wallet} payRequest={wallet.payRequest} testMode={walletTestMode} api={wallet}
-            businessName={profile?.business_name} />
+            businessName={profile?.business_name} ownerName={profile?.owner_name} />
           <TransferSheet open={walletSheet === "transfer"} onClose={() => setWalletSheet(null)}
             balanceKobo={wallet.balanceKobo} maxKobo={walletMaxWithdrawalKobo} banks={wallet.banks} api={wallet} onDone={wallet.refresh}
-            businessName={profile?.business_name} />
+            businessName={profile?.business_name} ownerName={profile?.owner_name} />
         </>
       )}
     </div>

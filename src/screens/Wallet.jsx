@@ -23,7 +23,7 @@ export default function Wallet({ session, store }) {
   const [bvn, setBvn] = useState("");
   const [nin, setNin] = useState("");
 
-  const openReceipt = (row) => setReceipt(w.receiptFor(row, store?.profile?.business_name));
+  const openReceipt = (row) => setReceipt(w.receiptFor(row, store?.profile?.business_name, store?.profile?.owner_name));
 
   const toggleHidden = () => {
     const n = !hidden; sessionStorage.setItem("kt_balance_hidden", n ? "1" : "0"); setHidden(n);
@@ -175,10 +175,10 @@ export default function Wallet({ session, store }) {
         wallet={w.wallet} testMode={walletTestMode} api={w} />
       <TransferSheet open={sheet === "transfer"} onClose={() => setSheet(null)}
         balanceKobo={w.balanceKobo} maxKobo={walletMaxWithdrawalKobo} banks={w.banks} api={w} onDone={w.refresh}
-        businessName={store?.profile?.business_name} />
+        businessName={store?.profile?.business_name} ownerName={store?.profile?.owner_name} />
       <ReceivePaymentSheet open={sheet === "receive"} onClose={() => setSheet(null)}
         wallet={w.wallet} payRequest={w.payRequest} testMode={walletTestMode} api={w}
-        businessName={store?.profile?.business_name} />
+        businessName={store?.profile?.business_name} ownerName={store?.profile?.owner_name} />
 
       {receipt && <TransactionDetailModal data={receipt} onClose={() => setReceipt(null)} />}
     </div>

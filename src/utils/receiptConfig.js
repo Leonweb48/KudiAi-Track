@@ -505,7 +505,16 @@ function party(name, bank, account) {
   return tail ? `${head}\n${tail}` : head;
 }
 
-// ctx (all optional): businessName, walletAccountNumber,
+// Business + owner identity only — no account number. Used for "who sent
+// this" on an outbound receipt (transfer, bill payment), where the wallet
+// account used to send is deliberately left off.
+function senderIdentity(businessName, ownerName) {
+  const head = String(businessName || '').trim() || '—';
+  const sub  = String(ownerName || '').trim();
+  return sub && sub.toLowerCase() !== head.toLowerCase() ? `${head}\n${sub}` : head;
+}
+
+// ctx (all optional): businessName, ownerName, walletAccountNumber,
 //   withdrawal (wallet_withdrawals row), request (wallet_payment_requests row),
 //   originator (deposit sender name), recipientBankName (resolved from bank_code)
 export function buildWalletReceipt(row, ctx = {}) {
@@ -523,20 +532,21 @@ export function buildWalletReceipt(row, ctx = {}) {
   const businessName = ctx.businessName || 'My Business';
   const walletAcct   = ctx.walletAccountNumber || '';
   const walletParty  = party(businessName, 'KudiAI Wallet', walletAcct);
+  const sender       = senderIdentity(businessName, ctx.ownerName);
   const wd           = ctx.withdrawal || null;
   const rq           = ctx.request || null;
   const narration    = (wd?.narration || row.narration || '').trim();
 
-  // Sending money out (transfer, bill payment) never names the business,
-  // the owner, or the wallet account that sent it — only the counterparty,
-  // amount, and reference. Receiving (funding, a sale) still shows where it
-  // landed, since that's useful and isn't "the account used in sending".
+  // Sending money out (transfer, bill payment) names the business and owner,
+  // but never the wallet account that sent it. Receiving (funding, a sale)
+  // still shows where it landed, account included.
   let fields;
   if (src === 'withdrawal' || src === 'withdrawal_reversal') {
     const rcptBank = ctx.recipientBankName || cleanBankName(wd?.bank_name) || wd?.bank_code || '';
     fields = [
       { label: 'Transaction Type', value: src === 'withdrawal_reversal' ? 'Transfer reversal — refunded to wallet' : 'Wallet transfer' },
       { label: 'Recipient Details', value: party(wd?.account_name || narration || 'Bank account', rcptBank, wd?.account_number) },
+      { label: 'Sender Details',    value: sender },
       narration && !/^transfer to bank$/i.test(narration) && { label: 'Narration', value: narration },
       wd?.fee_kobo ? { label: 'Fee', value: fmtAmt(wd.fee_kobo / 100) } : null,
       wd?.flw_transfer_id && { label: 'Transaction No.', value: wd.flw_transfer_id, copy: true },
@@ -574,7 +584,7 @@ export function buildWalletReceipt(row, ctx = {}) {
     fields = [
       { label: 'Transaction Type', value: src === 'bill_reversal' ? 'Bill refund — credited to wallet' : 'Bill payment' },
       narration && { label: src === 'bill_reversal' ? 'Refund for' : 'Paid for', value: narration },
-      src === 'bill_reversal' && { label: 'Credited to', value: walletParty },
+      src === 'bill_reversal' ? { label: 'Credited to', value: walletParty } : { label: 'Paid by', value: sender },
       row.flw_reference && { label: 'Provider Ref.', value: row.flw_reference, copy: true },
       row.balance_after_kobo != null && { label: 'Account balance after', value: fmtAmt(row.balance_after_kobo / 100) },
       { label: 'Payment Method', value: 'KudiAI Wallet' },

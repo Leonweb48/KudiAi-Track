@@ -231,7 +231,7 @@ export function FundWalletSheet({ open, onClose, wallet, testMode, api }) {
 }
 
 // ── Transfer — bank-transfer style, PIN-confirmed, instant ─────────────────
-export function TransferSheet({ open, onClose, balanceKobo, maxKobo, banks, api, businessName, onDone }) {
+export function TransferSheet({ open, onClose, balanceKobo, maxKobo, banks, api, businessName, ownerName, onDone }) {
   const [step, setStep] = useState("to");     // to | amount | review | pin | done
   const [acctNo, setAcctNo] = useState("");
   const [bank, setBank] = useState(null);
@@ -266,7 +266,7 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, banks, api,
     setReceiptLoading(true);
     for (let i = 0; i < 6; i++) {
       const row = findWithdrawalRow(api, wdId);
-      if (row) { setReceipt(api.receiptFor(row, businessName)); setReceiptLoading(false); return; }
+      if (row) { setReceipt(api.receiptFor(row, businessName, ownerName)); setReceiptLoading(false); return; }
       if (i === 2) api.refresh();
       await new Promise((r) => setTimeout(r, 500));
     }
@@ -481,7 +481,7 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, banks, api,
 }
 
 // ── Receive payment (customer pays into the wallet, booked as a sale) ──────
-export function ReceivePaymentSheet({ open, onClose, wallet, payRequest, testMode, api, businessName }) {
+export function ReceivePaymentSheet({ open, onClose, wallet, payRequest, testMode, api, businessName, ownerName }) {
   const [amount, setAmount] = useState("");
   const [customer, setCustomer] = useState("");
   const [note, setNote] = useState("");
@@ -507,7 +507,7 @@ export function ReceivePaymentSheet({ open, onClose, wallet, payRequest, testMod
     setReceiptLoading(true);
     for (let i = 0; i < 6; i++) {
       const row = findSaleRow(api, lastReqIdRef.current);
-      if (row) { setReceipt(api.receiptFor(row, businessName)); setReceiptLoading(false); return; }
+      if (row) { setReceipt(api.receiptFor(row, businessName, ownerName)); setReceiptLoading(false); return; }
       if (i === 2) api.refresh();
       await new Promise((r) => setTimeout(r, 500));
     }
