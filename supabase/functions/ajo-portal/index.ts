@@ -98,6 +98,20 @@ serve(async (req) => {
 
   const { action } = body;
 
+  // ── list-businesses — public, no auth required. Shown on the signup page's
+  //    "Client" registration business picker, before any account exists.
+  //    Deliberately minimal fields — no email, no financials. ──────────────
+  if (action === "list-businesses") {
+    const { data, error } = await sb
+      .from("profiles")
+      .select("id, business_name")
+      .not("business_name", "is", null)
+      .neq("business_name", "")
+      .order("business_name", { ascending: true });
+    if (error) return json({ error: "Could not load businesses" }, 500);
+    return json({ ok: true, businesses: (data || []).map(b => ({ id: b.id, business_name: (b.business_name || "").trim() })) });
+  }
+
   // ── Authenticate every request ────────────────────────────────────────────
   const _jwt = (req.headers.get("Authorization") ?? "").replace("Bearer ", "").trim();
   if (!_jwt) return json({ error: "Unauthorised" }, 401);
@@ -173,6 +187,56 @@ serve(async (req) => {
           if (!_st) return json({ error: "Forbidden" }, 403);
         }
       }
+    }
+
+    // ── self-register — a new client links themselves to a business they picked
+    //    at signup. Runs with the caller's own (freshly created) session — no
+    //    existing aso_clients row to scope against, so this is deliberately
+    //    outside _clientScoped. Lands "pending_approval": the owner sets
+    //    contribution terms and approves before the client can do anything. ──
+    if (action === "self-register") {
+      const { business_id, full_name, phone } = body as { business_id: string; full_name: string; phone?: string };
+      if (!business_id) return json({ error: "Select a business to register with" }, 400);
+      if (!full_name?.trim()) return json({ error: "Full name is required" }, 400);
+
+      // Idempotent — a retry (e.g. after a network blip) must not create a duplicate.
+      const { data: existing } = await sb.from("aso_clients").select("id").eq("client_user_id", callerId).maybeSingle();
+      if (existing) return json({ ok: true, client_id: existing.id, already: true });
+
+      const { data: biz } = await sb.from("profiles").select("id, business_name").eq("id", business_id).maybeSingle();
+      if (!biz) return json({ error: "Selected business not found" }, 404);
+
+      const ym = new Date();
+      const membershipNumber = `AJO-${ym.getFullYear()}${String(ym.getMonth() + 1).padStart(2, "0")}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+
+      const { data: row, error: insErr } = await sb.from("aso_clients").insert({
+        user_id:                 business_id,
+        full_name:               full_name.trim(),
+        phone:                   phone || "",
+        email:                   (_caller.email || "").toLowerCase(),
+        status:                  "pending_approval",
+        portal_active:           true,
+        client_user_id:          callerId,
+        membership_number:       membershipNumber,
+        registration_date:       new Date().toISOString().slice(0, 10),
+        contribution_frequency:  "daily",
+        contribution_amount:     0,
+        registration_charge:     0,
+        withdrawal_fee_percent:  5,
+        commission_model:        "none",
+      }).select("id").single();
+      if (insErr) return json({ error: insErr.message }, 500);
+
+      notifyUser(business_id, {
+        type:     "ajo_registration_request",
+        title:    "New client registration",
+        body:     `${full_name.trim()} wants to register as your savings client — review and set their terms.`,
+        priority: "high",
+        deepLink: { tab: "aso" },
+        category: "ajo",
+      });
+
+      return json({ ok: true, client_id: row.id });
     }
 
     // ── Refresh client data by ID (session already validated) ─────

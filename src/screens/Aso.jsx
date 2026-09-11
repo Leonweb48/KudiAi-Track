@@ -1369,19 +1369,23 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       return (c.full_name || "").toLowerCase().includes(q) || (c.phone || "").includes(q);
     })
     .filter(c => {
+      if (filter === "pending")  return c.status === "pending_approval";
       if (filter === "active")   return c.status === "active" && !isOverdue(c);
       if (filter === "overdue")  return isOverdue(c);
-      if (filter === "inactive") return c.status !== "active";
+      if (filter === "inactive") return c.status !== "active" && c.status !== "pending_approval";
       if (filter === "groups")   return isGroupAccount(c);
       return true;
     })
     .filter(c => !dueBefore || (c.next_contribution_date && c.next_contribution_date <= dueBefore));
 
+  const pendingRegList = asoClients.filter(c => c.status === "pending_approval");
+
   const CHIPS = [
     { key: "all",      label: "All",      count: asoClients.length },
+    { key: "pending",  label: "New",      count: pendingRegList.length },
     { key: "active",   label: "Active",   count: asoClients.filter(c => c.status === "active" && !isOverdue(c)).length },
     { key: "overdue",  label: "Overdue",  count: overdueList.length },
-    { key: "inactive", label: "Inactive", count: asoClients.filter(c => c.status !== "active").length },
+    { key: "inactive", label: "Inactive", count: asoClients.filter(c => c.status !== "active" && c.status !== "pending_approval").length },
     { key: "groups",   label: "Groups",   count: groupClients.length },
   ].filter(ch => ch.key === "all" || ch.count > 0);
 
@@ -2484,6 +2488,18 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                 className={`bg-white dark:bg-slate-800 rounded-2xl px-4 py-4 shadow-card border ${
                   overdue ? "border-red-200 dark:border-red-800/50" : "border-slate-100 dark:border-slate-700/60"
                 }`}>
+
+                {/* New self-registration — needs terms + approval */}
+                {c.status === "pending_approval" && (
+                  <button onClick={() => setClientProf(c)}
+                    className="w-full flex items-center justify-between mb-3 px-2.5 py-1.5 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-200 dark:border-blue-700/40 text-left">
+                    <div className="flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse flex-shrink-0" />
+                      <p className="text-[10px] font-bold text-blue-700 dark:text-blue-400">New registration — set terms &amp; approve</p>
+                    </div>
+                    <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
+                  </button>
+                )}
 
                 {/* Pending archive banner */}
                 {c.pending_archive && (

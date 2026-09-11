@@ -74,7 +74,10 @@ function StatusBadge({ status }) {
 
 /* ── Main component ───────────────────────────────────────────────── */
 export function ClientProfile({ record, type, onSave, onClose, staffList = [], groups = [], onResetPwd, onDelete, onRequestArchive, canEditBank = false, businessName = "" }) {
-  const [editing,      setEditing]      = useState(false);
+  // A self-registered client, awaiting the owner's terms + approval — open
+  // straight into edit mode with the savings-terms fields ready to fill in.
+  const isPendingReg = type === "aso" && record?.status === "pending_approval";
+  const [editing,      setEditing]      = useState(isPendingReg);
   const [form,         setForm]         = useState({ ...record });
   const [photoFile,    setPhotoFile]    = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
@@ -305,6 +308,23 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
     setBankErr("");
   };
 
+  const approve = async () => {
+    setSaving(true); setSaveErr("");
+    const updates = { ...form, status: "active", next_contribution_date: new Date().toISOString().slice(0, 10) };
+    const { error } = await onSave(record.id, updates);
+    setSaving(false);
+    if (error) { setSaveErr(error.message || "Failed to approve registration."); return; }
+    onClose();
+  };
+
+  const decline = async () => {
+    setSaving(true); setSaveErr("");
+    const { error } = await onSave(record.id, { status: "rejected" });
+    setSaving(false);
+    if (error) { setSaveErr(error.message || "Failed to decline registration."); return; }
+    onClose();
+  };
+
   const cancelEdit = () => {
     setEditing(false);
     setForm({ ...record });
@@ -413,6 +433,15 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
           {editing ? (
             /* ===== EDIT MODE ===== */
             <>
+              {isPendingReg && (
+                <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-2xl px-4 py-3.5">
+                  <p className="text-sm font-bold text-amber-800 dark:text-amber-300 mb-1">New client registration</p>
+                  <p className="text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
+                    {form.full_name} registered themselves under your business. Set their savings terms below, then
+                    Approve to activate their account — or Decline if you don't recognise them.
+                  </p>
+                </div>
+              )}
               {/* Personal info */}
               <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-100 dark:border-slate-700 shadow-card">
                 <div className="px-4 pt-4 pb-2"><SectionHead title="Personal Information" icon="👤" /></div>
@@ -725,17 +754,30 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                 </div>
               )}
 
-              {/* Save / Cancel */}
-              <div className="grid grid-cols-2 gap-3 pb-6">
-                <button onClick={cancelEdit}
-                  className="py-3.5 rounded-xl font-bold text-sm bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition active:scale-[0.99]">
-                  Cancel
-                </button>
-                <button onClick={handleSave} disabled={saving}
-                  className="py-3.5 rounded-xl font-bold text-sm bg-brand-600 hover:bg-brand-700 text-white transition active:scale-[0.99] disabled:opacity-60 shadow-sm">
-                  {saving ? "Saving…" : "Save Profile"}
-                </button>
-              </div>
+              {/* Save / Cancel — or Approve / Decline for a pending self-registration */}
+              {isPendingReg ? (
+                <div className="grid grid-cols-2 gap-3 pb-6">
+                  <button onClick={decline} disabled={saving}
+                    className="py-3.5 rounded-xl font-bold text-sm bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-950/50 transition active:scale-[0.99] disabled:opacity-60">
+                    Decline
+                  </button>
+                  <button onClick={approve} disabled={saving}
+                    className="py-3.5 rounded-xl font-bold text-sm bg-brand-600 hover:bg-brand-700 text-white transition active:scale-[0.99] disabled:opacity-60 shadow-sm">
+                    {saving ? "Approving…" : "Approve & Activate"}
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3 pb-6">
+                  <button onClick={cancelEdit}
+                    className="py-3.5 rounded-xl font-bold text-sm bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition active:scale-[0.99]">
+                    Cancel
+                  </button>
+                  <button onClick={handleSave} disabled={saving}
+                    className="py-3.5 rounded-xl font-bold text-sm bg-brand-600 hover:bg-brand-700 text-white transition active:scale-[0.99] disabled:opacity-60 shadow-sm">
+                    {saving ? "Saving…" : "Save Profile"}
+                  </button>
+                </div>
+              )}
             </>
           ) : (
             /* ===== VIEW MODE ===== */

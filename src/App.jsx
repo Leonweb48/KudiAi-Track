@@ -76,6 +76,7 @@ const StaffOtpVerify        = lazy(() => import("./screens/StaffOtpVerify"));
 const StaffFirstLogin       = lazy(() => import("./screens/StaffFirstLogin"));
 const AjoClientOtpVerify    = lazy(() => import("./screens/AjoClientOtpVerify"));
 const AjoClientArchivedScreen = lazy(() => import("./screens/AjoClientArchivedScreen"));
+const AjoClientPendingScreen  = lazy(() => import("./screens/AjoClientPendingScreen"));
 const AjoMemberPortal       = lazy(() => import("./screens/AjoMemberPortal"));
 const CoopList              = lazy(() => import("./screens/CoopList"));
 const CoopDashboard         = lazy(() => import("./screens/CoopDashboard"));
@@ -474,6 +475,7 @@ export default function App() {
   if (status === "ajo_client_otp")      return <S><AjoClientOtpVerify ajoClient={ajoClient} /></S>;
   if (status === "ajo_client_setup")    return <S><AjoMemberPortal session={session} ajoClient={ajoClient} pinLock={pinLock} /></S>;
   if (status === "ajo_client_archived")  return <S><AjoClientArchivedScreen ajoClient={ajoClient} /></S>;
+  if (status === "ajo_client_pending")   return <S><AjoClientPendingScreen ajoClient={ajoClient} /></S>;
   if (status === "org_member_archived") return <S><OrgMemberArchivedScreen member={orgMember} /></S>;
   if (status === "offline")             return <OfflineScreen onRetry={retryAuth} />;
   if (status === "unauthenticated")  return <Auth />;

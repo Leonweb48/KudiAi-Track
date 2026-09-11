@@ -348,13 +348,24 @@ function EyeIcon({ open }) {
 }
 
 /* ── Main Auth screen ──────────────────────────────────────────────── */
+// Amaya & Co. Technologies — pre-selected in the client registration business
+// picker by default.
+const DEFAULT_CLIENT_BUSINESS_ID = "fef18c36-867b-4740-926d-7399e6aa6596";
+// Must match useAuth.js's PENDING_AJO_REG_KEY — that's where this gets consumed.
+const PENDING_AJO_REG_KEY = "kuditrack_pending_ajo_reg";
+
 export default function Auth() {
   const t = useT();
   const [mode,          setMode]         = useState("login"); // "login" | "register" | "forgot" | "otp" | "reset_otp"
+  const [regType,       setRegType]      = useState("business"); // "business" | "client" — register mode only
   const [email,         setEmail]        = useState("");
   const [password,      setPass]         = useState("");
   const [confirmPass,   setConfirmPass]  = useState("");
   const [name,          setName]         = useState("");
+  const [phone,               setPhone]              = useState("");
+  const [businesses,          setBusinesses]         = useState([]);
+  const [businessesLoading,   setBusinessesLoading]  = useState(false);
+  const [clientBusinessId,    setClientBusinessId]   = useState("");
   const [showPw,        setShowPw]       = useState(false);
   const [showConfirmPw, setShowConfirmPw] = useState(false);
   const [loading,       setLoading]      = useState(false);
@@ -423,6 +434,20 @@ export default function Auth() {
     return () => clearTimeout(timer);
   }, [mode, email, resetTrigger]);
 
+  // Business picker for "Client" registration — public list, loaded on demand.
+  useEffect(() => {
+    if (mode !== "register" || regType !== "client" || businesses.length || businessesLoading) return;
+    setBusinessesLoading(true);
+    supabase.functions.invoke("ajo-portal", { body: { action: "list-businesses" } })
+      .then(({ data }) => {
+        const list = data?.businesses || [];
+        setBusinesses(list);
+        setClientBusinessId(prev => prev || (list.find(b => b.id === DEFAULT_CLIENT_BUSINESS_ID)?.id) || list[0]?.id || "");
+      })
+      .catch(() => {})
+      .finally(() => setBusinessesLoading(false));
+  }, [mode, regType]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!supabaseConfigured) return <SetupNotice />;
 
   const clearMessages = () => { setError(""); setInfo(""); setShowPw(false); setShowConfirmPw(false); setConfirmPass(""); };
@@ -482,10 +507,44 @@ export default function Auth() {
           return;
         }
         if (ajoCheck) {
-          setError("This email is registered as a savings client account and cannot be used to create a business account.");
+          setError(regType === "client"
+            ? "This email is already registered as a savings client."
+            : "This email is registered as a savings client account and cannot be used to create a business account.");
           setLoading(false);
           return;
         }
+
+        if (regType === "client") {
+          if (!clientBusinessId) { setError("Select a business to register with."); setLoading(false); return; }
+          // useAuth needs this after signUp/OTP-confirm creates the session — by
+          // which point this component has already unmounted, so it can't just
+          // hold it in memory.
+          localStorage.setItem(PENDING_AJO_REG_KEY, JSON.stringify({
+            business_id: clientBusinessId, full_name: name.trim(), phone: phone.trim(),
+          }));
+          const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
+            email: email.trim().toLowerCase(),
+            password,
+            options: { data: { full_name: name, account_type: "ajo_client" } },
+          });
+          if (signUpErr) { localStorage.removeItem(PENDING_AJO_REG_KEY); throw signUpErr; }
+
+          if (signUpData?.session) {
+            // Finish linking right away for a snappier first screen — if this
+            // fails (network blip), the flag stays and useAuth's next resolve
+            // retries it automatically.
+            try {
+              const { error: regErr } = await supabase.functions.invoke("ajo-portal", {
+                body: { action: "self-register", business_id: clientBusinessId, full_name: name.trim(), phone: phone.trim() },
+              });
+              if (!regErr) localStorage.removeItem(PENDING_AJO_REG_KEY);
+            } catch { /* leave the flag for useAuth to retry */ }
+          } else {
+            setMode("otp");
+          }
+          return;
+        }
+
         const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
           email: email.trim().toLowerCase(),
           password,
@@ -745,6 +804,34 @@ export default function Auth() {
         </div>
       )}
 
+      {/* Registering as a business (owner/collector) or a savings client? */}
+      {!isForgot && mode === "register" && (
+        <div className="flex bg-gray-100 dark:bg-slate-800 rounded-xl p-1 mb-5">
+          <button
+            type="button"
+            onClick={() => { setRegType("business"); clearMessages(); }}
+            className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${
+              regType === "business"
+                ? "bg-white dark:bg-slate-700 text-gray-800 dark:text-white shadow-sm"
+                : "text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200"
+            }`}
+          >
+            Business
+          </button>
+          <button
+            type="button"
+            onClick={() => { setRegType("client"); clearMessages(); }}
+            className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${
+              regType === "client"
+                ? "bg-white dark:bg-slate-700 text-gray-800 dark:text-white shadow-sm"
+                : "text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200"
+            }`}
+          >
+            Client
+          </button>
+        </div>
+      )}
+
       {isForgot && (
         <div className="mb-5">
           <button
@@ -775,7 +862,9 @@ export default function Auth() {
       <form onSubmit={handleEmailAuth} className="space-y-3.5">
         {mode === "register" && (
           <div>
-            <label className="block text-[11px] font-semibold text-gray-400 mb-1.5 uppercase tracking-wider">{t("auth.fullName")}</label>
+            <label className="block text-[11px] font-semibold text-gray-400 mb-1.5 uppercase tracking-wider">
+              {regType === "client" ? "Full Name" : t("auth.fullName")}
+            </label>
             <input
               type="text" required value={name}
               onChange={(e) => setName(e.target.value)}
@@ -783,6 +872,39 @@ export default function Auth() {
               className="w-full border border-gray-200 dark:border-slate-600 rounded-xl px-4 py-3 text-sm text-gray-900 dark:text-white bg-gray-50 dark:bg-slate-800 focus:bg-white dark:focus:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
             />
           </div>
+        )}
+
+        {mode === "register" && regType === "client" && (
+          <>
+            <div>
+              <label className="block text-[11px] font-semibold text-gray-400 mb-1.5 uppercase tracking-wider">Phone</label>
+              <input
+                type="tel" value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="08012345678"
+                className="w-full border border-gray-200 dark:border-slate-600 rounded-xl px-4 py-3 text-sm text-gray-900 dark:text-white bg-gray-50 dark:bg-slate-800 focus:bg-white dark:focus:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-semibold text-gray-400 mb-1.5 uppercase tracking-wider">
+                Business you're saving with
+              </label>
+              <select
+                required value={clientBusinessId}
+                onChange={(e) => setClientBusinessId(e.target.value)}
+                disabled={businessesLoading}
+                className="w-full border border-gray-200 dark:border-slate-600 rounded-xl px-4 py-3 text-sm text-gray-900 dark:text-white bg-gray-50 dark:bg-slate-800 focus:bg-white dark:focus:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all disabled:opacity-60"
+              >
+                {businessesLoading && <option value="">Loading businesses…</option>}
+                {!businessesLoading && businesses.length === 0 && <option value="">No businesses available</option>}
+                {businesses.map(b => <option key={b.id} value={b.id}>{b.business_name}</option>)}
+              </select>
+              <p className="text-[11px] text-gray-400 dark:text-slate-500 mt-1.5 leading-relaxed">
+                Your registration goes to this business for review — they'll set your contribution terms and
+                approve before you can start saving.
+              </p>
+            </div>
+          </>
         )}
 
         <div>

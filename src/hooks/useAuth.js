@@ -10,6 +10,11 @@ const CACHE_KEY = "kuditrack_plan";
 const SESSION_LOGGED_KEY = "kuditrack_sess_logged";
 const WELCOME_EMAIL_KEY = "kuditrack_welcome_sent";
 
+// Written by the "Client" registration form (Auth.jsx) right before signUp(),
+// since the session it needs (to link aso_clients) doesn't exist until after
+// signUp/OTP-confirm completes — by which point Auth.jsx has already unmounted.
+const PENDING_AJO_REG_KEY = "kuditrack_pending_ajo_reg";
+
 // Per-portal row caches — written on every successful resolve, read when the
 // matching DB query fails with a network error (offline / flaky connection).
 // Cleared on explicit sign-out so they never bleed into a different account.
@@ -233,6 +238,12 @@ export function useAuth() {
           setStatus("ajo_client_archived");
           return;
         }
+        // Self-registered: awaiting (or declined for) the business's approval —
+        // skip PIN/consent gates the same way archived clients do.
+        if (ajoClientRow.status === "pending_approval" || ajoClientRow.status === "rejected") {
+          setStatus("ajo_client_pending");
+          return;
+        }
         // Use custom flag — Supabase overwrites email_verified when email_confirm:true is set at creation
         const ajoOtpVerified = sess.user.user_metadata?.ajo_client_otp_verified === true;
         if (mustChange && !ajoOtpVerified) {
@@ -254,7 +265,11 @@ export function useAuth() {
             const cached = JSON.parse(raw);
             setAjoClient({ ...cached, owner_id: cached.user_id });
             subVerified.current = true;
-            setStatus(cached.portal_active === false ? "ajo_client_archived" : "ajo_client");
+            setStatus(
+              cached.portal_active === false ? "ajo_client_archived"
+              : (cached.status === "pending_approval" || cached.status === "rejected") ? "ajo_client_pending"
+              : "ajo_client"
+            );
             return;
           } catch { /* corrupted cache — fall through to offline screen */ }
         }
@@ -262,6 +277,21 @@ export function useAuth() {
         // so the next successful network attempt routes correctly without re-login.
         setStatus("offline");
         return;
+      }
+      // Row genuinely absent — if this is a client mid-self-registration (the
+      // session that link needs didn't exist until after signUp/OTP-confirm,
+      // by which point Auth.jsx already unmounted), finish linking now, then
+      // re-resolve once. Clearing the flag first caps this at one retry.
+      const pendingRegRaw = localStorage.getItem(PENDING_AJO_REG_KEY);
+      if (pendingRegRaw) {
+        localStorage.removeItem(PENDING_AJO_REG_KEY);
+        try {
+          const pending = JSON.parse(pendingRegRaw);
+          const { data: regData, error: regErr } = await supabase.functions.invoke("ajo-portal", {
+            body: { action: "self-register", ...pending },
+          });
+          if (!regErr && regData?.ok) { await resolve(sess); return; }
+        } catch { /* fall through to sign-out */ }
       }
       // Row genuinely absent (not a network error) — sign out
       await supabase.auth.signOut();
