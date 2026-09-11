@@ -36,7 +36,7 @@ import { setCache, getCache } from "../utils/offlineCache";
 import ContributionCard from "../components/ContributionCard";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
 import { useWallet } from "../hooks/useWallet";
-import { BottomSheet, ActionButton, AccountCard, FundWalletSheet, TransferSheet, ReceivePaymentSheet, WalletMiniAction, WALLET_MINI_ICONS, cleanBankName } from "../components/WalletPanel";
+import { BottomSheet, ActionButton, AccountCard, FundWalletSheet, TransferSheet, ReceivePaymentSheet, WalletMiniAction, WALLET_MINI_ICONS, cleanBankName, WalletTxRow } from "../components/WalletPanel";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import EsusuRotationDashboard from "../components/EsusuRotationDashboard";
 import LegalScreen from "./LegalScreen";
@@ -2957,6 +2957,11 @@ function OverviewTab({ client, contributions, cycles = [], rotationsData = [], r
                   </>
                 )}
               </div>
+              {wallet?.hasAccount && (
+                <button onClick={onWalletClick} className="w-full mt-2.5 text-[11px] font-bold text-white/60 active:text-white/80 transition-colors text-center">
+                  View transaction history →
+                </button>
+              )}
             </div>
           ) : (
             <>
@@ -5442,7 +5447,7 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
 }
 
 // ── Bills wrapper — mirrors same store shape as CoopMemberPortal ──────────
-function AjoMemberBillsWrapper({ client, ownerInfo, session }) {
+function AjoMemberBillsWrapper({ client, ownerInfo, session, wallet }) {
   const [bills, setBills] = useState([]);
 
   const addTransaction = useCallback(async (payload) => {
@@ -5480,6 +5485,7 @@ function AjoMemberBillsWrapper({ client, ownerInfo, session }) {
       store={store}
       plan="basic"
       session={session}
+      wallet={wallet}
       markup={1.098}
       pointsEnabled
       staffName={client?.full_name || null}
@@ -5547,10 +5553,11 @@ function OpenCycleSheet({ client, onClose, onOpened }) {
 }
 
 // ── KudiAI Wallet — activation (BVN) or balance/actions, for the client ────
-function MemberWalletSheet({ wallet, testMode, onClose, onFund, onTransfer }) {
+function MemberWalletSheet({ wallet, testMode, businessName, ownerName, onClose, onFund, onTransfer }) {
   const [bvn, setBvn] = useState("");
   const [nin, setNin] = useState("");
   const [err, setErr] = useState("");
+  const [receipt, setReceipt] = useState(null);
 
   const activate = async () => {
     setErr("");
@@ -5559,7 +5566,10 @@ function MemberWalletSheet({ wallet, testMode, onClose, onFund, onTransfer }) {
     catch (e) { setErr(e.message || "Could not activate your wallet"); }
   };
 
+  const openReceipt = (row) => setReceipt(wallet.receiptFor(row, businessName, ownerName));
+
   return (
+    <>
     <BottomSheet open onClose={onClose} title="KudiAI Wallet">
       {wallet.loading ? (
         <div className="h-40 rounded-2xl bg-slate-100 dark:bg-slate-800 animate-pulse" />
@@ -5600,13 +5610,28 @@ function MemberWalletSheet({ wallet, testMode, onClose, onFund, onTransfer }) {
           <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-1">Balance</p>
           <AmountDisplay amount={wallet.balanceKobo} fromKobo size="hero" align="left" className="mb-4" />
           <AccountCard wallet={wallet.wallet} />
-          <div className="flex items-center gap-2 mt-4">
+          <div className="flex items-center gap-2 mt-4 mb-2">
             <ActionButton icon="plus" label="Fund" onClick={onFund} />
             <ActionButton icon="send" label="Transfer" tone="slate" onClick={onTransfer} />
+          </div>
+
+          {/* Transactions — every fund/transfer/spend/contribution lands here with a
+              tap-to-view receipt, same as the owner's Wallet screen. */}
+          <div className="mt-4">
+            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400 mb-1">Transactions</p>
+            {wallet.ledger.length === 0 ? (
+              <p className="text-[13px] text-slate-400 py-8 text-center">No wallet activity yet.</p>
+            ) : (
+              <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                {wallet.ledger.map((row) => <WalletTxRow key={row.id} row={row} onOpen={openReceipt} />)}
+              </div>
+            )}
           </div>
         </div>
       )}
     </BottomSheet>
+    {receipt && <TransactionDetailModal data={receipt} onClose={() => setReceipt(null)} />}
+    </>
   );
 }
 
@@ -5993,6 +6018,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
                 client={client}
                 ownerInfo={ownerInfo}
                 session={session}
+                wallet={wallet}
               />
             </div>
           )}
@@ -6114,6 +6140,8 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
         <MemberWalletSheet
           wallet={wallet}
           testMode={walletTestMode}
+          businessName={client?.full_name}
+          ownerName={client?.full_name}
           onClose={() => setShowWallet(false)}
           onFund={() => { setShowWallet(false); setWalletSheet("fund"); }}
           onTransfer={() => { setShowWallet(false); setWalletSheet("transfer"); }}

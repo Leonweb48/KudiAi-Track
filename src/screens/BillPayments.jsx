@@ -1610,7 +1610,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
   );
 }
 
-export default function BillPayments({ store, plan, session = null, staffName = null, staffEmail = null, businessName = null, autoService = null, onAutoOpened = null, excludeCats = [], markup = 1.0, cashback = 0, pointsEnabled = false, walletOnly = false }) {
+export default function BillPayments({ store, plan, session = null, staffName = null, staffEmail = null, businessName = null, autoService = null, onAutoOpened = null, excludeCats = [], markup = 1.0, cashback = 0, pointsEnabled = false, walletOnly = false, wallet: externalWallet = null }) {
   const t = useT();
   const CAT_LABELS = useMemo(() => ({
     airtime:        t("bill.airtime"),
@@ -1646,8 +1646,16 @@ export default function BillPayments({ store, plan, session = null, staffName = 
   // so they can resell below face. Everyone else keeps retail pricing.
   const { ckDiscounts, enterpriseFeePct, walletEnabled } = usePlatformConfig();
 
-  // ── Digital wallet — funding source; the only one when walletOnly (Ajo client portal) ──
-  const wallet = useWallet(session?.user?.id || null, walletEnabled);
+  // ── Digital wallet — funding source; the only one when walletOnly (Ajo client portal).
+  // When a parent screen already has a live useWallet() instance for this same user
+  // (e.g. the Ajo member portal, whose hero card keeps one mounted for the portal's
+  // whole lifetime), it's passed in as `wallet` — a second useWallet() here would
+  // open a duplicate `wallet_rt_${userId}` realtime channel and crash ("cannot add
+  // postgres_changes callbacks ... after subscribe()") the moment both try to attach
+  // listeners to the same already-subscribed channel topic. Only stand up our own
+  // instance when nothing was handed to us (BillPayments as its own top-level route). ──
+  const ownWallet = useWallet(externalWallet ? null : (session?.user?.id || null), walletEnabled);
+  const wallet = externalWallet || ownWallet;
   const [payMethod, setPayMethod] = useState(walletOnly ? "wallet" : "paystack");   // "paystack" | "wallet"
 
   const bundleFacePerSet   = (denom) => (parseInt(denom || "1000", 10) || 0) * BUNDLE_NETWORKS.length;
