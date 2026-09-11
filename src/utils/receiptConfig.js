@@ -527,18 +527,21 @@ export function buildWalletReceipt(row, ctx = {}) {
   const rq           = ctx.request || null;
   const narration    = (wd?.narration || row.narration || '').trim();
 
+  // Sending money out (transfer, bill payment) never names the business,
+  // the owner, or the wallet account that sent it — only the counterparty,
+  // amount, and reference. Receiving (funding, a sale) still shows where it
+  // landed, since that's useful and isn't "the account used in sending".
   let fields;
   if (src === 'withdrawal' || src === 'withdrawal_reversal') {
     const rcptBank = ctx.recipientBankName || cleanBankName(wd?.bank_name) || wd?.bank_code || '';
     fields = [
       { label: 'Transaction Type', value: src === 'withdrawal_reversal' ? 'Transfer reversal — refunded to wallet' : 'Wallet transfer' },
       { label: 'Recipient Details', value: party(wd?.account_name || narration || 'Bank account', rcptBank, wd?.account_number) },
-      { label: 'Sender Details',    value: walletParty },
       narration && !/^transfer to bank$/i.test(narration) && { label: 'Narration', value: narration },
       wd?.fee_kobo ? { label: 'Fee', value: fmtAmt(wd.fee_kobo / 100) } : null,
       wd?.flw_transfer_id && { label: 'Transaction No.', value: wd.flw_transfer_id, copy: true },
       wd?.session_id      && { label: 'Session ID',      value: wd.session_id, copy: true },
-      row.balance_after_kobo != null && { label: 'Wallet balance after', value: fmtAmt(row.balance_after_kobo / 100) },
+      row.balance_after_kobo != null && { label: 'Account balance after', value: fmtAmt(row.balance_after_kobo / 100) },
       { label: 'Payment Method', value: 'KudiAI Wallet' },
       { label: 'Status',    value: humanize(row.status) },
       { label: 'Reference', value: ref, copy: true },
@@ -549,7 +552,7 @@ export function buildWalletReceipt(row, ctx = {}) {
       { label: 'Recipient Details', value: walletParty },
       { label: 'Sender Details',    value: party(ctx.originator || 'Bank transfer', '', '') },
       row.flw_reference && { label: 'Transaction No.', value: row.flw_reference, copy: true },
-      row.balance_after_kobo != null && { label: 'Wallet balance after', value: fmtAmt(row.balance_after_kobo / 100) },
+      row.balance_after_kobo != null && { label: 'Account balance after', value: fmtAmt(row.balance_after_kobo / 100) },
       { label: 'Payment Method', value: 'Bank transfer' },
       { label: 'Status',    value: humanize(row.status) },
       { label: 'Reference', value: ref, copy: true },
@@ -562,7 +565,7 @@ export function buildWalletReceipt(row, ctx = {}) {
       { label: 'Sender Details',    value: party(rq?.customer_name || ctx.originator || 'Customer', '', '') },
       note && { label: 'For', value: note },
       row.flw_reference && { label: 'Transaction No.', value: row.flw_reference, copy: true },
-      row.balance_after_kobo != null && { label: 'Wallet balance after', value: fmtAmt(row.balance_after_kobo / 100) },
+      row.balance_after_kobo != null && { label: 'Account balance after', value: fmtAmt(row.balance_after_kobo / 100) },
       { label: 'Payment Method', value: 'Bank transfer' },
       { label: 'Status',    value: humanize(row.status) },
       { label: 'Reference', value: ref, copy: true },
@@ -571,9 +574,9 @@ export function buildWalletReceipt(row, ctx = {}) {
     fields = [
       { label: 'Transaction Type', value: src === 'bill_reversal' ? 'Bill refund — credited to wallet' : 'Bill payment' },
       narration && { label: src === 'bill_reversal' ? 'Refund for' : 'Paid for', value: narration },
-      { label: src === 'bill_reversal' ? 'Credited to' : 'Paid from', value: walletParty },
+      src === 'bill_reversal' && { label: 'Credited to', value: walletParty },
       row.flw_reference && { label: 'Provider Ref.', value: row.flw_reference, copy: true },
-      row.balance_after_kobo != null && { label: 'Wallet balance after', value: fmtAmt(row.balance_after_kobo / 100) },
+      row.balance_after_kobo != null && { label: 'Account balance after', value: fmtAmt(row.balance_after_kobo / 100) },
       { label: 'Payment Method', value: 'KudiAI Wallet' },
       { label: 'Status',    value: humanize(row.status) },
       { label: 'Reference', value: ref, copy: true },
@@ -583,7 +586,7 @@ export function buildWalletReceipt(row, ctx = {}) {
       { label: 'Transaction Type', value: title },
       { label: credit ? 'Money in' : 'Money out', value: fmtAmt(amount) },
       narration && { label: 'Details', value: narration },
-      row.balance_after_kobo != null && { label: 'Wallet balance after', value: fmtAmt(row.balance_after_kobo / 100) },
+      row.balance_after_kobo != null && { label: 'Account balance after', value: fmtAmt(row.balance_after_kobo / 100) },
       { label: 'Status',    value: humanize(row.status) },
       { label: 'Reference', value: ref, copy: true },
     ];

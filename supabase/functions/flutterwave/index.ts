@@ -407,7 +407,7 @@ serve(async (req) => {
         return json({ error: `Transfer could not be completed (${d.error}). Your wallet was not charged.`, detail: d.detail }, 502);
       }
       await sb.rpc("wallet_transfer_sent", { p_withdrawal_id: wdId, p_flw_transfer_id: d.transfer_id, p_fee_kobo: d.fee_kobo });
-      return json({ ok: true, account_name: accountName, status: d.status, fee_kobo: d.fee_kobo });
+      return json({ ok: true, account_name: accountName, status: d.status, fee_kobo: d.fee_kobo, withdrawal_id: wdId });
     }
 
     return json({ error: `Unknown action: ${action}` }, 400);

@@ -174,9 +174,11 @@ export default function Wallet({ session, store }) {
       <FundWalletSheet open={sheet === "fund"} onClose={() => setSheet(null)}
         wallet={w.wallet} testMode={walletTestMode} api={w} />
       <TransferSheet open={sheet === "transfer"} onClose={() => setSheet(null)}
-        balanceKobo={w.balanceKobo} maxKobo={walletMaxWithdrawalKobo} banks={w.banks} api={w} onDone={w.refresh} />
+        balanceKobo={w.balanceKobo} maxKobo={walletMaxWithdrawalKobo} banks={w.banks} api={w} onDone={w.refresh}
+        businessName={store?.profile?.business_name} />
       <ReceivePaymentSheet open={sheet === "receive"} onClose={() => setSheet(null)}
-        wallet={w.wallet} payRequest={w.payRequest} testMode={walletTestMode} api={w} />
+        wallet={w.wallet} payRequest={w.payRequest} testMode={walletTestMode} api={w}
+        businessName={store?.profile?.business_name} />
 
       {receipt && <TransactionDetailModal data={receipt} onClose={() => setReceipt(null)} />}
     </div>

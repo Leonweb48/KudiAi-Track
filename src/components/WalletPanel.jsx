@@ -2,7 +2,24 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Icon from "./Icon";
 import TransactionPinModal from "./TransactionPinModal";
 import BankSelect from "./shared/BankSelect";
+import TransactionDetailModal from "./shared/TransactionDetailModal";
 import { fmt, fmtDateTime } from "../utils/helpers";
+
+// Locates the just-completed ledger row (by the withdrawal id the transfer
+// action returns, or the payment-request id a "receive" resolved to) so the
+// done/paid screen can open its receipt without leaving the sheet. Returns
+// null while the row hasn't landed yet (realtime is normally instant, but
+// this covers the gap) — callers retry a few times before giving up.
+function findWithdrawalRow(api, withdrawalId) {
+  const wd = api.withdrawals.find((w) => w.id === withdrawalId);
+  if (!wd?.ledger_id) return null;
+  return api.ledger.find((l) => l.id === wd.ledger_id) || null;
+}
+function findSaleRow(api, requestId) {
+  const rq = api.requests.find((r) => r.id === requestId);
+  if (!rq?.ledger_id) return null;
+  return api.ledger.find((l) => l.id === rq.ledger_id) || null;
+}
 
 // Flutterwave returns e.g. "Flutterwave MFB (Formerly OK MFB)" — drop the aside.
 export const cleanBankName = (n) =>
@@ -91,7 +108,7 @@ export function AccountCard({ wallet }) {
   };
   const share = async () => {
     const text = `${wallet?.flw_account_name || "KudiAI Wallet"}\n${acct}\n${bank}`;
-    try { if (navigator.share) await navigator.share({ title: "My wallet account", text }); else copy(); } catch {}
+    try { if (navigator.share) await navigator.share({ title: "My account details", text }); else copy(); } catch {}
   };
   return (
     <div className="rounded-3xl bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 shadow-card p-5">
@@ -214,7 +231,7 @@ export function FundWalletSheet({ open, onClose, wallet, testMode, api }) {
 }
 
 // ── Transfer — bank-transfer style, PIN-confirmed, instant ─────────────────
-export function TransferSheet({ open, onClose, balanceKobo, maxKobo, banks, api, onDone }) {
+export function TransferSheet({ open, onClose, balanceKobo, maxKobo, banks, api, businessName, onDone }) {
   const [step, setStep] = useState("to");     // to | amount | review | pin | done
   const [acctNo, setAcctNo] = useState("");
   const [bank, setBank] = useState(null);
@@ -228,6 +245,9 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, banks, api,
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [fee, setFee] = useState(0);
+  const [wdId, setWdId] = useState("");
+  const [receipt, setReceipt] = useState(null);
+  const [receiptLoading, setReceiptLoading] = useState(false);
   const reqRef = useRef(0);       // guards against a stale lookup clobbering a newer one
   const doneKeyRef = useRef("");  // one lookup per unique (bank, account) pair
 
@@ -235,8 +255,24 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, banks, api,
     if (open) return;
     setStep("to"); setAcctNo(""); setBank(null); setName(""); setAmount(""); setManual(false); setManualName("");
     setNarration(""); setBookExpense(false); setErr(""); setFee(0); setResolving(false);
+    setWdId(""); setReceipt(null); setReceiptLoading(false);
     doneKeyRef.current = "";
   }, [open]);
+
+  // Transfers post their ledger row before the edge call even returns
+  // (the funds hold commits, then Flutterwave is called) — so realtime has
+  // normally already delivered it. Retry a few times to cover the rare lag.
+  const viewReceipt = async () => {
+    setReceiptLoading(true);
+    for (let i = 0; i < 6; i++) {
+      const row = findWithdrawalRow(api, wdId);
+      if (row) { setReceipt(api.receiptFor(row, businessName)); setReceiptLoading(false); return; }
+      if (i === 2) api.refresh();
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    setReceiptLoading(false);
+    setErr("Receipt isn't ready yet — find it in your wallet history in a moment.");
+  };
 
   const runResolve = useCallback(async (code, acct) => {
     const id = ++reqRef.current;
@@ -295,6 +331,7 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, banks, api,
     try {
       const r = await api.transfer(kobo, bank.code, acctNo.trim(), pin, narration.trim(), bookExpense, recipientName);
       setFee(Number(r?.fee_kobo || 0));
+      setWdId(r?.withdrawal_id || "");
       setStep("done");
       onDone?.();
     } catch (e) {
@@ -319,7 +356,12 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, banks, api,
               to <b>{recipientName}</b> · {bank?.name}
               {fee > 0 ? <><br />Fee {fmt(fee / 100)}</> : null}
             </p>
-            <button onClick={onClose} className={primaryBtn + " mt-5"}>Done</button>
+            {err && <p className="text-[12px] text-amber-600 dark:text-amber-400 mt-3">{err}</p>}
+            <button onClick={viewReceipt} disabled={receiptLoading}
+              className="w-full mt-5 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold py-3.5 text-[14px] disabled:opacity-50">
+              {receiptLoading ? "Preparing receipt…" : "View receipt"}
+            </button>
+            <button onClick={onClose} className={primaryBtn + " mt-2.5"}>Done</button>
           </div>
         ) : step === "review" ? (
           <div>
@@ -432,12 +474,14 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, banks, api,
           onCancel={() => setStep("review")}
         />
       )}
+
+      {receipt && <TransactionDetailModal data={receipt} onClose={() => setReceipt(null)} />}
     </>
   );
 }
 
 // ── Receive payment (customer pays into the wallet, booked as a sale) ──────
-export function ReceivePaymentSheet({ open, onClose, wallet, payRequest, testMode, api }) {
+export function ReceivePaymentSheet({ open, onClose, wallet, payRequest, testMode, api, businessName }) {
   const [amount, setAmount] = useState("");
   const [customer, setCustomer] = useState("");
   const [note, setNote] = useState("");
@@ -445,16 +489,31 @@ export function ReceivePaymentSheet({ open, onClose, wallet, payRequest, testMod
   const [err, setErr] = useState("");
   const [copied, setCopied] = useState(false);
   const [paid, setPaid] = useState(false);
+  const [receipt, setReceipt] = useState(null);
+  const [receiptLoading, setReceiptLoading] = useState(false);
   const hadReq = useRef(false);
+  const lastReqIdRef = useRef("");
 
   useEffect(() => {
-    if (!open) { setAmount(""); setCustomer(""); setNote(""); setErr(""); setPaid(false); hadReq.current = false; }
+    if (!open) { setAmount(""); setCustomer(""); setNote(""); setErr(""); setPaid(false); setReceipt(null); setReceiptLoading(false); hadReq.current = false; }
   }, [open]);
   useEffect(() => {
     if (!open) return;
-    if (payRequest) hadReq.current = true;
+    if (payRequest) { hadReq.current = true; lastReqIdRef.current = payRequest.id; }
     else if (hadReq.current) { setPaid(true); hadReq.current = false; }
   }, [payRequest, open]);
+
+  const viewReceipt = async () => {
+    setReceiptLoading(true);
+    for (let i = 0; i < 6; i++) {
+      const row = findSaleRow(api, lastReqIdRef.current);
+      if (row) { setReceipt(api.receiptFor(row, businessName)); setReceiptLoading(false); return; }
+      if (i === 2) api.refresh();
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    setReceiptLoading(false);
+    setErr("Receipt isn't ready yet — find it in your wallet history in a moment.");
+  };
 
   const acct = wallet?.flw_account_number || "";
   const bank = cleanBankName(wallet?.flw_account_bank);
@@ -474,6 +533,7 @@ export function ReceivePaymentSheet({ open, onClose, wallet, payRequest, testMod
   };
 
   return (
+    <>
     <BottomSheet open={open} onClose={onClose} title={paid ? "" : payRequest ? "Awaiting payment" : "Receive payment"}>
       {paid ? (
         <div className="text-center py-3">
@@ -482,7 +542,12 @@ export function ReceivePaymentSheet({ open, onClose, wallet, payRequest, testMod
           </div>
           <p className="text-[17px] font-extrabold text-slate-900 dark:text-slate-50">Payment received</p>
           <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-1">In your wallet and recorded as a sale.</p>
-          <button onClick={onClose} className={primaryBtn + " mt-5"}>Done</button>
+          {err && <p className="text-[12px] text-amber-600 dark:text-amber-400 mt-3">{err}</p>}
+          <button onClick={viewReceipt} disabled={receiptLoading}
+            className="w-full mt-5 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold py-3.5 text-[14px] disabled:opacity-50">
+            {receiptLoading ? "Preparing receipt…" : "View receipt"}
+          </button>
+          <button onClick={onClose} className={primaryBtn + " mt-2.5"}>Done</button>
         </div>
       ) : payRequest ? (
         <div>
@@ -532,5 +597,7 @@ export function ReceivePaymentSheet({ open, onClose, wallet, payRequest, testMod
         </div>
       )}
     </BottomSheet>
+    {receipt && <TransactionDetailModal data={receipt} onClose={() => setReceipt(null)} />}
+    </>
   );
 }

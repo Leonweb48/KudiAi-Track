@@ -45,6 +45,25 @@ function Svg({ d, size = 18, color = "currentColor", sw = 2 }) {
   );
 }
 
+// ── Raised "3D" mini-action button (Fund/Transfer/Receive/Bills on the wallet hero) ──
+function WalletMiniAction({ onClick, d, label }) {
+  return (
+    <button onClick={onClick}
+      className="flex-1 rounded-2xl py-2.5 flex flex-col items-center gap-1 border transition-all duration-100 active:translate-y-[1.5px]"
+      style={{
+        background: "linear-gradient(180deg, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0.10) 100%)",
+        borderColor: "rgba(255,255,255,0.18)",
+        boxShadow: "0 2px 0 rgba(0,0,0,0.20), 0 5px 10px -3px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.25)",
+      }}
+      onMouseDown={(e) => { e.currentTarget.style.boxShadow = "0 0 0 rgba(0,0,0,0.2), inset 0 1px 3px rgba(0,0,0,0.25)"; }}
+      onMouseUp={(e) => { e.currentTarget.style.boxShadow = "0 2px 0 rgba(0,0,0,0.20), 0 5px 10px -3px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.25)"; }}
+    >
+      <Svg d={d} size={14} color="white" />
+      <span className="text-[9.5px] font-bold text-white/90">{label}</span>
+    </button>
+  );
+}
+
 const P = {
   mic:     "M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z|M19 10v2a7 7 0 01-14 0v-2|M12 19v4|M8 23h8",
   in:      "M12 19V5|M5 12l7-7 7 7",
@@ -257,22 +276,24 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
             /* ── WALLET BALANCE ── */
             <div>
               <button type="button" onClick={() => setTab("wallet")} className="block w-full text-left active:opacity-80 transition-opacity">
-                <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest">WALLET BALANCE</p>
+                <div className="flex items-start justify-between gap-3">
+                  <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest pt-0.5">WALLET BALANCE</p>
+                  {wallet.hasAccount && (
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-[13px] font-extrabold tracking-[0.1em] text-white tabular-nums leading-none">{wallet.wallet.flw_account_number}</p>
+                      <p className="text-[10px] text-white/60 mt-1">{cleanBankName(wallet.wallet.flw_account_bank)}</p>
+                    </div>
+                  )}
+                </div>
                 {wallet.loading ? (
-                  <div className="h-11 w-40 bg-white/20 rounded-xl animate-pulse mt-2 mb-3" />
+                  <div className="h-11 w-40 bg-white/20 rounded-xl animate-pulse mt-2 mb-1" />
                 ) : (
                   <AmountDisplay amount={wallet.balanceKobo} fromKobo size="hero" align="left"
-                    hidden={balanceHidden} className="mt-1.5 mb-3 text-white" />
-                )}
-                {wallet.hasAccount && (
-                  <div className="mt-1">
-                    <p className="text-[19px] font-extrabold tracking-[0.14em] text-white tabular-nums leading-none">{wallet.wallet.flw_account_number}</p>
-                    <p className="text-[11px] text-white/60 mt-1">{cleanBankName(wallet.wallet.flw_account_bank)}</p>
-                  </div>
+                    hidden={balanceHidden} className="mt-1.5 text-white" />
                 )}
               </button>
-              {/* mini actions */}
-              <div className="flex items-center gap-1.5 mt-3">
+              {/* mini actions — raised "3D" buttons */}
+              <div className="flex items-center gap-1.5 mt-3.5">
                 {wallet.loading ? (
                   <div className="flex-1 h-9 bg-white/10 rounded-xl animate-pulse" />
                 ) : !wallet.hasAccount ? (
@@ -282,22 +303,10 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
                   </button>
                 ) : (
                   <>
-                    <button onClick={() => setWalletSheet("fund")}
-                      className="flex-1 bg-white/15 active:bg-white/25 rounded-xl py-2 flex flex-col items-center gap-0.5 transition-colors">
-                      <Svg d={P.in} size={13} color="white" /><span className="text-[9px] font-semibold text-white/90">Fund</span>
-                    </button>
-                    <button onClick={() => setWalletSheet("transfer")}
-                      className="flex-1 bg-white/15 active:bg-white/25 rounded-xl py-2 flex flex-col items-center gap-0.5 transition-colors">
-                      <Svg d={P.out} size={13} color="white" /><span className="text-[9px] font-semibold text-white/90">Transfer</span>
-                    </button>
-                    <button onClick={() => setWalletSheet("receive")}
-                      className="flex-1 bg-white/15 active:bg-white/25 rounded-xl py-2 flex flex-col items-center gap-0.5 transition-colors">
-                      <Svg d={P.in} size={13} color="white" /><span className="text-[9px] font-semibold text-white/90">Receive</span>
-                    </button>
-                    <button onClick={() => setTab("bills")}
-                      className="flex-1 bg-white/15 active:bg-white/25 rounded-xl py-2 flex flex-col items-center gap-0.5 transition-colors">
-                      <Svg d={P.invoice} size={13} color="white" /><span className="text-[9px] font-semibold text-white/90">Bills</span>
-                    </button>
+                    <WalletMiniAction onClick={() => setWalletSheet("fund")} d={P.in} label="Fund" />
+                    <WalletMiniAction onClick={() => setWalletSheet("transfer")} d={P.out} label="Transfer" />
+                    <WalletMiniAction onClick={() => setWalletSheet("receive")} d={P.in} label="Receive" />
+                    <WalletMiniAction onClick={() => setTab("bills")} d={P.invoice} label="Bills" />
                   </>
                 )}
               </div>
@@ -707,9 +716,11 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
           <FundWalletSheet open={walletSheet === "fund"} onClose={() => setWalletSheet(null)}
             wallet={wallet.wallet} testMode={walletTestMode} api={wallet} />
           <ReceivePaymentSheet open={walletSheet === "receive"} onClose={() => setWalletSheet(null)}
-            wallet={wallet.wallet} payRequest={wallet.payRequest} testMode={walletTestMode} api={wallet} />
+            wallet={wallet.wallet} payRequest={wallet.payRequest} testMode={walletTestMode} api={wallet}
+            businessName={profile?.business_name} />
           <TransferSheet open={walletSheet === "transfer"} onClose={() => setWalletSheet(null)}
-            balanceKobo={wallet.balanceKobo} maxKobo={walletMaxWithdrawalKobo} banks={wallet.banks} api={wallet} onDone={wallet.refresh} />
+            balanceKobo={wallet.balanceKobo} maxKobo={walletMaxWithdrawalKobo} banks={wallet.banks} api={wallet} onDone={wallet.refresh}
+            businessName={profile?.business_name} />
         </>
       )}
     </div>
