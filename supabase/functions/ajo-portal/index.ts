@@ -336,7 +336,10 @@ serve(async (req) => {
         p_owner_id:         cl.user_id,
         p_commission_model: model,
         // start/length/amount/pct/label/frequency intentionally omitted — the
-        // RPC fills each from this client's own aso_clients row.
+        // RPC fills each from this client's own aso_clients row. When the
+        // business never set a fixed contribution_amount, allow a flexible
+        // card (no per-period target) rather than blocking self-service.
+        p_allow_flexible: true,
       });
       if (ocErr) return json({ ok: false, error: ocErr.message });
       return json(ocData);
