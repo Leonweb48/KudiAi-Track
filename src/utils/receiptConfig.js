@@ -496,6 +496,7 @@ const WALLET_TITLES = {
   withdrawal_reversal: 'Transfer Refund',
   adjustment:          'Wallet Adjustment',
   transfer_fee:        'Transfer Fee',
+  cbn_levy:            'CBN Electronic Transfer Levy',
 };
 
 // A two-line "Name / Bank • Account" value, OPay-receipt style. ReceiptCard
@@ -565,7 +566,7 @@ export function buildWalletReceipt(row, ctx = {}) {
       { label: 'Recipient Details', value: walletParty },
       { label: 'Sender Details',    value: party(ctx.originator || 'Bank transfer', '', '') },
       grossKobo > 0 && { label: 'Amount received', value: fmtAmt(grossKobo / 100) },
-      feeKobo > 0    && { label: 'Fee (CBN levy / collection)', value: fmtAmt(feeKobo / 100) },
+      feeKobo > 0    && { label: 'CBN electronic transfer levy', value: fmtAmt(feeKobo / 100) },
       row.flw_reference && { label: 'Transaction No.', value: row.flw_reference, copy: true },
       row.balance_after_kobo != null && { label: 'Account balance after', value: fmtAmt(row.balance_after_kobo / 100) },
       { label: 'Payment Method', value: 'Bank transfer' },
