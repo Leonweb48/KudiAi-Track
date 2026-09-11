@@ -5,6 +5,8 @@ import { AuthShell } from "../components/AuthShell";
 import AppLogo from "../components/AppLogo";
 import { sendEmailTrigger } from "../utils/emailTrigger";
 import { compressImage } from "../utils/compressImage";
+import { usePlatformConfig } from "../hooks/usePlatformConfig";
+import { useWallet } from "../hooks/useWallet";
 
 /* ── Helpers ───────────────────────────────────────────────────── */
 async function uploadFile(file, bucket, path) {
@@ -27,6 +29,14 @@ export default function Onboarding({ session, onComplete }) {
   const email    = session?.user?.email || "";
   const fullName = session?.user?.user_metadata?.full_name || "";
   const firstName = fullName.split(" ")[0] || email.split("@")[0];
+
+  /* ── Step 3 — Open a KudiAI Wallet (Flutterwave KYC), required at signup ── */
+  const { walletEnabled } = usePlatformConfig();
+  const wallet = useWallet(session?.user?.id || null, walletEnabled);
+  const [bvn,        setBvn]        = useState("");
+  const [walletNin,  setWalletNin]  = useState("");
+  const [walletErr,  setWalletErr]  = useState("");
+  const [walletBusy, setWalletBusy] = useState(false);
 
   /* ── Step 1 — Photo + Phone (required) ─────────── */
   const [phone,          setPhone]          = useState("");
@@ -191,11 +201,30 @@ export default function Onboarding({ session, onComplete }) {
         business_name: bizName || "",
       });
 
+      // Wallet opening is part of onboarding — every business gets a live
+      // Flutterwave account. Step 3 needs the profile row above to already
+      // exist (it reads the business/owner name off it).
+      if (walletEnabled) { setStep(3); return; }
       onComplete();
     } catch (err) {
       setError(err.message || "Something went wrong. Please try again.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const activateWallet = async (e) => {
+    e.preventDefault();
+    setWalletErr("");
+    if (!/^\d{11}$/.test(bvn)) { setWalletErr("Enter your 11-digit BVN."); return; }
+    setWalletBusy(true);
+    try {
+      await wallet.provisionAccount(bvn, walletNin);
+      onComplete();
+    } catch (err) {
+      setWalletErr(err.message || "Could not activate your wallet. Please try again.");
+    } finally {
+      setWalletBusy(false);
     }
   };
 
@@ -210,7 +239,9 @@ export default function Onboarding({ session, onComplete }) {
             paddingTop: "max(40px, env(safe-area-inset-top, 40px))",
             background: step === 1
               ? "linear-gradient(135deg, #f97316 0%, #fb923c 100%)"
-              : "linear-gradient(135deg, #16a34a 0%, #22c55e 100%)",
+              : step === 2
+                ? "linear-gradient(135deg, #16a34a 0%, #22c55e 100%)"
+                : "linear-gradient(135deg, #0f1c45 0%, #1e3a8a 100%)",
             transition: "background 0.4s ease",
           }}
         >
@@ -229,24 +260,45 @@ export default function Onboarding({ session, onComplete }) {
               }
               <span>You</span>
             </div>
-            <div className={`w-5 h-px transition-all duration-300 ${step === 2 ? "bg-white" : "bg-white/30"}`} />
+            <div className={`w-5 h-px transition-all duration-300 ${step >= 2 ? "bg-white" : "bg-white/30"}`} />
             <div className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all duration-300 ${
-              step === 2 ? "bg-white text-green-600 shadow-sm" : "bg-white/25 text-white/80"
+              step === 2 ? "bg-white text-green-600 shadow-sm" : step > 2 ? "bg-white/25 text-white/80" : "bg-white/25 text-white/80"
             }`}>
-              <span>2</span>
-              <span>Your Business</span>
+              {step > 2
+                ? <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3} strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                : <span>2</span>
+              }
+              <span>Business</span>
             </div>
+            {walletEnabled && (
+              <>
+                <div className={`w-5 h-px transition-all duration-300 ${step === 3 ? "bg-white" : "bg-white/30"}`} />
+                <div className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all duration-300 ${
+                  step === 3 ? "bg-white text-blue-700 shadow-sm" : "bg-white/25 text-white/80"
+                }`}>
+                  <span>3</span>
+                  <span>Wallet</span>
+                </div>
+              </>
+            )}
           </div>
 
           {step === 1 ? (
             <>
               <p className="text-white text-xl font-bold text-center">Hi {firstName}!</p>
-              <p className="text-white/80 text-sm text-center mt-1">Just 2 things and you're in</p>
+              <p className="text-white/80 text-sm text-center mt-1">
+                {walletEnabled ? "Just 3 things and you're in" : "Just 2 things and you're in"}
+              </p>
             </>
-          ) : (
+          ) : step === 2 ? (
             <>
               <p className="text-white text-xl font-bold text-center">Almost done!</p>
               <p className="text-white/80 text-sm text-center mt-1">Tell us about your business</p>
+            </>
+          ) : (
+            <>
+              <p className="text-white text-xl font-bold text-center">Open your KudiAI Wallet</p>
+              <p className="text-white/80 text-sm text-center mt-1">Get a dedicated account number — free transfers &amp; bill payments</p>
             </>
           )}
         </div>
@@ -396,7 +448,7 @@ export default function Onboarding({ session, onComplete }) {
               </button>
             )}
             {profileSaved ? (
-              <button type="button" onClick={onComplete}
+              <button type="button" onClick={() => (walletEnabled ? setStep(3) : onComplete())}
                 className="w-full text-white font-bold rounded-2xl py-4 text-base active:scale-[0.98] transition-all"
                 style={{ background: "linear-gradient(135deg, #16a34a 0%, #22c55e 100%)" }}>
                 Continue →
@@ -405,9 +457,46 @@ export default function Onboarding({ session, onComplete }) {
               <button type="submit" disabled={loading || needsSignOut}
                 className="w-full text-white font-bold rounded-2xl py-4 text-base active:scale-[0.98] transition-all disabled:opacity-60"
                 style={{ background: "linear-gradient(135deg, #16a34a 0%, #22c55e 100%)" }}>
-                {loading ? "Setting up your account…" : "Get started →"}
+                {loading ? "Setting up your account…" : walletEnabled ? "Next — Open Your Wallet →" : "Get started →"}
               </button>
             )}
+          </form>
+        )}
+
+        {/* ── Step 3 — Open the wallet (BVN required) ─────────────── */}
+        {step === 3 && (
+          <form onSubmit={activateWallet} className="flex-1 overflow-y-auto px-5 py-6 pb-12 bg-white dark:bg-slate-900 space-y-5">
+
+            <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/30 rounded-2xl px-4 py-3 flex items-start gap-3">
+              <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center flex-shrink-0 text-base">🏦</div>
+              <p className="text-xs text-blue-800 dark:text-blue-300 leading-relaxed">
+                Every KudiAI business gets a dedicated bank account number — top up once, then pay bills
+                and transfer fee-free. Your BVN opens the account with our banking partner and verifies your
+                identity (Flutterwave/NIBSS KYC); it isn't stored by KudiAI. The name and date of birth on it
+                must match your profile.
+              </p>
+            </div>
+
+            <Field label="BVN" required
+              type="tel" inputMode="numeric" placeholder="11-digit Bank Verification Number"
+              value={bvn} onChange={(e) => setBvn(e.target.value.replace(/\D/g, "").slice(0, 11))} />
+
+            <Field label="NIN"
+              type="tel" inputMode="numeric" placeholder="11-digit NIN (optional)"
+              value={walletNin} onChange={(e) => setWalletNin(e.target.value.replace(/\D/g, "").slice(0, 11))} />
+
+            {walletErr && (
+              <div className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl px-3 py-2">{walletErr}</div>
+            )}
+
+            <button type="submit" disabled={walletBusy || bvn.length !== 11}
+              className="w-full font-bold rounded-2xl py-4 text-base text-white active:scale-[0.98] transition-all disabled:opacity-60"
+              style={{ background: "linear-gradient(135deg, #0f1c45 0%, #1e3a8a 100%)" }}>
+              {walletBusy ? "Verifying & opening your wallet…" : "Open my wallet →"}
+            </button>
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center leading-relaxed">
+              Having trouble? Contact support — your account is already set up, only the wallet step remains.
+            </p>
           </form>
         )}
 
