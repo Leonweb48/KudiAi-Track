@@ -110,6 +110,9 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
   const isCredit = type === "credit";
+  // Ajo clients now do their own KYC (BVN/NIN/address/next of kin) on first
+  // login — the owner never sets or edits it, here or at "Add client".
+  const isAso    = type === "aso";
 
   // Load bank list when entering edit mode for any Aso client
   useEffect(() => {
@@ -432,11 +435,13 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                         placeholder="email@example.com" className={inputCls} />
                     </FormField>
                   </div>
-                  <FormField label="NIN">
-                    <input type="text" inputMode="numeric" value={form.nin || ""}
-                      onChange={e => set("nin", e.target.value.replace(/\D/g, "").slice(0, 11))}
-                      placeholder="11-digit NIN" className={inputCls} />
-                  </FormField>
+                  {!isAso && (
+                    <FormField label="NIN">
+                      <input type="text" inputMode="numeric" value={form.nin || ""}
+                        onChange={e => set("nin", e.target.value.replace(/\D/g, "").slice(0, 11))}
+                        placeholder="11-digit NIN" className={inputCls} />
+                    </FormField>
+                  )}
                 </div>
               </div>
 
@@ -651,63 +656,67 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                 </div>
               )}
 
-              {/* Address */}
-              <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-100 dark:border-slate-700 shadow-card">
-                <div className="px-4 pt-4 pb-2"><SectionHead title="Address" icon="📍" /></div>
-                <div className="px-4 pb-4 space-y-3.5">
-                  <FormField label="Street Address">
-                    <input value={form.address || ""} onChange={e => set("address", e.target.value)}
-                      placeholder="12 Market Road, Onitsha" className={inputCls} />
-                  </FormField>
-                  <FormField label="State">
-                    <select value={form.state || ""} onChange={e => handleStateChange(e.target.value)} className={inputCls}>
-                      <option value="">Select State…</option>
-                      {STATES.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                  </FormField>
-                  <div className="grid grid-cols-2 gap-3">
-                    <FormField label="LGA">
-                      <select value={form.lga || ""} onChange={e => handleLgaChange(e.target.value)}
-                        disabled={!form.state} className={inputCls}>
-                        <option value="">{form.state ? "Select LGA…" : "Select state first"}</option>
-                        {lgas.map(l => <option key={l} value={l}>{l}</option>)}
+              {/* Address — Ajo clients set this themselves on first login */}
+              {!isAso && (
+                <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-100 dark:border-slate-700 shadow-card">
+                  <div className="px-4 pt-4 pb-2"><SectionHead title="Address" icon="📍" /></div>
+                  <div className="px-4 pb-4 space-y-3.5">
+                    <FormField label="Street Address">
+                      <input value={form.address || ""} onChange={e => set("address", e.target.value)}
+                        placeholder="12 Market Road, Onitsha" className={inputCls} />
+                    </FormField>
+                    <FormField label="State">
+                      <select value={form.state || ""} onChange={e => handleStateChange(e.target.value)} className={inputCls}>
+                        <option value="">Select State…</option>
+                        {STATES.map(s => <option key={s} value={s}>{s}</option>)}
                       </select>
                     </FormField>
-                    <FormField label="Ward">
-                      <select value={form.ward || ""} onChange={e => set("ward", e.target.value)}
-                        disabled={!form.lga} className={inputCls}>
-                        <option value="">{form.lga ? "Select Ward…" : "Select LGA first"}</option>
-                        {wards.map(w => <option key={w} value={w}>{w}</option>)}
-                      </select>
-                    </FormField>
+                    <div className="grid grid-cols-2 gap-3">
+                      <FormField label="LGA">
+                        <select value={form.lga || ""} onChange={e => handleLgaChange(e.target.value)}
+                          disabled={!form.state} className={inputCls}>
+                          <option value="">{form.state ? "Select LGA…" : "Select state first"}</option>
+                          {lgas.map(l => <option key={l} value={l}>{l}</option>)}
+                        </select>
+                      </FormField>
+                      <FormField label="Ward">
+                        <select value={form.ward || ""} onChange={e => set("ward", e.target.value)}
+                          disabled={!form.lga} className={inputCls}>
+                          <option value="">{form.lga ? "Select Ward…" : "Select LGA first"}</option>
+                          {wards.map(w => <option key={w} value={w}>{w}</option>)}
+                        </select>
+                      </FormField>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
 
-              {/* Next of Kin */}
-              <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-100 dark:border-slate-700 shadow-card">
-                <div className="px-4 pt-4 pb-2"><SectionHead title="Next of Kin" icon="👨‍👩‍👦" /></div>
-                <div className="px-4 pb-4 space-y-3.5">
-                  <FormField label="Full Name">
-                    <input value={form.next_of_kin || ""} onChange={e => set("next_of_kin", e.target.value)}
-                      placeholder="Next of kin full name" className={inputCls} />
-                  </FormField>
-                  <div className="grid grid-cols-2 gap-3">
-                    <FormField label="Phone">
-                      <input type="tel" value={form.next_of_kin_phone || ""} onChange={e => set("next_of_kin_phone", e.target.value)}
-                        placeholder="08012345678" className={inputCls} />
+              {/* Next of Kin — Ajo clients set this themselves on first login */}
+              {!isAso && (
+                <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-100 dark:border-slate-700 shadow-card">
+                  <div className="px-4 pt-4 pb-2"><SectionHead title="Next of Kin" icon="👨‍👩‍👦" /></div>
+                  <div className="px-4 pb-4 space-y-3.5">
+                    <FormField label="Full Name">
+                      <input value={form.next_of_kin || ""} onChange={e => set("next_of_kin", e.target.value)}
+                        placeholder="Next of kin full name" className={inputCls} />
                     </FormField>
-                    <FormField label="Email">
-                      <input type="email" value={form.next_of_kin_email || ""} onChange={e => set("next_of_kin_email", e.target.value)}
-                        placeholder="email@example.com" className={inputCls} />
+                    <div className="grid grid-cols-2 gap-3">
+                      <FormField label="Phone">
+                        <input type="tel" value={form.next_of_kin_phone || ""} onChange={e => set("next_of_kin_phone", e.target.value)}
+                          placeholder="08012345678" className={inputCls} />
+                      </FormField>
+                      <FormField label="Email">
+                        <input type="email" value={form.next_of_kin_email || ""} onChange={e => set("next_of_kin_email", e.target.value)}
+                          placeholder="email@example.com" className={inputCls} />
+                      </FormField>
+                    </div>
+                    <FormField label="Address">
+                      <input value={form.next_of_kin_address || ""} onChange={e => set("next_of_kin_address", e.target.value)}
+                        placeholder="Next of kin address" className={inputCls} />
                     </FormField>
                   </div>
-                  <FormField label="Address">
-                    <input value={form.next_of_kin_address || ""} onChange={e => set("next_of_kin_address", e.target.value)}
-                      placeholder="Next of kin address" className={inputCls} />
-                  </FormField>
                 </div>
-              </div>
+              )}
 
               {/* Error */}
               {saveErr && (

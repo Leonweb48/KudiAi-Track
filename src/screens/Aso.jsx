@@ -6,7 +6,6 @@ import Badge  from "../components/shared/Badge";
 import TransactionDetailModal from "../components/shared/TransactionDetailModal";
 import { buildAsoContributionReceipt, buildAsoClientReceipt } from "../utils/receiptConfig";
 import { ClientProfile } from "../components/shared/ClientProfile";
-import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import { supabase } from "../utils/supabase";
 import { canDo, featureLimit, upgradeLabel, planRequiredLabel, planAvailableText } from "../utils/plans";
 import { fmt, today, applyPeriodFilter } from "../utils/helpers";
@@ -32,9 +31,7 @@ import { useToast } from "../components/Toast";
 const BLANK = {
   full_name: "", contribution_frequency: "daily", contribution_amount: "",
   registration_charge: "", notes: "",
-  phone: "", email: "", nin: "",
-  address: "", state: "", lga: "", ward: "",
-  next_of_kin: "", next_of_kin_phone: "", next_of_kin_email: "", next_of_kin_address: "",
+  phone: "", email: "",
   staff_id: "", ajo_group_id: null,
   bank_code: "", account_number: "", account_name: "", bank_name: "",
   commission_model: "none", commission_percent: "",
@@ -601,9 +598,6 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const t = useT();
   const toast = useToast();
   const { walletEnabled } = usePlatformConfig();
-  const [openWallet, setOpenWallet] = useState(false);
-  const [walletBvn,  setWalletBvn]  = useState("");
-  const [walletNin,  setWalletNin]  = useState("");
   const [showAdd,      setShowAdd]      = useState(false);
   const [selected,              setSelected]             = useState(null);
   const [action,                setAction]               = useState(null);
@@ -732,9 +726,6 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
   const [f, setF] = useState(BLANK);
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
-
-  const lgas  = getLGAs(f.state);
-  const wards = getWards(f.state, f.lga);
 
   useEffect(() => {
     if (autoOpen && canDo(plan, "aso")) {
@@ -1408,16 +1399,11 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     return Array.from(vals, n => chars[n % chars.length]).join("");
   };
 
-  const provisionClientLogin = async (clientRecord, password = null, walletOpts = null) => {
+  const provisionClientLogin = async (clientRecord, password = null) => {
     // Only include password when explicitly provided (password resets)
     // For new accounts, edge function generates the password internally
     const fnBody = { clientId: clientRecord.id };
     if (password) fnBody.password = password;
-    if (walletOpts?.open_wallet) {
-      fnBody.open_wallet = true;
-      fnBody.bvn = walletOpts.bvn;
-      fnBody.nin = walletOpts.nin;
-    }
 
     const { data, error: fnError } = await supabase.functions.invoke(
       "manage-ajo-client-account",
@@ -1474,13 +1460,11 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     setPhotoFile(null); setPhotoPreview(null);
     setAddError("");
     setClientResolvedName(""); setClientBankErr("");
-    setOpenWallet(false); setWalletBvn(""); setWalletNin("");
   };
 
   const handleAdd = async () => {
     if (!f.full_name) { setAddError("Full name is required"); return; }
     if (!f.email)     { setAddError("Email is required for portal access"); return; }
-    if (openWallet && !/^\d{11}$/.test(walletBvn)) { setAddError("Enter the client's 11-digit BVN to open a wallet for them."); return; }
     setAddError("");
     setAdding(true);
     const { data, error } = await addAsoClient({
@@ -1503,11 +1487,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     }
     if (!error && data) {
       try {
-        const provResult = await provisionClientLogin(data, null,
-          openWallet ? { open_wallet: true, bvn: walletBvn, nin: walletNin } : null);
-        if (provResult?.walletError) {
-          setClientSubAcctErr(prev => [prev, `Client created. ${provResult.walletError}`].filter(Boolean).join(" "));
-        }
+        await provisionClientLogin(data);
         resetAdd();
         setAddedClientEmail(data.email);
       } catch (provErr) {
@@ -2833,32 +2813,12 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           </div>
 
           {walletEnabled && (
-            <div className="rounded-2xl border border-slate-200 dark:border-slate-700 px-3.5 py-3 mt-2">
-              <label className="flex items-center justify-between gap-3 cursor-pointer">
-                <span className="min-w-0">
-                  <span className="block text-[13px] font-bold text-slate-700 dark:text-slate-200">Open a KudiAI Wallet</span>
-                  <span className="block text-[11px] text-slate-400 dark:text-slate-500 leading-snug mt-0.5">
-                    Gives the client their own dedicated account number — payouts land there instead of an outside bank.
-                  </span>
-                </span>
-                <input type="checkbox" checked={openWallet}
-                  onChange={e => { setOpenWallet(e.target.checked); if (!e.target.checked) { setWalletBvn(""); setWalletNin(""); } }}
-                  className="w-[20px] h-[20px] rounded-md accent-brand-600 flex-shrink-0" />
-              </label>
-              {openWallet && (
-                <div className="mt-3 space-y-2">
-                  <Field label="Client's BVN *" type="tel" inputMode="numeric" value={walletBvn}
-                    onChange={e => setWalletBvn(e.target.value.replace(/\D/g, "").slice(0, 11))}
-                    placeholder="11-digit BVN" />
-                  <Field label="NIN" type="tel" inputMode="numeric" value={walletNin}
-                    onChange={e => setWalletNin(e.target.value.replace(/\D/g, "").slice(0, 11))}
-                    placeholder="11-digit NIN (optional)" />
-                  <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-relaxed">
-                    Opens a live Flutterwave account in the client's name — the BVN verifies their identity and
-                    isn't stored by KudiAI. The name and date of birth on it must match what you enter here.
-                  </p>
-                </div>
-              )}
+            <div className="rounded-2xl bg-blue-50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/30 px-3.5 py-3 mt-2 flex items-start gap-2.5">
+              <span className="text-base flex-shrink-0">🏦</span>
+              <p className="text-[11px] text-blue-800 dark:text-blue-300 leading-relaxed">
+                This client will open their own KudiAI Wallet (BVN, NIN, address, and next of kin) themselves the
+                first time they log in — nothing to fill in here.
+              </p>
             </div>
           )}
 
@@ -2902,43 +2862,6 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
               )}
             </>
           )}
-
-          <Field label="NIN" inputMode="numeric" value={f.nin}
-            onChange={e => set("nin", e.target.value.replace(/\D/g, "").slice(0, 11))}
-            placeholder="11-digit National ID Number" />
-
-          <SectionLabel>Address</SectionLabel>
-          <Field label="Street Address" value={f.address}
-            onChange={e => set("address", e.target.value)} placeholder="12 Market Road, Onitsha" />
-          <Field label="State" as="select" value={f.state}
-            onChange={e => { set("state", e.target.value); set("lga", ""); set("ward", ""); }}>
-            <option value="">Select State…</option>
-            {STATES.map(s => <option key={s} value={s}>{s}</option>)}
-          </Field>
-          <div className="grid grid-cols-2 gap-2">
-            <Field label="LGA" as="select" value={f.lga} disabled={!f.state}
-              onChange={e => { set("lga", e.target.value); set("ward", ""); }}>
-              <option value="">{f.state ? "Select LGA…" : "State first"}</option>
-              {lgas.map(l => <option key={l} value={l}>{l}</option>)}
-            </Field>
-            <Field label="Ward" as="select" value={f.ward} disabled={!f.lga}
-              onChange={e => set("ward", e.target.value)}>
-              <option value="">{f.lga ? "Select Ward…" : "LGA first"}</option>
-              {wards.map(w => <option key={w} value={w}>{w}</option>)}
-            </Field>
-          </div>
-
-          <SectionLabel>Next of Kin</SectionLabel>
-          <Field label="Full Name" value={f.next_of_kin}
-            onChange={e => set("next_of_kin", e.target.value)} placeholder="Next of kin name" />
-          <div className="grid grid-cols-2 gap-2">
-            <Field label="Phone" type="tel" value={f.next_of_kin_phone}
-              onChange={e => set("next_of_kin_phone", e.target.value)} placeholder="08012345678" />
-            <Field label="Email" type="email" value={f.next_of_kin_email}
-              onChange={e => set("next_of_kin_email", e.target.value)} placeholder="email@example.com" />
-          </div>
-          <Field label="Address" value={f.next_of_kin_address}
-            onChange={e => set("next_of_kin_address", e.target.value)} placeholder="Next of kin address" />
 
           {staffOptions.length > 0 && (
             <>

@@ -197,40 +197,9 @@ serve(async (req) => {
       }
     }
 
-    // ── Optional: open a KudiAI Wallet for this client (owner opted in) ──────
-    // Calls the flutterwave function's provision-account action server-to-server
-    // (this client has no session of their own yet), on behalf of authUserId.
-    let wallet: Record<string, unknown> | null = null;
-    let walletError: string | null = null;
-    const { open_wallet, bvn, nin } = body as { open_wallet?: boolean; bvn?: string; nin?: string };
-    if (open_wallet) {
-      const cleanBvn = String(bvn ?? "").replace(/\D/g, "");
-      if (!/^\d{11}$/.test(cleanBvn)) {
-        walletError = "Enter an 11-digit BVN to open a wallet for this client.";
-      } else {
-        try {
-          const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-          const r = await fetch(`${supabaseUrl}/functions/v1/flutterwave`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "x-internal-secret": EMAIL_TRIGGER_SECRET },
-            body: JSON.stringify({
-              action: "provision-account",
-              target_user_id: authUserId,
-              bvn: cleanBvn,
-              nin: String(nin ?? "").replace(/\D/g, ""),
-            }),
-          });
-          const wd = await r.json().catch(() => ({}));
-          if (r.ok && wd?.ok) {
-            wallet = { account_number: wd.account_number, account_bank: wd.account_bank, account_name: wd.account_name };
-          } else {
-            walletError = wd?.error || "Could not open a wallet for this client.";
-          }
-        } catch (e) {
-          walletError = (e as Error).message || "Could not open a wallet for this client.";
-        }
-      }
-    }
+    // Wallet opening is the client's own doing, on their first login (BVN, NIN,
+    // address, next of kin — see AjoMemberPortal's mandatory KYC step) — the
+    // owner never sets it up. This function only ever creates the login.
 
     // Send credentials-only email; OTP is generated and sent when client first logs in
     const emailData: Record<string, string> = {
@@ -269,8 +238,6 @@ serve(async (req) => {
       created,
       userId: authUserId,
       message: created ? "Client login created" : "Client password reset successfully",
-      wallet,
-      walletError,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Request failed";
