@@ -106,49 +106,6 @@ async function uploadAjoAvatar(file, clientId) {
   return data.url;
 }
 
-async function compressImage(file, maxKB = 250) {
-  return new Promise((resolve) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      const canvas = document.createElement("canvas");
-      let { width, height } = img;
-      // Scale down if large — proof screenshots don't need more than 1200px wide
-      if (width > 1200) { height = Math.round(height * 1200 / width); width = 1200; }
-      canvas.width = width; canvas.height = height;
-      canvas.getContext("2d").drawImage(img, 0, 0, width, height);
-      // Try quality levels until under maxKB
-      let quality = 0.75;
-      const tryCompress = () => {
-        canvas.toBlob(blob => {
-          if (!blob) { resolve(file); return; }
-          if (blob.size <= maxKB * 1024 || quality <= 0.3) {
-            resolve(new File([blob], file.name.replace(/\.\w+$/, ".jpg"), { type: "image/jpeg" }));
-          } else {
-            quality -= 0.1;
-            tryCompress();
-          }
-        }, "image/jpeg", quality);
-      };
-      tryCompress();
-    };
-    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
-    img.src = url;
-  });
-}
-
-async function uploadAjoProof(file, clientId) {
-  const compressed = await compressImage(file, 250);
-  const ext  = "jpg";
-  const path = `${clientId}/${Date.now()}.${ext}`;
-  const { error } = await supabase.storage.from("ajo-proofs").upload(path, compressed, { contentType: "image/jpeg" });
-  if (error) throw new Error(error.message);
-  // Always use the direct Supabase URL — the proxy alias (kudiai.app/sb) baked into
-  // getPublicUrl breaks link opening in PWA/browser contexts.
-  return `${process.env.REACT_APP_SUPABASE_URL}/storage/v1/object/public/ajo-proofs/${path}`;
-}
-
 // ── Micro-components ──────────────────────────────────────────────────────
 function Svg({ d, size = 18, color = "currentColor", sw = 2 }) {
   return (
@@ -1056,7 +1013,7 @@ function MoneyEsusuSimpleCard({ group, selected, onSelect, children }) {
   );
 }
 
-function PayContributionModal({ client, clientGroups = [], cycles = [], contributions = [], wallet, onTopUpWallet, onClose, onSuccess }) {
+function PayContributionModal({ client, clientGroups = [], cycles = [], contributions = [], wallet, onTopUpWallet, onOpenCycle, onClose, onSuccess }) {
   const t = useT();
   // ── Core state (unchanged from original) ──────────────────────────────────
   const [status,          setStatus]         = useState("idle");
@@ -1070,8 +1027,6 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], contribu
   const [contribGroupId,  setContribGroupId] = useState(null);
   const [selectedCycleId, setSelectedCycleId] = useState(null);
   const [payMethod,       setPayMethod]      = useState("paystack");
-  const [openingCycle,    setOpeningCycle]   = useState(false);
-  const [openCycleErr,    setOpenCycleErr]   = useState("");
   const popupCleanup = useRef(null);
   useEffect(() => () => popupCleanup.current?.(), []);
 
@@ -1166,25 +1121,6 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], contribu
     } catch (e) {
       setStatus("error");
       setMessage(moneyError(e));
-    }
-  };
-
-  // ── Self-service: open a personal savings card ────────────────────────────
-  // Client picks the fee MODEL only — the rate itself (registration_charge /
-  // commission_percent) is always whatever the business already set on their
-  // aso_clients row; the server ignores anything else the client might send.
-  const canOpenPercent = Number(client?.commission_percent) > 0;
-  const openCycle = async (model) => {
-    setOpeningCycle(true); setOpenCycleErr("");
-    try {
-      const res = await ajoFn("client-open-cycle", { client_id: client.id, commission_model: model });
-      if (res?.ok === false) throw new Error(res.error || "Could not open your savings card");
-      // realtime (ajo_cycles INSERT, filtered to this client) refreshes `cycles`
-      // from the parent — no local state to update here.
-    } catch (e) {
-      setOpenCycleErr(friendlyError(e));
-    } finally {
-      setOpeningCycle(false);
     }
   };
 
@@ -1361,33 +1297,15 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], contribu
             {personalSubTabs.length === 0 && (
               <div className="py-4">
                 <p className="text-sm text-slate-400 dark:text-slate-500 text-center mb-4">{t("ajoPt.noActivePlans")}</p>
-                <div className="bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800/40 rounded-2xl p-4">
-                  <p className="text-[13px] font-extrabold text-slate-800 dark:text-white mb-1">Open your savings card</p>
+                <div className="bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800/40 rounded-2xl p-4 text-center">
+                  <p className="text-[13px] font-extrabold text-slate-800 dark:text-white mb-1">No savings card yet</p>
                   <p className="text-[12px] text-slate-500 dark:text-slate-400 mb-3">
-                    Pick how your collector's fee is charged — the rate itself is already set by your business.
+                    Open one to start saving toward a goal.
                   </p>
-                  {openCycleErr && <p className="text-[12px] text-red-500 mb-2">{openCycleErr}</p>}
-                  <div className="space-y-2">
-                    <button onClick={() => openCycle("first_period")} disabled={openingCycle}
-                      className="w-full text-left px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 disabled:opacity-50 active:scale-[0.99] transition-transform">
-                      <span className="block text-[13px] font-bold text-slate-800 dark:text-white">First-period fee</span>
-                      <span className="block text-[11px] text-slate-400 dark:text-slate-500">
-                        Your first contribution covers the collector's fee — every payment after that goes fully to your savings.
-                      </span>
-                    </button>
-                    <button onClick={() => openCycle("percent")} disabled={openingCycle || !canOpenPercent}
-                      className="w-full text-left px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 disabled:opacity-50 active:scale-[0.99] transition-transform">
-                      <span className="block text-[13px] font-bold text-slate-800 dark:text-white">
-                        Percentage fee{canOpenPercent ? ` · ${client.commission_percent}%` : ""}
-                      </span>
-                      <span className="block text-[11px] text-slate-400 dark:text-slate-500">
-                        {canOpenPercent
-                          ? "A small percentage is deducted as fee whenever you withdraw."
-                          : "Not set up for your account — ask your collector."}
-                      </span>
-                    </button>
-                  </div>
-                  {openingCycle && <p className="text-[11px] text-slate-400 mt-2 text-center">Opening your card…</p>}
+                  <button onClick={() => { onClose(); onOpenCycle?.(); }}
+                    className="px-5 py-2.5 bg-brand-500 hover:bg-brand-600 text-white rounded-xl font-bold text-[12px] transition active:scale-[0.98]">
+                    Open a savings card
+                  </button>
                 </div>
               </div>
             )}
@@ -1799,508 +1717,6 @@ function ChangePasswordModal({ onClose }) {
         )}
       </div>
     </div>
-  );
-}
-
-
-function ManualDepositModal({ client, clientGroups = [], cycles = [], contributions = [], ownerInfo, wallet, onTopUpWallet, onClose, onSuccess }) {
-  const t = useT();
-  // ── Core state (unchanged from original) ──────────────────────────────────
-  const [amount,         setAmount]        = useState("");
-  const [payerName,      setPayerName]     = useState("");
-  const [notes,          setNotes]         = useState("");
-  const [proofFile,      setProofFile]     = useState(null);
-  const [proofPrev,      setProofPrev]     = useState(null);
-  const [uploading,      setUploading]     = useState(false);
-  const [saving,         setSaving]        = useState(false);
-  const [error,          setError]         = useState("");
-  const [done,           setDone]          = useState(false);
-  const [contribCtx,     setContribCtx]    = useState("personal_savings");
-  const [contribGroupId, setContribGroupId] = useState(null);
-  const [selectedCycleId, setSelectedCycleId] = useState(null);
-  const [txnPin,         setTxnPin]        = useState(null);
-  const [copiedField,    setCopiedField]   = useState(null);
-  const [walletPaying,   setWalletPaying]  = useState(false);
-  const [walletMsg,      setWalletMsg]     = useState("");
-  const fileRef = useRef(null);
-
-  // ── Navigation state ──────────────────────────────────────────────────────
-  const [mainTab,        setMainTab]        = useState("personal");
-  const [personalSubTab, setPersonalSubTab] = useState("first_period");
-
-  // ── Per-cycle fullness helper ─────────────────────────────────────────────
-  const isCycleFull = (cy) => {
-    const target = Number(cy.length_periods || 0) * Number(cy.expected_amount_per_period || 0);
-    if (!target) return false;
-    const saved = contributions
-      .filter(c => c.cycle_id === cy.id && c.type === "contribution" && c.status === "completed")
-      .reduce((s, c) => s + Number(c.amount || 0), 0);
-    return saved >= target;
-  };
-
-  // ── Category derivations — re-derive from props each render (realtime-safe)
-  const activeCycles  = cycles.filter(cy => cy.status === "active");
-  const fpCycles      = activeCycles.filter(cy => cy.commission_model === "first_period" && !isCycleFull(cy));
-  const pctCycles     = activeCycles.filter(cy => cy.commission_model !== "first_period" && !isCycleFull(cy));
-  const savingsGroups = clientGroups.filter(m => m.group?.group_mode === "savings").map(m => m.group).filter(Boolean);
-  const esusuGroups   = clientGroups.filter(m => m.group?.group_mode === "esusu").map(m => m.group).filter(Boolean);
-
-  const personalSubTabs = [
-    ...(fpCycles.length  > 0 ? [{ key: "first_period", label: t("ajoPt.firstPeriodTab") }] : []),
-    ...(pctCycles.length > 0 ? [{ key: "percent",      label: t("ajoPt.percentageTab") }]  : []),
-  ];
-
-  useEffect(() => {
-    if (personalSubTab === "first_period" && fpCycles.length === 0 && pctCycles.length > 0) setPersonalSubTab("percent");
-    if (personalSubTab === "percent"      && pctCycles.length === 0 && fpCycles.length > 0) setPersonalSubTab("first_period");
-  }, [fpCycles.length, pctCycles.length]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── No goal to attach a deposit to at all — auto-route to a wallet top-up
-  //    instead of blocking on "no active plans". ──────────────────────────
-  const noGoalAtAll = personalSubTabs.length === 0 && savingsGroups.length === 0 && esusuGroups.length === 0;
-
-  // ── Deposit destination — the owner's KudiAI Wallet is the default, real-money
-  //    collection route (transfers there auto-credit, no proof/confirmation
-  //    needed). Falls back to a manually-configured bank account only if the
-  //    owner's wallet isn't set up yet. ──────────────────────────────────────
-  const clientBank  = ownerInfo?.client_bank;
-  const ownerWallet = ownerInfo?.owner_wallet;
-  const ownerBank   = ownerInfo?.owner;
-  const hasWalletRoute = !!ownerWallet?.account_number;
-  const hasBank = hasWalletRoute
-    ? true
-    : clientBank?.account_number
-      ? true
-      : !!(ownerBank?.bank_account_number && ownerBank?.bank_name);
-  const amtNum = parseFloat(amount) || 0;
-
-  // ── Pay straight from the client's own KudiAI Wallet — instant, no proof,
-  //    no waiting on the owner to confirm (mirrors PayContributionModal). ──
-  const handlePayWallet = async () => {
-    if (!amtNum || amtNum <= 0) { setWalletMsg("Please enter a valid amount."); return; }
-    if (amtNum * 100 > (wallet?.balanceKobo || 0)) { setWalletMsg("Insufficient wallet balance."); return; }
-    setWalletPaying(true); setWalletMsg("");
-    try {
-      const res = await ajoFn("pay-contribution-wallet", {
-        client_id: client.id, amount: amtNum, contribution_context: contribCtx,
-        group_id: contribGroupId || undefined,
-        ...(contribCtx === "personal_savings" && selectedCycleId ? { cycle_id: selectedCycleId } : {}),
-      });
-      setDone(true);
-      onSuccess?.(res?.contribution_id, res?.client);
-    } catch (e) {
-      setWalletMsg(moneyError(e));
-    } finally {
-      setWalletPaying(false);
-    }
-  };
-
-  const copyText = async (text, field) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopiedField(field);
-      setTimeout(() => setCopiedField(null), 2000);
-    } catch { /* silent */ }
-  };
-
-  const pickFile = (e) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    if (f.size > 2 * 1024 * 1024) { setError(t("error.somethingWrong")); return; }
-    setProofFile(f);
-    setProofPrev(URL.createObjectURL(f));
-    setError("");
-  };
-
-  // ── handleSubmit (unchanged logic) ────────────────────────────────────────
-  const handleSubmit = async () => {
-    if (!amtNum || amtNum <= 0) { setError(t("error.somethingWrong")); return; }
-    if (!navigator.onLine) { setError("You're offline — connect to the internet to make a deposit."); return; }
-    setSaving(true); setError("");
-    try {
-      let proofUrl = null;
-      if (proofFile) {
-        setUploading(true);
-        proofUrl = await uploadAjoProof(proofFile, client.id);
-        setUploading(false);
-      }
-      await ajoFn("submit-manual-claim", {
-        client_id:            client.id,
-        owner_id:             client.user_id,
-        amount:               amtNum,
-        payer_name:           payerName.trim()    || null,
-        notes:                notes.trim()        || null,
-        proof_url:            proofUrl,
-        contribution_context: contribCtx,
-        ...(contribCtx === "personal_savings" && selectedCycleId ? { cycle_id: selectedCycleId } : {}),
-        ...(contribCtx !== "personal_savings" && contribGroupId   ? { group_id: contribGroupId }  : {}),
-      });
-      setDone(true);
-      onSuccess?.();
-    } catch (e) {
-      setUploading(false);
-      setError(moneyError(e));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // ── Deposit action form — shown inside selected card ──────────────────────
-  const depositForm = (
-    <div className="pt-3 space-y-3">
-      {/* Amount */}
-      <div>
-        <p className="text-[10px] font-bold text-brand-500 dark:text-brand-400 uppercase tracking-wider mb-2">{t("ajoPt.howMuchSent")} <span className="text-red-400">*</span></p>
-        <div className="flex items-center gap-2">
-          <span className="text-xl font-black text-brand-600 dark:text-brand-300">₦</span>
-          <input
-            type="number" inputMode="decimal" min="1"
-            value={amount} onChange={e => setAmount(e.target.value)}
-            placeholder="0.00"
-            className="flex-1 bg-transparent text-xl font-black text-brand-600 dark:text-brand-300 outline-none placeholder:text-brand-200 dark:placeholder:text-brand-700 tabular [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-          />
-        </div>
-        {amtNum > 0 && (
-          <p className="text-[11px] text-brand-400 dark:text-brand-500 mt-1">{fmt(amtNum)} — exact transfer amount</p>
-        )}
-      </div>
-
-      {/* First-deposit info */}
-      {contribCtx === "personal_savings" && (() => {
-        if (Number(client.total_saved || 0) > 0) return null;
-        const regCharge = Number(client.registration_charge || 0);
-        const expected  = Number(client.contribution_amount  || 0);
-        const minReq    = expected + regCharge;
-        if (minReq <= 0 || (regCharge === 0 && client.commission_model !== "first_period")) return null;
-        return (
-          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl px-3 py-2">
-            <p className="text-[11px] font-bold text-blue-700 dark:text-blue-300">
-              Your first payment is ₦{minReq.toLocaleString("en-NG")} — includes a one-time ₦{regCharge.toLocaleString("en-NG")} registration. After today, every payment is ₦{expected.toLocaleString("en-NG")}.
-            </p>
-          </div>
-        );
-      })()}
-
-      {/* Proof upload */}
-      <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={pickFile} />
-      {uploading && (
-        <div>
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[11px] font-bold text-brand-600 dark:text-brand-400">{t("ajoPt.uploading")}</span>
-            <div className="w-3.5 h-3.5 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
-          </div>
-          <div className="h-1.5 bg-brand-100 dark:bg-brand-800 rounded-full overflow-hidden">
-            <div className="h-full bg-brand-500 rounded-full animate-pulse" style={{ width: "75%" }} />
-          </div>
-        </div>
-      )}
-      {!uploading && proofPrev && (
-        <div className="relative">
-          <img src={proofPrev} alt="Proof" className="w-full rounded-xl object-cover max-h-36 border border-slate-200 dark:border-slate-600" />
-          <button onClick={() => { setProofFile(null); setProofPrev(null); }}
-            className="absolute top-2 right-2 w-7 h-7 bg-black/50 rounded-full flex items-center justify-center text-white text-xs font-bold">✕</button>
-        </div>
-      )}
-      {!uploading && !proofPrev && (
-        <button onClick={() => fileRef.current?.click()}
-          className="w-full py-2 text-xs font-bold text-brand-500 dark:text-brand-400 flex items-center gap-2 active:scale-[0.99] transition">
-          <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 flex-shrink-0" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-            <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>
-          </svg>
-          Add a screenshot (optional — speeds up approval)
-        </button>
-      )}
-
-      {/* Optional extra details */}
-      <details className="group">
-        <summary className="text-[11px] font-bold text-slate-400 dark:text-slate-500 cursor-pointer select-none list-none flex items-center gap-1.5">
-          <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3 transition-transform group-open:rotate-90" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
-          Add more details (optional)
-        </summary>
-        <div className="space-y-2 mt-2">
-          <input type="text" value={payerName} onChange={e => setPayerName(e.target.value)}
-            placeholder="Sender name (name on the transfer)"
-            className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
-          <input type="text" value={notes} onChange={e => setNotes(e.target.value)}
-            placeholder="Note (e.g. January contribution)"
-            className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
-        </div>
-      </details>
-
-      {error && <p className="text-xs text-red-500">{error}</p>}
-
-      <button
-        onClick={() => {
-          if (!amtNum || amtNum <= 0) { setError(t("error.somethingWrong")); return; }
-          setTxnPin({
-            title: "Confirm Deposit",
-            amount: Math.round(amtNum * 100),
-            description: "Savings deposit submission",
-            hasPinSet: Boolean(client?.portal_pin_changed_at),
-            onApprove: () => { setTxnPin(null); handleSubmit(); },
-          });
-        }}
-        disabled={saving || uploading || !amtNum || amtNum <= 0}
-        className="w-full py-3.5 bg-brand-500 hover:bg-brand-600 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] disabled:opacity-50 shadow-sm flex items-center justify-center gap-2">
-        {saving
-          ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Submitting…</>
-          : "I sent this money"}
-      </button>
-      <p className="text-[10px] text-slate-400 text-center">Your agent will confirm it before your balance is updated.</p>
-    </div>
-  );
-
-  // ── Render ────────────────────────────────────────────────────────────────
-  return (
-    <>
-    <div className="fixed inset-0 z-[60] bg-black/60 flex items-end justify-center" onClick={onClose}>
-      <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-t-3xl px-5 py-6 shadow-2xl max-h-[92dvh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="w-10 h-1 bg-slate-300 dark:bg-slate-600 rounded-full mx-auto mb-5" />
-
-        {done ? (
-          <div className="text-center py-6">
-            <div className="w-20 h-20 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg viewBox="0 0 24 24" fill="none" className="w-10 h-10 text-amber-500 dark:text-amber-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-              </svg>
-            </div>
-            <p className="text-[10px] font-bold text-amber-500 uppercase tracking-widest mb-1">{t("ajoPt.depositedTitle")}</p>
-            <h3 className="text-lg font-extrabold text-slate-800 dark:text-white mb-2">{t("ajoPt.depositSuccess")}</h3>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mb-5 leading-relaxed px-2">{t("ajoPt.depositPending")}</p>
-            <button onClick={onClose} className="w-full py-3.5 bg-slate-800 dark:bg-slate-700 text-white rounded-2xl font-bold text-sm active:scale-[0.99] transition">{t("bp.done")}</button>
-          </div>
-        ) : (
-          <>
-            {/* Header */}
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-10 h-10 bg-brand-100 dark:bg-brand-900/40 rounded-2xl flex items-center justify-center flex-shrink-0">
-                <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-brand-600 dark:text-brand-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-                  <path d="M12 5v14M5 12l7-7 7 7" />
-                </svg>
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-extrabold text-slate-800 dark:text-white">{t("ajoPt.makeDeposit")}</p>
-                <p className="text-[11px] text-slate-400">{t("ajoPt.depositDesc")}</p>
-              </div>
-              <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 flex-shrink-0">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="w-4 h-4"><path d="M18 6L6 18M6 6l12 12" /></svg>
-              </button>
-            </div>
-
-            {/* LEAD: pay straight from your own KudiAI Wallet — instant, no proof needed,
-                default route when the client has funds sitting in their wallet. */}
-            {wallet?.hasAccount && !noGoalAtAll && (
-              <div className="bg-white dark:bg-slate-800 border-2 border-brand-500 rounded-2xl px-4 py-4 mb-4">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-[10px] font-bold text-brand-500 dark:text-brand-400 uppercase tracking-wider">Pay from your Wallet</p>
-                  <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">{fmt(wallet.balanceNaira)} available</span>
-                </div>
-                <p className="text-[11px] text-slate-400 dark:text-slate-500 mb-3">Instant — no proof to upload, no waiting on approval.</p>
-                <div className="flex items-center gap-2">
-                  <span className="text-lg font-black text-brand-600 dark:text-brand-300">₦</span>
-                  <input type="number" inputMode="decimal" min="1" value={amount} onChange={e => { setAmount(e.target.value); setWalletMsg(""); }}
-                    placeholder="0.00"
-                    className="flex-1 bg-transparent text-lg font-black text-brand-600 dark:text-brand-300 outline-none placeholder:text-brand-200 dark:placeholder:text-brand-700 tabular [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
-                </div>
-                {walletMsg && <p className="text-[11px] text-red-500 mt-1.5">{walletMsg}</p>}
-                {amtNum > 0 && amtNum * 100 > (wallet?.balanceKobo || 0) ? (
-                  <button onClick={() => { onClose(); onTopUpWallet?.(); }}
-                    className="w-full mt-3 py-3 border-2 border-brand-500 text-brand-600 dark:text-brand-400 rounded-xl font-bold text-sm transition active:scale-[0.99]">
-                    Fund Wallet first
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => {
-                      if (!amtNum || amtNum <= 0) { setWalletMsg("Please enter a valid amount."); return; }
-                      if (!contribGroupId && contribCtx !== "personal_savings" ) { setWalletMsg("Pick which goal this is for below first."); return; }
-                      setTxnPin({
-                        title: "Confirm Deposit", amount: Math.round(amtNum * 100),
-                        description: "Savings deposit from wallet",
-                        hasPinSet: Boolean(client?.portal_pin_changed_at),
-                        onApprove: () => { setTxnPin(null); handlePayWallet(); },
-                      });
-                    }}
-                    disabled={walletPaying || !amtNum || amtNum <= 0}
-                    className="w-full mt-3 py-3 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white rounded-xl font-bold text-sm transition active:scale-[0.99]">
-                    {walletPaying ? "Paying…" : `Pay ${amtNum > 0 ? fmt(amtNum) : ""} from Wallet`}
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* Or transfer — the owner's KudiAI Wallet is the default, real-money
-                collection route: transfers there auto-credit, no proof/confirmation
-                step needed. Falls back to a manual bank account only if the owner's
-                wallet isn't set up. */}
-            {!noGoalAtAll && (wallet?.hasAccount
-              ? <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2 mt-1">Or transfer</p>
-              : null)}
-            {!noGoalAtAll && (hasBank ? (() => {
-              const isClientAcct = !hasWalletRoute && !!clientBank?.account_number;
-              const acctNum  = hasWalletRoute ? ownerWallet.account_number : isClientAcct ? clientBank.account_number  : ownerBank.bank_account_number;
-              // The wallet's bank-registered name (flw_account_name) is tied to
-              // BVN/KYC and can be a legal name rather than the trade name —
-              // show the business name here instead, everywhere inside our own UI.
-              const acctName = hasWalletRoute ? (ownerBank?.business_name || ownerWallet.account_name) : isClientAcct ? clientBank.account_name : ownerBank.bank_account_name;
-              const bankName = hasWalletRoute ? cleanBankName(ownerWallet.bank_name) : isClientAcct ? clientBank.bank_name : ownerBank.bank_name;
-              return (
-                <div className="bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-800 rounded-2xl px-4 py-4 mb-4">
-                  <p className="text-[10px] font-bold text-brand-500 dark:text-brand-400 uppercase tracking-wider mb-3">{t("ajoPt.sendHere")}</p>
-                  <div className="space-y-2.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs text-slate-500 dark:text-slate-400 flex-shrink-0">{t("ajoPt.accountNumber")}</span>
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-sm font-black text-slate-800 dark:text-white tracking-widest tabular">{acctNum}</span>
-                        <button onClick={() => copyText(acctNum, "acctNum")}
-                          className={`flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center transition active:scale-90 ${copiedField === "acctNum" ? "bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400" : "bg-brand-100 dark:bg-brand-900/40 text-brand-500 dark:text-brand-400"}`}>
-                          {copiedField === "acctNum"
-                            ? <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={3} strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
-                            : <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-                          }
-                        </button>
-                      </div>
-                    </div>
-                    {acctName && (
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs text-slate-500 dark:text-slate-400 flex-shrink-0">{t("ajoPt.accountName")}</span>
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate">{acctName}</span>
-                          <button onClick={() => copyText(acctName, "acctName")}
-                            className={`flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center transition active:scale-90 ${copiedField === "acctName" ? "bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400" : "bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500"}`}>
-                            {copiedField === "acctName"
-                              ? <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={3} strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
-                              : <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-                            }
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                    {bankName && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-slate-500 dark:text-slate-400">{t("ajoPt.bank")}</span>
-                        <span className="text-xs font-bold text-slate-700 dark:text-slate-200">{bankName}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })() : (
-              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-3 py-2.5 mb-4">
-                <p className="text-xs text-amber-700 dark:text-amber-300 font-semibold">{t("ajoPt.noBankDetails")}</p>
-              </div>
-            ))}
-
-            {/* No savings card, group, or esusu at all — nowhere to attribute this
-                deposit to. Route it straight into the client's own wallet instead
-                of blocking with "no active plans"; they can move it into a card
-                once they open one. */}
-            {noGoalAtAll ? (
-              <div className="bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800/40 rounded-2xl p-4 text-center">
-                <p className="text-[13px] font-bold text-slate-800 dark:text-white mb-1">No savings card yet</p>
-                <p className="text-[12px] text-slate-500 dark:text-slate-400 mb-3 leading-relaxed">
-                  This deposit will top up your KudiAI Wallet — open a savings card any time to start moving it toward a goal.
-                </p>
-                <button onClick={() => { onClose(); onTopUpWallet?.(); }}
-                  className="px-5 py-2.5 bg-brand-500 hover:bg-brand-600 text-white rounded-xl font-bold text-[12px] transition active:scale-[0.98]">
-                  Top up my Wallet
-                </button>
-              </div>
-            ) : (
-            <>
-            {/* Now pick which goal this deposit is for */}
-            <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">{t("ajoPt.whichGoal")}</p>
-
-            {/* Three-tab bar */}
-            <MoneyTabBar
-              tabs={[
-                { key: "personal", label: t("ajoPt.personalTab") },
-                ...(savingsGroups.length > 0 ? [{ key: "groups", label: t("ajoPt.groupsTab") }] : []),
-                ...(esusuGroups.length    > 0 ? [{ key: "esusu",  label: t("ajoPt.esusuTab") }]          : []),
-              ]}
-              active={mainTab}
-              onChange={tab => {
-                setMainTab(tab);
-                setSelectedCycleId(null);
-                setContribGroupId(null);
-                setError("");
-                if (tab === "personal") setContribCtx("personal_savings");
-              }}
-            />
-
-            {/* ── Personal tab ─────────────────────────────────────────── */}
-            {mainTab === "personal" && (
-              <>
-                <MoneySubTabBar tabs={personalSubTabs} active={personalSubTab}
-                  onChange={sub => { setPersonalSubTab(sub); setSelectedCycleId(null); setError(""); }} />
-
-                {personalSubTabs.length === 0 && (
-                  <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">{t("ajoPt.noActivePlans")}</p>
-                )}
-
-                {personalSubTab === "first_period" && fpCycles.map(cy => (
-                  <MoneyCycleCard key={cy.id} cycle={cy} saved={0} net={0} locked={false} mode="deposit"
-                    selected={selectedCycleId === cy.id}
-                    onSelect={() => { setSelectedCycleId(cy.id); setContribCtx("personal_savings"); setContribGroupId(null); setError(""); }}>
-                    {depositForm}
-                  </MoneyCycleCard>
-                ))}
-
-                {personalSubTab === "percent" && pctCycles.map(cy => (
-                  <MoneyCycleCard key={cy.id} cycle={cy} saved={0} net={0} locked={false} mode="deposit"
-                    selected={selectedCycleId === cy.id}
-                    onSelect={() => { setSelectedCycleId(cy.id); setContribCtx("personal_savings"); setContribGroupId(null); setError(""); }}>
-                    {depositForm}
-                  </MoneyCycleCard>
-                ))}
-
-                {personalSubTab === "first_period" && fpCycles.length === 0 && (
-                  <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-4">{t("ajoPt.noActivePlans")}</p>
-                )}
-                {personalSubTab === "percent" && pctCycles.length === 0 && (
-                  <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-4">{t("ajoPt.noActivePlans")}</p>
-                )}
-              </>
-            )}
-
-            {/* ── Savings Groups tab ───────────────────────────────────── */}
-            {mainTab === "groups" && (
-              <>
-                {savingsGroups.length === 0 && (
-                  <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">{t("ajoPt.noActivePlans")}</p>
-                )}
-                {savingsGroups.map(g => (
-                  <MoneyGroupCard key={g.id} group={g} saved={0} mode="deposit"
-                    selected={contribGroupId === g.id && contribCtx === "group_savings"}
-                    onSelect={() => { setSelectedCycleId(null); setContribCtx("group_savings"); setContribGroupId(g.id); setError(""); }}>
-                    {depositForm}
-                  </MoneyGroupCard>
-                ))}
-              </>
-            )}
-
-            {/* ── Esusu tab ───────────────────────────────────────────── */}
-            {mainTab === "esusu" && (
-              <>
-                {esusuGroups.length === 0 && (
-                  <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">{t("ajoPt.noActivePlans")}</p>
-                )}
-                {esusuGroups.map(g => (
-                  <MoneyEsusuSimpleCard key={g.id} group={g}
-                    selected={contribGroupId === g.id && contribCtx === "esusu_rotation"}
-                    onSelect={() => { setSelectedCycleId(null); setContribCtx("esusu_rotation"); setContribGroupId(g.id); setError(""); }}>
-                    {depositForm}
-                  </MoneyEsusuSimpleCard>
-                ))}
-              </>
-            )}
-            </>
-            )}
-          </>
-        )}
-      </div>
-    </div>
-    {txnPin && <AjoTxnPinModal {...txnPin} clientId={client?.id} onCancel={() => setTxnPin(null)} />}
-    </>
   );
 }
 
@@ -3091,7 +2507,7 @@ function OverviewTab({ client, contributions, cycles = [], rotationsData = [], r
         </div>
       )}
       {showOpenCycle && (
-        <OpenCycleSheet client={client} onClose={() => setShowOpenCycle(false)} />
+        <OpenCycleSheet client={client} cycleCount={cycles.length} onClose={() => setShowOpenCycle(false)} />
       )}
       {cycles.map((cyc, idx) => (
         <ContributionCard
@@ -5506,15 +4922,22 @@ function AjoMemberBillsWrapper({ client, ownerInfo, session, wallet }) {
 // aso_clients row; the server ignores anything else the client might send.
 // Used both from the always-visible "Open New Card" entry point on Overview
 // and from the goal-setting flow when a client has no card to attach a goal to.
-function OpenCycleSheet({ client, onClose, onOpened }) {
+function OpenCycleSheet({ client, cycleCount = 0, onClose, onOpened }) {
+  const [name,    setName]    = useState("");
+  const [amount,  setAmount]  = useState("");
+  const [model,   setModel]   = useState("first_period");
   const [opening, setOpening] = useState(false);
   const [err,     setErr]     = useState("");
   const canPercent = Number(client?.commission_percent) > 0;
 
-  const open = async (model) => {
+  const open = async () => {
     setOpening(true); setErr("");
     try {
-      const res = await ajoFn("client-open-cycle", { client_id: client.id, commission_model: model });
+      const res = await ajoFn("client-open-cycle", {
+        client_id: client.id, commission_model: model,
+        ...(name.trim() ? { label: name.trim() } : {}),
+        ...(amount && Number(amount) > 0 ? { amount: Number(amount) } : {}),
+      });
       if (res?.ok === false) throw new Error(res.error || "Could not open your savings card");
       // realtime (ajo_cycles INSERT, filtered to this client) refreshes `cycles` in the parent
       onOpened?.();
@@ -5529,19 +4952,41 @@ function OpenCycleSheet({ client, onClose, onOpened }) {
   return (
     <BottomSheet open onClose={onClose} title="Open a savings card">
       <p className="text-[12px] text-slate-500 dark:text-slate-400 mb-4 leading-relaxed">
-        Pick how your collector's fee is charged — the rate itself is already set by your business.
+        You can hold more than one card at a time — give this one a name if you're opening another.
       </p>
       {err && <p className="text-[12px] text-red-500 mb-3">{err}</p>}
+
+      <div className="space-y-3 mb-4">
+        <div>
+          <label className="text-[12px] font-semibold text-slate-500 dark:text-slate-400">Card name <span className="text-slate-300 font-normal">optional</span></label>
+          <input type="text" value={name} onChange={e => setName(e.target.value)}
+            placeholder={cycleCount > 0 ? "e.g. Rent Fund, School Fees" : "Personal Savings"}
+            className="w-full mt-1.5 px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/60 text-slate-900 dark:text-slate-50 text-[14px] font-semibold placeholder:font-normal placeholder:text-slate-400 focus:outline-none focus:border-brand-400" />
+        </div>
+        <div>
+          <label className="text-[12px] font-semibold text-slate-500 dark:text-slate-400">
+            How much per period <span className="text-slate-300 font-normal">optional — leave blank for no fixed target</span>
+          </label>
+          <div className="flex items-center gap-2 mt-1.5 px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/60">
+            <span className="text-[15px] font-black text-brand-600 dark:text-brand-300">₦</span>
+            <input type="number" inputMode="decimal" min="1" value={amount} onChange={e => setAmount(e.target.value)}
+              placeholder={client?.contribution_amount > 0 ? String(client.contribution_amount) : "0.00"}
+              className="flex-1 bg-transparent text-[14px] font-semibold text-slate-900 dark:text-slate-50 outline-none placeholder:font-normal placeholder:text-slate-400 tabular [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+          </div>
+        </div>
+      </div>
+
+      <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">Collector's fee</p>
       <div className="space-y-2">
-        <button onClick={() => open("first_period")} disabled={opening}
-          className="w-full text-left px-4 py-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 disabled:opacity-50 active:scale-[0.99] transition-transform">
+        <button onClick={() => setModel("first_period")}
+          className={`w-full text-left px-4 py-3.5 rounded-xl border transition-transform active:scale-[0.99] ${model === "first_period" ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20" : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"}`}>
           <span className="block text-[13px] font-bold text-slate-800 dark:text-white">First-period fee</span>
           <span className="block text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
             Your first contribution covers the collector's fee — every payment after that goes fully to your savings.
           </span>
         </button>
-        <button onClick={() => open("percent")} disabled={opening || !canPercent}
-          className="w-full text-left px-4 py-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 disabled:opacity-50 active:scale-[0.99] transition-transform">
+        <button onClick={() => canPercent && setModel("percent")} disabled={!canPercent}
+          className={`w-full text-left px-4 py-3.5 rounded-xl border disabled:opacity-50 transition-transform active:scale-[0.99] ${model === "percent" ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20" : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"}`}>
           <span className="block text-[13px] font-bold text-slate-800 dark:text-white">
             Percentage fee{canPercent ? ` · ${client.commission_percent}%` : ""}
           </span>
@@ -5550,7 +4995,11 @@ function OpenCycleSheet({ client, onClose, onOpened }) {
           </span>
         </button>
       </div>
-      {opening && <p className="text-[11px] text-slate-400 mt-3 text-center">Opening your card…</p>}
+
+      <button onClick={open} disabled={opening}
+        className="w-full mt-4 py-3.5 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99]">
+        {opening ? "Opening…" : "Open card"}
+      </button>
     </BottomSheet>
   );
 }
@@ -5671,7 +5120,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
   });
   const [showWithdraw,     setShowWithdraw]     = useState(false);
   const [showPay,          setShowPay]          = useState(false);
-  const [showDeposit,      setShowDeposit]      = useState(false);
+  const [showOpenCycle,    setShowOpenCycle]    = useState(false);
   const [withdrawRequests, setWithdrawRequests] = useState([]);
   const [showPwdModal,     setShowPwdModal]     = useState(false);
   const [showWallet,       setShowWallet]       = useState(false);
@@ -6004,7 +5453,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
               rotationLoading={rotationLoading}
               onWithdrawClick={() => setShowWithdraw(true)}
               onPayClick={() => setShowPay(true)}
-              onDepositClick={() => setShowDeposit(true)}
+              onDepositClick={() => setShowPay(true)}
               ownerInfo={ownerInfo}
               withdrawRequests={withdrawRequests}
               onBillsClick={() => setTab("bills")}
@@ -6133,11 +5582,15 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
           contributions={contributions}
           wallet={wallet}
           onTopUpWallet={() => setWalletSheet("fund")}
+          onOpenCycle={() => setShowOpenCycle(true)}
           onClose={() => setShowPay(false)}
           onSuccess={(ref, updatedClient) => {
             if (updatedClient) setClient(prev => ({ ...prev, ...updatedClient }));
           }}
         />
+      )}
+      {showOpenCycle && client && (
+        <OpenCycleSheet client={client} cycleCount={cycles.length} onClose={() => setShowOpenCycle(false)} />
       )}
       {showWallet && (
         <MemberWalletSheet
@@ -6172,19 +5625,6 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
           withdrawRequests={withdrawRequests}
           onClose={() => setShowWithdraw(false)}
           onSuccess={() => { refreshWithdrawRequests(); }}
-        />
-      )}
-      {showDeposit && client && (
-        <ManualDepositModal
-          client={client}
-          clientGroups={client?.group_memberships?.filter(m => m.status === "active") || []}
-          cycles={cycles}
-          contributions={contributions}
-          ownerInfo={ownerInfo}
-          wallet={wallet}
-          onTopUpWallet={() => setWalletSheet("fund")}
-          onClose={() => setShowDeposit(false)}
-          onSuccess={() => {}}
         />
       )}
       {showPwdModal && (

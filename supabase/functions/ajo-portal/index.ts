@@ -309,11 +309,14 @@ serve(async (req) => {
     }
 
     // ── client-open-cycle — a client opens their own personal-savings card.
-    //    They choose ONLY the fee model (first_period vs percent); the actual
-    //    reg fee / commission percent VALUE always comes from their aso_clients
-    //    row, set by the business at onboarding — never client-entered. ──────
+    //    They choose the fee model (first_period vs percent) — the reg fee /
+    //    commission percent VALUE always comes from their aso_clients row,
+    //    set by the business at onboarding, never client-entered — plus,
+    //    now, their own card name (so they can hold more than one at a time)
+    //    and their own target deposit amount per period. ─────────────────────
     if (action === "client-open-cycle") {
-      const { client_id, commission_model: reqModel } = body as { client_id: string; commission_model?: string };
+      const { client_id, commission_model: reqModel, label: reqLabel, amount: reqAmount } =
+        body as { client_id: string; commission_model?: string; label?: string; amount?: number };
       if (!client_id) return json({ error: "client_id required" }, 400);
       // client-open-cycle is caller-restricted to the client themselves —
       // _clientScoped's requireClientAccess above also lets the owner/staff
@@ -331,14 +334,31 @@ serve(async (req) => {
         return json({ error: "Percentage savings isn't set up for your account yet — contact your savings collector." }, 400);
       }
 
+      const amount = reqAmount != null && Number(reqAmount) > 0 ? Number(reqAmount) : undefined;
+
+      // Auto-dedupe the card name so a client can open several without having
+      // to guess one that doesn't collide with an already-active card:
+      // "Personal Savings", then "Personal Savings 2", "Personal Savings 3"...
+      let label = String(reqLabel || "").trim().slice(0, 60) || "Personal Savings";
+      const { data: existingCycles } = await sb.from("ajo_cycles")
+        .select("label").eq("client_id", client_id).eq("status", "active");
+      const takenLabels = new Set((existingCycles || []).map((c: { label: string | null }) => (c.label || "").trim().toLowerCase()));
+      if (takenLabels.has(label.toLowerCase())) {
+        let n = 2;
+        while (takenLabels.has(`${label} ${n}`.toLowerCase())) n++;
+        label = `${label} ${n}`;
+      }
+
       const { data: ocData, error: ocErr } = await sb.rpc("ajo_open_cycle", {
         p_client_id:        client_id,
         p_owner_id:         cl.user_id,
         p_commission_model: model,
-        // start/length/amount/pct/label/frequency intentionally omitted — the
-        // RPC fills each from this client's own aso_clients row. When the
-        // business never set a fixed contribution_amount, allow a flexible
-        // card (no per-period target) rather than blocking self-service.
+        p_label:            label,
+        p_amount:           amount,
+        // start/length/pct/frequency intentionally omitted — the RPC fills
+        // each from this client's own aso_clients row. When neither the
+        // client nor the business set a fixed amount, allow a flexible card
+        // (no per-period target) rather than blocking self-service.
         p_allow_flexible: true,
       });
       if (ocErr) return json({ ok: false, error: ocErr.message });
