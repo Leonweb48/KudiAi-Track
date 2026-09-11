@@ -139,6 +139,20 @@ serve(async (req) => {
 
       if (status !== "succeeded" && status !== "successful") return ok("ignored (not succeeded)");
 
+      const amountKobo = Math.round(amountNaira * 100);
+
+      // ── Is this a one-time bill payment (charge-bill), not a wallet top-up?
+      //    Check first — a bill charge's dynamic VA isn't tied to any wallet, so
+      //    it would otherwise fall through to "no wallet" and never fulfil. ──
+      const billRef = String(data.reference || "").replace(/^kdtb-/, "");
+      if (billRef) {
+        const { data: pb } = await sb.from("pending_bills").select("id").eq("reference", billRef).maybeSingle();
+        if (pb) {
+          await handleBillPaymentFlw(sb, billRef, amountKobo, SUPABASE_URL, SERVICE_KEY);
+          return ok("bill processed");
+        }
+      }
+
       // resolve the wallet
       const custId = String((data.customer as Record<string, unknown>)?.id || "");
       const vaNo   = String((pm.bank_transfer as Record<string, unknown>)?.virtual_account_number || "");
@@ -152,8 +166,6 @@ serve(async (req) => {
         wallet = w;
       }
       if (!wallet) { console.warn(`[flw-webhook] no wallet for cust=${custId} va=${vaNo}`); return ok("no wallet"); }
-
-      const amountKobo = Math.round(amountNaira * 100);
 
       // ── Is this a customer paying for a sale? Match a pending payment request
       //    for this wallet with the exact amount, still within its 30-min window.
@@ -312,3 +324,218 @@ serve(async (req) => {
     return bad("handler error", 500);
   }
 });
+
+// ── Bill payment: fulfill via ClubKonnect for a Flutterwave-charged bill ─────
+// Deliberately a standalone copy of paystack-webhook's handleBillPayment (not
+// a shared import — this repo has no cross-function shared module, and copying
+// keeps the live Paystack path completely untouched while this rolls out).
+// deno-lint-ignore no-explicit-any
+async function handleBillPaymentFlw(
+  sb: any,
+  reference: string,
+  amountKobo: number,
+  supabaseUrl: string,
+  serviceKey: string,
+) {
+  const amountNgn = amountKobo / 100;
+
+  const { data: pb } = await sb
+    .from("pending_bills")
+    .select("*")
+    .eq("reference", reference)
+    .maybeSingle();
+
+  if (!pb) {
+    console.warn(`[flw-webhook/bill] No pending_bills record for ref ${reference} — client must fulfill on return`);
+    return;
+  }
+  if (pb.status !== "pending") {
+    console.log(`[flw-webhook/bill] Already processed (status=${pb.status}): ${reference}`);
+    return;
+  }
+
+  // Optimistic lock — prevents concurrent webhook invocations from double-fulfilling.
+  const { error: lockErr } = await sb
+    .from("pending_bills")
+    .update({ status: "processing" })
+    .eq("reference", reference)
+    .eq("status", "pending");
+  if (lockErr) {
+    console.error(`[flw-webhook/bill] Lock failed for ${reference}:`, lockErr.message);
+    return;
+  }
+
+  const cat      = pb.cat as string;
+  const formData = (pb.form_data ?? {}) as Record<string, string>;
+
+  const NET_ERR = /network|timeout|timed ?out|fetch failed|failed to fetch|connection|aborted|ECONNRESET|socket|dns|gateway|50[234]/i;
+  const ckPost = async (payload: Record<string, unknown>, tries = 3): Promise<Record<string, unknown>> => {
+    let lastErr: unknown;
+    for (let i = 0; i < tries; i++) {
+      if (i > 0) await new Promise(r => setTimeout(r, 3000 * i));
+      try {
+        const resp = await fetch(`${supabaseUrl}/functions/v1/clubkonnect`, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${serviceKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        return await resp.json() as Record<string, unknown>;
+      } catch (e) {
+        lastErr = e;
+        if (!NET_ERR.test((e as Error).message || "")) break;
+      }
+    }
+    throw lastErr ?? new Error("clubkonnect unreachable");
+  };
+
+  try {
+    const ck = await ckPost({ action: cat, requestId: reference, ...formData });
+
+    if (ck?.error) throw new Error(String(ck.error));
+
+    const apiRef      = String(ck.reference ?? "");
+    const elecToken   = String(ck.token ?? ck.metertoken ?? ck.meter_token ?? ck.electricity_token ?? "");
+    const elecUnits   = String(ck.units ?? ck.unit ?? ck.kwh ?? "");
+    const elecOrderId = String(ck.reference ?? "");
+    const cardDetails = String(ck.cardDetails ?? "");
+    const pinsArr     = Array.isArray(ck.pins)
+      ? (ck.pins as Record<string, unknown>[]).map(p => ({ ...p, network: formData.network ?? "" }))
+      : [];
+
+    let itemName = "", note = "";
+    const phone = formData.phone ?? "";
+    const network = formData.network ?? "";
+    if (cat === "airtime")    { itemName = `${network} Airtime`; note = `Phone: ${phone} | Network: ${network}${apiRef ? ` | Ref: ${apiRef}` : ""}`; }
+    else if (cat === "data")  { itemName = `${network} ${formData.planName ?? ""} Data`; note = `Phone: ${phone} | Network: ${network}${apiRef ? ` | Ref: ${apiRef}` : ""}`; }
+    else if (cat === "cable") { itemName = `${formData.provider ?? ""} ${formData.packageName ?? ""}`; note = `Provider: ${formData.provider ?? ""} | Smartcard: ${formData.smartcard ?? ""}${apiRef ? ` | Ref: ${apiRef}` : ""}`; }
+    else if (cat === "electricity") { itemName = `${formData.company ?? ""} Electric`; note = `Meter: ${formData.meterNo ?? ""}${elecToken ? ` | Token: ${elecToken}` : ""}${apiRef ? ` | Ref: ${apiRef}` : ""}`; }
+    else if (cat === "betting")     { itemName = `${formData.company ?? ""} Wallet`; note = `Customer: ${formData.customerId ?? ""}${apiRef ? ` | Ref: ${apiRef}` : ""}`; }
+    else { itemName = cat; note = `${cat}${apiRef ? ` | Ref: ${apiRef}` : ""}`; }
+
+    const fulfillment = {
+      ok:               true,
+      label:            itemName,
+      detail:           note,
+      pinsArr,
+      psRef:            reference,
+      apiRef,
+      cardDetails,
+      cat,
+      amount:           amountNgn,
+      txnHistoryPending: false,
+      elecToken,
+      elecOrderId:      ck.status === "PENDING" ? elecOrderId : "",
+      elecUnits,
+      formSnap:         formData,
+    };
+
+    await sb.from("pending_bills").update({
+      status: "fulfilled",
+      fulfillment,
+      fulfilled_at: new Date().toISOString(),
+    }).eq("reference", reference);
+
+    await sb.from("transactions").insert({
+      user_id:          pb.user_id,
+      type:             "expense",
+      category:         cat,
+      amount:           amountNgn,
+      item_name:        itemName,
+      payment_type:     "flutterwave",
+      note,
+      transaction_date: new Date().toISOString().slice(0, 10),
+      bill_status:      "completed",
+      client_txn_id:    reference,
+    }).onConflict("client_txn_id").ignore();
+
+    console.log(`[flw-webhook/bill] Fulfilled: ref=${reference} cat=${cat} amount=₦${amountNgn}`);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    console.error(`[flw-webhook/bill] ClubKonnect failed for ${reference}: ${msg}`);
+
+    let verdict: "FAILED" | "SUCCESS" | "HOLD" = "FAILED";
+    let vr: Record<string, unknown> = {};
+    if (NET_ERR.test(msg) || /unreachable|non-2xx|edge function/i.test(msg)) {
+      try {
+        vr = await ckPost({ action: "verify", requestId: reference, service: cat }, 2);
+        const vs = String(vr?.status ?? "").toUpperCase();
+        if (vs === "SUCCESS")                       verdict = "SUCCESS";
+        else if (vs === "PENDING" || vs === "UNKNOWN") verdict = "HOLD";
+      } catch {
+        verdict = "HOLD";
+      }
+    }
+
+    const { data: uProf } = await sb.from("profiles")
+      .select("email, owner_name, business_name")
+      .eq("id", pb.user_id).maybeSingle();
+    const uEmail = (uProf as Record<string, unknown> | null)?.email ?? null;
+    const uName  = (uProf as Record<string, unknown> | null)?.owner_name
+                ?? (uProf as Record<string, unknown> | null)?.business_name ?? null;
+
+    if (verdict === "SUCCESS") {
+      const apiRef = String(vr.reference ?? reference);
+      const note   = `${cat} | recovered via requery${apiRef ? ` | Ref: ${apiRef}` : ""} | FLW: ${reference}`;
+      await sb.from("pending_bills").update({
+        status: "fulfilled",
+        fulfillment: {
+          ok: true, label: cat, detail: note, psRef: reference, apiRef, cat,
+          amount: amountNgn, pinsArr: Array.isArray(vr.pins) ? vr.pins : [],
+          cardDetails: String(vr.cardDetails ?? ""), elecToken: String(vr.token ?? ""),
+          elecOrderId: "", elecUnits: "", txnHistoryPending: false, formSnap: formData,
+        },
+        fulfilled_at: new Date().toISOString(),
+      }).eq("reference", reference);
+      await sb.from("transactions").insert({
+        user_id: pb.user_id, type: "expense", category: cat, amount: amountNgn,
+        item_name: cat, payment_type: "flutterwave", note,
+        transaction_date: new Date().toISOString().slice(0, 10),
+        bill_status: "completed", client_txn_id: reference,
+      }).onConflict("client_txn_id").ignore();
+      console.log(`[flw-webhook/bill] Recovered via requery: ref=${reference} cat=${cat}`);
+      return;
+    }
+
+    const hold = verdict === "HOLD";
+
+    await sb.from("pending_bills").update({
+      status: "failed",
+      fulfillment: { detail: msg, _charged: true, _hold: hold },
+    }).eq("reference", reference);
+
+    await sb.from("transactions").insert({
+      user_id:          pb.user_id,
+      type:             "expense",
+      category:         cat,
+      amount:           amountNgn,
+      item_name:        cat,
+      payment_type:     "flutterwave",
+      note:             hold
+        ? `PENDING CONFIRMATION (webhook): ${msg} | FLW: ${reference}`
+        : `FAILED (webhook): ${msg} | FLW: ${reference}`,
+      transaction_date: new Date().toISOString().slice(0, 10),
+      bill_status:      hold ? "pending" : "failed",
+      client_txn_id:    `wh_${reference}`,
+    }).onConflict("client_txn_id").ignore();
+
+    try {
+      await fetch(`${supabaseUrl}/functions/v1/clubkonnect`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${serviceKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action:     "bill-failure-alert",
+          hold,
+          user_id:    pb.user_id,
+          user_email: uEmail,
+          user_name:  uName,
+          service:    cat,
+          amount:     amountNgn,
+          ps_ref:     reference,
+          ck_error:   msg,
+        }),
+      });
+    } catch (alertErr) {
+      console.error(`[flw-webhook/bill] Failure alert error: ${(alertErr as Error).message}`);
+    }
+  }
+}

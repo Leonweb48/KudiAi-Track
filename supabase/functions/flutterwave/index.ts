@@ -339,6 +339,65 @@ serve(async (req) => {
       auth: { persistSession: false },
     });
 
+    // ── charge-bill — one-time dynamic virtual account for a non-wallet bill
+    //    payment (the Paystack-card-popup replacement — flagged separately from
+    //    the wallet itself, since a business without a wallet can still pay bills). ──
+    if (action === "charge-bill") {
+      if ((await cfg("flw_bills_enabled", "false")) !== "true") return json({ error: "Not available" }, 403);
+      const { amount_kobo, reference, narration } = body as { amount_kobo: number; reference: string; narration?: string };
+      if (!amount_kobo || amount_kobo <= 0) return json({ error: "Enter an amount" }, 400);
+      if (!reference) return json({ error: "Missing reference" }, 400);
+
+      // Reuse the user's wallet customer_id if they have one; otherwise create a
+      // lightweight Flutterwave customer just for this charge.
+      const { data: w } = await sb.from("wallets").select("flw_customer_id").eq("user_id", uid).maybeSingle();
+      let customerId = w?.flw_customer_id as string | null;
+      if (!customerId) {
+        const { data: profile } = await sb.from("profiles").select("email, full_name, business_name, phone").eq("id", uid).maybeSingle();
+        const email = profile?.email || user.email || `bill+${uid.slice(0, 8)}@kudiai.app`;
+        const fullName = (profile?.full_name || profile?.business_name || "KudiAI User").trim();
+        const [fn, ...ln] = fullName.split(/\s+/);
+        const phoneRaw = String(profile?.phone ?? "").replace(/\D/g, "");
+        const c = await flwFetch("/customers", {
+          method: "POST",
+          headers: { "X-Idempotency-Key": `cus-${uid}` },
+          body: JSON.stringify({
+            email, name: { first: fn || "KudiAI", last: ln.join(" ") || "User" },
+            ...(phoneRaw.length >= 10 ? { phone: { country_code: "234", number: phoneRaw.replace(/^234/, "").replace(/^0/, "") } } : {}),
+          }),
+        });
+        if (!c.ok) return json({ error: "Could not start payment. Please try again." }, 502);
+        customerId = (c.data as any)?.data?.id || "";
+      }
+
+      const naira = Math.round(Number(amount_kobo) / 100);
+      const va = await flwFetch("/virtual-accounts", {
+        method: "POST",
+        headers: { "X-Idempotency-Key": `bill-${reference}` },
+        body: JSON.stringify({
+          customer_id: customerId,
+          reference: `kdtb-${reference}`.slice(0, 42),
+          currency: "NGN",
+          account_type: "dynamic",
+          amount: naira,
+          narration: (narration || "KudiAI Bill Payment").slice(0, 60),
+        }),
+      });
+      if (!va.ok) {
+        console.error("[flutterwave] charge-bill VA failed:", JSON.stringify(va.data));
+        return json({ error: "Could not start payment. Please try again shortly." }, 502);
+      }
+      const v = (va.data as any)?.data || {};
+      return json({
+        ok: true,
+        account_number: v.account_number || "",
+        account_bank: v.account_bank_name || "",
+        account_name: v.narration || "KudiAI Bill Payment",
+        amount: naira,
+        expires_at: v.expiry_date || null,
+      });
+    }
+
     if ((await cfg("wallet_enabled", "false")) !== "true") {
       return json({ error: "Wallet is not enabled" }, 403);
     }
