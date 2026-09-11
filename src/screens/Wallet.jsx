@@ -133,7 +133,7 @@ export default function Wallet({ session, store }) {
           </div>
         ) : (
           <>
-            <AccountCard wallet={w.wallet} />
+            <AccountCard wallet={w.wallet} displayName={store?.profile?.business_name || store?.profile?.owner_name} />
 
             {/* quick actions */}
             <div className="rounded-3xl bg-white dark:bg-slate-800 shadow-card border border-slate-100 dark:border-slate-700/60 p-4">
@@ -172,7 +172,8 @@ export default function Wallet({ session, store }) {
       </div>
 
       <FundWalletSheet open={sheet === "fund"} onClose={() => setSheet(null)}
-        wallet={w.wallet} testMode={walletTestMode} api={w} />
+        wallet={w.wallet} testMode={walletTestMode} api={w}
+        businessName={store?.profile?.business_name} ownerName={store?.profile?.owner_name} />
       <TransferSheet open={sheet === "transfer"} onClose={() => setSheet(null)}
         balanceKobo={w.balanceKobo} maxKobo={walletMaxWithdrawalKobo} banks={w.banks} api={w} onDone={w.refresh}
         businessName={store?.profile?.business_name} ownerName={store?.profile?.owner_name} />

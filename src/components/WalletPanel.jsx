@@ -132,15 +132,20 @@ export function ActionButton({ icon, label, onClick, disabled, tone = "brand" })
 }
 
 // ── account details card ───────────────────────────────────────────────────
-export function AccountCard({ wallet }) {
+// `displayName` overrides the raw bank-registered name (wallet.flw_account_name
+// — tied to BVN/KYC, sometimes a legal name rather than the trade name) with
+// the business name (or the client's own name) everywhere inside our own UI.
+// Falls back to the wallet's registered name only if no override is given.
+export function AccountCard({ wallet, displayName }) {
   const [copied, setCopied] = useState(false);
   const acct = wallet?.flw_account_number || "";
   const bank = cleanBankName(wallet?.flw_account_bank);
+  const name = displayName || wallet?.flw_account_name;
   const copy = async () => {
     try { await navigator.clipboard.writeText(acct); setCopied(true); setTimeout(() => setCopied(false), 1600); } catch {}
   };
   const share = async () => {
-    const text = `${wallet?.flw_account_name || "KudiAI Wallet"}\n${acct}\n${bank}`;
+    const text = `${name || "KudiAI Wallet"}\n${acct}\n${bank}`;
     try { if (navigator.share) await navigator.share({ title: "My account details", text }); else copy(); } catch {}
   };
   return (
@@ -151,7 +156,7 @@ export function AccountCard({ wallet }) {
       </div>
       <p className="mt-1.5 text-[28px] leading-none font-extrabold tracking-[0.12em] text-slate-900 dark:text-slate-50 tabular-nums">{acct}</p>
       <p className="mt-2 text-[13px] font-semibold text-slate-600 dark:text-slate-300">{bank}</p>
-      <p className="text-[12px] text-slate-400">{wallet?.flw_account_name}</p>
+      <p className="text-[12px] text-slate-400">{name}</p>
       <div className="mt-4 flex gap-2">
         <button onClick={copy}
           className="flex-1 flex items-center justify-center gap-1.5 rounded-xl bg-slate-100 dark:bg-slate-700/60 py-2.5 text-[13px] font-bold text-slate-700 dark:text-slate-200 active:scale-[0.98] transition-transform">
@@ -237,7 +242,7 @@ export function BankPickerSheet({ open, onClose, banks, onPick }) {
 }
 
 // ── Fund wallet ────────────────────────────────────────────────────────────
-export function FundWalletSheet({ open, onClose, wallet, testMode, api }) {
+export function FundWalletSheet({ open, onClose, wallet, testMode, api, businessName, ownerName }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const simulate = async () => {
@@ -251,7 +256,7 @@ export function FundWalletSheet({ open, onClose, wallet, testMode, api }) {
         Transfer from any bank to the account below. Your wallet is credited automatically —
         usually within a minute.
       </p>
-      <AccountCard wallet={wallet} />
+      <AccountCard wallet={wallet} displayName={businessName || ownerName} />
       {testMode && (
         <button onClick={simulate} disabled={busy}
           className="w-full mt-4 rounded-2xl border border-dashed border-brand-300 dark:border-brand-700 text-brand-600 dark:text-brand-400 text-[13px] font-bold py-3.5 disabled:opacity-40">
@@ -591,7 +596,7 @@ export function ReceivePaymentSheet({ open, onClose, wallet, payRequest, testMod
               <span className="text-[15px] font-extrabold tracking-wider text-slate-800 dark:text-slate-100">{acct}</span>
               <button onClick={copy} className="text-[12px] font-bold text-brand-600 dark:text-brand-400">{copied ? "Copied" : "Copy"}</button>
             </div>
-            <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-1.5">{bank} · {wallet?.flw_account_name}</p>
+            <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-1.5">{bank} · {businessName || ownerName || wallet?.flw_account_name}</p>
             {payRequest.customer_name ? <p className="text-[12px] text-slate-400 mt-1">From {payRequest.customer_name}</p> : null}
           </div>
           <div className="flex items-center justify-center gap-2 mt-4 text-[12px] text-slate-400">

@@ -2138,7 +2138,10 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], contributi
             {!noGoalAtAll && (hasBank ? (() => {
               const isClientAcct = !hasWalletRoute && !!clientBank?.account_number;
               const acctNum  = hasWalletRoute ? ownerWallet.account_number : isClientAcct ? clientBank.account_number  : ownerBank.bank_account_number;
-              const acctName = hasWalletRoute ? ownerWallet.account_name  : isClientAcct ? clientBank.account_name    : ownerBank.bank_account_name;
+              // The wallet's bank-registered name (flw_account_name) is tied to
+              // BVN/KYC and can be a legal name rather than the trade name —
+              // show the business name here instead, everywhere inside our own UI.
+              const acctName = hasWalletRoute ? (ownerBank?.business_name || ownerWallet.account_name) : isClientAcct ? clientBank.account_name : ownerBank.bank_account_name;
               const bankName = hasWalletRoute ? cleanBankName(ownerWallet.bank_name) : isClientAcct ? clientBank.bank_name : ownerBank.bank_name;
               return (
                 <div className="bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-800 rounded-2xl px-4 py-4 mb-4">
@@ -5609,7 +5612,7 @@ function MemberWalletSheet({ wallet, testMode, businessName, ownerName, onClose,
         <div>
           <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-1">Balance</p>
           <AmountDisplay amount={wallet.balanceKobo} fromKobo size="hero" align="left" className="mb-4" />
-          <AccountCard wallet={wallet.wallet} />
+          <AccountCard wallet={wallet.wallet} displayName={businessName || ownerName} />
           <div className="flex items-center gap-2 mt-4 mb-2">
             <ActionButton icon="plus" label="Fund" onClick={onFund} />
             <ActionButton icon="send" label="Transfer" tone="slate" onClick={onTransfer} />
@@ -6150,7 +6153,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
       {walletEnabled && wallet.hasAccount && (
         <>
           <FundWalletSheet open={walletSheet === "fund"} onClose={() => setWalletSheet(null)}
-            wallet={wallet.wallet} testMode={walletTestMode} api={wallet} />
+            wallet={wallet.wallet} testMode={walletTestMode} api={wallet} businessName={client?.full_name} />
           <TransferSheet open={walletSheet === "transfer"} onClose={() => setWalletSheet(null)}
             balanceKobo={wallet.balanceKobo} maxKobo={walletMaxWithdrawalKobo} banks={wallet.banks} api={wallet}
             businessName={client?.full_name} onDone={wallet.refresh} />

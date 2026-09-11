@@ -695,7 +695,8 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
       {walletEnabled && (
         <>
           <FundWalletSheet open={walletSheet === "fund"} onClose={() => setWalletSheet(null)}
-            wallet={wallet.wallet} testMode={walletTestMode} api={wallet} />
+            wallet={wallet.wallet} testMode={walletTestMode} api={wallet}
+            businessName={profile?.business_name} ownerName={profile?.owner_name} />
           <ReceivePaymentSheet open={walletSheet === "receive"} onClose={() => setWalletSheet(null)}
             wallet={wallet.wallet} payRequest={wallet.payRequest} testMode={walletTestMode} api={wallet}
             businessName={profile?.business_name} ownerName={profile?.owner_name} />
