@@ -34,6 +34,13 @@ export const WALLET_SOURCE = {
   bill_spend:          { label: "Bill payment",       icon: "bills",      credit: false },
   withdrawal:          { label: "Transfer",           icon: "send",       credit: false },
   adjustment:          { label: "Adjustment",         icon: "wallet",     credit: false },
+  // Ajo — client wallet -> owner wallet (contribution) and owner -> client
+  // (withdrawal payout); label/icon only, actual credit/debit styling always
+  // follows row.direction so one entry covers both sides of each source.
+  ajo_contribution:    { label: "Savings contribution", icon: "send",       credit: false },
+  ajo_collection:      { label: "Contribution received", icon: "arrow-down", credit: true },
+  ajo_payout:          { label: "Savings withdrawal",   icon: "send",       credit: false },
+  transfer_fee:        { label: "Transfer fee",         icon: "wallet",     credit: false },
 };
 
 // ── generic slide-up sheet ─────────────────────────────────────────────────

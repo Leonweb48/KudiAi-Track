@@ -495,6 +495,7 @@ const WALLET_TITLES = {
   withdrawal:          'Transfer',
   withdrawal_reversal: 'Transfer Refund',
   adjustment:          'Wallet Adjustment',
+  transfer_fee:        'Transfer Fee',
 };
 
 // A two-line "Name / Bank • Account" value, OPay-receipt style. ReceiptCard
@@ -557,10 +558,14 @@ export function buildWalletReceipt(row, ctx = {}) {
       { label: 'Reference', value: ref, copy: true },
     ];
   } else if (src === 'topup') {
+    const grossKobo = row.meta?.gross_amount_kobo;
+    const feeKobo    = row.meta?.fee_kobo;
     fields = [
       { label: 'Transaction Type', value: 'Wallet funding (bank transfer)' },
       { label: 'Recipient Details', value: walletParty },
       { label: 'Sender Details',    value: party(ctx.originator || 'Bank transfer', '', '') },
+      grossKobo > 0 && { label: 'Amount received', value: fmtAmt(grossKobo / 100) },
+      feeKobo > 0    && { label: 'Fee (CBN levy / collection)', value: fmtAmt(feeKobo / 100) },
       row.flw_reference && { label: 'Transaction No.', value: row.flw_reference, copy: true },
       row.balance_after_kobo != null && { label: 'Account balance after', value: fmtAmt(row.balance_after_kobo / 100) },
       { label: 'Payment Method', value: 'Bank transfer' },
@@ -611,7 +616,7 @@ export function buildWalletReceipt(row, ctx = {}) {
     fields:    fields.filter(Boolean),
     businessName,
     issuedBy:      businessName,
-    fees:          wd?.fee_kobo ? wd.fee_kobo / 100 : 0,
+    fees:          wd?.fee_kobo ? wd.fee_kobo / 100 : row.meta?.fee_kobo ? row.meta.fee_kobo / 100 : 0,
     receiptRef:    ref,
     filenames:     { image, pdf },
     processorName: 'KudiAI Track',

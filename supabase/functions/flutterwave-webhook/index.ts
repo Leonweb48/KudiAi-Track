@@ -130,16 +130,38 @@ serve(async (req) => {
       // re-verify with Flutterwave before giving value
       let amountNaira = Number(data.amount || 0);
       let status = String(data.status || "");
+      let feesSource: unknown = data.fees;
       try {
         const token = await flwToken();
         const vr = await fetch(`${FLW_BASE}/charges/${chargeId}`, { headers: { Authorization: `Bearer ${token}` } });
         const vj = await vr.json().catch(() => ({}));
-        if (vr.ok && vj?.data) { amountNaira = Number(vj.data.amount || amountNaira); status = String(vj.data.status || status); }
+        if (vr.ok && vj?.data) {
+          amountNaira = Number(vj.data.amount || amountNaira);
+          status = String(vj.data.status || status);
+          if (vj.data.fees !== undefined) feesSource = vj.data.fees;
+        }
       } catch (e) { console.warn("[flw-webhook] verify failed, using payload:", (e as Error).message); }
 
       if (status !== "succeeded" && status !== "successful") return ok("ignored (not succeeded)");
 
       const amountKobo = Math.round(amountNaira * 100);
+
+      // ── CBN stamp duty + Flutterwave's own collection fee, passed through to
+      //    the wallet owner instead of the platform absorbing it — applies the
+      //    same way to a business owner's wallet and an Ajo client's wallet,
+      //    since both are credited through this exact code path. Flutterwave's
+      //    charge object carries a `fees` array (vat/app/merchant/stamp_duty
+      //    entries); sum whatever numeric fee entries are actually present. If
+      //    the field isn't there or isn't parseable, fee is 0 and the full
+      //    amount is credited — never guess a fee that wasn't actually reported. ──
+      let feeKobo = 0;
+      if (Array.isArray(feesSource)) {
+        for (const f of feesSource as Record<string, unknown>[]) {
+          const v = Number((f as Record<string, unknown>)?.value ?? (f as Record<string, unknown>)?.amount ?? 0);
+          if (Number.isFinite(v) && v > 0) feeKobo += Math.round(v * 100);
+        }
+      }
+      const netAmountKobo = Math.max(0, amountKobo - feeKobo);
 
       // ── Is this a one-time bill payment (charge-bill), not a wallet top-up?
       //    Check first — a bill charge's dynamic VA isn't tied to any wallet, so
@@ -210,7 +232,7 @@ serve(async (req) => {
 
       const { data: cfg } = await sb.from("platform_config").select("value").eq("key", "wallet_max_balance_kobo").maybeSingle();
       const maxBal = Number(cfg?.value || "20000000");
-      if (Number(wallet.balance_kobo || 0) + amountKobo > maxBal) {
+      if (Number(wallet.balance_kobo || 0) + netAmountKobo > maxBal) {
         await sb.from("admin_notifications").insert({
           type: "warning", category: "finance", target_roles: ["finance_admin", "super_admin"],
           title: "Wallet top-up over cap — not credited",
@@ -222,11 +244,14 @@ serve(async (req) => {
 
       const { error } = await sb.rpc("wallet_credit", {
         p_user_id: wallet.user_id,
-        p_amount_kobo: amountKobo,
+        p_amount_kobo: netAmountKobo,
         p_source: "topup",
         p_flw_reference: chargeId,
         p_narration: "Wallet top-up (bank transfer)",
-        p_meta: { originator: (pm.bank_transfer as Record<string, unknown>)?.originator_name || null },
+        p_meta: {
+          originator: (pm.bank_transfer as Record<string, unknown>)?.originator_name || null,
+          ...(feeKobo > 0 ? { gross_amount_kobo: amountKobo, fee_kobo: feeKobo } : {}),
+        },
       });
       if (error) { console.error("[flw-webhook] wallet_credit:", error.message); return bad("credit failed", 500); }
 
@@ -236,14 +261,16 @@ serve(async (req) => {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}` },
         body: JSON.stringify({
           action: "notify", userId: wallet.user_id, type: "wallet_topup",
-          title: "Wallet funded", body: `₦${amountNaira.toLocaleString()} added to your KudiAI wallet`,
+          title: "Wallet funded", body: `₦${(netAmountKobo / 100).toLocaleString()} added to your KudiAI wallet`,
           category: "finance", deepLink: { screen: "wallet" },
         }),
       }).catch(() => {});
-      await sendWalletEmail(sb, owner?.email || "", `Wallet funded — ${fmtNgn(amountKobo)}`,
+      await sendWalletEmail(sb, owner?.email || "", `Wallet funded — ${fmtNgn(netAmountKobo)}`,
         walletEmailHtml({
           icon: "⬆️", accent: "#2E8020", title: "Wallet funded",
-          rows: [["Amount", fmtNgn(amountKobo)], ["From", originator], ["Wallet balance", fmtNgn(Number(wallet.balance_kobo || 0) + amountKobo)],
+          rows: [["Amount received", fmtNgn(amountKobo)], ["From", originator],
+                 ...(feeKobo > 0 ? [["Fee (CBN levy / collection)", fmtNgn(feeKobo)] as [string, string], ["Credited", fmtNgn(netAmountKobo)] as [string, string]] : []),
+                 ["Wallet balance", fmtNgn(Number(wallet.balance_kobo || 0) + netAmountKobo)],
                  ["Reference", `KDT-${chargeId}`], ["Time", new Date().toLocaleString("en-NG")]],
           foot: "Your KudiAI wallet is ready to use for bills and transfers.",
         }));
