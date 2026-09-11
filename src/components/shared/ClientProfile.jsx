@@ -7,6 +7,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "../../utils/supabase";
 import { STATES, getLGAs, getWards } from "../../utils/nigeriaData";
 import { AmountDisplay } from "./AmountDisplay";
+import { sendEmailTrigger } from "../../utils/emailTrigger";
 
 const fmt = (n) => `₦${Number(n || 0).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
 
@@ -314,6 +315,13 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
     const { error } = await onSave(record.id, updates);
     setSaving(false);
     if (error) { setSaveErr(error.message || "Failed to approve registration."); return; }
+    if (record.email) {
+      sendEmailTrigger("ajo_registration_approved", {
+        client_email: record.email,
+        client_name:  form.full_name || record.full_name || "",
+        business_name: businessName || "",
+      });
+    }
     onClose();
   };
 

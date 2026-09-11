@@ -203,7 +203,7 @@ serve(async (req) => {
       const { data: existing } = await sb.from("aso_clients").select("id").eq("client_user_id", callerId).maybeSingle();
       if (existing) return json({ ok: true, client_id: existing.id, already: true });
 
-      const { data: biz } = await sb.from("profiles").select("id, business_name").eq("id", business_id).maybeSingle();
+      const { data: biz } = await sb.from("profiles").select("id, business_name, email, full_name").eq("id", business_id).maybeSingle();
       if (!biz) return json({ error: "Selected business not found" }, 404);
 
       const ym = new Date();
@@ -235,6 +235,26 @@ serve(async (req) => {
         deepLink: { tab: "aso" },
         category: "ajo",
       });
+
+      // Owner email — best-effort, never blocks the registration itself.
+      // Authenticates as the client (any signed-in user satisfies this
+      // endpoint's own auth check); the recipient is the owner's email below.
+      if (biz.email) {
+        fetch("https://kudiai.app/api/email-trigger", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${_jwt}` },
+          body: JSON.stringify({
+            event: "ajo_registration_pending",
+            data: {
+              owner_email: biz.email,
+              owner_name:  biz.full_name || "",
+              business_name: biz.business_name || "",
+              client_name: full_name.trim(),
+              client_phone: phone || "",
+            },
+          }),
+        }).catch(() => {});
+      }
 
       return json({ ok: true, client_id: row.id });
     }

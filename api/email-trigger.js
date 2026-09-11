@@ -837,6 +837,46 @@ export default async function handler(req, res) {
       `, "linear-gradient(135deg,#4f46e5 0%,#7c3aed 100%)"));
   }
 
+  // ── Ajo client self-registration: owner needs to review + approve ────────────
+  else if (event === "ajo_registration_pending") {
+    q(d.owner_email, `New client registration — ${str(d.client_name)} is awaiting your approval`,
+      emailHtml("New Client Registration", `
+        <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 20px;">
+          Hi <strong>${str(d.owner_name || d.business_name)}</strong>, <strong>${str(d.client_name)}</strong> just registered
+          themselves as a savings client under your business${str(d.client_phone) ? ` (${str(d.client_phone)})` : ""}.
+        </p>
+        <div style="background:#eff6ff;border-left:4px solid #3b82f6;padding:14px 18px;border-radius:0 12px 12px 0;margin:0 0 20px;">
+          <p style="margin:0;font-size:13px;color:#1e40af;">
+            Open your Ajo dashboard to set their contribution terms and approve — they can't start saving until you do.
+          </p>
+        </div>
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+          <tr><td align="center">
+            <a href="https://kudiai.app" style="display:inline-block;background:linear-gradient(135deg,#2563eb,#3b82f6);color:#fff;font-size:14px;font-weight:700;text-decoration:none;padding:13px 36px;border-radius:10px;">Review Registration →</a>
+          </td></tr>
+        </table>
+      `, "linear-gradient(135deg,#2563eb 0%,#3b82f6 100%)"));
+  }
+
+  // ── Ajo client registration approved — invite them to sign in ────────────────
+  else if (event === "ajo_registration_approved") {
+    q(d.client_email || d.email, "You're approved! Sign in to your KudiAI savings account",
+      emailHtml("Registration Approved 🎉", `
+        <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 20px;">
+          Hi <strong>${str(d.client_name)}</strong>, great news — <strong>${str(d.business_name)}</strong> approved your
+          savings registration. Your account is ready.
+        </p>
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:16px 20px;margin:0 0 20px;">
+          <p style="font-size:13px;color:#166534;margin:0;">Sign in with the email and password you registered with to open your savings account and wallet.</p>
+        </div>
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+          <tr><td align="center">
+            <a href="https://kudiai.app" style="display:inline-block;background:linear-gradient(135deg,#059669,#10b981);color:#fff;font-size:14px;font-weight:700;text-decoration:none;padding:13px 36px;border-radius:10px;">Sign In →</a>
+          </td></tr>
+        </table>
+      `, "linear-gradient(135deg,#059669 0%,#10b981 100%)"));
+  }
+
   // ── Fallback: unknown event — still log it ───────────────────────────────────
   else {
     await logDelivery(sb, str(d.user_email || d.owner_email), `[${event}] no handler`, "failed", `No email handler for event: ${event}`);
