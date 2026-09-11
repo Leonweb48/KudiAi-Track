@@ -18,6 +18,7 @@ import ContributionCard from "../components/ContributionCard";
 import EsusuRotationDashboard from "../components/EsusuRotationDashboard";
 import TodaysCollection from "../components/TodaysCollection";
 import { useT } from "../contexts/LanguageContext";
+import { usePlatformConfig } from "../hooks/usePlatformConfig";
 import { getLang, speakConfirmation } from "../utils/i18n";
 import AssignRecordModal from "../components/AssignRecordModal";
 import TransactionPinModal from "../components/TransactionPinModal";
@@ -599,6 +600,10 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
 export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, onUpgrade, staffId = null, embedded }) {
   const t = useT();
   const toast = useToast();
+  const { walletEnabled } = usePlatformConfig();
+  const [openWallet, setOpenWallet] = useState(false);
+  const [walletBvn,  setWalletBvn]  = useState("");
+  const [walletNin,  setWalletNin]  = useState("");
   const [showAdd,      setShowAdd]      = useState(false);
   const [selected,              setSelected]             = useState(null);
   const [action,                setAction]               = useState(null);
@@ -1403,11 +1408,16 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     return Array.from(vals, n => chars[n % chars.length]).join("");
   };
 
-  const provisionClientLogin = async (clientRecord, password = null) => {
+  const provisionClientLogin = async (clientRecord, password = null, walletOpts = null) => {
     // Only include password when explicitly provided (password resets)
     // For new accounts, edge function generates the password internally
     const fnBody = { clientId: clientRecord.id };
     if (password) fnBody.password = password;
+    if (walletOpts?.open_wallet) {
+      fnBody.open_wallet = true;
+      fnBody.bvn = walletOpts.bvn;
+      fnBody.nin = walletOpts.nin;
+    }
 
     const { data, error: fnError } = await supabase.functions.invoke(
       "manage-ajo-client-account",
@@ -1464,11 +1474,13 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     setPhotoFile(null); setPhotoPreview(null);
     setAddError("");
     setClientResolvedName(""); setClientBankErr("");
+    setOpenWallet(false); setWalletBvn(""); setWalletNin("");
   };
 
   const handleAdd = async () => {
     if (!f.full_name) { setAddError("Full name is required"); return; }
     if (!f.email)     { setAddError("Email is required for portal access"); return; }
+    if (openWallet && !/^\d{11}$/.test(walletBvn)) { setAddError("Enter the client's 11-digit BVN to open a wallet for them."); return; }
     setAddError("");
     setAdding(true);
     const { data, error } = await addAsoClient({
@@ -1491,7 +1503,11 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     }
     if (!error && data) {
       try {
-        await provisionClientLogin(data);
+        const provResult = await provisionClientLogin(data, null,
+          openWallet ? { open_wallet: true, bvn: walletBvn, nin: walletNin } : null);
+        if (provResult?.walletError) {
+          setClientSubAcctErr(prev => [prev, `Client created. ${provResult.walletError}`].filter(Boolean).join(" "));
+        }
         resetAdd();
         setAddedClientEmail(data.email);
       } catch (provErr) {
@@ -2815,6 +2831,36 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             <Field label="Email *" type="email" value={f.email}
               onChange={e => set("email", e.target.value)} placeholder="client@email.com" />
           </div>
+
+          {walletEnabled && (
+            <div className="rounded-2xl border border-slate-200 dark:border-slate-700 px-3.5 py-3 mt-2">
+              <label className="flex items-center justify-between gap-3 cursor-pointer">
+                <span className="min-w-0">
+                  <span className="block text-[13px] font-bold text-slate-700 dark:text-slate-200">Open a KudiAI Wallet</span>
+                  <span className="block text-[11px] text-slate-400 dark:text-slate-500 leading-snug mt-0.5">
+                    Gives the client their own dedicated account number — payouts land there instead of an outside bank.
+                  </span>
+                </span>
+                <input type="checkbox" checked={openWallet}
+                  onChange={e => { setOpenWallet(e.target.checked); if (!e.target.checked) { setWalletBvn(""); setWalletNin(""); } }}
+                  className="w-[20px] h-[20px] rounded-md accent-brand-600 flex-shrink-0" />
+              </label>
+              {openWallet && (
+                <div className="mt-3 space-y-2">
+                  <Field label="Client's BVN *" type="tel" inputMode="numeric" value={walletBvn}
+                    onChange={e => setWalletBvn(e.target.value.replace(/\D/g, "").slice(0, 11))}
+                    placeholder="11-digit BVN" />
+                  <Field label="NIN" type="tel" inputMode="numeric" value={walletNin}
+                    onChange={e => setWalletNin(e.target.value.replace(/\D/g, "").slice(0, 11))}
+                    placeholder="11-digit NIN (optional)" />
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-relaxed">
+                    Opens a live Flutterwave account in the client's name — the BVN verifies their identity and
+                    isn't stored by KudiAI. The name and date of birth on it must match what you enter here.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
 
           {!staffId && (
             <>

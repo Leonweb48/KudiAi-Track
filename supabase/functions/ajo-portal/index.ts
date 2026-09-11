@@ -940,6 +940,125 @@ serve(async (req) => {
       return json({ client: updatedClient, amount: paidAmount });
     }
 
+    // ── Pay a contribution straight from the client's own KudiAI Wallet ──────
+    // No Paystack round-trip — debit + booking happen atomically in one RPC
+    // (wallet_pay_ajo_contribution), so this confirms instantly. Only the
+    // client themselves may call this (it spends their own wallet balance) —
+    // deliberately not in _clientScoped, which also allows the owner/staff.
+    if (action === "pay-contribution-wallet") {
+      const { client_id, amount: requestedAmount, contribution_context = "personal_savings", group_id: payGroupId, cycle_id: callerCycleId } = body as {
+        client_id: string; amount?: number; contribution_context?: string; group_id?: string; cycle_id?: string;
+      };
+      if (!client_id) return json({ error: "client_id required" }, 400);
+
+      const { data: cl, error: clErr } = await sb
+        .from("aso_clients")
+        .select("id, client_user_id, contribution_amount, contribution_frequency, user_id, full_name, next_contribution_date, ajo_group_id, commission_model, registration_charge")
+        .eq("id", client_id)
+        .maybeSingle();
+      if (clErr) return json({ error: "Something went wrong — please try again" }, 500);
+      if (!cl) return json({ error: "Client not found" }, 404);
+      if (cl.client_user_id !== callerId) return json({ error: "Forbidden" }, 403);
+
+      // ── Entity gate: reject before spending if the client has no savings entity ──
+      const [{ data: entityCard }, { data: entityGroup }] = await Promise.all([
+        sb.from("ajo_cycles").select("id").eq("client_id", client_id).eq("status", "active").limit(1).maybeSingle(),
+        sb.from("aso_client_group_memberships").select("id").eq("client_id", client_id).eq("status", "active").limit(1).maybeSingle(),
+      ]);
+      if (!entityCard && !entityGroup) {
+        return json({ error: "Open a savings card first to start saving." }, 422);
+      }
+
+      const amount = (requestedAmount && requestedAmount > 0) ? Number(requestedAmount) : Number(cl.contribution_amount);
+      if (!amount || amount <= 0) return json({ error: "Enter an amount to contribute." }, 422);
+
+      const resolvedGroupId = payGroupId || cl.ajo_group_id;
+
+      // ── Group / esusu validation — same gates as Paystack contributions ───
+      if (contribution_context === "group_savings" || contribution_context === "esusu_rotation") {
+        if (!resolvedGroupId) return json({ error: "Select a savings group to contribute to" }, 400);
+        const { data: gmem } = await sb.from("aso_client_group_memberships")
+          .select("id").eq("client_id", client_id).eq("group_id", resolvedGroupId)
+          .eq("status", "active").maybeSingle();
+        if (!gmem) return json({ error: "This client is not an active member of the selected group" }, 400);
+        if (contribution_context === "esusu_rotation") {
+          const { data: grd } = await sb.from("ajo_group_rounds")
+            .select("id, created_at").eq("group_id", resolvedGroupId).eq("status", "active").maybeSingle();
+          if (!grd) return json({ error: "This esusu group has no active round — ask your savings agent to start one" }, 400);
+          const { data: esContribs } = await sb.from("ajo_contributions")
+            .select("type, amount")
+            .eq("aso_client_id", client_id)
+            .eq("group_id", resolvedGroupId)
+            .eq("contribution_context", "esusu_rotation")
+            .in("type", ["contribution", "esusu_pot_sweep"])
+            .eq("status", "completed")
+            .gte("created_at", grd.created_at);
+          const esNet = (esContribs || []).reduce((acc: number, c: { type: string; amount: number }) =>
+            acc + (c.type === "contribution" ? Number(c.amount) : -Number(c.amount)), 0);
+          const esDue = Number(cl.contribution_amount || 0);
+          if (esDue > 0 && esNet >= esDue) {
+            return json({ error: "You have already contributed for this esusu round — wait for the next turn" }, 400);
+          }
+        }
+      }
+
+      // ── First-deposit minimum + active-cycle resolution (personal_savings) ──
+      let walletCycleId: string | null = callerCycleId ?? null;
+      if (contribution_context === "personal_savings") {
+        const regCharge = Number(cl.registration_charge || 0);
+        const expected  = Number(cl.contribution_amount || 0);
+        const minReq    = expected + regCharge;
+        if (minReq > 0 && amount < minReq) {
+          const { data: hasFirst } = await sb.from("ajo_contributions")
+            .select("id").eq("aso_client_id", client_id).eq("status", "completed").eq("type", "contribution").limit(1).maybeSingle();
+          if (!hasFirst) {
+            return json({
+              error: `First deposit must be ₦${minReq.toLocaleString("en-NG")} — ₦${expected.toLocaleString("en-NG")} contribution + ₦${regCharge.toLocaleString("en-NG")} registration`,
+              min_amount: minReq, contribution_required: expected, registration_fee: regCharge,
+            }, 400);
+          }
+        }
+        if (!walletCycleId) {
+          const { data: psCycle } = await sb
+            .from("ajo_cycles").select("id").eq("client_id", client_id).eq("status", "active")
+            .order("created_at", { ascending: true }).limit(1).maybeSingle();
+          walletCycleId = psCycle?.id ?? null;
+        }
+        if (!walletCycleId) return json({ error: "You don't have an active savings plan — ask your savings agent to set one up" }, 422);
+      }
+
+      // ── Debit the client's own wallet + book the contribution, atomically ──
+      const asClient = createClient(
+        Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!,
+        { global: { headers: { Authorization: `Bearer ${_jwt}` } }, auth: { persistSession: false } },
+      );
+      const { data: rpcResult, error: rpcErr } = await asClient.rpc("wallet_pay_ajo_contribution", {
+        p_aso_client_id: client_id,
+        p_amount_kobo: Math.round(amount * 100),
+        p_contribution_context: contribution_context,
+        p_group_id: contribution_context !== "personal_savings" ? (resolvedGroupId || null) : null,
+        p_cycle_id: walletCycleId,
+      });
+      if (rpcErr) return json({ error: rpcErr.message || "Payment could not be completed" }, 500);
+      if (!rpcResult?.ok) return json({ error: rpcResult?.error || "Payment could not be completed" }, 422);
+
+      try {
+        notifyUser(cl.client_user_id, {
+          type:     "deposit_confirmed",
+          title:    "Contribution Paid",
+          body:     `₦${amount.toLocaleString("en-NG")} was paid from your KudiAI Wallet and credited to your savings`,
+          priority: "high",
+          deepLink: { tab: "contributions" },
+          category: "money",
+        });
+      } catch { /* non-fatal */ }
+
+      const { data: updatedClient } = await sb
+        .from("aso_clients").select(CLIENT_SELECT).eq("id", client_id).maybeSingle();
+
+      return json({ client: updatedClient, amount, contribution_id: rpcResult.contribution_id });
+    }
+
     // ── Create an Ajo group (business portal) ─────────────────────────────
     if (action === "create-group") {
       const { owner_id, name, description, contribution_amount, contribution_frequency,

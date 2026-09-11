@@ -184,6 +184,149 @@ serve(async (req) => {
       return json({ ok: true, transfer_id: r.transfer_id, status: r.status, fee_kobo: r.fee_kobo });
     }
 
+    // ═══ provision-account — self-service OR server-to-server on-behalf-of ═══
+    // An Ajo/savings client, opted into a wallet by the owner while being
+    // added, has no session of their own yet — same auth as `disburse` lets
+    // manage-ajo-client-account provision on their behalf (target_user_id).
+    if (action === "provision-account") {
+      const internal = req.headers.get("x-internal-secret") ?? "";
+      let jwtServiceRole = false;
+      try {
+        const p = JSON.parse(atob((token.split(".")[1] || "").replace(/-/g, "+").replace(/_/g, "/")));
+        jwtServiceRole = p?.role === "service_role" && (!p?.ref || SUPABASE_URL.includes(p.ref));
+      } catch { /* not a JWT */ }
+      const serviceAuthed = (SERVICE_KEY && token === SERVICE_KEY)
+        || (INTERNAL_SECRET && (internal === INTERNAL_SECRET || token === INTERNAL_SECRET))
+        || jwtServiceRole;
+      const targetFromBody = String((body as Record<string, unknown>).target_user_id || "");
+
+      let targetUid: string;
+      if (serviceAuthed && targetFromBody) {
+        targetUid = targetFromBody;
+      } else {
+        if (!token) return json({ error: "Unauthorized" }, 401);
+        const { data: { user: selfUser } } = await sb.auth.getUser(token);
+        if (!selfUser) return json({ error: "Unauthorized" }, 401);
+        targetUid = selfUser.id;
+      }
+
+      if ((await cfg("wallet_enabled", "false")) !== "true") {
+        return json({ error: "Wallet is not enabled" }, 403);
+      }
+
+      const { error: initErr } = await sb.rpc("wallet_get_or_create_for", { p_user_id: targetUid });
+      if (initErr) { console.error("[flutterwave] wallet_get_or_create_for:", initErr.message); return json({ error: "Wallet init failed" }, 500); }
+      const { data: w } = await sb.from("wallets").select("*").eq("user_id", targetUid).maybeSingle();
+      if (!w) return json({ error: "Wallet init failed" }, 500);
+      if (w.flw_virtual_account_id && w.flw_account_number) {
+        return json({
+          ok: true, account_number: w.flw_account_number,
+          account_bank: w.flw_account_bank, account_name: w.flw_account_name,
+        });
+      }
+
+      // ── BVN / NIN. Live static accounts are validated against NIBSS; in test
+      //    mode a placeholder is fine.
+      const testMode = (await cfg("wallet_test_mode", "true")) === "true";
+      const bvn = String((body as Record<string, unknown>).bvn ?? "").replace(/\D/g, "");
+      const nin = String((body as Record<string, unknown>).nin ?? "").replace(/\D/g, "");
+      const effBvn = bvn || (testMode ? FLW_TEST_BVN : "");
+      if (!/^\d{11}$/.test(effBvn)) {
+        return json({ error: "A valid 11-digit BVN is required to activate your wallet", code: "bvn_required" }, 400);
+      }
+
+      // profiles (business owner) first, aso_clients (an Ajo/savings client) as fallback
+      const { data: profile } = await sb.from("profiles")
+        .select("email, full_name, business_name, phone").eq("id", targetUid).maybeSingle();
+      let email    = profile?.email || "";
+      let fullName = (profile?.full_name || profile?.business_name || "").trim();
+      let phoneRaw = String(profile?.phone ?? "").replace(/\D/g, "");
+      if (!fullName) {
+        const { data: cl } = await sb.from("aso_clients")
+          .select("email, full_name, phone").eq("client_user_id", targetUid).maybeSingle();
+        if (cl) {
+          email    = email || cl.email || "";
+          fullName = (cl.full_name || "").trim();
+          phoneRaw = phoneRaw || String(cl.phone ?? "").replace(/\D/g, "");
+        }
+      }
+      email    = email || `wallet+${targetUid.slice(0, 8)}@kudiai.app`;
+      fullName = fullName || "KudiAI Owner";
+      const [fn, ...ln] = fullName.split(/\s+/);
+
+      let customerId = w.flw_customer_id as string | null;
+      if (!customerId) {
+        const c = await flwFetch("/customers", {
+          method: "POST",
+          headers: { "X-Idempotency-Key": `cus-${targetUid}` },
+          body: JSON.stringify({
+            email, name: { first: fn || "KudiAI", last: ln.join(" ") || "Owner" },
+            ...(phoneRaw.length >= 10 ? { phone: { country_code: "234", number: phoneRaw.replace(/^234/, "").replace(/^0/, "") } } : {}),
+          }),
+        });
+        if (!c.ok) return json({ error: "Could not create wallet profile", detail: c.data }, 502);
+        customerId = (c.data as any)?.data?.id || "";
+      }
+
+      const va = await flwFetch("/virtual-accounts", {
+        method: "POST",
+        headers: { "X-Idempotency-Key": `va-${targetUid}` },
+        body: JSON.stringify({
+          customer_id: customerId,
+          reference: `kdt-${targetUid}`,             // ≤42 chars, stable per user
+          currency: "NGN",
+          account_type: "static",
+          amount: 0,
+          bvn: effBvn,
+          ...(nin.length === 11 ? { nin } : {}),
+          narration: `KudiAI Wallet - ${fullName}`.slice(0, 60),
+        }),
+      });
+      if (!va.ok) {
+        const msg = String((va.data as any)?.error?.message || "").toLowerCase();
+        const vErrs = (va.data as any)?.error?.validation_errors || [];
+        const bvnBad = /bvn|nin|identity|verif|date of birth|name mismatch/.test(msg)
+          || vErrs.some((e: any) => /bvn|nin/i.test(e?.field_name || ""));
+        const acctHold = /under review|irregular|contact support|not enabled|not permitted|compliance|restricted/.test(msg);
+        if (acctHold) {
+          try {
+            await sb.from("admin_notifications").insert({
+              type: "error", category: "finance", target_roles: ["finance_admin", "super_admin"],
+              title: "Wallet activation blocked by Flutterwave",
+              message: `Flutterwave rejected virtual-account creation: "${(va.data as any)?.error?.message}". The wallet product may not be enabled or the account is under review — contact Flutterwave support.`,
+              metadata: { detail: va.data },
+            });
+          } catch { /* non-fatal */ }
+        }
+        return json({
+          error: bvnBad
+            ? "Your BVN could not be verified. Check the number and that the name and date of birth on it match your profile."
+            : acctHold
+              ? "Wallet activation is temporarily unavailable. Our team has been notified — please try again later."
+              : "Could not create your wallet account. Please try again shortly.",
+          code: bvnBad ? "bvn_invalid" : acctHold ? "account_hold" : "va_failed",
+          detail: va.data,
+        }, bvnBad ? 422 : acctHold ? 503 : 502);
+      }
+      const v = (va.data as any)?.data || {};
+
+      await sb.rpc("wallet_persist_account", {
+        p_user_id: targetUid,
+        p_customer_id: customerId,
+        p_va_id: v.id || "",
+        p_account_no: v.account_number || "",
+        p_account_bank: v.account_bank_name || "",
+        p_account_name: v.narration || fullName,
+      });
+
+      return json({
+        ok: true,
+        account_number: v.account_number || "",
+        account_bank: v.account_bank_name || "",
+        account_name: v.narration || fullName,
+      });
+    }
+
     // ═══ everything else needs a signed-in user ═════════════════════════════
     if (!token) return json({ error: "Unauthorized" }, 401);
     const { data: { user } } = await sb.auth.getUser(token);
@@ -224,109 +367,6 @@ serve(async (req) => {
              : "Couldn't verify right now. Check the details, or continue and confirm the name yourself.",
         code: bad ? "invalid_account" : badBank ? "bad_bank" : "resolve_unavailable",
       }, 422);
-    }
-
-    // ── provision-account ────────────────────────────────────────────────
-    if (action === "provision-account") {
-      const { error: initErr } = await asUser.rpc("wallet_get_or_create");
-      if (initErr) { console.error("[flutterwave] wallet_get_or_create:", initErr.message); return json({ error: "Wallet init failed" }, 500); }
-      const { data: w } = await sb.from("wallets").select("*").eq("user_id", uid).maybeSingle();
-      if (!w) return json({ error: "Wallet init failed" }, 500);
-      if (w.flw_virtual_account_id && w.flw_account_number) {
-        return json({
-          ok: true, account_number: w.flw_account_number,
-          account_bank: w.flw_account_bank, account_name: w.flw_account_name,
-        });
-      }
-
-      // ── BVN / NIN. Live static accounts are validated against NIBSS; in test
-      //    mode a placeholder is fine.
-      const testMode = (await cfg("wallet_test_mode", "true")) === "true";
-      const bvn = String((body as Record<string, unknown>).bvn ?? "").replace(/\D/g, "");
-      const nin = String((body as Record<string, unknown>).nin ?? "").replace(/\D/g, "");
-      const effBvn = bvn || (testMode ? FLW_TEST_BVN : "");
-      if (!/^\d{11}$/.test(effBvn)) {
-        return json({ error: "A valid 11-digit BVN is required to activate your wallet", code: "bvn_required" }, 400);
-      }
-
-      const { data: profile } = await sb.from("profiles")
-        .select("email, full_name, business_name, phone").eq("id", uid).maybeSingle();
-      const email = profile?.email || user.email || `wallet+${uid.slice(0, 8)}@kudiai.app`;
-      const fullName = (profile?.full_name || profile?.business_name || "KudiAI Owner").trim();
-      const [fn, ...ln] = fullName.split(/\s+/);
-      const phoneRaw = String(profile?.phone ?? "").replace(/\D/g, "");
-
-      let customerId = w.flw_customer_id as string | null;
-      if (!customerId) {
-        const c = await flwFetch("/customers", {
-          method: "POST",
-          headers: { "X-Idempotency-Key": `cus-${uid}` },
-          body: JSON.stringify({
-            email, name: { first: fn || "KudiAI", last: ln.join(" ") || "Owner" },
-            ...(phoneRaw.length >= 10 ? { phone: { country_code: "234", number: phoneRaw.replace(/^234/, "").replace(/^0/, "") } } : {}),
-          }),
-        });
-        if (!c.ok) return json({ error: "Could not create wallet profile", detail: c.data }, 502);
-        customerId = (c.data as any)?.data?.id || "";
-      }
-
-      const va = await flwFetch("/virtual-accounts", {
-        method: "POST",
-        headers: { "X-Idempotency-Key": `va-${uid}` },
-        body: JSON.stringify({
-          customer_id: customerId,
-          reference: `kdt-${uid}`,                 // ≤42 chars, stable per user
-          currency: "NGN",
-          account_type: "static",
-          amount: 0,
-          bvn: effBvn,
-          ...(nin.length === 11 ? { nin } : {}),
-          narration: `KudiAI Wallet - ${fullName}`.slice(0, 60),
-        }),
-      });
-      if (!va.ok) {
-        const msg = String((va.data as any)?.error?.message || "").toLowerCase();
-        const vErrs = (va.data as any)?.error?.validation_errors || [];
-        const bvnBad = /bvn|nin|identity|verif|date of birth|name mismatch/.test(msg)
-          || vErrs.some((e: any) => /bvn|nin/i.test(e?.field_name || ""));
-        const acctHold = /under review|irregular|contact support|not enabled|not permitted|compliance|restricted/.test(msg);
-        if (acctHold) {
-          try {
-            await sb.from("admin_notifications").insert({
-              type: "error", category: "finance", target_roles: ["finance_admin", "super_admin"],
-              title: "Wallet activation blocked by Flutterwave",
-              message: `Flutterwave rejected virtual-account creation: "${(va.data as any)?.error?.message}". The wallet product may not be enabled or the account is under review — contact Flutterwave support.`,
-              metadata: { detail: va.data },
-            });
-          } catch { /* non-fatal */ }
-        }
-        return json({
-          error: bvnBad
-            ? "Your BVN could not be verified. Check the number and that the name and date of birth on it match your profile."
-            : acctHold
-              ? "Wallet activation is temporarily unavailable. Our team has been notified — please try again later."
-              : "Could not create your wallet account. Please try again shortly.",
-          code: bvnBad ? "bvn_invalid" : acctHold ? "account_hold" : "va_failed",
-          detail: va.data,
-        }, bvnBad ? 422 : acctHold ? 503 : 502);
-      }
-      const v = (va.data as any)?.data || {};
-
-      await sb.rpc("wallet_persist_account", {
-        p_user_id: uid,
-        p_customer_id: customerId,
-        p_va_id: v.id || "",
-        p_account_no: v.account_number || "",
-        p_account_bank: v.account_bank_name || "",
-        p_account_name: v.narration || fullName,
-      });
-
-      return json({
-        ok: true,
-        account_number: v.account_number || "",
-        account_bank: v.account_bank_name || "",
-        account_name: v.narration || fullName,
-      });
     }
 
     // ── simulate-topup — TEST MODE only ──────────────────────────────────

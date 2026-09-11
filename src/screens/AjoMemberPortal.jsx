@@ -34,6 +34,9 @@ import SyncBar from "../components/SyncBar";
 import { useOnlineStatus } from "../hooks/useOnlineStatus";
 import { setCache, getCache } from "../utils/offlineCache";
 import ContributionCard from "../components/ContributionCard";
+import { usePlatformConfig } from "../hooks/usePlatformConfig";
+import { useWallet } from "../hooks/useWallet";
+import { BottomSheet, ActionButton, AccountCard, FundWalletSheet, TransferSheet } from "../components/WalletPanel";
 import EsusuRotationDashboard from "../components/EsusuRotationDashboard";
 import LegalScreen from "./LegalScreen";
 
@@ -1052,7 +1055,7 @@ function MoneyEsusuSimpleCard({ group, selected, onSelect, children }) {
   );
 }
 
-function PayContributionModal({ client, clientGroups = [], cycles = [], contributions = [], onClose, onSuccess }) {
+function PayContributionModal({ client, clientGroups = [], cycles = [], contributions = [], wallet, onClose, onSuccess }) {
   const t = useT();
   // ── Core state (unchanged from original) ──────────────────────────────────
   const [status,          setStatus]         = useState("idle");
@@ -1065,6 +1068,7 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], contribu
   const [contribCtx,      setContribCtx]     = useState("personal_savings");
   const [contribGroupId,  setContribGroupId] = useState(null);
   const [selectedCycleId, setSelectedCycleId] = useState(null);
+  const [payMethod,       setPayMethod]      = useState("paystack");
   const popupCleanup = useRef(null);
   useEffect(() => () => popupCleanup.current?.(), []);
 
@@ -1120,7 +1124,7 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], contribu
     const amt = parseFloat(customAmt);
     if (!amt || amt <= 0) { setMessage("Please enter a valid amount."); return; }
     setStatus("loading"); setMessage(""); setPendingRef(null);
-    setPaidAmt(amt);
+    setPaidAmt(amt); setPayMethod("paystack");
     try {
       const res = await ajoFn("initialize-payment", {
         client_id: client.id, amount: amt, contribution_context: contribCtx,
@@ -1136,6 +1140,26 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], contribu
       popupCleanup.current = openPaystackPopup(res.authorization_url, {
         onClose: (urlRef) => setTimeout(() => doVerify(urlRef || ref), 600),
       });
+    } catch (e) {
+      setStatus("error");
+      setMessage(moneyError(e));
+    }
+  };
+
+  const handlePayWallet = async () => {
+    const amt = parseFloat(customAmt);
+    if (!amt || amt <= 0) { setMessage("Please enter a valid amount."); return; }
+    setStatus("loading"); setMessage(""); setPendingRef(null);
+    setPaidAmt(amt); setPayMethod("wallet");
+    try {
+      const res = await ajoFn("pay-contribution-wallet", {
+        client_id: client.id, amount: amt, contribution_context: contribCtx,
+        group_id: contribGroupId || undefined,
+        ...(contribCtx === "personal_savings" && selectedCycleId ? { cycle_id: selectedCycleId } : {}),
+      });
+      setStatus("done");
+      setMessage("Paid from your KudiAI Wallet.");
+      onSuccess?.(res?.contribution_id, res?.client);
     } catch (e) {
       setStatus("error");
       setMessage(moneyError(e));
@@ -1204,18 +1228,39 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], contribu
         }}
         disabled={status === "loading" || status === "awaiting" || status === "verifying"}
         className="w-full py-3.5 bg-brand-500 hover:bg-brand-600 disabled:opacity-60 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2 shadow-md">
-        {status === "loading"
+        {status === "loading" && payMethod === "paystack"
           ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> {t("ajoPt.openingPaystack")}</>
           : status === "awaiting" ? t("ajoPt.openPaystack")
           : <>Pay {fmt(parseFloat(customAmt) || 0)} now</>}
       </button>
+      {wallet?.hasAccount && (
+        <button
+          onClick={() => {
+            const amt = parseFloat(customAmt);
+            if (!amt || amt <= 0) { setMessage("Please enter a valid amount."); return; }
+            if (amt * 100 > wallet.balanceKobo) { setMessage("Insufficient wallet balance."); return; }
+            setTxnPin({
+              title: t("coopMem.confirmPaymentTitle"),
+              amount: Math.round(amt * 100),
+              description: t("coopMem.savingsContribDesc"),
+              hasPinSet: Boolean(client?.portal_pin_changed_at),
+              onApprove: () => { setTxnPin(null); handlePayWallet(); },
+            });
+          }}
+          disabled={status === "loading" || status === "awaiting" || status === "verifying"}
+          className="w-full py-3.5 border-2 border-brand-500 text-brand-600 dark:text-brand-400 disabled:opacity-60 rounded-2xl font-extrabold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2">
+          {status === "loading" && payMethod === "wallet"
+            ? <><div className="w-4 h-4 border-2 border-brand-400 border-t-transparent rounded-full animate-spin" /> Paying…</>
+            : <>Pay from Wallet · {fmt(wallet.balanceNaira)} available</>}
+        </button>
+      )}
     </div>
   );
 
   // ── Done / receipt screen (unchanged) ─────────────────────────────────────
   if (status === "done") {
     const receiptData = buildAjoContributionReceipt(
-      { id: pendingRef, type: "contribution", status: "completed", amount: paidAmt || client?.contribution_amount || 0, created_at: new Date().toISOString(), payment_method: "paystack" },
+      { id: pendingRef, type: "contribution", status: "completed", amount: paidAmt || client?.contribution_amount || 0, created_at: new Date().toISOString(), payment_method: payMethod },
       client?.full_name || "—", client?.group_name || "Ajo Group"
     );
     if (showShare) return <TransactionDetailModal data={receiptData} onClose={() => setShowShare(false)} />;
@@ -2484,7 +2529,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
 }
 
 // ── Overview tab ──────────────────────────────────────────────────────────
-function OverviewTab({ client, contributions, cycles = [], rotationsData = [], rotationLoading, onWithdrawClick, onPayClick, onDepositClick, ownerInfo, withdrawRequests = [], onBillsClick, userEmail, onGoToMe }) {
+function OverviewTab({ client, contributions, cycles = [], rotationsData = [], rotationLoading, onWithdrawClick, onPayClick, onDepositClick, ownerInfo, withdrawRequests = [], onBillsClick, userEmail, onGoToMe, walletEnabled, wallet, onWalletClick }) {
   const t = useT();
   const { lang } = useLanguage();
   const toast = useToast();
@@ -2747,6 +2792,25 @@ function OverviewTab({ client, contributions, cycles = [], rotationsData = [], r
           />
         </div>
       </div>
+
+      {/* ── KudiAI Wallet — dedicated account number, fund/transfer/pay from it ── */}
+      {walletEnabled && (
+        <button onClick={onWalletClick}
+          className="w-full flex items-center gap-3 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4 shadow-sm text-left active:scale-[0.99] transition-transform">
+          <span className="w-11 h-11 rounded-2xl bg-[linear-gradient(145deg,#16255A_0%,#1D3070_100%)] flex items-center justify-center flex-shrink-0">
+            <Icon name="wallet" size={19} className="text-white" />
+          </span>
+          <span className="flex-1 min-w-0">
+            <span className="block text-[13px] font-extrabold text-slate-800 dark:text-white">KudiAI Wallet</span>
+            <span className="block text-[11px] text-slate-400 dark:text-slate-500 truncate">
+              {wallet?.loading ? "Loading…"
+                : wallet?.hasAccount ? `${fmt(wallet.balanceNaira)} available`
+                : "Activate to fund, pay contributions & transfer"}
+            </span>
+          </span>
+          <Icon name="chevron-right" size={16} className="text-slate-300 dark:text-slate-600 flex-shrink-0" />
+        </button>
+      )}
 
       {/* ── Personal Savings ── */}
       {cycles.length > 0 && (
@@ -5144,6 +5208,70 @@ function AjoMemberBillsWrapper({ client, ownerInfo, session }) {
   );
 }
 
+// ── KudiAI Wallet — activation (BVN) or balance/actions, for the client ────
+function MemberWalletSheet({ wallet, testMode, onClose, onFund, onTransfer }) {
+  const [bvn, setBvn] = useState("");
+  const [nin, setNin] = useState("");
+  const [err, setErr] = useState("");
+
+  const activate = async () => {
+    setErr("");
+    if (!testMode && !/^\d{11}$/.test(bvn)) { setErr("Enter your 11-digit BVN"); return; }
+    try { await wallet.provisionAccount(bvn, nin); }
+    catch (e) { setErr(e.message || "Could not activate your wallet"); }
+  };
+
+  return (
+    <BottomSheet open onClose={onClose} title="KudiAI Wallet">
+      {wallet.loading ? (
+        <div className="h-40 rounded-2xl bg-slate-100 dark:bg-slate-800 animate-pulse" />
+      ) : !wallet.hasAccount ? (
+        <div>
+          <p className="text-[13px] text-slate-500 dark:text-slate-400 mb-4 leading-relaxed">
+            Get your own dedicated account number. Fund it, pay your savings contributions from it, and cash out
+            to any bank — fee-free.
+          </p>
+          {!testMode && (
+            <div className="space-y-3 mb-4">
+              <div>
+                <label className="text-[12px] font-semibold text-slate-500 dark:text-slate-400">BVN</label>
+                <input inputMode="numeric" value={bvn} onChange={e => setBvn(e.target.value.replace(/\D/g, "").slice(0, 11))}
+                  placeholder="11-digit BVN"
+                  className="w-full mt-1.5 px-4 py-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/60 text-slate-900 dark:text-slate-50 text-[16px] font-semibold tracking-wider placeholder:font-normal placeholder:tracking-normal placeholder:text-slate-400 focus:outline-none focus:border-brand-400" />
+              </div>
+              <div>
+                <label className="text-[12px] font-semibold text-slate-500 dark:text-slate-400">NIN <span className="text-slate-300 font-normal">optional</span></label>
+                <input inputMode="numeric" value={nin} onChange={e => setNin(e.target.value.replace(/\D/g, "").slice(0, 11))}
+                  placeholder="11-digit NIN"
+                  className="w-full mt-1.5 px-4 py-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/60 text-slate-900 dark:text-slate-50 text-[16px] font-semibold tracking-wider placeholder:font-normal placeholder:tracking-normal placeholder:text-slate-400 focus:outline-none focus:border-brand-400" />
+              </div>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                Your BVN opens your account with our banking partner and isn't stored by KudiAI. The name and date
+                of birth on it must match your profile.
+              </p>
+            </div>
+          )}
+          {err && <p className="text-[12px] text-red-500 mb-3">{err}</p>}
+          <button onClick={activate} disabled={wallet.busy}
+            className="w-full bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white font-bold rounded-2xl py-4 text-[15px] transition-colors">
+            {wallet.busy ? "Activating…" : "Activate wallet"}
+          </button>
+        </div>
+      ) : (
+        <div>
+          <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-1">Balance</p>
+          <AmountDisplay amount={wallet.balanceKobo} fromKobo size="hero" align="left" className="mb-4" />
+          <AccountCard wallet={wallet.wallet} />
+          <div className="flex items-center gap-2 mt-4">
+            <ActionButton icon="plus" label="Fund" onClick={onFund} />
+            <ActionButton icon="send" label="Transfer" tone="slate" onClick={onTransfer} />
+          </div>
+        </div>
+      )}
+    </BottomSheet>
+  );
+}
+
 // ── Main portal ───────────────────────────────────────────────────────────
 export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
   const t = useT();
@@ -5180,6 +5308,14 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
   const [showDeposit,      setShowDeposit]      = useState(false);
   const [withdrawRequests, setWithdrawRequests] = useState([]);
   const [showPwdModal,     setShowPwdModal]     = useState(false);
+  const [showWallet,       setShowWallet]       = useState(false);
+  const [walletSheet,      setWalletSheet]      = useState(null); // "fund" | "transfer" | null
+
+  // KudiAI Wallet — same wallet infra as the owner side. client_user_id IS a
+  // real auth.users id, so this "just works" once the platform flag is on.
+  const { walletEnabled, walletTestMode, walletMaxWithdrawalKobo } = usePlatformConfig();
+  const walletUserId = client?.client_user_id || session?.user?.id || null;
+  const wallet = useWallet(walletUserId, walletEnabled);
 
   // Offline-first state
   const { online: portalOnline, reconnectTick } = useOnlineStatus();
@@ -5485,6 +5621,9 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
               withdrawRequests={withdrawRequests}
               onBillsClick={() => setTab("bills")}
               onGoToMe={() => setTab("me")}
+              walletEnabled={walletEnabled}
+              wallet={wallet}
+              onWalletClick={() => setShowWallet(true)}
             />
           )}
           {tab === "bills" && client && (
@@ -5602,11 +5741,30 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
           clientGroups={client?.group_memberships?.filter(m => m.status === "active") || []}
           cycles={cycles}
           contributions={contributions}
+          wallet={wallet}
           onClose={() => setShowPay(false)}
           onSuccess={(ref, updatedClient) => {
             if (updatedClient) setClient(prev => ({ ...prev, ...updatedClient }));
           }}
         />
+      )}
+      {showWallet && (
+        <MemberWalletSheet
+          wallet={wallet}
+          testMode={walletTestMode}
+          onClose={() => setShowWallet(false)}
+          onFund={() => { setShowWallet(false); setWalletSheet("fund"); }}
+          onTransfer={() => { setShowWallet(false); setWalletSheet("transfer"); }}
+        />
+      )}
+      {walletEnabled && wallet.hasAccount && (
+        <>
+          <FundWalletSheet open={walletSheet === "fund"} onClose={() => setWalletSheet(null)}
+            wallet={wallet.wallet} testMode={walletTestMode} api={wallet} />
+          <TransferSheet open={walletSheet === "transfer"} onClose={() => setWalletSheet(null)}
+            balanceKobo={wallet.balanceKobo} maxKobo={walletMaxWithdrawalKobo} banks={wallet.banks} api={wallet}
+            businessName={client?.full_name} onDone={wallet.refresh} />
+        </>
       )}
       {showWithdraw && client && (
         <WithdrawRequestModal
