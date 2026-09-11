@@ -1056,7 +1056,7 @@ function MoneyEsusuSimpleCard({ group, selected, onSelect, children }) {
   );
 }
 
-function PayContributionModal({ client, clientGroups = [], cycles = [], contributions = [], wallet, onClose, onSuccess }) {
+function PayContributionModal({ client, clientGroups = [], cycles = [], contributions = [], wallet, onTopUpWallet, onClose, onSuccess }) {
   const t = useT();
   // ── Core state (unchanged from original) ──────────────────────────────────
   const [status,          setStatus]         = useState("idle");
@@ -1256,6 +1256,13 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], contribu
           : <>Pay {fmt(parseFloat(customAmt) || 0)} now</>}
       </button>
       {wallet?.hasAccount && (
+        (parseFloat(customAmt) || 0) * 100 > wallet.balanceKobo ? (
+          <button onClick={() => { onClose(); onTopUpWallet?.(); }}
+            disabled={status === "loading" || status === "awaiting" || status === "verifying"}
+            className="w-full py-3.5 border-2 border-brand-500 text-brand-600 dark:text-brand-400 disabled:opacity-60 rounded-2xl font-extrabold text-sm transition active:scale-[0.99]">
+            Fund Wallet · {fmt(wallet.balanceNaira)} available
+          </button>
+        ) : (
         <button
           onClick={() => {
             const amt = parseFloat(customAmt);
@@ -1275,6 +1282,7 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], contribu
             ? <><div className="w-4 h-4 border-2 border-brand-400 border-t-transparent rounded-full animate-spin" /> Paying…</>
             : <>Pay from Wallet · {fmt(wallet.balanceNaira)} available</>}
         </button>
+        )
       )}
     </div>
   );
@@ -1795,7 +1803,7 @@ function ChangePasswordModal({ onClose }) {
 }
 
 
-function ManualDepositModal({ client, clientGroups = [], cycles = [], contributions = [], ownerInfo, onClose, onSuccess }) {
+function ManualDepositModal({ client, clientGroups = [], cycles = [], contributions = [], ownerInfo, wallet, onTopUpWallet, onClose, onSuccess }) {
   const t = useT();
   // ── Core state (unchanged from original) ──────────────────────────────────
   const [amount,         setAmount]        = useState("");
@@ -1812,6 +1820,8 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], contributi
   const [selectedCycleId, setSelectedCycleId] = useState(null);
   const [txnPin,         setTxnPin]        = useState(null);
   const [copiedField,    setCopiedField]   = useState(null);
+  const [walletPaying,   setWalletPaying]  = useState(false);
+  const [walletMsg,      setWalletMsg]     = useState("");
   const fileRef = useRef(null);
 
   // ── Navigation state ──────────────────────────────────────────────────────
@@ -1845,13 +1855,45 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], contributi
     if (personalSubTab === "percent"      && pctCycles.length === 0 && fpCycles.length > 0) setPersonalSubTab("first_period");
   }, [fpCycles.length, pctCycles.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Bank details (unchanged) ──────────────────────────────────────────────
-  const clientBank = ownerInfo?.client_bank;
-  const ownerBank  = ownerInfo?.owner;
-  const hasBank = clientBank?.account_number
+  // ── No goal to attach a deposit to at all — auto-route to a wallet top-up
+  //    instead of blocking on "no active plans". ──────────────────────────
+  const noGoalAtAll = personalSubTabs.length === 0 && savingsGroups.length === 0 && esusuGroups.length === 0;
+
+  // ── Deposit destination — the owner's KudiAI Wallet is the default, real-money
+  //    collection route (transfers there auto-credit, no proof/confirmation
+  //    needed). Falls back to a manually-configured bank account only if the
+  //    owner's wallet isn't set up yet. ──────────────────────────────────────
+  const clientBank  = ownerInfo?.client_bank;
+  const ownerWallet = ownerInfo?.owner_wallet;
+  const ownerBank   = ownerInfo?.owner;
+  const hasWalletRoute = !!ownerWallet?.account_number;
+  const hasBank = hasWalletRoute
     ? true
-    : !!(ownerBank?.bank_account_number && ownerBank?.bank_name);
+    : clientBank?.account_number
+      ? true
+      : !!(ownerBank?.bank_account_number && ownerBank?.bank_name);
   const amtNum = parseFloat(amount) || 0;
+
+  // ── Pay straight from the client's own KudiAI Wallet — instant, no proof,
+  //    no waiting on the owner to confirm (mirrors PayContributionModal). ──
+  const handlePayWallet = async () => {
+    if (!amtNum || amtNum <= 0) { setWalletMsg("Please enter a valid amount."); return; }
+    if (amtNum * 100 > (wallet?.balanceKobo || 0)) { setWalletMsg("Insufficient wallet balance."); return; }
+    setWalletPaying(true); setWalletMsg("");
+    try {
+      const res = await ajoFn("pay-contribution-wallet", {
+        client_id: client.id, amount: amtNum, contribution_context: contribCtx,
+        group_id: contribGroupId || undefined,
+        ...(contribCtx === "personal_savings" && selectedCycleId ? { cycle_id: selectedCycleId } : {}),
+      });
+      setDone(true);
+      onSuccess?.(res?.contribution_id, res?.client);
+    } catch (e) {
+      setWalletMsg(moneyError(e));
+    } finally {
+      setWalletPaying(false);
+    }
+  };
 
   const copyText = async (text, field) => {
     try {
@@ -2045,12 +2087,59 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], contributi
               </button>
             </div>
 
-            {/* LEAD: Bank details — always at top, always visible */}
-            {hasBank ? (() => {
-              const isClientAcct = !!clientBank?.account_number;
-              const acctNum  = isClientAcct ? clientBank.account_number  : ownerBank.bank_account_number;
-              const acctName = isClientAcct ? clientBank.account_name    : ownerBank.bank_account_name;
-              const bankName = isClientAcct ? clientBank.bank_name       : ownerBank.bank_name;
+            {/* LEAD: pay straight from your own KudiAI Wallet — instant, no proof needed,
+                default route when the client has funds sitting in their wallet. */}
+            {wallet?.hasAccount && !noGoalAtAll && (
+              <div className="bg-white dark:bg-slate-800 border-2 border-brand-500 rounded-2xl px-4 py-4 mb-4">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-[10px] font-bold text-brand-500 dark:text-brand-400 uppercase tracking-wider">Pay from your Wallet</p>
+                  <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">{fmt(wallet.balanceNaira)} available</span>
+                </div>
+                <p className="text-[11px] text-slate-400 dark:text-slate-500 mb-3">Instant — no proof to upload, no waiting on approval.</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-lg font-black text-brand-600 dark:text-brand-300">₦</span>
+                  <input type="number" inputMode="decimal" min="1" value={amount} onChange={e => { setAmount(e.target.value); setWalletMsg(""); }}
+                    placeholder="0.00"
+                    className="flex-1 bg-transparent text-lg font-black text-brand-600 dark:text-brand-300 outline-none placeholder:text-brand-200 dark:placeholder:text-brand-700 tabular [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+                </div>
+                {walletMsg && <p className="text-[11px] text-red-500 mt-1.5">{walletMsg}</p>}
+                {amtNum > 0 && amtNum * 100 > (wallet?.balanceKobo || 0) ? (
+                  <button onClick={() => { onClose(); onTopUpWallet?.(); }}
+                    className="w-full mt-3 py-3 border-2 border-brand-500 text-brand-600 dark:text-brand-400 rounded-xl font-bold text-sm transition active:scale-[0.99]">
+                    Fund Wallet first
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      if (!amtNum || amtNum <= 0) { setWalletMsg("Please enter a valid amount."); return; }
+                      if (!contribGroupId && contribCtx !== "personal_savings" ) { setWalletMsg("Pick which goal this is for below first."); return; }
+                      setTxnPin({
+                        title: "Confirm Deposit", amount: Math.round(amtNum * 100),
+                        description: "Savings deposit from wallet",
+                        hasPinSet: Boolean(client?.portal_pin_changed_at),
+                        onApprove: () => { setTxnPin(null); handlePayWallet(); },
+                      });
+                    }}
+                    disabled={walletPaying || !amtNum || amtNum <= 0}
+                    className="w-full mt-3 py-3 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white rounded-xl font-bold text-sm transition active:scale-[0.99]">
+                    {walletPaying ? "Paying…" : `Pay ${amtNum > 0 ? fmt(amtNum) : ""} from Wallet`}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Or transfer — the owner's KudiAI Wallet is the default, real-money
+                collection route: transfers there auto-credit, no proof/confirmation
+                step needed. Falls back to a manual bank account only if the owner's
+                wallet isn't set up. */}
+            {!noGoalAtAll && (wallet?.hasAccount
+              ? <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2 mt-1">Or transfer</p>
+              : null)}
+            {!noGoalAtAll && (hasBank ? (() => {
+              const isClientAcct = !hasWalletRoute && !!clientBank?.account_number;
+              const acctNum  = hasWalletRoute ? ownerWallet.account_number : isClientAcct ? clientBank.account_number  : ownerBank.bank_account_number;
+              const acctName = hasWalletRoute ? ownerWallet.account_name  : isClientAcct ? clientBank.account_name    : ownerBank.bank_account_name;
+              const bankName = hasWalletRoute ? cleanBankName(ownerWallet.bank_name) : isClientAcct ? clientBank.bank_name : ownerBank.bank_name;
               return (
                 <div className="bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-800 rounded-2xl px-4 py-4 mb-4">
                   <p className="text-[10px] font-bold text-brand-500 dark:text-brand-400 uppercase tracking-wider mb-3">{t("ajoPt.sendHere")}</p>
@@ -2096,8 +2185,25 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], contributi
               <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-3 py-2.5 mb-4">
                 <p className="text-xs text-amber-700 dark:text-amber-300 font-semibold">{t("ajoPt.noBankDetails")}</p>
               </div>
-            )}
+            ))}
 
+            {/* No savings card, group, or esusu at all — nowhere to attribute this
+                deposit to. Route it straight into the client's own wallet instead
+                of blocking with "no active plans"; they can move it into a card
+                once they open one. */}
+            {noGoalAtAll ? (
+              <div className="bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800/40 rounded-2xl p-4 text-center">
+                <p className="text-[13px] font-bold text-slate-800 dark:text-white mb-1">No savings card yet</p>
+                <p className="text-[12px] text-slate-500 dark:text-slate-400 mb-3 leading-relaxed">
+                  This deposit will top up your KudiAI Wallet — open a savings card any time to start moving it toward a goal.
+                </p>
+                <button onClick={() => { onClose(); onTopUpWallet?.(); }}
+                  className="px-5 py-2.5 bg-brand-500 hover:bg-brand-600 text-white rounded-xl font-bold text-[12px] transition active:scale-[0.98]">
+                  Top up my Wallet
+                </button>
+              </div>
+            ) : (
+            <>
             {/* Now pick which goal this deposit is for */}
             <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">{t("ajoPt.whichGoal")}</p>
 
@@ -2184,6 +2290,8 @@ function ManualDepositModal({ client, clientGroups = [], cycles = [], contributi
                 ))}
               </>
             )}
+            </>
+            )}
           </>
         )}
       </div>
@@ -2227,29 +2335,6 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
       setLocksLoaded(true);
     }).catch(() => setLocksLoaded(true));
   }, [client.id, client.current_balance, cycles]);
-
-  // ── Bank account state ────────────────────────────────────────────────────
-  // Only withdrawal_account_* fields are valid payout destinations.
-  // client.account_number / client.bank_code are the INBOUND collection account
-  // (where deposits route in) — never use them as a withdrawal destination.
-  const [banks,        setBanks]        = useState([]);
-  const hasAccount = !!(client.withdrawal_account_number && client.withdrawal_account_name);
-  const [acctForm,     setAcctForm]     = useState({
-    bank_code:      client.withdrawal_bank_code      || "",
-    account_number: client.withdrawal_account_number || "",
-    account_name:   client.withdrawal_account_name   || "",
-    bank_name:      client.withdrawal_bank_name      || "",
-  });
-  const [acctVerified,  setAcctVerified]  = useState(false);
-  const [acctVerifying, setAcctVerifying] = useState(false);
-  const [acctError,     setAcctError]     = useState("");
-  const [editingAcct,   setEditingAcct]   = useState(!hasAccount);
-
-  useEffect(() => {
-    supabase.functions.invoke("paystack", { body: { action: "list-banks" } })
-      .then(({ data }) => setBanks(data?.data || []))
-      .catch(() => {});
-  }, []);
 
   // ── Derived data — re-derive from props each render (realtime-safe) ───────
   const savingsGroups = clientGroups
@@ -2322,27 +2407,9 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
     return trulyWithdrawable;
   })();
 
-  // ── Bank account verification (unchanged logic) ────────────────────────────
-  const resolveAcct = async () => {
-    if (!acctForm.bank_code || acctForm.account_number.length !== 10) {
-      setAcctError("Select a bank and enter a 10-digit account number"); return;
-    }
-    setAcctVerifying(true); setAcctError(""); setAcctVerified(false);
-    try {
-      const { data } = await supabase.functions.invoke("paystack", {
-        body: { action: "resolve-account", account_number: acctForm.account_number, bank_code: acctForm.bank_code },
-      });
-      if (!data?.status || !data?.data?.account_name) {
-        setAcctError(data?.message || "Could not verify account. Check the details and retry."); return;
-      }
-      const bankName = banks.find(b => b.code === acctForm.bank_code)?.name || acctForm.bank_name;
-      setAcctForm(p => ({ ...p, account_name: data.data.account_name, bank_name: bankName }));
-      setAcctVerified(true);
-    } catch { setAcctError("Verification failed. Try again."); }
-    finally { setAcctVerifying(false); }
-  };
-
-  // ── handleSubmit (unchanged attribution logic) ─────────────────────────────
+  // ── handleSubmit — payout auto-routes to the client's own KudiAI Wallet, no
+  //    bank account to configure. ajo_record_withdrawal schedules a real
+  //    wallet-to-wallet payout (owner -> client) for the next business day. ──
   const handleSubmit = async () => {
     if (!amtNum || amtNum <= 0)   { setError(t("error.somethingWrong")); return; }
     if (amtNum > activeCeiling) {
@@ -2357,25 +2424,8 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
       return;
     }
     if (netAmt <= 0)              { setError(t("error.somethingWrong")); return; }
-    if (!acctForm.account_name || !acctForm.account_number || !acctForm.bank_code) {
-      setError(t("ajoPt.addBankFirst")); return;
-    }
     setSaving(true); setError("");
     try {
-      const existingAcctNum  = client.withdrawal_account_number || "";
-      const existingBankCode = client.withdrawal_bank_code      || "";
-      const bankChanged = acctForm.account_number !== existingAcctNum || acctForm.bank_code !== existingBankCode;
-      if (bankChanged && acctVerified) {
-        await ajoFn("update-profile", {
-          client_id: client.id,
-          fields: {
-            withdrawal_bank_code:      acctForm.bank_code,
-            withdrawal_bank_name:      acctForm.bank_name,
-            withdrawal_account_number: acctForm.account_number,
-            withdrawal_account_name:   acctForm.account_name,
-          },
-        });
-      }
       const reqNotes   = activeTab === "group" && selectedGroup ? `Group savings — ${selectedGroup.name}` : undefined;
       const reqCycleId = activeTab === "personal" ? (selectedCycleId || null) : null;
       const reqGroupId = (activeTab === "group" || activeTab === "esusu")
@@ -2435,49 +2485,13 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
         )}
       </div>
 
-      <div className="bg-slate-50 dark:bg-slate-700/40 border border-slate-200 dark:border-slate-600 rounded-2xl px-4 py-3 mb-3">
-        <div className="flex items-center justify-between mb-2">
-          <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">{t("ajoPt.payoutAccount")}</p>
-          {!editingAcct && acctForm.account_name && (
-            <button type="button" onClick={() => { setEditingAcct(true); setAcctVerified(false); }}
-              className="text-[11px] font-bold text-brand-500 dark:text-brand-400">{t("ajoPt.change")}</button>
-          )}
-        </div>
-        {!editingAcct && acctForm.account_name ? (
-          <div>
-            <p className="text-sm font-extrabold text-slate-700 dark:text-slate-200">{acctForm.account_name}</p>
-            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{acctForm.bank_name} · ****{acctForm.account_number.slice(-4)}</p>
-          </div>
-        ) : (
-          <div className="space-y-2.5">
-            <select value={acctForm.bank_code} onChange={e => {
-              const sel = banks.find(b => b.code === e.target.value);
-              setAcctForm(p => ({ ...p, bank_code: e.target.value, bank_name: sel?.name || "", account_name: "" }));
-              setAcctVerified(false);
-            }} className="w-full h-10 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 text-sm font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/30">
-              <option value="">Select bank…</option>
-              {banks.map(b => <option key={b.code} value={b.code}>{b.name}</option>)}
-            </select>
-            <div className="flex gap-2">
-              <input type="text" inputMode="numeric" maxLength={10} placeholder="10-digit account number"
-                value={acctForm.account_number}
-                onChange={e => { setAcctForm(p => ({ ...p, account_number: e.target.value.replace(/\D/g, "").slice(0, 10), account_name: "" })); setAcctVerified(false); }}
-                className="flex-1 h-10 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 text-sm font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/30" />
-              <button type="button" onClick={resolveAcct}
-                disabled={acctVerifying || !acctForm.bank_code || acctForm.account_number.length !== 10}
-                className="h-10 px-3.5 rounded-xl bg-brand-500 text-white text-xs font-bold disabled:opacity-40 flex-shrink-0 active:scale-95 transition">
-                {acctVerifying ? "…" : "Verify"}
-              </button>
-            </div>
-            {acctVerified && acctForm.account_name && (
-              <div className="flex items-center gap-2 px-3 py-2 bg-green-50 dark:bg-green-900/20 rounded-xl">
-                <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-green-600 flex-shrink-0" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
-                <p className="text-[12px] font-bold text-green-700 dark:text-green-400">{acctForm.account_name}</p>
-              </div>
-            )}
-            {acctError && <p className="text-xs text-red-500">{acctError}</p>}
-          </div>
-        )}
+      <div className="bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800/40 rounded-2xl px-4 py-3 mb-3 flex items-start gap-2.5">
+        <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-brand-500 dark:text-brand-400 flex-shrink-0 mt-0.5" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M20 12V8H6a2 2 0 01-2-2c0-1.1.9-2 2-2h12v4M4 6v12a2 2 0 002 2h14v-4M18 12a2 2 0 00-2 2c0 1.1.9 2 2 2h4v-4h-4z" />
+        </svg>
+        <p className="text-[12px] text-slate-600 dark:text-slate-300 leading-relaxed">
+          Paid straight to your <strong>KudiAI Wallet</strong> — no bank account to set up. Once approved, it lands on the next business working day (no weekends or public holidays).
+        </p>
       </div>
 
       {error && <p className="text-xs text-red-500 mb-3">{error}</p>}
@@ -2500,9 +2514,6 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
             setError(lockMsg); return;
           }
           if (netAmt <= 0) { setError(t("error.somethingWrong")); return; }
-          if (!acctForm.account_name || !acctForm.account_number || !acctForm.bank_code) {
-            setError(t("ajoPt.addBankFirst")); return;
-          }
           setTxnPin({
             title: "Confirm Withdrawal",
             amount: Math.round(netAmt * 100),
@@ -2731,6 +2742,7 @@ function OverviewTab({ client, contributions, cycles = [], rotationsData = [], r
   const [editGoal,     setEditGoal]    = useState(false);
   const [goalInput,    setGoalInput]   = useState("");
   const [clearConfirm, setClearConfirm] = useState(false);
+  const [showOpenCycle, setShowOpenCycle] = useState(false);
 
   const [balanceHidden, setBalanceHidden] = useState(() =>
     sessionStorage.getItem("ajo_balance_hidden") === "1"
@@ -3047,11 +3059,31 @@ function OverviewTab({ client, contributions, cycles = [], rotationsData = [], r
         </div>
       </div>
 
-      {/* ── Personal Savings ── */}
-      {cycles.length > 0 && (
-        <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider px-1">
-          Personal Savings
-        </p>
+      {/* ── Personal Savings — always-visible "Open New Card" entry point ── */}
+      <div className="flex items-center justify-between px-1">
+        {cycles.length > 0 ? (
+          <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+            Personal Savings
+          </p>
+        ) : <span />}
+        <button onClick={() => setShowOpenCycle(true)}
+          className="flex items-center gap-1 text-[11px] font-bold text-brand-600 dark:text-brand-400 active:opacity-70 transition-opacity py-1">
+          <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+          Open New Card
+        </button>
+      </div>
+      {cycles.length === 0 && (
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 p-5 text-center">
+          <p className="text-[13px] font-bold text-slate-700 dark:text-slate-200 mb-1">No savings card yet</p>
+          <p className="text-[12px] text-slate-400 dark:text-slate-500 mb-3">Open one to start building toward a goal.</p>
+          <button onClick={() => setShowOpenCycle(true)}
+            className="px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-xl font-bold text-[12px] transition active:scale-[0.98]">
+            Open your first card
+          </button>
+        </div>
+      )}
+      {showOpenCycle && (
+        <OpenCycleSheet client={client} onClose={() => setShowOpenCycle(false)} />
       )}
       {cycles.map((cyc, idx) => (
         <ContributionCard
@@ -3198,7 +3230,21 @@ function OverviewTab({ client, contributions, cycles = [], rotationsData = [], r
             </div>
           )}
 
-          {editGoal ? (
+          {editGoal && cycles.length === 0 ? (
+            <div className="bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800/40 rounded-xl px-3 py-3">
+              <p className="text-[12px] font-semibold text-slate-600 dark:text-slate-300 mb-2.5">
+                Connect this goal to a savings card first — open one to start tracking toward it.
+              </p>
+              <div className="flex gap-2">
+                <button onClick={() => setShowOpenCycle(true)}
+                  className="flex-1 px-3 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-xl text-[12px] font-bold transition active:scale-[0.98]">
+                  Open a savings card
+                </button>
+                <button onClick={() => setEditGoal(false)}
+                  className="px-3 py-2 bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 rounded-xl text-sm font-bold">✕</button>
+              </div>
+            </div>
+          ) : editGoal ? (
             <div className="flex gap-2">
               <input type="number" value={goalInput} onChange={e => setGoalInput(e.target.value)}
                 placeholder="Target amount (₦)"
@@ -5433,13 +5479,70 @@ function AjoMemberBillsWrapper({ client, ownerInfo, session }) {
     <BillPayments
       store={store}
       plan="basic"
+      session={session}
       markup={1.098}
       pointsEnabled
       staffName={client?.full_name || null}
       staffEmail={client?.email || session?.user?.email || null}
       businessName={ownerInfo?.business_name || ""}
       excludeCats={["print-airtime", "print-data"]}
+      walletOnly
     />
+  );
+}
+
+// ── Self-service: open a personal savings card ─────────────────────────────
+// Client picks the fee MODEL only — the rate itself (registration_charge /
+// commission_percent) is always whatever the business already set on their
+// aso_clients row; the server ignores anything else the client might send.
+// Used both from the always-visible "Open New Card" entry point on Overview
+// and from the goal-setting flow when a client has no card to attach a goal to.
+function OpenCycleSheet({ client, onClose, onOpened }) {
+  const [opening, setOpening] = useState(false);
+  const [err,     setErr]     = useState("");
+  const canPercent = Number(client?.commission_percent) > 0;
+
+  const open = async (model) => {
+    setOpening(true); setErr("");
+    try {
+      const res = await ajoFn("client-open-cycle", { client_id: client.id, commission_model: model });
+      if (res?.ok === false) throw new Error(res.error || "Could not open your savings card");
+      // realtime (ajo_cycles INSERT, filtered to this client) refreshes `cycles` in the parent
+      onOpened?.();
+      onClose();
+    } catch (e) {
+      setErr(friendlyError(e));
+    } finally {
+      setOpening(false);
+    }
+  };
+
+  return (
+    <BottomSheet open onClose={onClose} title="Open a savings card">
+      <p className="text-[12px] text-slate-500 dark:text-slate-400 mb-4 leading-relaxed">
+        Pick how your collector's fee is charged — the rate itself is already set by your business.
+      </p>
+      {err && <p className="text-[12px] text-red-500 mb-3">{err}</p>}
+      <div className="space-y-2">
+        <button onClick={() => open("first_period")} disabled={opening}
+          className="w-full text-left px-4 py-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 disabled:opacity-50 active:scale-[0.99] transition-transform">
+          <span className="block text-[13px] font-bold text-slate-800 dark:text-white">First-period fee</span>
+          <span className="block text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
+            Your first contribution covers the collector's fee — every payment after that goes fully to your savings.
+          </span>
+        </button>
+        <button onClick={() => open("percent")} disabled={opening || !canPercent}
+          className="w-full text-left px-4 py-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 disabled:opacity-50 active:scale-[0.99] transition-transform">
+          <span className="block text-[13px] font-bold text-slate-800 dark:text-white">
+            Percentage fee{canPercent ? ` · ${client.commission_percent}%` : ""}
+          </span>
+          <span className="block text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
+            {canPercent ? "A small percentage is deducted as fee whenever you withdraw." : "Not set up for your account — ask your collector."}
+          </span>
+        </button>
+      </div>
+      {opening && <p className="text-[11px] text-slate-400 mt-3 text-center">Opening your card…</p>}
+    </BottomSheet>
   );
 }
 
@@ -6000,6 +6103,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
           cycles={cycles}
           contributions={contributions}
           wallet={wallet}
+          onTopUpWallet={() => setWalletSheet("fund")}
           onClose={() => setShowPay(false)}
           onSuccess={(ref, updatedClient) => {
             if (updatedClient) setClient(prev => ({ ...prev, ...updatedClient }));
@@ -6046,6 +6150,8 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
           cycles={cycles}
           contributions={contributions}
           ownerInfo={ownerInfo}
+          wallet={wallet}
+          onTopUpWallet={() => setWalletSheet("fund")}
           onClose={() => setShowDeposit(false)}
           onSuccess={() => {}}
         />

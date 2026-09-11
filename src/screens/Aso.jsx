@@ -1810,23 +1810,6 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           const isProc   = processingId === req.id;
           const effectivePct = req.fee_amount > 0 && req.amount > 0 ? ((req.fee_amount / req.amount) * 100).toFixed(1) : null;
           const feeLabel = req.fee_type === "registration_fee" ? "Reg fee" : effectivePct ? `${effectivePct}% fee` : "fee";
-          const [acctVerifying, setAcctVerifying] = useState(false);
-          const [acctResult,    setAcctResult]    = useState(null); // null | { ok, name?, err? }
-          const verifyAcct = async () => {
-            if (!cl.withdrawal_account_number || !cl.withdrawal_bank_code) return;
-            setAcctVerifying(true); setAcctResult(null);
-            try {
-              const { data, error } = await supabase.functions.invoke("paystack", {
-                body: { action: "resolve-account", account_number: cl.withdrawal_account_number, bank_code: cl.withdrawal_bank_code },
-              });
-              if (error || !data?.status) throw new Error(data?.message || "Could not verify account");
-              setAcctResult({ ok: true, name: data.data?.account_name || "" });
-            } catch (e) {
-              setAcctResult({ ok: false, err: e.message || "Verification failed" });
-            } finally {
-              setAcctVerifying(false);
-            }
-          };
           return (
             <div key={req.id} className={`bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 border shadow-sm ${isHeld ? "border-orange-300 dark:border-orange-700/60" : "border-amber-200 dark:border-amber-800/60"}`}>
               {isHeld && (
@@ -1876,36 +1859,13 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                   )}
                 </div>
               </div>
-              <div className="mt-3 bg-slate-50 dark:bg-slate-700/40 rounded-xl px-3 py-2">
-                <div className="flex items-center justify-between mb-1">
-                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Pay to</p>
-                  {cl.withdrawal_account_number && cl.withdrawal_bank_code && (
-                    <button
-                      onClick={verifyAcct}
-                      disabled={acctVerifying}
-                      className="text-[9px] font-bold text-blue-600 dark:text-blue-400 disabled:opacity-50 transition">
-                      {acctVerifying ? "Verifying…" : acctResult ? "Re-verify" : "Verify"}
-                    </button>
-                  )}
-                </div>
-                {(cl.withdrawal_account_number || cl.withdrawal_account_name) ? (
-                  <>
-                    {cl.withdrawal_bank_name && <p className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">{cl.withdrawal_bank_name}</p>}
-                    {cl.withdrawal_account_number && <p className="text-[11px] font-mono text-slate-700 dark:text-slate-200 tracking-widest">{cl.withdrawal_account_number}</p>}
-                    {cl.withdrawal_account_name && <p className="text-[10px] text-slate-500 dark:text-slate-400">{cl.withdrawal_account_name}</p>}
-                    {acctResult?.ok && (
-                      <div className="flex items-center gap-1 mt-1.5">
-                        <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3 text-green-600 dark:text-green-400 flex-shrink-0" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                        <p className="text-[10px] font-bold text-green-700 dark:text-green-400">{acctResult.name}</p>
-                      </div>
-                    )}
-                    {acctResult?.ok === false && (
-                      <p className="text-[10px] font-bold text-red-600 dark:text-red-400 mt-1.5">{acctResult.err}</p>
-                    )}
-                  </>
-                ) : (
-                  <p className="text-[10px] text-slate-400 dark:text-slate-500 italic">No payout account on file — set one in client profile.</p>
-                )}
+              <div className="mt-3 bg-slate-50 dark:bg-slate-700/40 rounded-xl px-3 py-2 flex items-start gap-2">
+                <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 text-brand-500 dark:text-brand-400 flex-shrink-0 mt-0.5" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20 12V8H6a2 2 0 01-2-2c0-1.1.9-2 2-2h12v4M4 6v12a2 2 0 002 2h14v-4M18 12a2 2 0 00-2 2c0 1.1.9 2 2 2h4v-4h-4z" />
+                </svg>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                  Auto-pays to their <strong className="text-slate-700 dark:text-slate-200">KudiAI Wallet</strong> from yours, next business working day — no manual transfer needed.
+                </p>
               </div>
               <div className="flex gap-2 mt-3">
                 <button

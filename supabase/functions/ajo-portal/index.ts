@@ -346,10 +346,11 @@ serve(async (req) => {
     if (action === "get-owner-info") {
       const { owner_id, client_id } = body as { owner_id: string; client_id: string };
 
-      const [ownerRes, clientRes, invoiceRes] = await Promise.all([
+      const [ownerRes, clientRes, invoiceRes, walletRes] = await Promise.all([
         sb.from("profiles").select("business_name, full_name, phone, email, profile_image_url, bank_name, bank_account_number, bank_account_name").eq("id", owner_id).maybeSingle(),
         sb.from("aso_clients").select("staff_id, bank_code, account_number, account_name, bank_name").eq("id", client_id).maybeSingle(),
         sb.from("invoice_settings").select("logo_url").eq("user_id", owner_id).maybeSingle(),
+        sb.from("wallets").select("flw_account_number, flw_account_bank, flw_account_name, status").eq("user_id", owner_id).maybeSingle(),
       ]);
 
       let staffInfo = null;
@@ -367,11 +368,16 @@ serve(async (req) => {
         ? { bank_code: cd.bank_code, account_number: cd.account_number, account_name: cd.account_name, bank_name: cd.bank_name }
         : null;
 
+      const wr = walletRes.data;
+      const ownerWallet = (wr?.flw_account_number && wr?.status === "active")
+        ? { account_number: wr.flw_account_number, bank_name: wr.flw_account_bank, account_name: wr.flw_account_name }
+        : null;
+
       const ownerData = ownerRes.data
         ? { ...ownerRes.data, logo_url: invoiceRes.data?.logo_url || null }
         : null;
 
-      return json({ owner: ownerData, staff: staffInfo, client_bank: clientBank });
+      return json({ owner: ownerData, staff: staffInfo, client_bank: clientBank, owner_wallet: ownerWallet });
     }
 
     // ── Client requests a withdrawal ─────────────────────────────

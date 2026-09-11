@@ -1610,7 +1610,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
   );
 }
 
-export default function BillPayments({ store, plan, session = null, staffName = null, staffEmail = null, businessName = null, autoService = null, onAutoOpened = null, excludeCats = [], markup = 1.0, cashback = 0, pointsEnabled = false }) {
+export default function BillPayments({ store, plan, session = null, staffName = null, staffEmail = null, businessName = null, autoService = null, onAutoOpened = null, excludeCats = [], markup = 1.0, cashback = 0, pointsEnabled = false, walletOnly = false }) {
   const t = useT();
   const CAT_LABELS = useMemo(() => ({
     airtime:        t("bill.airtime"),
@@ -1646,9 +1646,9 @@ export default function BillPayments({ store, plan, session = null, staffName = 
   // so they can resell below face. Everyone else keeps retail pricing.
   const { ckDiscounts, enterpriseFeePct, walletEnabled } = usePlatformConfig();
 
-  // ── Digital wallet (test build) — an alternative funding source to Paystack ──
+  // ── Digital wallet — funding source; the only one when walletOnly (Ajo client portal) ──
   const wallet = useWallet(session?.user?.id || null, walletEnabled);
-  const [payMethod, setPayMethod] = useState("paystack");   // "paystack" | "wallet"
+  const [payMethod, setPayMethod] = useState(walletOnly ? "wallet" : "paystack");   // "paystack" | "wallet"
 
   const bundleFacePerSet   = (denom) => (parseInt(denom || "1000", 10) || 0) * BUNDLE_NETWORKS.length;
   const bundleChargePerSet = (denom) => {
@@ -2272,6 +2272,12 @@ export default function BillPayments({ store, plan, session = null, staffName = 
               : amount;
 
       if (!chargeAmount || chargeAmount <= 0) throw new Error("Invalid amount");
+
+      // walletOnly (Ajo client portal): no Paystack fallback — the wallet must
+      // be ready and funded before we even reach the preflight/coupon logic.
+      if (walletOnly && !(walletEnabled && wallet.hasAccount)) {
+        throw new Error("Your KudiAI Wallet isn't ready yet — bills here are paid from your wallet.");
+      }
 
       // ── Pre-flight: never charge if the service can't be delivered ──────────
       // Confirms the provider is in stock for this request and that the provider
@@ -3705,8 +3711,28 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                 </div>
               )}
 
-              {/* Payment method — Paystack or wallet balance */}
-              {walletEnabled && wallet.hasAccount && (() => {
+              {/* Payment method — Paystack or wallet balance (walletOnly: wallet is the only route) */}
+              {walletOnly ? (() => {
+                const due = Math.max(0, uiChargeAmt - ptsSavings - cbSavings - billCouponSavings);
+                if (due <= 0) return null;
+                if (!walletEnabled || !wallet.hasAccount) {
+                  return (
+                    <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-3 py-2.5">
+                      <p className="text-[12px] font-bold text-amber-700 dark:text-amber-300">Your KudiAI Wallet isn't ready yet</p>
+                      <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">Bills on this portal are paid from your wallet — check back once it's activated.</p>
+                    </div>
+                  );
+                }
+                const walletShort = wallet.balanceKobo < Math.round(due * 100);
+                return (
+                  <div className={`rounded-xl border px-3 py-2.5 ${walletShort ? "border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20" : "border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-900/20"}`}>
+                    <p className="text-[12px] font-bold text-slate-700 dark:text-slate-200">Paying from your KudiAI Wallet</p>
+                    <p className={`text-[11px] mt-0.5 ${walletShort ? "text-red-500 dark:text-red-400 font-semibold" : "text-slate-400"}`}>
+                      {walletShort ? `Balance too low — ${fmt(wallet.balanceNaira)} available, ${fmt(due)} needed. Fund your wallet to continue.` : `${fmt(wallet.balanceNaira)} available`}
+                    </p>
+                  </div>
+                );
+              })() : walletEnabled && wallet.hasAccount && (() => {
                 const due = Math.max(0, uiChargeAmt - ptsSavings - cbSavings - billCouponSavings);
                 if (due <= 0) return null;
                 const walletShort = wallet.balanceKobo < Math.round(due * 100);

@@ -637,8 +637,22 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                 </div>
               )}
 
-              {/* Payout (Withdrawal) Account — client-set, optional, verifiable */}
-              {!isCredit && (
+              {/* Ajo clients: withdrawal payouts auto-route to the client's own KudiAI
+                  Wallet (next business working day) — no bank account to configure. */}
+              {!isCredit && isAso && (
+                <div className="bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800/40 rounded-2xl px-4 py-3.5 flex items-start gap-2.5">
+                  <span className="text-lg leading-none">💸</span>
+                  <div>
+                    <p className="text-[13px] font-bold text-slate-800 dark:text-white">Payout Account</p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
+                      Withdrawal payouts go straight to this client's KudiAI Wallet, next business working day — no bank account to set up.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Payout (Withdrawal) Account — client-set, optional, verifiable (Coop) */}
+              {!isCredit && !isAso && (
                 <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-100 dark:border-slate-700 shadow-card">
                   <div className="px-4 pt-4 pb-2"><SectionHead title="Payout Account" icon="💸" /></div>
                   <div className="px-4 pb-4 space-y-3.5">
