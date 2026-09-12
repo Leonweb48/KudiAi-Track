@@ -22,6 +22,19 @@ function notifyUser(userId: string | null | undefined, opts: {
   }).catch(() => null);
 }
 
+const _SMS_URL = `${Deno.env.get("SUPABASE_URL")}/functions/v1/sms-send`;
+
+function sendSms(phone: string | null | undefined, message: string, opts: {
+  category?: string; user_id?: string | null; related_type?: string; related_id?: string;
+} = {}): void {
+  if (!phone) return;
+  fetch(_SMS_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${_NOTIFY_KEY}` },
+    body: JSON.stringify({ action: "send", phone, message, category: opts.category ?? "money", user_id: opts.user_id ?? null, related_type: opts.related_type ?? null, related_id: opts.related_id ?? null }),
+  }).catch(() => null);
+}
+
 // High-value withdrawal threshold for 24h security hold after a PIN change.
 // Withdrawals at or above this amount, submitted within 24h of a PIN reset, are
 // auto-held for manual owner review. May become owner-configurable in a future release.
@@ -996,7 +1009,7 @@ serve(async (req) => {
 
       const { data: cl, error: clErr } = await sb
         .from("aso_clients")
-        .select("id, client_user_id, contribution_amount, contribution_frequency, user_id, full_name, next_contribution_date, ajo_group_id, commission_model, registration_charge")
+        .select("id, client_user_id, contribution_amount, contribution_frequency, user_id, full_name, next_contribution_date, ajo_group_id, commission_model, registration_charge, phone")
         .eq("id", client_id)
         .maybeSingle();
       if (clErr) return json({ error: "Something went wrong — please try again" }, 500);
@@ -1094,6 +1107,7 @@ serve(async (req) => {
           deepLink: { tab: "contributions" },
           category: "money",
         });
+        sendSms(cl.phone, `₦${amount.toLocaleString("en-NG")} contribution paid from your KudiAI Wallet. — KudiAI`, { category: "money", user_id: cl.client_user_id, related_type: "ajo_contributions", related_id: rpcResult.contribution_id });
       } catch { /* non-fatal */ }
 
       const { data: updatedClient } = await sb
@@ -1617,15 +1631,20 @@ serve(async (req) => {
       if (!client_id || !field || !new_value) return json({ error: "client_id, field, new_value required" }, 400);
 
       const { data: cl } = await sb.from("aso_clients")
-        .select("full_name, email").eq("id", client_id).maybeSingle();
+        .select("full_name, email, phone").eq("id", client_id).maybeSingle();
       if (!cl) return json({ error: "Client not found" }, 404);
 
       const otp = genOtp();
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 min
       await sb.from("aso_clients").update({ pending_otp: otp, pending_otp_expires_at: expiresAt }).eq("id", client_id);
 
-      // Send to new email for email changes; current email for phone changes
+      // Send to new email for email changes; current email for phone changes.
+      // Same logic on SMS: new phone for phone changes, current phone for
+      // email changes — whichever channel is being verified gets the OTP on
+      // its new value (proves ownership); the other, unchanged channel gets
+      // a copy too, for redundant delivery.
       const toEmail = field === "email" ? new_value : (cl as Record<string, unknown>).email as string;
+      const toPhone = field === "phone" ? new_value : (cl as Record<string, unknown>).phone as string;
       await fetch("https://admin.kudiai.app/api/public/email-trigger", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
@@ -1640,6 +1659,7 @@ serve(async (req) => {
           },
         }),
       }).catch(() => null);
+      sendSms(toPhone, `Your KudiAI verification code is ${otp}. Valid for 10 minutes. Do not share this code.`, { category: "otp", related_type: "aso_clients", related_id: client_id });
 
       return json({ ok: true });
     }
@@ -1673,29 +1693,33 @@ serve(async (req) => {
       if (!client_id) return json({ error: "client_id required" }, 400);
 
       const { data: cl } = await sb.from("aso_clients")
-        .select("full_name, email").eq("id", client_id).maybeSingle();
+        .select("full_name, email, phone").eq("id", client_id).maybeSingle();
       if (!cl) return json({ error: "Client not found" }, 404);
 
       const clEmail = (cl as Record<string, unknown>).email as string | null;
-      if (!clEmail) return json({ error: "No email on file — contact your agent" }, 400);
+      const clPhone = (cl as Record<string, unknown>).phone as string | null;
+      if (!clEmail && !clPhone) return json({ error: "No email or phone on file — contact your agent" }, 400);
 
       const otp = genOtp();
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
       await sb.from("aso_clients").update({ pending_otp: otp, pending_otp_expires_at: expiresAt }).eq("id", client_id);
 
-      await fetch("https://admin.kudiai.app/api/public/email-trigger", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
-        body: JSON.stringify({
-          event: "ajo_txn_pin_otp",
-          data: {
-            name:    (cl as Record<string, unknown>).full_name as string || "",
-            email:   clEmail,
-            otp,
-            expires_in: "10 minutes",
-          },
-        }),
-      }).catch(() => null);
+      if (clEmail) {
+        await fetch("https://admin.kudiai.app/api/public/email-trigger", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-trigger-secret": EMAIL_TRIGGER_SECRET },
+          body: JSON.stringify({
+            event: "ajo_txn_pin_otp",
+            data: {
+              name:    (cl as Record<string, unknown>).full_name as string || "",
+              email:   clEmail,
+              otp,
+              expires_in: "10 minutes",
+            },
+          }),
+        }).catch(() => null);
+      }
+      sendSms(clPhone, `Your KudiAI verification code is ${otp}. Valid for 10 minutes. Do not share this code.`, { category: "otp", related_type: "aso_clients", related_id: client_id });
 
       return json({ ok: true });
     }

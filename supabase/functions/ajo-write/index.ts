@@ -108,13 +108,13 @@ async function fetchEmailContext(
   ownerId: string,
   callerUid: string,
 ): Promise<{
-  clientEmail: string; clientName: string;
+  clientEmail: string; clientName: string; clientPhone: string;
   ownerEmail: string; businessName: string;
   staffEmail: string; staffName: string;
 }> {
   const isStaff = callerUid !== ownerId;
   const [cl, own, st] = await Promise.all([
-    sb.from("aso_clients").select("email, full_name").eq("id", clientId).maybeSingle().then(r => r.data),
+    sb.from("aso_clients").select("email, full_name, phone").eq("id", clientId).maybeSingle().then(r => r.data),
     sb.from("profiles").select("email, business_name").eq("id", ownerId).maybeSingle().then(r => r.data),
     isStaff
       ? sb.from("staff").select("email, full_name").eq("user_id", callerUid).eq("owner_id", ownerId).maybeSingle().then(r => r.data)
@@ -123,6 +123,7 @@ async function fetchEmailContext(
   return {
     clientEmail:  cl?.email         || "",
     clientName:   cl?.full_name     || "",
+    clientPhone:  cl?.phone         || "",
     ownerEmail:   own?.email        || "",
     businessName: own?.business_name || "",
     staffEmail:   st?.email         || "",
@@ -156,6 +157,27 @@ async function notifyUser(
         priority: opts.priority ?? "normal",
         deepLink: opts.deepLink ?? null,
         category: opts.category ?? "savings",
+      }),
+    });
+  } catch { /* fire and forget */ }
+}
+
+async function sendSms(
+  phone: string | null | undefined,
+  message: string,
+  opts: { category?: string; user_id?: string | null; related_type?: string; related_id?: string } = {},
+): Promise<void> {
+  if (!phone) return;
+  try {
+    await fetch(`${_SUPABASE_URL}/functions/v1/sms-send`, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${_SERVICE_KEY}` },
+      body: JSON.stringify({
+        action: "send", phone, message,
+        category: opts.category ?? "money",
+        user_id: opts.user_id ?? null,
+        related_type: opts.related_type ?? null,
+        related_id: opts.related_id ?? null,
       }),
     });
   } catch { /* fire and forget */ }
@@ -619,6 +641,9 @@ serve(async (req: Request) => {
             body: `Your ₦${acAmt} contribution has been approved`, priority: "normal",
             deepLink: { tab: "contributions" }, category: "savings",
           }),
+          sendSms(acCtx.clientPhone, `₦${acAmt} contribution confirmed. New balance: ₦${Number(acResult.new_balance || 0).toLocaleString("en-NG")}. — KudiAI`, {
+            category: "savings", user_id: acClientUserId, related_type: "ajo_contributions", related_id: acId,
+          }),
         ];
         let acRecordingStaffUid: string | null = null;
         if ((acContrib as Record<string, unknown>).contribution_source === "staff_collection") {
@@ -654,6 +679,9 @@ serve(async (req: Request) => {
               cycle_label:   acResult.matured_cycle_label || "Personal Savings",
               net_balance:   acResult.matured_net_balance || 0,
               date:          new Date().toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" }),
+            }),
+            sendSms(acCtx.clientPhone, `Your "${acResult.matured_cycle_label || "Personal Savings"}" savings cycle is complete — ₦${maturedAmt} is now available to withdraw. — KudiAI`, {
+              category: "savings", user_id: acClientUserId, related_type: "ajo_cycles", related_id: String(acResult.matured_cycle_id || ""),
             }),
           );
         }
@@ -985,6 +1013,9 @@ serve(async (req: Request) => {
               body: `${ctx.clientName || "A client"}'s ₦${Number(rpcWd?.net_amount ?? gross_amount).toLocaleString("en-NG")} withdrawal was approved`,
               priority: "high", deepLink: { tab: "home" }, category: "money",
             }),
+            sendSms(ctx.clientPhone, `₦${Number(rpcWd?.net_amount ?? gross_amount).toLocaleString("en-NG")} withdrawal approved. — KudiAI`, {
+              category: "money", user_id: rwApprClientUserId, related_type: "ajo_withdrawal_requests", related_id: request_id,
+            }),
           ]);
         } else {
           // Direct withdrawal: email + client push (client gets no separate approval step so
@@ -1010,6 +1041,9 @@ serve(async (req: Request) => {
               priority: "high",
               deepLink: { tab: "contributions" },
               category: "money",
+            }),
+            sendSms(ctx.clientPhone, `₦${Number(rpcWd?.net_amount ?? gross_amount).toLocaleString("en-NG")} withdrawal processed. — KudiAI`, {
+              category: "money", user_id: rwApprClientUserId, related_type: "ajo_contributions", related_id: String(rpcWd?.net_id || ""),
             }),
           ]);
         }

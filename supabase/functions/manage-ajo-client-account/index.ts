@@ -27,6 +27,21 @@ async function fireEmail(event: string, data: Record<string, unknown>) {
   }).catch(() => null);
 }
 
+async function sendSms(
+  phone: string | null | undefined,
+  message: string,
+  opts: { category?: string; user_id?: string | null; related_type?: string; related_id?: string } = {},
+): Promise<void> {
+  if (!phone) return;
+  try {
+    await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/sms-send`, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}` },
+      body: JSON.stringify({ action: "send", phone, message, category: opts.category ?? "money", user_id: opts.user_id ?? null, related_type: opts.related_type ?? null, related_id: opts.related_id ?? null }),
+    });
+  } catch { /* fire and forget */ }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -91,7 +106,7 @@ serve(async (req) => {
     if (action === "resend-otp") {
       const { data: clientRow } = await adminClient
         .from("aso_clients")
-        .select("id, email, full_name")
+        .select("id, email, full_name, phone")
         .eq("client_user_id", userData.user.id)
         .maybeSingle();
 
@@ -101,11 +116,18 @@ serve(async (req) => {
       const otpExpiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
       await adminClient.from("aso_clients").update({ otp_code: otp, otp_expires_at: otpExpiresAt }).eq("id", clientRow.id);
 
-      await fireEmail("ajo_client_otp_resend", {
-        client_name:  clientRow.full_name || "",
-        client_email: clientRow.email,
-        otp_code:     otp,
-      });
+      if (clientRow.email) {
+        await fireEmail("ajo_client_otp_resend", {
+          client_name:  clientRow.full_name || "",
+          client_email: clientRow.email,
+          otp_code:     otp,
+        });
+      }
+      await sendSms(
+        clientRow.phone,
+        `Your KudiAI verification code is ${otp}. Valid for 30 minutes. Do not share this code.`,
+        { category: "otp", user_id: userData.user.id, related_type: "aso_clients", related_id: clientRow.id },
+      );
 
       return json({ success: true });
     }
