@@ -66,6 +66,21 @@ async function boot() {
   );
 
   if ("serviceWorker" in navigator) {
+    // The generated SW uses skipWaiting + clientsClaim (scripts/build-sw.js), so
+    // a newly-deployed SW activates and claims every open page immediately —
+    // without this listener, a page whose JS is already running keeps fetching
+    // against the OLD cached asset set while the browser's network layer is now
+    // controlled by the NEW SW, which can 404/mismatch on chunks the old code
+    // still references. That's the "works after refresh, not on first open"
+    // pattern: refreshing just happens to land after the swap settles. Reload
+    // once, automatically, the moment control actually changes.
+    let refreshedOnce = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (refreshedOnce) return;
+      refreshedOnce = true;
+      window.location.reload();
+    });
+
     window.addEventListener("load", () => {
       navigator.serviceWorker.register("/service-worker.js").catch(() => {});
     });

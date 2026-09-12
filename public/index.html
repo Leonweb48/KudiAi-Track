@@ -11,7 +11,13 @@
     <link rel="icon" href="%PUBLIC_URL%/logo.png" type="image/png" sizes="any" />
     <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- Non-blocking font load: fetched at low priority via the "print" media
+         trick, then swapped to "all" once ready, so the font request never
+         holds up first paint on a slow first-launch connection. -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&display=swap"
+      media="print" onload="this.media='all'" />
+    <noscript><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" /></noscript>
     <title>KudiAI Track</title>
   </head>
   <body>
