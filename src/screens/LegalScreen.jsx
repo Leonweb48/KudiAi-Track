@@ -113,7 +113,7 @@ function TermsContent() {
         '"Organisation Member" — a member of a cooperative or association on the platform.',
         '"Marketer" — an affiliate partner earning commission through the Marketer Portal.',
         '"Subscription Plan" — your chosen service tier as set by the platform administrator.',
-        '"Third-Party Service Providers" — external companies whose services are integrated, including Paystack, ClubKonnect, Peyflex, Anthropic, and Supabase.',
+        '"Third-Party Service Providers" — external companies whose services are integrated, including Flutterwave, Paystack, ClubKonnect, Peyflex, Sendchamp, Google (Gemini AI, reCAPTCHA, Firebase), OpenAI, and Supabase.',
       ]} />
 
       <H2>3. Eligibility & Account Registration</H2>
@@ -142,7 +142,9 @@ function TermsContent() {
       <H3>4.5 Marketer Affiliate Programme</H3>
       <P>Marketers earn commissions on referred customers. Commission structures, tiers, and payout schedules are governed by the Marketer Programme Terms on the Marketer Portal.</P>
       <H3>4.6 AI-Powered Features</H3>
-      <P>The platform integrates Anthropic's Claude AI for business insights, chatbot assistance, and analytics summaries. AI-generated outputs are for informational purposes only and do not constitute financial, legal, or professional advice. Do not rely solely on AI outputs for significant business or financial decisions.</P>
+      <P>The platform integrates Google's Gemini models for business insights, chatbot assistance, and analytics summaries, and OpenAI's speech-to-text/text-to-speech services for voice features. AI-generated outputs are for informational purposes only and do not constitute financial, legal, or professional advice. Do not rely solely on AI outputs for significant business or financial decisions.</P>
+      <H3>4.7 Digital Wallet Services</H3>
+      <P>Business Owners and Ajo/Esusu Clients may optionally activate a KudiTrack AI Digital Wallet — a virtual account issued through our payment technology partner, Flutterwave. Activation requires a valid BVN (and optionally NIN), as required by Flutterwave and the CBN. Your BVN is sent directly to Flutterwave and is not stored on our servers. We are not a bank; wallet balances are not NDIC-insured. Wallet activation is never required to save, contribute, or withdraw through your Business Owner.</P>
 
       <H2>5. Subscription Plans & Billing</H2>
       <DataTable rows={
@@ -269,7 +271,7 @@ function PrivacyContent() {
       <H2>3. Personal Data We Collect</H2>
       <H3>3.1 Data You Provide</H3>
       <P>Registration & Identity:</P>
-      <UL items={["Full legal name", "Email address", "Phone number", "Date of birth", "Gender", "Profile photograph", "National Identification Number (NIN) — for KYC"]} />
+      <UL items={["Full legal name", "Email address", "Phone number", "Date of birth", "Gender", "Profile photograph", "National Identification Number (NIN) — for KYC", "Bank Verification Number (BVN) — only if you activate a Digital Wallet; sent to Flutterwave, not stored by us"]} />
       <P>Address & Location:</P>
       <UL items={["Home address", "State of residence", "Local Government Area (LGA)", "Ward"]} />
       <P>Business Data (Business Owners):</P>
@@ -316,6 +318,7 @@ function PrivacyContent() {
         "Processing subscription payments and renewals.",
         "Facilitating bill payments and delivering transaction receipts.",
         "Managing Ajo/Esusu savings group records.",
+        "Activating and operating Digital Wallet accounts, where you opt in.",
         "Enabling loyalty points, cashback, and referral tracking.",
         "Providing AI-powered business insights.",
         "Generating PDF reports and activity statements.",
@@ -335,12 +338,15 @@ function PrivacyContent() {
       <H3>6.1 Third-Party Service Providers (Processors)</H3>
       <DataTable rows={[
         ["Supabase",         "Cloud database, authentication, storage, backend — Global (EU/US)"],
-        ["Paystack",         "Subscription payment processing — Nigeria"],
+        ["Flutterwave",      "Digital Wallet virtual accounts, BVN/NIN verification, transfers — Nigeria"],
+        ["Paystack",         "Subscription and organisation payment processing — Nigeria"],
         ["ClubKonnect",      "Bill payment fulfilment (airtime, data, utilities) — Nigeria"],
         ["Peyflex",          "Supplementary bill payment services — Nigeria"],
-        ["Anthropic (Claude)", "AI chatbot and insights — United States"],
+        ["Google (Gemini AI)", "AI chatbot and insights — United States"],
         ["Google (reCAPTCHA)", "Bot detection and security — Global"],
-        ["OpenAI (Whisper)", "Speech-to-text transcription (where enabled) — United States"],
+        ["Google Firebase Cloud Messaging", "Push notification delivery — Global"],
+        ["OpenAI",           "Speech-to-text and text-to-speech voice features — United States"],
+        ["Sendchamp",        "SMS delivery for verification codes and alerts — Nigeria"],
         ["ipapi.co",         "IP geolocation for session logs — Global"],
       ]} />
       <H3>6.2 Legal & Regulatory Disclosures</H3>
@@ -349,11 +355,12 @@ function PrivacyContent() {
       <P>In the event of a merger, acquisition, or sale, personal data may be transferred to the acquirer or successor. We will notify you of any such transfer.</P>
 
       <H2>7. International Data Transfers</H2>
-      <P>Some Third-Party Service Providers — including Anthropic (US), Supabase (EU/US), and Google (Global) — are located outside Nigeria. When we transfer your personal data outside Nigeria, we ensure adequate safeguards are in place per the NDPA 2023 and NDPC guidelines, including binding contractual data protection obligations.</P>
+      <P>Some Third-Party Service Providers — including Google (US — Gemini AI, Firebase), OpenAI (US), and Supabase (EU/US) — are located outside Nigeria. Flutterwave, Paystack, ClubKonnect, Peyflex, and Sendchamp process data within Nigeria. When we transfer your personal data outside Nigeria, we ensure adequate safeguards are in place per the NDPA 2023 and NDPC guidelines, including binding contractual data protection obligations.</P>
 
       <H2>8. Data Retention</H2>
       <DataTable rows={[
         ["Account & identity data",     "Duration of account + 7 years after closure"],
+        ["Bank Verification Number (BVN)", "Not stored — sent to Flutterwave for account creation only"],
         ["Financial transaction records", "7 years from transaction date (CAMA/FIRS requirement)"],
         ["Bill payment records",        "5 years from transaction date"],
         ["Session logs (IP, device)",   "12 months"],
@@ -384,7 +391,7 @@ function PrivacyContent() {
       <P>When Business Owners use credit management, Ajo/Esusu, staff management, or loyalty features, they may enter personal data about their customers and members. Amaya Technologies acts as a data processor for this data — storing and processing it only on the Business Owner's instructions to provide the Services. Business Owners are responsible for obtaining valid consent from and providing notice to those data subjects, and for responding to their data rights requests.</P>
 
       <H2>12. AI & Automated Decision-Making</H2>
-      <P>AI services (Anthropic Claude) process your transaction data and usage patterns to generate business insights and chatbot responses. We do not make legally significant automated decisions without human review — AI outputs are advisory only. When you use AI features, relevant contextual data is sent to Anthropic's API. For voice input features (OpenAI Whisper, where enabled), audio is transmitted to OpenAI for transcription; avoid including highly sensitive information such as passwords or bank PINs in voice inputs.</P>
+      <P>AI services (Google's Gemini models) process your transaction data and usage patterns to generate business insights and chatbot responses. We do not make legally significant automated decisions without human review — AI outputs are advisory only. When you use AI features, relevant contextual data is sent to Google's Gemini API. For voice features (OpenAI Whisper for speech-to-text, OpenAI TTS for spoken replies, where enabled), audio and text are transmitted to OpenAI; avoid including highly sensitive information such as passwords, BVN, or bank PINs in voice inputs.</P>
 
       <H2>13. Children's Privacy</H2>
       <P>The platform is not directed at children under 18 years of age. We do not knowingly collect personal data from anyone under 18. If you believe a child under 18 has created an account, please notify us at support@kudiai.app.</P>

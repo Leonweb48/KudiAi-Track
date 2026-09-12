@@ -25,7 +25,8 @@ In these Terms, the following definitions apply:
 - **"Subscription Plan"** means the tier of paid or free access selected by a Business Owner (Kobo, Naira, or Oga).
 - **"Bill Payment Services"** means third-party utility, telecom, cable TV, and other transactional payment services facilitated through the Platform.
 - **"Content"** means any data, text, information, financial records, or materials you submit, upload, or generate through the Platform.
-- **"Third-Party Service Providers"** means external companies whose services are integrated into the Platform, including but not limited to Paystack, ClubKonnect, Peyflex, Anthropic, and Supabase.
+- **"Third-Party Service Providers"** means external companies whose services are integrated into the Platform, including but not limited to Flutterwave, Paystack, ClubKonnect, Peyflex, Sendchamp, Google (Gemini AI, reCAPTCHA, Firebase Cloud Messaging), OpenAI, and Supabase.
+- **"Digital Wallet"** means the optional, Flutterwave-issued virtual account feature described in Section 4.9, available to Business Owners and Ajo/Esusu Clients.
 
 ---
 
@@ -87,10 +88,13 @@ Marketers may earn commissions on referred customers and transactions. Commissio
 Business Owners on the Oga Subscription Plan may access airtime and data resale functionality. This feature is subject to the terms and pricing of our Third-Party Service Providers and may be adjusted without notice based on provider policy changes.
 
 ### 4.7 AI-Powered Features
-The Platform integrates AI services (powered by Anthropic's Claude) to provide business insights, chatbot assistance, and analytics summaries. **AI-generated outputs are provided for informational and decision-support purposes only. They do not constitute financial, legal, accounting, or professional advice. You must not rely solely on AI-generated outputs for business or financial decisions.** We make no representation that AI outputs are accurate, complete, or error-free.
+The Platform integrates AI services (powered by Google's Gemini models) to provide business insights, chatbot assistance, and analytics summaries. Where voice features are used, spoken input is transcribed and spoken replies are generated using OpenAI's speech-to-text and text-to-speech services. **AI-generated outputs are provided for informational and decision-support purposes only. They do not constitute financial, legal, accounting, or professional advice. You must not rely solely on AI-generated outputs for business or financial decisions.** We make no representation that AI outputs are accurate, complete, or error-free.
 
 ### 4.8 PDF Reports and Statements
 The Platform provides tools to generate PDF activity statements and receipts. These documents are created from data you have entered into the Platform and are provided for your convenience. They are not certified financial statements and should not be presented as audited accounts without independent professional verification.
+
+### 4.9 Digital Wallet Services
+Business Owners and Ajo/Esusu Clients may optionally activate a KudiTrack AI Digital Wallet — a dedicated virtual account number issued through our licensed payment technology partner, **Flutterwave**. Activation requires submission of a valid Bank Verification Number (BVN) and, optionally, a National Identification Number (NIN), as required by Flutterwave and the Central Bank of Nigeria (CBN) to open any bank-linked account. **Your BVN is transmitted directly to Flutterwave for identity verification and account creation and is not stored on our servers.** Wallet balances are held in a pooled settlement arrangement maintained by Flutterwave. **We are not a bank or licensed deposit-taking institution, and wallet balances are not insured by the Nigeria Deposit Insurance Corporation (NDIC) or any other body.** Digital Wallet activation is never required to use the Platform's core savings, contribution, or record-keeping features — an Ajo/Esusu Client may save, contribute, and receive withdrawals through their Business Owner without ever activating a personal wallet; BVN is asked for only at the point a Client or Business Owner chooses to activate their own wallet. Transfers, top-ups, and withdrawals made through a Digital Wallet are processed by Flutterwave and, once completed, are final and irreversible except where a reversal is initiated by Flutterwave or the receiving bank.
 
 ---
 
@@ -270,12 +274,15 @@ If you provide us with feedback, suggestions, or ideas about the Platform ("Feed
 
 ### 13.1 Third-Party Service Providers
 The Platform integrates services from Third-Party Service Providers including:
-- **Paystack** — Payment processing (governed by Paystack's Terms of Service and Privacy Policy)
+- **Flutterwave** — Digital Wallet virtual account issuance, fund transfers, and bill payment processing (governed by Flutterwave's Terms of Service and Privacy Policy)
+- **Paystack** — Subscription billing and organisation payment processing (governed by Paystack's Terms of Service and Privacy Policy)
 - **ClubKonnect / Peyflex** — Bill payment fulfilment services
-- **Anthropic** — AI capabilities (governed by Anthropic's usage policies)
-- **Supabase** — Cloud database and authentication infrastructure
+- **Google (Gemini)** — AI capabilities powering business insights and chatbot assistance (governed by Google's usage policies)
 - **Google reCAPTCHA** — Bot protection (governed by Google's Privacy Policy)
-- **OpenAI Whisper** — Speech-to-text features (where enabled)
+- **Google Firebase Cloud Messaging** — Push notification delivery
+- **OpenAI** — Speech-to-text and text-to-speech voice features (where enabled)
+- **Sendchamp** — SMS delivery for verification codes and account alerts
+- **Supabase** — Cloud database and authentication infrastructure
 
 ### 13.2 Third-Party Responsibility
 We are not responsible for the availability, accuracy, security, or content of Third-Party Services. Your use of Third-Party Services is governed by their respective terms and policies. We recommend you review these policies before using features powered by Third-Party Services.

@@ -57,6 +57,7 @@ This Policy applies to:
 - Gender
 - Profile photograph
 - National Identification Number (NIN) — where provided for KYC purposes
+- Bank Verification Number (BVN) — collected only if you choose to activate a Digital Wallet; transmitted directly to our payment technology partner, Flutterwave, for account creation and **not stored on our servers**
 
 **Address and Location Data:**
 - Home address
@@ -121,6 +122,7 @@ When Business Owners use credit management or Ajo features, they may enter on th
 
 ### 3.3 Data from Third Parties
 
+- **Flutterwave** — Virtual account details, wallet transaction status, and transfer confirmations when you use Digital Wallet features.
 - **Paystack** — Payment confirmation and reference data when you make subscription payments.
 - **ClubKonnect / Peyflex** — Bill payment fulfilment status, transaction references, and provider responses.
 - **Google reCAPTCHA** — Risk scores to detect bot activity during registration and login.
@@ -175,6 +177,7 @@ We use your personal data for the following specific purposes:
 - Processing subscription payments and renewals.
 - Facilitating bill payments and delivering transaction receipts.
 - Managing Ajo/Esusu savings group records.
+- Activating and operating Digital Wallet accounts, where you opt in (Business Owners and Ajo/Esusu Clients).
 - Enabling loyalty points, cashback, and referral tracking.
 - Providing AI-powered business insights.
 - Generating PDF reports and activity statements.
@@ -223,12 +226,15 @@ We engage the following processors who handle personal data strictly on our inst
 | Processor | Purpose | Location |
 |---|---|---|
 | **Supabase** | Cloud database, authentication, storage, and backend infrastructure | Global (EU/US data centres) |
-| **Paystack** | Subscription payment processing | Nigeria / Global |
+| **Flutterwave** | Digital Wallet virtual account issuance, BVN/NIN verification for account opening, wallet transfers, and bill payment processing | Nigeria |
+| **Paystack** | Subscription and organisation payment processing | Nigeria / Global |
 | **ClubKonnect** | Bill payment fulfilment (airtime, data, utilities, cable, education) | Nigeria |
 | **Peyflex** | Supplementary bill payment services | Nigeria |
-| **Anthropic (Claude AI)** | AI chatbot and business insights processing | United States |
+| **Google (Gemini AI)** | AI chatbot and business insights processing | United States |
 | **Google (reCAPTCHA)** | Bot detection and security | Global |
-| **OpenAI (Whisper)** | Speech-to-text transcription (where feature is enabled) | United States |
+| **Google Firebase Cloud Messaging** | Push notification delivery to mobile devices | Global |
+| **OpenAI** | Speech-to-text (Whisper) and text-to-speech voice features (where enabled) | United States |
+| **Sendchamp** | SMS delivery for verification codes and account alerts | Nigeria |
 | **ipapi.co** | IP-based geolocation for session security logs | Global |
 | **Email service provider** | Transactional and marketing email delivery | Nigeria / Global |
 
@@ -254,7 +260,7 @@ We may share your data with other parties where you have expressly consented to 
 
 ## 8. INTERNATIONAL DATA TRANSFERS
 
-Some of our Third-Party Service Providers — including Anthropic (United States), Supabase (EU/US), and Google (Global) — are located outside Nigeria. When we transfer your personal data outside Nigeria, we ensure that adequate safeguards are in place in accordance with the NDPA 2023 and NDPC guidelines, including:
+Some of our Third-Party Service Providers — including Google (United States — Gemini AI, Firebase Cloud Messaging), OpenAI (United States), and Supabase (EU/US) — are located outside Nigeria. Flutterwave, Paystack, ClubKonnect, Peyflex, and Sendchamp process data within Nigeria. When we transfer your personal data outside Nigeria, we ensure that adequate safeguards are in place in accordance with the NDPA 2023 and NDPC guidelines, including:
 
 - Using processors bound by contractual data protection obligations equivalent to Nigerian standards.
 - Transferring to jurisdictions with adequate data protection frameworks recognised by the NDPC.
@@ -277,6 +283,7 @@ We retain your personal data for as long as:
 | Data Category | Retention Period |
 |---|---|
 | Account and identity data | Duration of Account + 7 years after closure |
+| Bank Verification Number (BVN) | Not stored — transmitted to Flutterwave for account creation only; retained by Flutterwave under its own policy |
 | Financial transaction records | 7 years from transaction date (CAMA/FIRS requirement) |
 | Bill payment records | 5 years from transaction date |
 | Session logs (IP, device, geolocation) | 12 months |
@@ -412,16 +419,16 @@ The Platform is not directed at children under the age of **18 years**. We do no
 ## 15. AI AND AUTOMATED DECISION-MAKING
 
 ### 15.1 AI-Powered Features
-The Platform uses AI services (Anthropic Claude) to provide business insights, chatbot assistance, and analytics summaries. Your transaction data and usage patterns may be processed to generate these insights.
+The Platform uses AI services (Google's Gemini models) to provide business insights, chatbot assistance, and analytics summaries. Your transaction data and usage patterns may be processed to generate these insights.
 
 ### 15.2 No Fully Automated Binding Decisions
 We do not make decisions that produce significant legal effects on you through solely automated processing without human review. AI-generated outputs are advisory only and are reviewed by you before any action is taken.
 
 ### 15.3 Data Shared with AI Providers
-When you use AI-powered features, relevant prompts and contextual data are sent to Anthropic's API for processing. We do not knowingly send unnecessary personal data to AI providers. Anthropic's Privacy Policy governs their handling of data submitted via their API. Please note that AI interactions may be used by providers to improve their models, subject to their terms.
+When you use AI-powered features, relevant prompts and contextual data are sent to Google's Gemini API for processing. We do not knowingly send unnecessary personal data to AI providers. Google's Privacy Policy governs their handling of data submitted via their API. Please note that AI interactions may be used by providers to improve their models, subject to their terms.
 
 ### 15.4 Voice Features
-Where you use voice input features (powered by OpenAI Whisper, where enabled), your audio is transmitted to OpenAI for transcription. We recommend not including highly sensitive personal information (e.g., passwords, NIN, bank PINs) in voice inputs.
+Where you use voice input features (powered by OpenAI Whisper, where enabled), your audio is transmitted to OpenAI for transcription. Where the Platform reads a response aloud to you, that text is transmitted to OpenAI's text-to-speech service to generate the audio. We recommend not including highly sensitive personal information (e.g., passwords, NIN, BVN, bank PINs) in voice inputs.
 
 ---
 
