@@ -2472,44 +2472,58 @@ function OverviewTab({ client, contributions, cycles = [], rotationsData = [], r
         </div>
       </div>
 
-      {/* ── Personal Savings — always-visible "Open New Card" entry point ── */}
-      <div className="flex items-center justify-between px-1">
-        {cycles.length > 0 ? (
-          <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-            Personal Savings
-          </p>
-        ) : <span />}
-        <button onClick={() => setShowOpenCycle(true)}
-          className="flex items-center gap-1 text-[11px] font-bold text-brand-600 dark:text-brand-400 active:opacity-70 transition-opacity py-1">
-          <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
-          Open New Card
-        </button>
-      </div>
-      {cycles.length === 0 && (
-        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 p-5 text-center">
-          <p className="text-[13px] font-bold text-slate-700 dark:text-slate-200 mb-1">No savings card yet</p>
-          <p className="text-[12px] text-slate-400 dark:text-slate-500 mb-3">Open one to start building toward a goal.</p>
-          <button onClick={() => setShowOpenCycle(true)}
-            className="px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-xl font-bold text-[12px] transition active:scale-[0.98]">
-            Open your first card
-          </button>
-        </div>
-      )}
-      {showOpenCycle && (
-        <OpenCycleSheet client={client} cycleCount={cycles.length} onClose={() => setShowOpenCycle(false)} />
-      )}
-      {cycles.map((cyc, idx) => (
-        <ContributionCard
-          key={cyc.id}
-          cycle={cyc}
-          contributions={contributions}
-          frequency={client?.contribution_frequency}
-          clientName={client?.full_name || ""}
-          businessName={ownerInfo?.owner?.business_name || ""}
-          registrationCharge={client?.registration_charge || 0}
-          isLegacyCycle={idx === 0}
-        />
-      ))}
+      {/* ── Personal Savings — always-visible "Open New Card" entry point ──
+           Closed cards (completed/settled) don't clutter this list — they're
+           still fully available, just under History, for the client to
+           look back at whenever they want. ── */}
+      {(() => {
+        // legacyId is the client's true first-ever cycle (cycles is ordered
+        // oldest-first) regardless of status — if it's since closed, none of
+        // the still-active cards below should absorb its pre-attribution rows.
+        const legacyId = cycles[0]?.id;
+        const activeCycles = cycles.filter(cy => cy.status === "active");
+        return (
+          <>
+            <div className="flex items-center justify-between px-1">
+              {activeCycles.length > 0 ? (
+                <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                  Personal Savings
+                </p>
+              ) : <span />}
+              <button onClick={() => setShowOpenCycle(true)}
+                className="flex items-center gap-1 text-[11px] font-bold text-brand-600 dark:text-brand-400 active:opacity-70 transition-opacity py-1">
+                <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+                Open New Card
+              </button>
+            </div>
+            {activeCycles.length === 0 && (
+              <div className="bg-white dark:bg-slate-800 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 p-5 text-center">
+                <p className="text-[13px] font-bold text-slate-700 dark:text-slate-200 mb-1">No savings card yet</p>
+                <p className="text-[12px] text-slate-400 dark:text-slate-500 mb-3">Open one to start building toward a goal.</p>
+                <button onClick={() => setShowOpenCycle(true)}
+                  className="px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-xl font-bold text-[12px] transition active:scale-[0.98]">
+                  Open your first card
+                </button>
+              </div>
+            )}
+            {showOpenCycle && (
+              <OpenCycleSheet client={client} cycleCount={cycles.length} onClose={() => setShowOpenCycle(false)} />
+            )}
+            {activeCycles.map((cyc) => (
+              <ContributionCard
+                key={cyc.id}
+                cycle={cyc}
+                contributions={contributions}
+                frequency={client?.contribution_frequency}
+                clientName={client?.full_name || ""}
+                businessName={ownerInfo?.owner?.business_name || ""}
+                registrationCharge={client?.registration_charge || 0}
+                isLegacyCycle={cyc.id === legacyId}
+              />
+            ))}
+          </>
+        );
+      })()}
 
       {/* Cashback Balance */}
       <CashbackCard userEmail={userEmail} />
@@ -3162,6 +3176,10 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
   const groupNameMap = Object.fromEntries(
     rotationsData.filter(rd => rd.group?.id).map(rd => [rd.group.id, rd.group.name])
   );
+  // Closed cards (completed/settled) no longer show on the main portal view —
+  // they're referenced here instead, so the client can still look back at them.
+  const closedCycles = cycles.filter(cy => cy.status === "completed" || cy.status === "settled");
+  const [closedCardView, setClosedCardView] = useState(null);
   const [typeFilter,     setTypeFilter]     = useState("all");
   const [receipt,        setReceipt]        = useState(null);
   const [pendingSheet,   setPendingSheet]   = useState(null);
@@ -3474,6 +3492,58 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
 
       {pendingSheet && (
         <PendingInfoSheet item={pendingSheet} onClose={() => setPendingSheet(null)} />
+      )}
+
+      {closedCardView && (
+        <div className="fixed inset-0 z-[300] flex flex-col justify-end">
+          <div onClick={() => setClosedCardView(null)} className="fixed inset-0 bg-black/55" />
+          <div className="relative bg-white dark:bg-slate-900 rounded-t-3xl max-h-[85vh] overflow-y-auto"
+            style={{ paddingBottom: "env(safe-area-inset-bottom, 16px)" }}>
+            <div className="flex justify-center pt-3 pb-2">
+              <div className="w-10 h-1 bg-slate-200 dark:bg-slate-700 rounded-full" />
+            </div>
+            <div className="px-4 pb-3">
+              <ContributionCard
+                cycle={closedCardView}
+                contributions={contributions}
+                frequency={client?.contribution_frequency}
+                clientName={client?.full_name || ""}
+                businessName={bizName}
+                registrationCharge={client?.registration_charge || 0}
+              />
+            </div>
+            <div className="px-4 pb-4">
+              <button onClick={() => setClosedCardView(null)}
+                className="w-full py-3.5 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-2xl font-bold text-sm active:scale-[0.99] transition">
+                {t("common.close")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Closed savings cards — no longer active, still referenceable here */}
+      {closedCycles.length > 0 && (
+        <div className="mb-5">
+          <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2.5 px-1">Closed Savings Cards</p>
+          <div className="space-y-2">
+            {closedCycles.map(cyc => {
+              const stats = getCycleStats(cyc, contributions);
+              return (
+                <button key={cyc.id} onClick={() => setClosedCardView(cyc)}
+                  className="w-full text-left flex items-center justify-between gap-3 rounded-2xl border border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3 active:scale-[0.98] transition-transform">
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate">{cyc.label || "Personal Savings"}</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      {cyc.status === "settled" ? "Fully withdrawn" : "Complete"} · Saved {fmt(stats.saved)}
+                    </p>
+                  </div>
+                  <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-300 dark:text-slate-600 flex-shrink-0" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+                </button>
+              );
+            })}
+          </div>
+        </div>
       )}
 
       {/* Filter chips + PDF export */}

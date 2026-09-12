@@ -359,18 +359,20 @@ serve(async (req) => {
     if (action === "get-active-cycle") {
       const { client_id } = body as { client_id: string };
       if (!client_id) return json({ error: "client_id required" }, 400);
-      // Includes 'completed' (not just 'active') — a first_period cycle's
-      // funds only unlock for withdrawal once it hits target and flips to
-      // completed, so the client's own withdrawal picker needs to see it too,
-      // not just the owner's. Deposit-side screens filter back down to
-      // status==='active' themselves (you can't deposit into a finished
-      // cycle), so widening this doesn't loosen the deposit gate. 'settled'
-      // (fully paid out, nothing left) stays excluded on purpose.
+      // Includes every status, not just 'active': 'completed' (a first_period
+      // cycle's funds only unlock for withdrawal once it hits target and
+      // flips to completed, so the client's own withdrawal picker needs to
+      // see it, not just the owner's) and 'settled' (fully paid out, nothing
+      // left — kept only so it can be referenced under History). Every
+      // consumer of this list filters back down to whatever subset it
+      // actually needs (deposit screens to 'active' only, the withdrawal
+      // picker to 'active'+'completed', the main card view to 'active' only,
+      // History's closed-card reference to 'completed'+'settled') — nothing
+      // here loosens any of those gates.
       const { data: cycles } = await sb
         .from("ajo_cycles")
         .select("id, client_id, label, status, commission_model, commission_balance, expected_amount_per_period, frequency, length_periods, start_date, created_at, commission_percent")
         .eq("client_id", client_id)
-        .in("status", ["active", "completed"])
         .order("created_at", { ascending: true });
       return json({ cycles: cycles || [] });
     }
