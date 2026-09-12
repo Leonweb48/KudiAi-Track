@@ -1065,7 +1065,7 @@ function MoneyEsusuSimpleCard({ group, selected, onSelect, children }) {
   );
 }
 
-function PayContributionModal({ client, clientGroups = [], cycles = [], contributions = [], wallet, rotationsData = [], onTopUpWallet, onOpenCycle, onClose, onSuccess, onNeedPinSetup }) {
+function PayContributionModal({ client, clientGroups = [], cycles = [], contributions = [], wallet, rotationsData = [], onTopUpWallet, onActivateWallet, onOpenCycle, onClose, onSuccess, onNeedPinSetup }) {
   const t = useT();
   // ── Core state (unchanged from original) ──────────────────────────────────
   const [status,          setStatus]         = useState("idle");
@@ -1179,7 +1179,11 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], contribu
       {!wallet?.hasAccount ? (
         <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-3 py-2.5">
           <p className="text-[12px] font-bold text-amber-700 dark:text-amber-300">Your KudiAI Wallet isn't ready yet</p>
-          <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">Contributions are paid from your wallet — check back once it's activated.</p>
+          <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">Contributions are paid from your wallet. Saving needs no BVN — opening a wallet does, that's a CBN rule, not ours.</p>
+          <button onClick={() => { onClose(); onActivateWallet?.(); }}
+            className="w-full mt-2.5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold text-[12.5px] transition active:scale-[0.99]">
+            Activate wallet
+          </button>
         </div>
       ) : (parseFloat(customAmt) || 0) * 100 > wallet.balanceKobo ? (
         <button onClick={() => { onClose(); onTopUpWallet?.(); }}
@@ -1516,146 +1520,11 @@ function AjoMemberFirstLogin({ ajoClient }) {
   );
 }
 
-// ── Mandatory client-side KYC + wallet — every Ajo client opens their own
-// KudiAI Wallet the first time they log in. The owner only ever sets up the
-// bare account (name/email/contribution terms); BVN, NIN, address, and next
-// of kin are entered here, by the client themselves. ─────────────────────
+// ── Shared style constants for the wallet-activation form (BVN/NIN/address/
+// next of kin), collected inside MemberWalletSheet when a client chooses to
+// activate their wallet — never a mandatory gate on the portal. ───────────
 const KYC_INPUT = "w-full mt-1.5 px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500";
 const KYC_LABEL = "block text-xs font-semibold text-slate-600 dark:text-slate-400";
-
-function AjoClientKycOnboarding({ ajoClient, wallet, onDone }) {
-  const [bvn,      setBvn]      = useState("");
-  const [nin,      setNin]      = useState("");
-  const [address,  setAddress]  = useState(ajoClient?.address || "");
-  const [state,    setState]    = useState(ajoClient?.state || "");
-  const [lga,      setLga]      = useState(ajoClient?.lga || "");
-  const [ward,     setWard]     = useState(ajoClient?.ward || "");
-  const [kinName,  setKinName]  = useState(ajoClient?.next_of_kin_name || "");
-  const [kinPhone, setKinPhone] = useState(ajoClient?.next_of_kin_phone || "");
-  const [kinEmail, setKinEmail] = useState(ajoClient?.next_of_kin_email || "");
-  const [kinAddr,  setKinAddr]  = useState(ajoClient?.next_of_kin_address || "");
-  const [busy,     setBusy]     = useState(false);
-  const [error,    setError]    = useState("");
-
-  const lgas  = getLGAs(state);
-  const wards = getWards(state, lga);
-
-  const valid = /^\d{11}$/.test(bvn) && address.trim() && state && lga && ward
-    && kinName.trim() && kinPhone.trim();
-
-  const submit = async () => {
-    if (!valid) { setError("Fill in the required fields — BVN, address, and next of kin."); return; }
-    setError(""); setBusy(true);
-    try {
-      await ajoFn("update-profile", {
-        client_id: ajoClient.id,
-        fields: {
-          address: address.trim(), state, lga, ward, nin,
-          next_of_kin_name: kinName.trim(), next_of_kin_phone: kinPhone.trim(),
-          next_of_kin_email: kinEmail.trim(), next_of_kin_address: kinAddr.trim(),
-        },
-      });
-      await wallet.provisionAccount(bvn, nin);
-      onDone?.();
-    } catch (e) {
-      setError(e.message || "Could not complete setup. Please try again.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col">
-      <div className="bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 px-5 pb-5" style={{ paddingTop: "max(56px, env(safe-area-inset-top, 56px))" }}>
-        <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4" style={{ background: "linear-gradient(145deg, #16255A 0%, #1D3070 100%)" }}>
-          <Icon name="wallet" size={22} className="text-white" />
-        </div>
-        <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white">Open your KudiAI Wallet</h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-          Hi {ajoClient?.full_name?.split(" ")[0] || "there"}! A few details to verify your identity and open your
-          own dedicated account number — fund it, pay contributions from it, and cash out fee-free.
-        </p>
-      </div>
-
-      <div className="flex-1 overflow-y-auto px-5 pt-6 pb-10 space-y-4">
-        <div>
-          <label className={KYC_LABEL}>BVN <span className="text-red-500">*</span></label>
-          <input inputMode="numeric" value={bvn} onChange={e => setBvn(e.target.value.replace(/\D/g, "").slice(0, 11))}
-            placeholder="11-digit Bank Verification Number" className={KYC_INPUT + " tracking-wider"} />
-        </div>
-        <div>
-          <label className={KYC_LABEL}>NIN <span className="text-slate-300 font-normal">optional</span></label>
-          <input inputMode="numeric" value={nin} onChange={e => setNin(e.target.value.replace(/\D/g, "").slice(0, 11))}
-            placeholder="11-digit National ID Number" className={KYC_INPUT + " tracking-wider"} />
-        </div>
-
-        <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest pt-2">Address</p>
-        <div>
-          <label className={KYC_LABEL}>Street Address <span className="text-red-500">*</span></label>
-          <input value={address} onChange={e => setAddress(e.target.value)} placeholder="12 Market Road, Onitsha" className={KYC_INPUT} />
-        </div>
-        <div>
-          <label className={KYC_LABEL}>State <span className="text-red-500">*</span></label>
-          <select value={state} onChange={e => { setState(e.target.value); setLga(""); setWard(""); }} className={KYC_INPUT}>
-            <option value="">Select State…</option>
-            {STATES.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <label className={KYC_LABEL}>LGA <span className="text-red-500">*</span></label>
-            <select value={lga} disabled={!state} onChange={e => { setLga(e.target.value); setWard(""); }} className={KYC_INPUT + " disabled:opacity-50"}>
-              <option value="">{state ? "Select LGA…" : "State first"}</option>
-              {lgas.map(l => <option key={l} value={l}>{l}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className={KYC_LABEL}>Ward <span className="text-red-500">*</span></label>
-            <select value={ward} disabled={!lga} onChange={e => setWard(e.target.value)} className={KYC_INPUT + " disabled:opacity-50"}>
-              <option value="">{lga ? "Select Ward…" : "LGA first"}</option>
-              {wards.map(w => <option key={w} value={w}>{w}</option>)}
-            </select>
-          </div>
-        </div>
-
-        <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest pt-2">Next of Kin</p>
-        <div>
-          <label className={KYC_LABEL}>Full Name <span className="text-red-500">*</span></label>
-          <input value={kinName} onChange={e => setKinName(e.target.value)} placeholder="Next of kin name" className={KYC_INPUT} />
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <label className={KYC_LABEL}>Phone <span className="text-red-500">*</span></label>
-            <input type="tel" value={kinPhone} onChange={e => setKinPhone(e.target.value)} placeholder="08012345678" className={KYC_INPUT} />
-          </div>
-          <div>
-            <label className={KYC_LABEL}>Email <span className="text-slate-300 font-normal">optional</span></label>
-            <input type="email" value={kinEmail} onChange={e => setKinEmail(e.target.value)} placeholder="email@example.com" className={KYC_INPUT} />
-          </div>
-        </div>
-        <div>
-          <label className={KYC_LABEL}>Address <span className="text-slate-300 font-normal">optional</span></label>
-          <input value={kinAddr} onChange={e => setKinAddr(e.target.value)} placeholder="Next of kin address" className={KYC_INPUT} />
-        </div>
-
-        <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed pt-1">
-          Your BVN opens your account with our banking partner and isn't stored by KudiAI. The name and date of
-          birth on it must match what you enter here.
-        </p>
-
-        {error && <p className="text-xs text-red-500 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/40 rounded-xl px-4 py-2.5">{error}</p>}
-
-        <button onClick={submit} disabled={busy || wallet.busy || !valid}
-          className="w-full bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white font-bold rounded-2xl py-4 text-sm transition">
-          {busy || wallet.busy ? "Verifying & opening your wallet…" : "Open my wallet →"}
-        </button>
-        <button onClick={() => import("../utils/logout").then(m => m.performLogout())} className="w-full text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition text-center">
-          Sign out
-        </button>
-      </div>
-    </div>
-  );
-}
 
 // ── Change password modal ─────────────────────────────────────────────────
 function ChangePasswordModal({ onClose }) {
@@ -5108,18 +4977,73 @@ function OpenCycleSheet({ client, cycleCount = 0, onClose, onOpened }) {
   );
 }
 
+// ── Non-blocking, recurring nudge to activate the wallet — never a gate.
+// Dismiss is session-scoped so it reappears next visit rather than vanishing
+// for good the first time someone taps ×. ─────────────────────────────────
+function WalletActivationBanner({ onActivate, onDismiss }) {
+  return (
+    <div className="mx-4 mt-3 mb-1 bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-800/50 rounded-2xl px-4 py-3 flex items-start gap-3">
+      <div className="w-8 h-8 rounded-xl bg-brand-100 dark:bg-brand-900/40 flex items-center justify-center flex-shrink-0">
+        <Icon name="wallet" size={16} className="text-brand-600 dark:text-brand-300" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-[12.5px] font-bold text-brand-800 dark:text-brand-200">Open your KudiAI Wallet</p>
+        <p className="text-[11px] text-brand-700/80 dark:text-brand-300/70 mt-0.5 leading-snug">
+          Saving needs no BVN. A digital wallet does — that's a CBN rule for bank-linked accounts, not a KudiAI one.
+        </p>
+        <button onClick={onActivate}
+          className="mt-2 text-[11px] font-bold text-white bg-brand-600 hover:bg-brand-700 rounded-xl px-3 py-1.5 transition active:scale-[0.97]">
+          Activate now
+        </button>
+      </div>
+      <button onClick={onDismiss} className="text-brand-400 hover:text-brand-600 flex-shrink-0 p-1">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="w-3.5 h-3.5">
+          <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
 // ── KudiAI Wallet — activation (BVN) or balance/actions, for the client ────
-function MemberWalletSheet({ wallet, testMode, businessName, ownerName, onClose, onFund, onTransfer }) {
+function MemberWalletSheet({ wallet, testMode, client, businessName, ownerName, onClose, onProfileUpdate, onFund, onTransfer }) {
   const [bvn, setBvn] = useState("");
   const [nin, setNin] = useState("");
+  const [address,  setAddress]  = useState(client?.address || "");
+  const [state,    setState]    = useState(client?.state || "");
+  const [lga,      setLga]      = useState(client?.lga || "");
+  const [ward,     setWard]     = useState(client?.ward || "");
+  const [kinName,  setKinName]  = useState(client?.next_of_kin_name || "");
+  const [kinPhone, setKinPhone] = useState(client?.next_of_kin_phone || "");
+  const [kinEmail, setKinEmail] = useState(client?.next_of_kin_email || "");
+  const [kinAddr,  setKinAddr]  = useState(client?.next_of_kin_address || "");
+  const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [receipt, setReceipt] = useState(null);
+
+  const lgas  = getLGAs(state);
+  const wards = getWards(state, lga);
+  const kycValid = address.trim() && state && lga && ward && kinName.trim() && kinPhone.trim();
 
   const activate = async () => {
     setErr("");
     if (!testMode && !/^\d{11}$/.test(bvn)) { setErr("Enter your 11-digit BVN"); return; }
-    try { await wallet.provisionAccount(bvn, nin); }
-    catch (e) { setErr(e.message || "Could not activate your wallet"); }
+    if (!kycValid) { setErr("Fill in address and next of kin — required to open the wallet."); return; }
+    setBusy(true);
+    try {
+      const fields = {
+        address: address.trim(), state, lga, ward, nin,
+        next_of_kin_name: kinName.trim(), next_of_kin_phone: kinPhone.trim(),
+        next_of_kin_email: kinEmail.trim(), next_of_kin_address: kinAddr.trim(),
+      };
+      await ajoFn("update-profile", { client_id: client.id, fields });
+      onProfileUpdate?.(fields);
+      await wallet.provisionAccount(bvn, nin);
+    } catch (e) {
+      setErr(e.message || "Could not activate your wallet");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const openReceipt = (row) => setReceipt(wallet.receiptFor(row, businessName, ownerName));
@@ -5131,6 +5055,10 @@ function MemberWalletSheet({ wallet, testMode, businessName, ownerName, onClose,
         <div className="h-40 rounded-2xl bg-slate-100 dark:bg-slate-800 animate-pulse" />
       ) : !wallet.hasAccount ? (
         <div>
+          <p className="text-[13px] text-slate-500 dark:text-slate-400 mb-1 leading-relaxed">
+            Saving with us needs no BVN. A digital wallet does — that's a CBN rule for bank-linked accounts, not a
+            KudiAI one.
+          </p>
           <p className="text-[13px] text-slate-500 dark:text-slate-400 mb-4 leading-relaxed">
             Get your own dedicated account number. Fund it, pay your savings contributions from it, and cash out
             to any bank — fee-free.
@@ -5150,15 +5078,68 @@ function MemberWalletSheet({ wallet, testMode, businessName, ownerName, onClose,
                   className="w-full mt-1.5 px-4 py-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/60 text-slate-900 dark:text-slate-50 text-[16px] font-semibold tracking-wider placeholder:font-normal placeholder:tracking-normal placeholder:text-slate-400 focus:outline-none focus:border-brand-400" />
               </div>
               <p className="text-[11px] text-slate-400 leading-relaxed">
-                Your BVN opens your account with our banking partner and isn't stored by KudiAI. The name and date
-                of birth on it must match your profile.
+                Your BVN is required by the Central Bank of Nigeria to open any bank-linked account — it isn't a
+                KudiAI requirement, and your savings themselves need no BVN at all. It isn't stored by KudiAI; the
+                name and date of birth on it must match your profile.
               </p>
             </div>
           )}
+
+          <div className="space-y-3 mb-4">
+            <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Address</p>
+            <div>
+              <label className={KYC_LABEL}>Street Address <span className="text-red-500">*</span></label>
+              <input value={address} onChange={e => setAddress(e.target.value)} placeholder="12 Market Road, Onitsha" className={KYC_INPUT} />
+            </div>
+            <div>
+              <label className={KYC_LABEL}>State <span className="text-red-500">*</span></label>
+              <select value={state} onChange={e => { setState(e.target.value); setLga(""); setWard(""); }} className={KYC_INPUT}>
+                <option value="">Select State…</option>
+                {STATES.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className={KYC_LABEL}>LGA <span className="text-red-500">*</span></label>
+                <select value={lga} disabled={!state} onChange={e => { setLga(e.target.value); setWard(""); }} className={KYC_INPUT + " disabled:opacity-50"}>
+                  <option value="">{state ? "Select LGA…" : "State first"}</option>
+                  {lgas.map(l => <option key={l} value={l}>{l}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={KYC_LABEL}>Ward <span className="text-red-500">*</span></label>
+                <select value={ward} disabled={!lga} onChange={e => setWard(e.target.value)} className={KYC_INPUT + " disabled:opacity-50"}>
+                  <option value="">{lga ? "Select Ward…" : "LGA first"}</option>
+                  {wards.map(w => <option key={w} value={w}>{w}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest pt-2">Next of Kin</p>
+            <div>
+              <label className={KYC_LABEL}>Full Name <span className="text-red-500">*</span></label>
+              <input value={kinName} onChange={e => setKinName(e.target.value)} placeholder="Next of kin name" className={KYC_INPUT} />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className={KYC_LABEL}>Phone <span className="text-red-500">*</span></label>
+                <input type="tel" value={kinPhone} onChange={e => setKinPhone(e.target.value)} placeholder="08012345678" className={KYC_INPUT} />
+              </div>
+              <div>
+                <label className={KYC_LABEL}>Email <span className="text-slate-300 font-normal">optional</span></label>
+                <input type="email" value={kinEmail} onChange={e => setKinEmail(e.target.value)} placeholder="email@example.com" className={KYC_INPUT} />
+              </div>
+            </div>
+            <div>
+              <label className={KYC_LABEL}>Address <span className="text-slate-300 font-normal">optional</span></label>
+              <input value={kinAddr} onChange={e => setKinAddr(e.target.value)} placeholder="Next of kin address" className={KYC_INPUT} />
+            </div>
+          </div>
+
           {err && <p className="text-[12px] text-red-500 mb-3">{err}</p>}
-          <button onClick={activate} disabled={wallet.busy}
+          <button onClick={activate} disabled={busy || wallet.busy}
             className="w-full bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white font-bold rounded-2xl py-4 text-[15px] transition-colors">
-            {wallet.busy ? "Activating…" : "Activate wallet"}
+            {busy || wallet.busy ? "Activating…" : "Activate wallet"}
           </button>
         </div>
       ) : (
@@ -5229,6 +5210,11 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
   const [showPwdModal,     setShowPwdModal]     = useState(false);
   const [showWallet,       setShowWallet]       = useState(false);
   const [walletSheet,      setWalletSheet]      = useState(null); // "fund" | "transfer" | "receive" | null
+  // Session-scoped, not permanent — the nudge reappears next visit so it stays
+  // a reminder rather than a one-time dismiss (mirrors ajo_balance_hidden below).
+  const [walletBannerDismissed, setWalletBannerDismissed] = useState(
+    () => sessionStorage.getItem("ajo_wallet_banner_dismissed") === "1"
+  );
 
   // KudiAI Wallet — same wallet infra as the owner side. client_user_id IS a
   // real auth.users id, so this "just works" once the platform flag is on.
@@ -5474,33 +5460,19 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
   }, [ajoClient?.id, ajoClient?.owner_id, ajoClient?.user_id, refreshWithdrawRequests]); // eslint-disable-line react-hooks/exhaustive-deps
 
   usePushNotifications(session?.user?.id ?? null, (dl) => {
+    if (dl?.openWallet) setShowWallet(true);
     if (!dl?.tab) return;
     setTab(["home","bills","history","me"].includes(dl.tab) ? dl.tab : "home");
   });
 
   if (mustChange) return <AjoMemberFirstLogin ajoClient={ajoClient} />;
 
-  // Every Ajo client opens their own KudiAI Wallet — mandatory, client-side
-  // KYC (BVN/NIN/address/next of kin), no owner involvement. Wait for the
-  // wallet to load before deciding, so this doesn't flash on every refresh.
-  if (walletEnabled) {
-    if (wallet.loading) {
-      return (
-        <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center">
-          <div className="w-8 h-8 border-[3px] border-brand-500 border-t-transparent rounded-full animate-spin" />
-        </div>
-      );
-    }
-    if (!wallet.hasAccount) {
-      return (
-        <AjoClientKycOnboarding
-          ajoClient={client || ajoClient}
-          wallet={wallet}
-          onDone={() => setReloadKey(k => k + 1)}
-        />
-      );
-    }
-  }
+  // Wallet activation is opt-in, not a portal gate — a client can save,
+  // contribute, and withdraw with no wallet at all. BVN is only ever asked
+  // for at the moment they choose to activate (see MemberWalletSheet /
+  // WalletActivationBanner), because that's the one place it's actually a
+  // real requirement (Flutterwave/CBN, for a bank-linked account) — not for
+  // using the savings program itself.
 
   const clientId      = ajoClient?.id;
 
@@ -5522,6 +5494,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
             <NotificationCenter
               userId={client?.client_user_id ?? session?.user?.id ?? null}
               onNavigate={(dl) => {
+                if (dl?.openWallet) setShowWallet(true);
                 if (!dl?.tab) return;
                 setTab(["home","bills","history","me"].includes(dl.tab) ? dl.tab : "home");
               }}
@@ -5543,6 +5516,13 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
           syncing={syncing}
           syncResult={syncResult}
         />
+
+        {walletEnabled && !wallet.loading && !wallet.hasAccount && !walletBannerDismissed && (
+          <WalletActivationBanner
+            onActivate={() => setShowWallet(true)}
+            onDismiss={() => { sessionStorage.setItem("ajo_wallet_banner_dismissed", "1"); setWalletBannerDismissed(true); }}
+          />
+        )}
 
         {/* Content */}
         <main className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
@@ -5688,6 +5668,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
           wallet={wallet}
           rotationsData={rotationsData}
           onTopUpWallet={() => setWalletSheet("fund")}
+          onActivateWallet={() => setShowWallet(true)}
           onOpenCycle={() => setShowOpenCycle(true)}
           onClose={() => setShowPay(false)}
           onSuccess={(ref, updatedClient) => {
@@ -5703,9 +5684,11 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
         <MemberWalletSheet
           wallet={wallet}
           testMode={walletTestMode}
+          client={client}
           businessName={client?.full_name}
           ownerName={client?.full_name}
           onClose={() => setShowWallet(false)}
+          onProfileUpdate={(fields) => setClient(prev => ({ ...prev, ...fields }))}
           onFund={() => { setShowWallet(false); setWalletSheet("fund"); }}
           onTransfer={() => { setShowWallet(false); setWalletSheet("transfer"); }}
         />

@@ -1,0 +1,25 @@
+name: Ajo Wallet Activation Reminders
+
+# Nudges Ajo/Esusu clients who have a portal login but haven't activated
+# their KudiAI Wallet yet — every 3 days. Scheduled here rather than via
+# pg_cron: this repo has no existing pattern for Postgres calling out to an
+# edge function (no pg_net anywhere), so this reuses the CI-does-scheduled-
+# things pattern already established for deploys/migrations instead of
+# adding pg_net + Vault as new production-database infrastructure.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 9 */3 * *"   # ~9am UTC, every 3 days
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call ajo-wallet-reminders
+        run: |
+          curl -sS -X POST "https://${{ secrets.SUPABASE_PROJECT_ID }}.supabase.co/functions/v1/ajo-wallet-reminders" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{}' \
+            --fail-with-body
