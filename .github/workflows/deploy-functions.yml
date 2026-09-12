@@ -55,6 +55,7 @@ jobs:
           deploy peyflex
           deploy pin-manager
           deploy notify-send
+          deploy sms-send
           deploy verify-identity       --no-verify-jwt
           deploy flutterwave           --no-verify-jwt
           deploy flutterwave-webhook   --no-verify-jwt
