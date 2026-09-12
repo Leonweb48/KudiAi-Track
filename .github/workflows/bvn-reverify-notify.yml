@@ -1,0 +1,21 @@
+name: BVN Reverify Notify (one-time)
+
+# Manual only — no schedule. Run once from the Actions tab after the
+# bvn_reverify_existing_wallets migration has been applied, to nudge every
+# existing wallet holder (business owners + Ajo/Esusu clients) to reverify
+# their BVN. Does not block anyone's wallet — notification only.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call bvn-reverify-notify
+        run: |
+          curl -sS -X POST "https://${{ secrets.SUPABASE_PROJECT_ID }}.supabase.co/functions/v1/bvn-reverify-notify" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{}' \
+            --fail-with-body

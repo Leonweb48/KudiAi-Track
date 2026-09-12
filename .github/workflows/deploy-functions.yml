@@ -57,6 +57,7 @@ jobs:
           deploy notify-send
           deploy sms-send
           deploy ajo-wallet-reminders
+          deploy bvn-reverify-notify
           deploy verify-identity       --no-verify-jwt
           deploy flutterwave           --no-verify-jwt
           deploy flutterwave-webhook   --no-verify-jwt
