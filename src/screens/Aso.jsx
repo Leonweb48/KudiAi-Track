@@ -38,7 +38,7 @@ const BLANK = {
 };
 
 const BLANK_GROUP = {
-  name: "", description: "", contribution_amount: "", contribution_frequency: "monthly",
+  name: "", description: "", contribution_amount: "", contribution_frequency: "monthly", custom_interval_days: "",
   group_mode: "savings", privacy_show_names: true, privacy_show_amounts: false,
 };
 
@@ -1177,9 +1177,9 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     });
   };
 
-  const handleStartRound = async (turns) => {
+  const handleStartRound = async (turns, payoutSlotsPerRound) => {
     const { data, error } = await supabase.functions.invoke("ajo-write", {
-      body: { action: "start_round", group_id: showRotation.id, turns },
+      body: { action: "start_round", group_id: showRotation.id, turns, payout_slots_per_round: payoutSlotsPerRound || 1 },
     });
     if (error || !data?.ok) throw new Error(data?.error || error?.message || "Failed to start round");
     await loadRotation(showRotation.id);
@@ -1221,6 +1221,10 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
   const saveGroup = async () => {
     if (!gf.name) { setGroupError("Group name is required"); return; }
+    if (gf.contribution_frequency === "custom" && !(Number(gf.custom_interval_days) > 0)) {
+      setGroupError("Enter how many days between contributions");
+      return;
+    }
     if (!profile?.id) return;
     const asoLimit = featureLimit(plan, "aso");
     if (asoLimit !== Infinity && groups.length >= asoLimit) {
@@ -1238,6 +1242,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           description: gf.description || null,
           contribution_amount: gf.contribution_amount ? Number(gf.contribution_amount) : null,
           contribution_frequency: gf.contribution_frequency || "monthly",
+          custom_interval_days: gf.contribution_frequency === "custom" ? Number(gf.custom_interval_days) : null,
           group_mode: gf.group_mode || "savings",
           privacy_show_names:   gf.privacy_show_names  !== false,
           privacy_show_amounts: gf.privacy_show_amounts === true,
@@ -4263,8 +4268,14 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                       <option value="daily">Daily</option>
                       <option value="weekly">Weekly</option>
                       <option value="monthly">Monthly</option>
+                      <option value="custom">Custom (days)</option>
                     </Field>
                   </div>
+
+                  {gf.contribution_frequency === "custom" && (
+                    <Field label="Every how many days? *" type="number" min={1} value={gf.custom_interval_days}
+                      onChange={e => setG("custom_interval_days", e.target.value)} placeholder="e.g. 3" />
+                  )}
 
                   <div className="flex gap-2 pt-1">
                     <button onClick={() => { setShowGroupAdd(false); setGf(BLANK_GROUP); setGroupError(""); }}

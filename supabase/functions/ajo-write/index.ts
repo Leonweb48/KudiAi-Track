@@ -1466,8 +1466,8 @@ serve(async (req: Request) => {
 
   // ── Esusu: start_round ─────────────────────────────────────────────────
   if (action === "start_round") {
-    const { group_id: srGroupId, turns: srTurns } =
-      params as { group_id: string; turns: Array<{ client_id: string; expected_payout_date?: string }> };
+    const { group_id: srGroupId, turns: srTurns, payout_slots_per_round: srSlots } =
+      params as { group_id: string; turns: Array<{ client_id: string; expected_payout_date?: string }>; payout_slots_per_round?: number };
     if (!srGroupId) return json({ ok: false, error: "group_id required" }, 400);
     if (!srTurns?.length) return json({ ok: false, error: "turns array required" }, 400);
 
@@ -1481,6 +1481,7 @@ serve(async (req: Request) => {
       p_group_id: srGroupId,
       p_owner_id: grpRow.owner_id as string,
       p_turns:    srTurns,
+      p_payout_slots_per_round: srSlots && srSlots > 0 ? srSlots : 1,
     });
     if (srErr) return json({ ok: false, error: srErr.message });
     return json(srData);
@@ -1644,35 +1645,58 @@ serve(async (req: Request) => {
     // Payout committed — notifications are best-effort; never let a crash here hide the success
     try {
     // Gather all context needed for rich payout emails
-    const epResult            = epData as Record<string, unknown>;
-    const groupId             = turnRow.group_id as string;
-    const roundId             = turnRow.round_id as string;
-    const currentPosition     = (turnRow.position as number) || 0;
-    const beneficiaryClientId = epResult.beneficiary_client_id as string;
-    const today               = new Date().toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" });
+    const epResult    = epData as Record<string, unknown>;
+    const groupId     = turnRow.group_id as string;
+    const roundId     = turnRow.round_id as string;
+    const beneficiaries = (epResult.beneficiaries as Array<{
+      client_id: string; name: string; email: string; position: number; amount: number; payout_id: string;
+    }>) || [];
+    const beneficiaryIdSet = new Set(beneficiaries.map(b => b.client_id));
+    const nextTurnIds = (epResult.next_turn_ids as string[]) || [];
+    const today       = new Date().toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" });
 
-    const [ownerRow, groupRow, allMembers, beneficiaryRow, nextTurnRow, roundRow, allTurnRows, staffRow] = await Promise.all([
+    const [ownerRow, groupRow, membershipRows, legacyMembers, roundRow, allTurnRows, staffRow, nextTurnRows, balanceRows] = await Promise.all([
       sb.from("profiles").select("email, business_name").eq("id", ownerId).maybeSingle().then(r => r.data),
       sb.from("ajo_groups").select("name, group_mode").eq("id", groupId).maybeSingle().then(r => r.data),
+      sb.from("aso_client_group_memberships").select("client_id").eq("group_id", groupId).eq("status", "active").then(r => r.data || []),
       sb.from("aso_clients").select("id, full_name, email, client_user_id").eq("ajo_group_id", groupId).then(r => r.data || []),
-      sb.from("aso_clients").select("current_balance").eq("id", beneficiaryClientId).maybeSingle().then(r => r.data),
-      epResult.next_turn_id
-        ? sb.from("ajo_group_turns").select("position, expected_payout_date, client_id").eq("id", epResult.next_turn_id as string).maybeSingle().then(r => r.data)
-        : Promise.resolve(null),
       sb.from("ajo_group_rounds").select("round_number").eq("id", roundId).maybeSingle().then(r => r.data),
       sb.from("ajo_group_turns").select("status").eq("round_id", roundId).then(r => r.data || []),
       user.id !== ownerId
         ? sb.from("staff").select("email, full_name").eq("user_id", user.id).eq("owner_id", ownerId).maybeSingle().then(r => r.data)
         : Promise.resolve(null),
+      nextTurnIds.length
+        ? sb.from("ajo_group_turns").select("position, expected_payout_date, client_id").in("id", nextTurnIds).order("position", { ascending: true }).then(r => r.data || [])
+        : Promise.resolve([]),
+      beneficiaries.length
+        ? sb.from("aso_clients").select("id, current_balance").in("id", beneficiaries.map(b => b.client_id)).then(r => r.data || [])
+        : Promise.resolve([]),
     ]);
+
+    // Members: junction table (source of truth) unioned with the legacy ajo_group_id
+    // column, matching the membership resolution ajo_execute_payout itself uses —
+    // the old code here only checked the legacy column and silently under-notified
+    // junction-table-only members.
+    const membershipClientIds = (membershipRows as Array<{ client_id: string }>).map(m => m.client_id);
+    const membershipMembers = membershipClientIds.length
+      ? ((await sb.from("aso_clients").select("id, full_name, email, client_user_id").in("id", membershipClientIds)).data || [])
+      : [];
+    const memberMap = new Map<string, { id: string; full_name: string; email: string; client_user_id?: string }>();
+    [...(legacyMembers as Array<{ id: string; full_name: string; email: string; client_user_id?: string }>),
+     ...(membershipMembers as Array<{ id: string; full_name: string; email: string; client_user_id?: string }>)]
+      .forEach(m => memberMap.set(m.id, m));
+    const allMembers = Array.from(memberMap.values());
 
     // Build clientId → name and clientId → client_user_id maps from members already fetched
     const clientNameMap:   Record<string, string> = {};
     const clientAuthIdMap: Record<string, string> = {};
-    (allMembers as Array<{ id: string; full_name: string; client_user_id?: string }>).forEach(m => {
+    allMembers.forEach(m => {
       clientNameMap[m.id]   = m.full_name;
       if (m.client_user_id) clientAuthIdMap[m.id] = m.client_user_id;
     });
+
+    const balanceMap: Record<string, number> = {};
+    (balanceRows as Array<{ id: string; current_balance: number }>).forEach(r => { balanceMap[r.id] = r.current_balance || 0; });
 
     const businessName      = (ownerRow  as { business_name?: string } | null)?.business_name || "";
     const ownerEmail        = (ownerRow  as { email?: string }         | null)?.email          || "";
@@ -1680,16 +1704,16 @@ serve(async (req: Request) => {
     const groupMode         = (groupRow  as { group_mode?: string }    | null)?.group_mode     || "rotating";
     const roundNumber       = (roundRow  as { round_number?: number }  | null)?.round_number   || 1;
     const potAmount         = epResult.pot_amount as number;
-    const newBalance        = (beneficiaryRow as { current_balance?: number } | null)?.current_balance || 0;
     const staffEmail        = (staffRow  as { email?: string }         | null)?.email          || "";
     const staffName         = (staffRow  as { full_name?: string }     | null)?.full_name      || "";
     const executedBy        = staffName || "Owner";
     const totalTurns        = (allTurnRows as Array<{ status: string }>).length;
     const paidTurns         = (allTurnRows as Array<{ status: string }>).filter(t => t.status === "paid").length;
-    const nextClientId      = (nextTurnRow as { client_id?: string }           | null)?.client_id           || "";
-    const nextPosition      = (nextTurnRow as { position?: number }            | null)?.position            || 0;
-    const nextPayoutDate    = (nextTurnRow as { expected_payout_date?: string }| null)?.expected_payout_date || "";
-    const nextReceiverName  = nextClientId ? (clientNameMap[nextClientId] || "") : "";
+    const nextTurnsArr      = nextTurnRows as Array<{ position: number; expected_payout_date?: string; client_id: string }>;
+    const nextReceiverName  = nextTurnsArr.map(t => clientNameMap[t.client_id] || "").filter(Boolean).join(", ");
+    const nextPosition      = nextTurnsArr[0]?.position || 0;
+    const nextPayoutDate    = nextTurnsArr[0]?.expected_payout_date || "";
+    const beneficiaryNames  = beneficiaries.map(b => b.name).filter(Boolean).join(", ");
 
     const debtors = (epResult.debtors as Array<{ client_id: string; client_name: string; client_email: string; amount_owed: number }>) || [];
 
@@ -1708,25 +1732,36 @@ serve(async (req: Request) => {
       date:                today,
     };
 
-    // 1. Full payout receipt to beneficiary (includes new balance + who's next)
-    await fireAjoEmail("ajo_esusu_payout_receipt", {
-      ...sharedContext,
-      beneficiary_name:   epResult.beneficiary_name  || "",
-      beneficiary_email:  epResult.beneficiary_email || "",
-      pot_amount:         potAmount,
-      new_balance:        newBalance,
-      position:           currentPosition,
-      debtor_count:       epResult.debtor_count || 0,
-    });
+    // 1. Full payout receipt to each winner — their own share, not the collective pot —
+    //    plus an in-app bell each. Unchanged template, called once per beneficiary.
+    for (const b of beneficiaries) {
+      if (b.email) {
+        await fireAjoEmail("ajo_esusu_payout_receipt", {
+          ...sharedContext,
+          beneficiary_name:   b.name  || "",
+          beneficiary_email:  b.email,
+          pot_amount:         b.amount,
+          new_balance:        balanceMap[b.client_id] || 0,
+          position:           b.position,
+          debtor_count:       epResult.debtor_count || 0,
+        });
+      }
+      const winnerAuthId = clientAuthIdMap[b.client_id] || await resolveClientUserId(sb, b.client_id);
+      await notifyUser(sb, winnerAuthId, {
+        type: "payout_received", title: "Esusu Payout Received",
+        body: `₦${Number(b.amount).toLocaleString("en-NG")} has been credited to your account`,
+        priority: "high", deepLink: { tab: "contributions" }, category: "savings",
+      });
+    }
 
-    // 2. Notification to every other group member (full details + who's next)
-    for (const member of allMembers as Array<{ id: string; full_name: string; email: string }>) {
-      if (!member.email || member.id === beneficiaryClientId) continue;
+    // 2. Notification to every other (non-winning) group member — lists all winners
+    for (const member of allMembers) {
+      if (!member.email || beneficiaryIdSet.has(member.id)) continue;
       await fireAjoEmail("ajo_esusu_member_payout_notify", {
         ...sharedContext,
         member_name:       member.full_name || "",
         member_email:      member.email,
-        beneficiary_name:  epResult.beneficiary_name || "",
+        beneficiary_name:  beneficiaryNames,
         pot_amount:        potAmount,
       });
     }
@@ -1745,16 +1780,17 @@ serve(async (req: Request) => {
     // 4. Full owner summary with all details
     await fireAjoEmail("ajo_esusu_payout_owner_summary", {
       ...sharedContext,
-      owner_email:            ownerEmail,
-      beneficiary_name:       epResult.beneficiary_name  || "",
-      beneficiary_email:      epResult.beneficiary_email || "",
-      beneficiary_new_balance: newBalance,
-      pot_amount:             potAmount,
-      position:               currentPosition,
-      debtor_count:           epResult.debtor_count || 0,
+      owner_email:             ownerEmail,
+      beneficiary_name:        beneficiaryNames,
+      beneficiary_email:       beneficiaries.map(b => b.email).filter(Boolean).join(", "),
+      beneficiary_new_balance: balanceMap[beneficiaries[0]?.client_id] || 0,
+      pot_amount:              potAmount,
+      position:                beneficiaries[0]?.position || 0,
+      winner_count:            beneficiaries.length,
+      debtor_count:            epResult.debtor_count || 0,
       debtors,
-      executed_by:            executedBy,
-      executed_by_email:      staffEmail || ownerEmail,
+      executed_by:             executedBy,
+      executed_by_email:       staffEmail || ownerEmail,
     });
 
     // 5. Staff notification — only when a staff member (not owner) executed the payout
@@ -1763,20 +1799,12 @@ serve(async (req: Request) => {
         ...sharedContext,
         staff_name:        staffName,
         staff_email:       staffEmail,
-        beneficiary_name:  epResult.beneficiary_name || "",
+        beneficiary_name:  beneficiaryNames,
         pot_amount:        potAmount,
-        position:          currentPosition,
+        position:          beneficiaries[0]?.position || 0,
         debtor_count:      epResult.debtor_count || 0,
       });
     }
-
-    // 6. In-app bell for the beneficiary
-    const epBeneficiaryAuthId = clientAuthIdMap[beneficiaryClientId] || await resolveClientUserId(sb, beneficiaryClientId);
-    await notifyUser(sb, epBeneficiaryAuthId, {
-      type: "payout_received", title: "Esusu Payout Received",
-      body: `₦${Number(potAmount).toLocaleString("en-NG")} has been credited to your account`,
-      priority: "high", deepLink: { tab: "contributions" }, category: "savings",
-    });
 
     } catch (_notifErr) {
       // Notification or email context build threw — payout already committed, return success

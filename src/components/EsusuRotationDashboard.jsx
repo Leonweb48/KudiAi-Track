@@ -30,11 +30,17 @@ function Spin() {
 
 // ── Setup view ─────────────────────────────────────────────────────────────
 // Used before a round exists. Owner drags-to-order members and sets dates.
-function SetupView({ members = [], loading, onStart }) {
+function SetupView({ members = [], loading, onStart, contributionAmount = 0 }) {
   const [order,   setOrder]   = useState(members.map(m => m.id));
   const [dates,   setDates]   = useState({});
   const [saving,  setSaving]  = useState(false);
   const [err,     setErr]     = useState("");
+
+  // Winners per round / amount-per-winner are two views of the same number —
+  // editing either recomputes the other from memberCount × contributionAmount.
+  const memberCount = order.length;
+  const totalPot     = memberCount * Number(contributionAmount || 0);
+  const [slots, setSlots] = useState(1);
 
   const memberMap = useMemo(() => {
     const m = {};
@@ -50,15 +56,33 @@ function SetupView({ members = [], loading, onStart }) {
     setOrder(next);
   };
 
+  const divisible = memberCount > 0 && slots > 0 && memberCount % slots === 0;
+  const perWinner = divisible ? totalPot / slots : null;
+
+  const handleSlotsChange = (v) => {
+    const n = Math.max(1, Math.round(Number(v) || 1));
+    setSlots(n);
+  };
+  const handlePerWinnerChange = (v) => {
+    const amt = Number(v);
+    if (!amt || amt <= 0 || !totalPot) return;
+    const derivedSlots = Math.max(1, Math.round(totalPot / amt));
+    setSlots(derivedSlots);
+  };
+
   const handleStart = async () => {
     if (order.length === 0) { setErr("Add members to the group first"); return; }
+    if (!divisible) {
+      setErr(`Member count (${memberCount}) must be an exact multiple of winners-per-round (${slots})`);
+      return;
+    }
     setSaving(true); setErr("");
     try {
       const turns = order.map(id => ({
         client_id:            id,
         expected_payout_date: dates[id] || null,
       }));
-      await onStart(turns);
+      await onStart(turns, slots);
     } catch (e) {
       setErr(e.message || "Failed to start round");
     } finally {
@@ -134,9 +158,42 @@ function SetupView({ members = [], loading, onStart }) {
         })}
       </div>
 
+      <div className="bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-3.5 space-y-2.5">
+        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Winners per round</p>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="block text-[10px] text-slate-400 mb-1">Winners</label>
+            <input
+              type="number" min={1} step={1} value={slots}
+              onChange={e => handleSlotsChange(e.target.value)}
+              className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-sm font-bold text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500/30"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] text-slate-400 mb-1">₦ per winner</label>
+            <input
+              type="number" min={0} step="0.01"
+              value={perWinner != null ? perWinner : ""}
+              onChange={e => handlePerWinnerChange(e.target.value)}
+              placeholder="—"
+              className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-sm font-bold text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500/30"
+            />
+          </div>
+        </div>
+        {divisible ? (
+          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+            {memberCount} members ÷ {slots} winner{slots > 1 ? "s" : ""}/round = {fmtCur(totalPot)} pot → {fmtCur(perWinner)} each. The circle completes in {memberCount / slots} round{memberCount / slots > 1 ? "s" : ""}.
+          </p>
+        ) : (
+          <p className="text-[11px] text-red-500">
+            {memberCount} members isn't an exact multiple of {slots} — adjust winners per round or the member list.
+          </p>
+        )}
+      </div>
+
       <button
         onClick={handleStart}
-        disabled={saving || members.length === 0}
+        disabled={saving || members.length === 0 || !divisible}
         className="w-full py-3 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white rounded-2xl font-bold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2">
         {saving && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
         {saving ? "Starting Round…" : "Start Round 1"}
@@ -213,11 +270,12 @@ export default function EsusuRotationDashboard({
   pending_debts.forEach(d => { debtMap[d.debtor_client_id] = Number(d.amount || 0); });
   const showNames = isOwner || (group?.privacy_show_names !== false);
 
-  const currentTurn   = useMemo(() => turns.find(t => t.status === "current"),  [turns]);
+  const slots         = round?.payout_slots_per_round || 1;
+  const currentTurns  = useMemo(() => [...turns].filter(t => t.status === "current").sort((a, b) => a.position - b.position), [turns]);
   const upcomingCount = useMemo(() => turns.filter(t => t.status === "upcoming").length, [turns]);
   const paidCount     = useMemo(() => turns.filter(t => t.status === "paid").length,     [turns]);
-  const nextTurn      = useMemo(() => [...turns].filter(t => t.status === "upcoming").sort((a, b) => a.position - b.position)[0] || null, [turns]);
-  const myTurnIsNext  = nextTurn?.client_id === myClientId;
+  const nextTurns     = useMemo(() => [...turns].filter(t => t.status === "upcoming").sort((a, b) => a.position - b.position).slice(0, slots), [turns, slots]);
+  const myTurnIsNext  = nextTurns.some(t => t.client_id === myClientId);
 
   const handlePin = async (pin) => {
     if (!pinFor) return;
@@ -227,14 +285,19 @@ export default function EsusuRotationDashboard({
         const result = await onExecutePayout(pinFor.turnId, pin);
         if (result?.ok) {
           setPayoutBlocked(null);
+          const winners = result.beneficiaries || [];
+          const perWinnerAmt = result.per_winner_amount ?? result.pot_amount;
           setPayoutResult({
             ...result,
             _overlay: {
               type: "success",
               title: "Payout Completed",
-              amount: result.pot_amount,
-              counterparty: result.beneficiary_name,
-              note: result.round_complete ? "Round complete — all members have been paid." : undefined,
+              amount: winners.length > 1 ? perWinnerAmt : result.pot_amount,
+              counterparty: winners.map(w => w.name).filter(Boolean).join(", ") || undefined,
+              note: [
+                winners.length > 1 ? `${fmtCur(perWinnerAmt)} each × ${winners.length} winners` : null,
+                result.round_complete ? "Round complete — all members have been paid." : null,
+              ].filter(Boolean).join(" · ") || undefined,
             },
           });
           onRefresh?.();
@@ -291,7 +354,7 @@ export default function EsusuRotationDashboard({
     setLocalOrder(next);
   };
   const confirmReorder = () => {
-    const currentMaxPos = currentTurn ? currentTurn.position : 0;
+    const currentMaxPos = currentTurns.length ? Math.max(...currentTurns.map(t => t.position)) : 0;
     const newOrder = (localOrder || []).map((tid, i) => ({
       turn_id:  tid,
       position: currentMaxPos + i + 1,
@@ -343,6 +406,7 @@ export default function EsusuRotationDashboard({
         members={members}
         loading={false}
         onStart={onStartRound}
+        contributionAmount={group?.contribution_amount}
       />
     );
   }
@@ -354,7 +418,9 @@ export default function EsusuRotationDashboard({
     <>
       {/* Round label */}
       <div className="flex items-center justify-between px-1">
-        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Round {round.round_number} · {roundProgress}</p>
+        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+          Round {round.round_number} · {roundProgress}{slots > 1 ? ` · ${slots} winners/round` : ""}
+        </p>
         {isOwner && (
           <span className="text-[10px] text-brand-500 dark:text-brand-400 font-bold">
             {round.status === "active" ? "Active" : "Closed"}
@@ -366,18 +432,20 @@ export default function EsusuRotationDashboard({
       <div className="bg-[#16255A] rounded-2xl px-5 py-5 overflow-hidden">
         <p className="text-[11px] font-bold text-white/50 uppercase tracking-widest mb-1">Current Pot</p>
         <p className="text-[34px] font-black text-white leading-none tracking-tight" style={{ fontVariantNumeric: "tabular-nums", overflowWrap: "break-word" }}>{fmtCur(pot_size)}</p>
-        {currentTurn && (
+        {currentTurns.length > 0 && (
           <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-[10px] text-white/50 font-semibold uppercase tracking-wider">Collecting now</p>
+              <p className="text-[10px] text-white/50 font-semibold uppercase tracking-wider">
+                Collecting now{currentTurns.length > 1 ? ` (${currentTurns.length})` : ""}
+              </p>
               <p className="text-sm font-extrabold text-white truncate">
-                {displayName(currentTurn.client_name, showNames)}
+                {currentTurns.map(t => displayName(t.client_name, showNames)).join(", ")}
               </p>
             </div>
-            {currentTurn.expected_payout_date && (
+            {currentTurns[0]?.expected_payout_date && (
               <div className="text-right flex-shrink-0">
                 <p className="text-[10px] text-white/50">Payout due</p>
-                <p className="text-xs font-bold text-white/80">{fmtDate(currentTurn.expected_payout_date)}</p>
+                <p className="text-xs font-bold text-white/80">{fmtDate(currentTurns[0].expected_payout_date)}</p>
               </div>
             )}
           </div>
@@ -455,7 +523,7 @@ export default function EsusuRotationDashboard({
           <div className="min-w-0">
             <p className="text-xs font-extrabold text-amber-700 dark:text-amber-400">Your turn is next</p>
             <p className="text-[11px] text-amber-600 dark:text-amber-500 leading-relaxed">
-              Be ready — you collect after the current member{nextTurn?.expected_payout_date ? `. Expected ${fmtDate(nextTurn.expected_payout_date)}` : ""}.
+              Be ready — you collect after the current member{currentTurns.length > 1 ? "s" : ""}{nextTurns[0]?.expected_payout_date ? `. Expected ${fmtDate(nextTurns[0].expected_payout_date)}` : ""}.
             </p>
           </div>
         </div>

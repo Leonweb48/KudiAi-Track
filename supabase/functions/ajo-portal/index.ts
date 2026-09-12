@@ -1025,15 +1025,18 @@ serve(async (req) => {
 
     // ── Create an Ajo group (business portal) ─────────────────────────────
     if (action === "create-group") {
-      const { owner_id, name, description, contribution_amount, contribution_frequency,
+      const { owner_id, name, description, contribution_amount, contribution_frequency, custom_interval_days,
               bank_code, account_number, account_name,
               group_mode, privacy_show_names, privacy_show_amounts } = body as {
         owner_id: string; name: string; description?: string;
-        contribution_amount?: number; contribution_frequency?: string;
+        contribution_amount?: number; contribution_frequency?: string; custom_interval_days?: number;
         bank_code?: string; account_number?: string; account_name?: string;
         group_mode?: string; privacy_show_names?: boolean; privacy_show_amounts?: boolean;
       };
       if (!owner_id || !name) return json({ error: "owner_id and name required" }, 400);
+      if (contribution_frequency === "custom" && !(custom_interval_days && custom_interval_days > 0)) {
+        return json({ error: "custom_interval_days is required when frequency is custom" }, 400);
+      }
 
       const { data: grp, error: grpErr } = await sb.from("ajo_groups").insert({
         owner_id,
@@ -1041,6 +1044,7 @@ serve(async (req) => {
         description: description || null,
         contribution_amount: contribution_amount || null,
         contribution_frequency: contribution_frequency || "monthly",
+        custom_interval_days: contribution_frequency === "custom" ? custom_interval_days : null,
         bank_code: bank_code || null,
         account_number: account_number || null,
         account_name: account_name || null,

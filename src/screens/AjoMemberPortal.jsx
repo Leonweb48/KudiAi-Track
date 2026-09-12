@@ -1044,7 +1044,7 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], contribu
   const fpCycles      = activeCycles.filter(cy => cy.commission_model === "first_period" && !isCycleFull(cy));
   const pctCycles     = activeCycles.filter(cy => cy.commission_model !== "first_period" && !isCycleFull(cy));
   const savingsGroups = clientGroups.filter(m => m.group?.group_mode === "savings").map(m => m.group).filter(Boolean);
-  const esusuGroups   = clientGroups.filter(m => m.group?.group_mode === "esusu").map(m => m.group).filter(Boolean);
+  const esusuGroups   = clientGroups.filter(m => m.group?.group_mode === "rotating").map(m => m.group).filter(Boolean);
 
   const personalSubTabs = [
     ...(fpCycles.length  > 0 ? [{ key: "first_period", label: t("ajoPt.firstPeriodTab") }] : []),
