@@ -45,6 +45,7 @@ import PinSetupFlow          from "./components/PinSetupFlow";
 import ConsentModal          from "./components/ConsentModal";
 import OfflineScreen         from "./screens/OfflineScreen";
 import PaymentReturn         from "./screens/PaymentReturn";
+import BvnVerificationReturn from "./screens/BvnVerificationReturn";
 // ── Lazy imports — split into separate chunks, loaded on first use ────────────
 // Heavy screen chunks (jsPDF + html2canvas live in Reports; AI SDK in AIAssistant)
 const Reports        = lazy(() => import("./screens/Reports"));
@@ -443,6 +444,7 @@ export default function App() {
   // Public routes: WebView / App-Links have no session, must render before auth check
   if (location.pathname === "/payment-return" ||
       location.pathname === "/app/payment-callback") return <PaymentReturn />;
+  if (location.pathname === "/bvn-return") return <BvnVerificationReturn />;
 
   const portalStatuses = ["ready", "staff", "branch_manager", "marketer", "organisation", "org_member", "ajo_client"];
 
@@ -693,6 +695,7 @@ export default function App() {
               <Route path="/verification" element={<S><Verification store={store} /></S>} />
               <Route path="/payment-return"        element={<PaymentReturn />} />
               <Route path="/app/payment-callback" element={<PaymentReturn />} />
+              <Route path="/bvn-return"            element={<BvnVerificationReturn />} />
               <Route path="*"             element={SCREENS.home}          />
             </Routes>
           </main>

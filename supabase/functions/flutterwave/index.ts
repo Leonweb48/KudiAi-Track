@@ -29,6 +29,10 @@ const FLW_TEST_BVN  = Deno.env.get("FLW_TEST_BVN") || "22222222222";
 // Optional static-IP relay for payouts (Flutterwave IP-whitelists transfers).
 const FLW_RELAY_URL = (Deno.env.get("FLW_RELAY_URL") || "").replace(/\/$/, "");
 const FLW_RELAY_KEY = Deno.env.get("FLW_RELAY_KEY") ?? "";
+// v3 — used ONLY for BVN Verification (v4 has no such product at all). Static
+// secret-key auth, completely separate host/auth from the v4 OAuth flow above.
+const FLW_V3_BASE       = "https://api.flutterwave.com";
+const FLW_V3_SECRET_KEY = Deno.env.get("FLW_V3_SECRET_KEY") ?? "";
 const SUPABASE_URL  = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY   = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const ANON_KEY      = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
@@ -79,6 +83,54 @@ async function flwFetch(path: string, init: RequestInit & { scenario?: string; r
   try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
   console.log(`FLW ${init.method || "GET"} ${path} ${useRelay ? "(relay) " : ""}→ ${res.status} ${text.slice(0, 300)}`);
   return { ok: res.ok, status: res.status, data };
+}
+
+// v3 fetch — no OAuth, no relay, just a static secret-key Bearer token against
+// api.flutterwave.com. Used exclusively by verify-bvn-init/verify-bvn-status.
+async function flwV3Fetch(path: string, init: RequestInit = {}) {
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${FLW_V3_SECRET_KEY}`,
+    "Content-Type": "application/json",
+    ...(init.headers as Record<string, string> || {}),
+  };
+  const res = await fetch(`${FLW_V3_BASE}${path}`, { ...init, headers });
+  const text = await res.text();
+  let data: Record<string, unknown> = {};
+  try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
+  console.log(`FLW v3 ${init.method || "GET"} ${path} → ${res.status} ${text.slice(0, 200)}`);
+  return { ok: res.ok, status: res.status, data };
+}
+
+async function sha256Hex(input: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+// Resolve a target user's identity — profiles (business owner) first,
+// aso_clients (an Ajo/savings client) as fallback — and report which table
+// owns the record, so callers can read/write BVN-verification columns on the
+// right one. Shared by provision-account and the two verify-bvn-* actions.
+// deno-lint-ignore no-explicit-any
+async function resolveIdentity(sb: any, targetUid: string): Promise<{
+  table: "profiles" | "aso_clients"; email: string; fullName: string; phoneRaw: string;
+}> {
+  const { data: profile } = await sb.from("profiles")
+    .select("email, full_name, business_name, phone").eq("id", targetUid).maybeSingle();
+  let email    = profile?.email || "";
+  let fullName = (profile?.full_name || profile?.business_name || "").trim();
+  let phoneRaw = String(profile?.phone ?? "").replace(/\D/g, "");
+  let table: "profiles" | "aso_clients" = "profiles";
+  if (!fullName) {
+    const { data: cl } = await sb.from("aso_clients")
+      .select("email, full_name, phone").eq("client_user_id", targetUid).maybeSingle();
+    if (cl) {
+      table    = "aso_clients";
+      email    = email || cl.email || "";
+      fullName = (cl.full_name || "").trim();
+      phoneRaw = phoneRaw || String(cl.phone ?? "").replace(/\D/g, "");
+    }
+  }
+  return { table, email, fullName, phoneRaw };
 }
 
 // ── bank list cache ─────────────────────────────────────────────────────────
@@ -184,6 +236,141 @@ serve(async (req) => {
       return json({ ok: true, transfer_id: r.transfer_id, status: r.status, fee_kobo: r.fee_kobo });
     }
 
+    // ═══ verify-bvn-init — start Flutterwave v3 BVN consent verification ════
+    // v4 (everything else in this file) has no BVN verification product at
+    // all — /virtual-accounts only ever recorded a BVN, never confirmed it
+    // was genuine. This is a NIBSS-mandated consent/OTP flow: the BVN holder
+    // must actively approve on Flutterwave's hosted page before we learn
+    // whether the BVN is real and matches a name.
+    if (action === "verify-bvn-init") {
+      const internal = req.headers.get("x-internal-secret") ?? "";
+      let jwtServiceRole = false;
+      try {
+        const p = JSON.parse(atob((token.split(".")[1] || "").replace(/-/g, "+").replace(/_/g, "/")));
+        jwtServiceRole = p?.role === "service_role" && (!p?.ref || SUPABASE_URL.includes(p.ref));
+      } catch { /* not a JWT */ }
+      const serviceAuthed = (SERVICE_KEY && token === SERVICE_KEY)
+        || (INTERNAL_SECRET && (internal === INTERNAL_SECRET || token === INTERNAL_SECRET))
+        || jwtServiceRole;
+      const targetFromBody = String((body as Record<string, unknown>).target_user_id || "");
+
+      let targetUid: string;
+      if (serviceAuthed && targetFromBody) {
+        targetUid = targetFromBody;
+      } else {
+        if (!token) return json({ error: "Unauthorized" }, 401);
+        const { data: { user: selfUser } } = await sb.auth.getUser(token);
+        if (!selfUser) return json({ error: "Unauthorized" }, 401);
+        targetUid = selfUser.id;
+      }
+
+      if (!FLW_V3_SECRET_KEY) return json({ error: "BVN verification is not configured" }, 503);
+
+      const bvn = String((body as Record<string, unknown>).bvn ?? "").replace(/\D/g, "");
+      if (!/^\d{11}$/.test(bvn)) return json({ error: "Enter a valid 11-digit BVN" }, 400);
+
+      const { table, fullName } = await resolveIdentity(sb, targetUid);
+      const nameForVerify = fullName || "KudiAI User";
+      const [fn, ...ln] = nameForVerify.split(/\s+/);
+
+      // Native apps redirect straight to a custom URL scheme (same mechanism
+      // Google Sign-In already uses in this app); web needs a real hosted page.
+      const redirectUrl = String((body as Record<string, unknown>).redirect_url || "").trim()
+        || "com.amayatechnologies.kuditrack://bvn-callback";
+
+      const r = await flwV3Fetch("/v3/bvn/verifications", {
+        method: "POST",
+        body: JSON.stringify({ bvn, firstname: fn || "KudiAI", lastname: ln.join(" ") || "User", redirect_url: redirectUrl }),
+      });
+      if (!r.ok) {
+        return json({ error: (r.data as any)?.message || "Could not start BVN verification", detail: r.data }, 502);
+      }
+      const d = (r.data as any)?.data || {};
+      const reference = String(d.reference || "");
+      const hash = await sha256Hex(bvn);
+
+      await sb.from(table).update({
+        bvn_verification_reference: reference,
+        bvn_hash: hash,
+        bvn_verified: false, // reset — a stale "verified" flag from a prior BVN must not survive
+      }).eq(table === "profiles" ? "id" : "client_user_id", targetUid);
+
+      if (!d.url) {
+        // Flutterwave returns a null url when the person already has prior
+        // consent on file for this BVN — go straight to the status check.
+        return json({ ok: true, alreadyConsented: true, reference });
+      }
+      return json({ ok: true, url: d.url, reference });
+    }
+
+    // ═══ verify-bvn-status — check/finalise a pending BVN consent ═══════════
+    if (action === "verify-bvn-status") {
+      const internal = req.headers.get("x-internal-secret") ?? "";
+      let jwtServiceRole = false;
+      try {
+        const p = JSON.parse(atob((token.split(".")[1] || "").replace(/-/g, "+").replace(/_/g, "/")));
+        jwtServiceRole = p?.role === "service_role" && (!p?.ref || SUPABASE_URL.includes(p.ref));
+      } catch { /* not a JWT */ }
+      const serviceAuthed = (SERVICE_KEY && token === SERVICE_KEY)
+        || (INTERNAL_SECRET && (internal === INTERNAL_SECRET || token === INTERNAL_SECRET))
+        || jwtServiceRole;
+      const targetFromBody = String((body as Record<string, unknown>).target_user_id || "");
+
+      let targetUid: string;
+      if (serviceAuthed && targetFromBody) {
+        targetUid = targetFromBody;
+      } else {
+        if (!token) return json({ error: "Unauthorized" }, 401);
+        const { data: { user: selfUser } } = await sb.auth.getUser(token);
+        if (!selfUser) return json({ error: "Unauthorized" }, 401);
+        targetUid = selfUser.id;
+      }
+
+      if (!FLW_V3_SECRET_KEY) return json({ error: "BVN verification is not configured" }, 503);
+
+      const { table, fullName } = await resolveIdentity(sb, targetUid);
+      const filterCol = table === "profiles" ? "id" : "client_user_id";
+      const { data: row } = await sb.from(table)
+        .select("bvn_verification_reference").eq(filterCol, targetUid).maybeSingle();
+      const reference = row?.bvn_verification_reference as string | undefined;
+      if (!reference) return json({ error: "No BVN verification in progress" }, 400);
+
+      const r = await flwV3Fetch(`/v3/bvn/verifications/${reference}`, { method: "GET" });
+      if (!r.ok) return json({ ok: true, verified: false, pending: true });
+      const d = (r.data as any)?.data || {};
+      if (d.status !== "COMPLETED") {
+        return json({ ok: true, verified: false, pending: true });
+      }
+
+      // Extract only what's needed for the name match — the rest of bvn_data
+      // (DOB, phone, address, a base64 face image, watchlist status, etc.) is
+      // read here and never written anywhere. Our Privacy Policy commits to
+      // not storing BVN-derived data beyond what's needed to run the wallet.
+      const bd = (d.bvn_data || {}) as Record<string, unknown>;
+      const verifiedFirst = String(bd.firstName || "").trim().toLowerCase();
+      const verifiedLast  = String(bd.surname || "").trim().toLowerCase();
+      const nameTokens = fullName.toLowerCase().split(/\s+/).filter(Boolean);
+      const matches = !!verifiedFirst && !!verifiedLast
+        && nameTokens.includes(verifiedFirst) && nameTokens.includes(verifiedLast);
+
+      if (!matches) {
+        await sb.from(table).update({ bvn_verified: false }).eq(filterCol, targetUid);
+        return json({
+          ok: true, verified: false, mismatch: true,
+          error: "The name on this BVN doesn't match your profile. Please check and try again.",
+        });
+      }
+
+      const verifiedName = `${bd.firstName || ""} ${bd.surname || ""}`.trim();
+      await sb.from(table).update({
+        bvn_verified: true,
+        bvn_verified_at: new Date().toISOString(),
+        ...(table === "profiles" ? { verified_name: verifiedName } : { bvn_verified_name: verifiedName }),
+      }).eq(filterCol, targetUid);
+
+      return json({ ok: true, verified: true });
+    }
+
     // ═══ provision-account — self-service OR server-to-server on-behalf-of ═══
     // An Ajo/savings client, opted into a wallet by the owner while being
     // added, has no session of their own yet — same auth as `disburse` lets
@@ -225,8 +412,10 @@ serve(async (req) => {
         });
       }
 
-      // ── BVN / NIN. Live static accounts are validated against NIBSS; in test
-      //    mode a placeholder is fine.
+      // ── BVN / NIN. In test mode a placeholder is fine; live requires a
+      //    completed BVN verification (see verify-bvn-init/verify-bvn-status)
+      //    for this EXACT BVN, done recently — v4 alone would happily create
+      //    an account with an unverified or fake BVN otherwise.
       const testMode = (await cfg("wallet_test_mode", "true")) === "true";
       const bvn = String((body as Record<string, unknown>).bvn ?? "").replace(/\D/g, "");
       const nin = String((body as Record<string, unknown>).nin ?? "").replace(/\D/g, "");
@@ -236,23 +425,23 @@ serve(async (req) => {
       }
 
       // profiles (business owner) first, aso_clients (an Ajo/savings client) as fallback
-      const { data: profile } = await sb.from("profiles")
-        .select("email, full_name, business_name, phone").eq("id", targetUid).maybeSingle();
-      let email    = profile?.email || "";
-      let fullName = (profile?.full_name || profile?.business_name || "").trim();
-      let phoneRaw = String(profile?.phone ?? "").replace(/\D/g, "");
-      if (!fullName) {
-        const { data: cl } = await sb.from("aso_clients")
-          .select("email, full_name, phone").eq("client_user_id", targetUid).maybeSingle();
-        if (cl) {
-          email    = email || cl.email || "";
-          fullName = (cl.full_name || "").trim();
-          phoneRaw = phoneRaw || String(cl.phone ?? "").replace(/\D/g, "");
+      const { table: idTable, email: idEmail, fullName: idFullName, phoneRaw: idPhone } = await resolveIdentity(sb, targetUid);
+      const email    = idEmail || `wallet+${targetUid.slice(0, 8)}@kudiai.app`;
+      const fullName = idFullName || "KudiAI Owner";
+      const phoneRaw = idPhone;
+      const [fn, ...ln] = fullName.split(/\s+/);
+
+      if (!testMode) {
+        const filterCol = idTable === "profiles" ? "id" : "client_user_id";
+        const { data: verRow } = await sb.from(idTable)
+          .select("bvn_verified, bvn_hash, bvn_verified_at").eq(filterCol, targetUid).maybeSingle();
+        const effHash = await sha256Hex(effBvn);
+        const verifiedRecently = !!verRow?.bvn_verified_at
+          && (Date.now() - new Date(verRow.bvn_verified_at as string).getTime()) < 24 * 3600 * 1000;
+        if (!verRow?.bvn_verified || verRow.bvn_hash !== effHash || !verifiedRecently) {
+          return json({ error: "Please verify your BVN first", code: "bvn_not_verified" }, 400);
         }
       }
-      email    = email || `wallet+${targetUid.slice(0, 8)}@kudiai.app`;
-      fullName = fullName || "KudiAI Owner";
-      const [fn, ...ln] = fullName.split(/\s+/);
 
       let customerId = w.flw_customer_id as string | null;
       if (!customerId) {

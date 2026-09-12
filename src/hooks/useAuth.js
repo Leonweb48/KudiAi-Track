@@ -845,6 +845,12 @@ export function useAuth() {
         ) {
           try { await Browser.close(); } catch { /* CCT may already be closed */ }
           window.dispatchEvent(new CustomEvent("paymentCallback", { detail: { url } }));
+        } else if (url.startsWith("com.amayatechnologies.kuditrack://bvn-callback")) {
+          // Flutterwave's BVN consent page redirects straight to this custom
+          // scheme (same mechanism as the OAuth/payment callbacks above) —
+          // useBvnVerification's openConsent() is waiting on this event.
+          try { await Browser.close(); } catch { /* CCT may already be closed */ }
+          window.dispatchEvent(new CustomEvent("bvnVerificationCallback", { detail: { url } }));
         }
       }).then((l) => { appUrlListener = l; });
     }

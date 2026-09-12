@@ -35,6 +35,7 @@ import { setCache, getCache } from "../utils/offlineCache";
 import ContributionCard from "../components/ContributionCard";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
 import { useWallet } from "../hooks/useWallet";
+import { useBvnVerification } from "../hooks/useBvnVerification";
 import { BottomSheet, ActionButton, AccountCard, FundWalletSheet, TransferSheet, ReceivePaymentSheet, WalletMiniAction, WALLET_MINI_ICONS, cleanBankName, WalletTxRow, WALLET_SOURCE } from "../components/WalletPanel";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import EsusuRotationDashboard from "../components/EsusuRotationDashboard";
@@ -5020,6 +5021,7 @@ function MemberWalletSheet({ wallet, testMode, client, businessName, ownerName, 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [receipt, setReceipt] = useState(null);
+  const bvnVerify = useBvnVerification(wallet);
 
   const lgas  = getLGAs(state);
   const wards = getWards(state, lga);
@@ -5038,6 +5040,15 @@ function MemberWalletSheet({ wallet, testMode, client, businessName, ownerName, 
       };
       await ajoFn("update-profile", { client_id: client.id, fields });
       onProfileUpdate?.(fields);
+      if (!testMode) {
+        const status = bvnVerify.pending ? await bvnVerify.checkAgain() : await bvnVerify.verify(bvn);
+        if (!status.verified) {
+          setErr(status.error || (status.pending
+            ? "Still processing — tap Activate wallet again in a moment."
+            : "BVN verification did not complete. Please try again."));
+          return;
+        }
+      }
       await wallet.provisionAccount(bvn, nin);
     } catch (e) {
       setErr(e.message || "Could not activate your wallet");

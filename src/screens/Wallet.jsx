@@ -4,6 +4,7 @@ import Icon from "../components/Icon";
 import AmountDisplay from "../components/shared/AmountDisplay";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
 import { useWallet } from "../hooks/useWallet";
+import { useBvnVerification } from "../hooks/useBvnVerification";
 import {
   ActionButton, AccountCard, WalletTxRow,
   FundWalletSheet, TransferSheet, ReceivePaymentSheet,
@@ -16,12 +17,14 @@ export default function Wallet({ session, store }) {
   const navigate = useNavigate();
   const { walletEnabled, walletTestMode, walletMaxWithdrawalKobo, configLoading } = usePlatformConfig();
   const w = useWallet(userId, walletEnabled);
+  const bvnVerify = useBvnVerification(w);
   const [hidden, setHidden] = useState(() => sessionStorage.getItem("kt_balance_hidden") === "1");
   const [sheet, setSheet] = useState(null);   // fund | transfer | receive
   const [receipt, setReceipt] = useState(null);
   const [err, setErr] = useState("");
   const [bvn, setBvn] = useState("");
   const [nin, setNin] = useState("");
+  const [activating, setActivating] = useState(false);
 
   const openReceipt = (row) => setReceipt(w.receiptFor(row, store?.profile?.business_name, store?.profile?.owner_name));
 
@@ -31,7 +34,23 @@ export default function Wallet({ session, store }) {
   const activate = async () => {
     setErr("");
     if (!walletTestMode && !/^\d{11}$/.test(bvn)) { setErr("Enter your 11-digit BVN"); return; }
-    try { await w.provisionAccount(bvn, nin); } catch (e) { setErr(e.message || "Could not activate wallet"); }
+    setActivating(true);
+    try {
+      if (!walletTestMode) {
+        const status = bvnVerify.pending ? await bvnVerify.checkAgain() : await bvnVerify.verify(bvn);
+        if (!status.verified) {
+          setErr(status.error || (status.pending
+            ? "Still processing — tap Activate wallet again in a moment."
+            : "BVN verification did not complete. Please try again."));
+          return;
+        }
+      }
+      await w.provisionAccount(bvn, nin);
+    } catch (e) {
+      setErr(e.message || "Could not activate wallet");
+    } finally {
+      setActivating(false);
+    }
   };
 
   if (configLoading || w.loading) {
@@ -126,9 +145,9 @@ export default function Wallet({ session, store }) {
                 </p>
               </div>
             )}
-            <button onClick={activate} disabled={w.busy}
+            <button onClick={activate} disabled={activating || w.busy}
               className="w-full bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white font-bold rounded-2xl py-4 text-[15px] transition-colors">
-              {w.busy ? "Activating…" : "Activate wallet"}
+              {activating || w.busy ? "Activating…" : "Activate wallet"}
             </button>
           </div>
         ) : (

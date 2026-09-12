@@ -146,6 +146,12 @@ export function useWallet(userId, enabled = true) {
   const transfer = useCallback((amount_kobo, bank_code, account_number, pin, narration = "", book_expense = false, confirmed_name = "") =>
     invoke("transfer", { amount_kobo, bank_code, account_number, pin, narration, book_expense, confirmed_name }), [invoke]);
 
+  // Real BVN identity verification (Flutterwave v3 consent/OTP flow) — must
+  // complete successfully before provisionAccount(bvn, ...) will be accepted
+  // server-side. redirect_url lets native pass its custom-scheme callback.
+  const startBvnVerification = useCallback((bvn, redirect_url) => invoke("verify-bvn-init", { bvn, redirect_url }), [invoke]);
+  const checkBvnVerification = useCallback(() => invoke("verify-bvn-status"), [invoke]);
+
   const createPaymentRequest = useCallback(async (amountKobo, customerName = "", note = "") => {
     const { data, error } = await supabase.rpc("wallet_create_payment_request", {
       p_amount_kobo: Math.round(amountKobo), p_customer_name: customerName, p_note: note,
@@ -194,10 +200,12 @@ export function useWallet(userId, enabled = true) {
     hasAccount, balanceKobo, balanceNaira: balanceKobo / 100,
     refresh: load, receiptFor,
     provisionAccount, simulateTopup, listBanks, resolveAccount, transfer,
+    startBvnVerification, checkBvnVerification,
     createPaymentRequest, cancelPaymentRequest,
   }), [
     wallet, ledger, withdrawals, requests, banks, payRequest, loading, busy, hasAccount, balanceKobo,
     load, receiptFor, provisionAccount, simulateTopup, listBanks, resolveAccount, transfer,
+    startBvnVerification, checkBvnVerification,
     createPaymentRequest, cancelPaymentRequest,
   ]);
 }
