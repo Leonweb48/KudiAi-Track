@@ -607,6 +607,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [contributeCycleId,     setContributeCycleId]    = useState(null);
   const [selectedCycles,        setSelectedCycles]       = useState([]); // active personal_savings cycles for selected client
   const [selectedClientMems,    setSelectedClientMems]   = useState([]); // group memberships for selected client
+  const [activeEsusuRoundIds,   setActiveEsusuRoundIds]  = useState(() => new Set()); // group_ids with a currently-active rotation round
   const [fundPayErr,            setFundPayErr]           = useState("");
   const [receipt,      setReceipt]      = useState(null);
   const [historyFor,   setHistoryFor]   = useState(null); // { client, contributions, cycle }
@@ -774,24 +775,47 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     if (!selected?.id || (action !== "contribute" && action !== "withdraw")) {
       setSelectedClientMems([]); setContributeGroupId(null);
       setSelectedCycles([]); setContributeCycleId(null);
+      setActiveEsusuRoundIds(new Set());
       return;
     }
+    // Resolve which of the fetched memberships' esusu (rotating) groups
+    // currently have an active rotation round — a group with none has
+    // nothing to contribute to or withdraw from right now, so it shouldn't
+    // be offered as a target at all. One extra batched query, not N+1.
+    const resolveActiveRounds = async (mems) => {
+      const rotatingIds = (mems || [])
+        .filter(m => m.ajo_groups?.group_mode === "rotating")
+        .map(m => m.group_id);
+      if (rotatingIds.length === 0) { setActiveEsusuRoundIds(new Set()); return; }
+      const { data: rounds } = await supabase.from("ajo_group_rounds")
+        .select("group_id").in("group_id", rotatingIds).eq("status", "active");
+      setActiveEsusuRoundIds(new Set((rounds || []).map(r => r.group_id)));
+    };
     supabase.from("aso_client_group_memberships")
-      .select("group_id, status, ajo_groups(id, name, group_mode)")
+      .select("group_id, status, ajo_groups(id, name, group_mode, round_status)")
       .eq("client_id", selected.id)
       .eq("status", "active")
       .then(({ data }) => {
         setSelectedClientMems(data || []);
+        resolveActiveRounds(data);
         // Backwards compat: if junction table is empty, fall back to ajo_group_id
         if ((!data || data.length === 0) && selected.ajo_group_id) {
           const sg = groups.find(g => g.id === selected.ajo_group_id);
-          if (sg) setSelectedClientMems([{ group_id: sg.id, status: "active", ajo_groups: sg }]);
+          if (sg) {
+            const mems = [{ group_id: sg.id, status: "active", ajo_groups: sg }];
+            setSelectedClientMems(mems);
+            resolveActiveRounds(mems);
+          }
         }
       })
       .catch(() => {
         if (selected.ajo_group_id) {
           const sg = groups.find(g => g.id === selected.ajo_group_id);
-          if (sg) setSelectedClientMems([{ group_id: sg.id, status: "active", ajo_groups: sg }]);
+          if (sg) {
+            const mems = [{ group_id: sg.id, status: "active", ajo_groups: sg }];
+            setSelectedClientMems(mems);
+            resolveActiveRounds(mems);
+          }
         }
       });
     supabase.from("ajo_cycles")
@@ -2964,12 +2988,19 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
               ...(!isWithdraw || hasCycles
                 ? [{ key: "personal_savings", label: "Personal Savings", desc: isWithdraw ? "Withdraw from client's personal savings" : "Add to client's personal savings", gid: null }]
                 : []),
+              // A group with nothing actionable right now — an esusu group with no
+              // active rotation round, or a savings group that's never been
+              // started — isn't offered as a target at all, for either mode.
               ...selectedClientMems.map(m => {
                 const sg = m.ajo_groups;
-                return sg?.group_mode === "rotating"
-                  ? { key: "esusu_rotation", label: sg.name, desc: isWithdraw ? "Esusu Rotation" : "Esusu Rotation — add to the pot", gid: sg.id }
-                  : { key: "group_savings",  label: sg?.name || "Savings Group", desc: isWithdraw ? "Savings Group" : "Savings Group — add to group pool", gid: sg?.id };
-              }),
+                if (!sg) return null;
+                if (sg.group_mode === "rotating") {
+                  if (!activeEsusuRoundIds.has(sg.id)) return null;
+                  return { key: "esusu_rotation", label: sg.name, desc: isWithdraw ? "Esusu Rotation" : "Esusu Rotation — add to the pot", gid: sg.id };
+                }
+                if (sg.round_status === "not_started") return null;
+                return { key: "group_savings", label: sg.name || "Savings Group", desc: isWithdraw ? "Savings Group" : "Savings Group — add to group pool", gid: sg.id };
+              }).filter(Boolean),
               ...(!isWithdraw && selected.client_user_id
                 ? [{ key: "wallet", label: "KudiAI Wallet", desc: "Credit the client's wallet directly", gid: null }]
                 : []),
@@ -3005,8 +3036,16 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             );
           })()}
 
-          {/* No savings card yet — prompt to create one (either mode) */}
-          {contributeCtx === "personal_savings" && selectedCycles.length === 0 && selectedClientMems.length === 0 && (
+          {/* No savings card yet — prompt to create one (either mode). Only
+              counts group memberships that are actually actionable right now
+              (esusu with an active round, or a savings group that's started) —
+              a membership with nothing to do doesn't count as an alternative. */}
+          {contributeCtx === "personal_savings" && selectedCycles.length === 0 &&
+           !selectedClientMems.some(m => {
+             const sg = m.ajo_groups;
+             if (!sg) return false;
+             return sg.group_mode === "rotating" ? activeEsusuRoundIds.has(sg.id) : sg.round_status !== "not_started";
+           }) && (
             <div className="mb-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/60 rounded-xl px-3 py-3 text-center">
               <p className="text-xs text-amber-700 dark:text-amber-400 font-semibold mb-2">This client has no savings card yet.</p>
               <button

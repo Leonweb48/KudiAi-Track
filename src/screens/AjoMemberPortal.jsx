@@ -1044,7 +1044,8 @@ function MoneyEsusuCard({ rd, client, esusuLockedTotal, roundCount, selected, on
   );
 }
 
-// Simple esusu card for Pay/Deposit (no rotationsData available there)
+// Simple esusu card for Pay/Deposit — only ever rendered for groups already
+// filtered down to "has an active round" by the caller (esusuGroups).
 function MoneyEsusuSimpleCard({ group, selected, onSelect, children }) {
   const t = useT();
   return (
@@ -1064,7 +1065,7 @@ function MoneyEsusuSimpleCard({ group, selected, onSelect, children }) {
   );
 }
 
-function PayContributionModal({ client, clientGroups = [], cycles = [], contributions = [], wallet, onTopUpWallet, onOpenCycle, onClose, onSuccess, onNeedPinSetup }) {
+function PayContributionModal({ client, clientGroups = [], cycles = [], contributions = [], wallet, rotationsData = [], onTopUpWallet, onOpenCycle, onClose, onSuccess, onNeedPinSetup }) {
   const t = useT();
   // ── Core state (unchanged from original) ──────────────────────────────────
   const [status,          setStatus]         = useState("idle");
@@ -1095,8 +1096,12 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], contribu
   const activeCycles  = cycles.filter(cy => cy.status === "active");
   const fpCycles      = activeCycles.filter(cy => cy.commission_model === "first_period" && !isCycleFull(cy));
   const pctCycles     = activeCycles.filter(cy => cy.commission_model !== "first_period" && !isCycleFull(cy));
-  const savingsGroups = clientGroups.filter(m => m.group?.group_mode === "savings").map(m => m.group).filter(Boolean);
-  const esusuGroups   = clientGroups.filter(m => m.group?.group_mode === "rotating").map(m => m.group).filter(Boolean);
+  // A group with nothing actionable right now — a savings group that's never
+  // been started, or an esusu group with no active rotation round — isn't
+  // offered as a deposit target at all.
+  const activeEsusuGroupIds = new Set(rotationsData.filter(rd => rd.round).map(rd => rd.group?.id).filter(Boolean));
+  const savingsGroups = clientGroups.filter(m => m.group?.group_mode === "savings" && m.group?.round_status !== "not_started").map(m => m.group).filter(Boolean);
+  const esusuGroups   = clientGroups.filter(m => m.group?.group_mode === "rotating" && activeEsusuGroupIds.has(m.group?.id)).map(m => m.group).filter(Boolean);
 
   const personalSubTabs = [
     ...(fpCycles.length  > 0 ? [{ key: "first_period", label: t("ajoPt.firstPeriodTab") }] : []),
@@ -1740,11 +1745,13 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
   }, [client.id, client.current_balance, cycles]);
 
   // ── Derived data — re-derive from props each render (realtime-safe) ───────
+  // A group that's never been started (savings) or has no active rotation
+  // round (esusu) has nothing to withdraw yet — exclude it here too.
   const savingsGroups = clientGroups
-    .filter(m => m.group?.group_mode === "savings")
+    .filter(m => m.group?.group_mode === "savings" && m.group?.round_status !== "not_started")
     .map(m => m.group)
     .filter(Boolean);
-  const esusuRounds = rotationsData;
+  const esusuRounds = rotationsData.filter(rd => rd.round);
   const selectedGroup = savingsGroups.find(g => g.id === selectedGrpId) || null;
 
   // Cycle category sets
@@ -5679,6 +5686,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
           cycles={cycles}
           contributions={contributions}
           wallet={wallet}
+          rotationsData={rotationsData}
           onTopUpWallet={() => setWalletSheet("fund")}
           onOpenCycle={() => setShowOpenCycle(true)}
           onClose={() => setShowPay(false)}
