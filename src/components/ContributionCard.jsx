@@ -262,6 +262,12 @@ export default function ContributionCard({
 
   const commission        = useMemo(() => computeCommission(cycle, cycleContribs), [cycle, cycleContribs]);
   const commissionDone    = useMemo(() => commissionAlreadyExecuted(cycleContribs), [cycleContribs]);
+  const totalWithdrawn    = useMemo(() => cycleContribs
+    .filter(c => c.type === "withdrawal" && c.status === "completed")
+    .reduce((s, c) => s + Number(c.amount || 0), 0), [cycleContribs]);
+  const cycleFees         = useMemo(() => cycleContribs
+    .filter(c => (c.type === "commission" || c.type === "registration_fee") && c.status === "completed")
+    .reduce((s, c) => s + Number(c.amount || 0), 0), [cycleContribs]);
   const canExecCommission = !compact && onExecuteCommission && cycle &&
     cycle.status !== "active" && commission.amount > 0 && !commissionDone &&
     cycle.commission_model !== "first_period";
@@ -406,6 +412,11 @@ export default function ContributionCard({
         {pendingTotal > 0 && (
           <p className="text-[10px] text-amber-500 font-medium">
             {fmtCurrency(pendingTotal)} awaiting confirmation
+          </p>
+        )}
+        {totalWithdrawn > 0 && (
+          <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
+            {fmtCurrency(totalWithdrawn)} withdrawn · {fmtCurrency(Math.max(0, totalPaid - cycleFees - totalWithdrawn))} available
           </p>
         )}
         {!cycleStarted && pendingTotal > 0 && (

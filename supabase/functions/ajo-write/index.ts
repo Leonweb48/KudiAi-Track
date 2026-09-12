@@ -69,7 +69,7 @@ function json(body: unknown, status = 200): Response {
 }
 
 // ── PIN-requiring actions ─────────────────────────────────────────────────────
-const PIN_GATED = new Set(["record_withdrawal", "reverse_contribution", "archive_client", "request_client_archive", "confirm_manual_deposit", "approve_contribution", "collection_record", "execute_commission", "execute_payout", "skip_turn", "reorder_turns", "approve_reactivation", "record_credit_repayment", "batch_approve_contributions", "close_savings_round", "release_savings_member"]);
+const PIN_GATED = new Set(["record_withdrawal", "reverse_contribution", "archive_client", "request_client_archive", "confirm_manual_deposit", "approve_contribution", "collection_record", "execute_commission", "execute_payout", "skip_turn", "reorder_turns", "approve_reactivation", "record_credit_repayment", "batch_approve_contributions", "close_savings_round", "release_savings_member", "fund_client_wallet"]);
 
 // ── Resolve the true owner UUID for a client from the DB ─────────────────────
 async function resolveClientOwner(
@@ -873,9 +873,9 @@ serve(async (req: Request) => {
   }
 
   if (action === "record_withdrawal") {
-    const { client_id, gross_amount, method, notes, request_id } = params as {
+    const { client_id, gross_amount, method, notes, request_id, cycle_id, group_id } = params as {
       client_id: string; gross_amount: number;
-      method?: string; notes?: string; request_id?: string;
+      method?: string; notes?: string; request_id?: string; cycle_id?: string; group_id?: string;
     };
 
     const ownerId = await resolveClientOwner(sb, client_id);
@@ -904,6 +904,8 @@ serve(async (req: Request) => {
       p_notes:        notes  || null,
       p_recorded_by:  recordedBy,
       p_request_id:   request_id || null,
+      p_cycle_id:     cycle_id || null,
+      p_group_id:     group_id || null,
     });
     if (error) return json({ ok: false, error: error.message });
 
@@ -1023,6 +1025,37 @@ serve(async (req: Request) => {
     ]);
 
     return json(data);
+  }
+
+  // ── Owner manually funds a client's KudiAI Wallet directly (PIN-gated) ────
+  //    Distinct from record_contribution (which only touches aso_clients /
+  //    ajo_contributions bookkeeping) — this is a real wallet_ledger credit,
+  //    via the same wallet_credit RPC topups use, sourced 'adjustment' since
+  //    no real bank transfer is involved.
+  if (action === "fund_client_wallet") {
+    const { client_id: fcwClientId, amount: fcwAmount } = params as { client_id: string; amount: number };
+    if (!fcwClientId || !fcwAmount || fcwAmount <= 0) return json({ ok: false, error: "client_id and amount required" });
+
+    const fcwOwnerId = await resolveClientOwner(sb, fcwClientId);
+    if (!fcwOwnerId) return json({ ok: false, error: "Client not found" });
+    const fcwPerms = await resolveAjoPerms(sb, user.id, fcwOwnerId);
+    if (fcwPerms !== null) return json({ ok: false, error: "Unauthorized: owner-only action" });
+
+    const { data: fcwCl } = await sb.from("aso_clients").select("client_user_id, full_name").eq("id", fcwClientId).maybeSingle();
+    if (!(fcwCl as { client_user_id?: string } | null)?.client_user_id) {
+      return json({ ok: false, error: "This client doesn't have a KudiAI Wallet yet — they need a portal login first" });
+    }
+
+    const { data: fcwLedger, error: fcwErr } = await sb.rpc("wallet_credit", {
+      p_user_id:      (fcwCl as { client_user_id: string }).client_user_id,
+      p_amount_kobo:  Math.round(fcwAmount * 100),
+      p_source:       "adjustment",
+      p_flw_reference: null,
+      p_narration:    `Manual wallet funding by business owner`,
+      p_meta:         {},
+    });
+    if (fcwErr) return json({ ok: false, error: fcwErr.message });
+    return json({ ok: true, ledger: fcwLedger });
   }
 
   if (action === "reject_withdrawal_request") {

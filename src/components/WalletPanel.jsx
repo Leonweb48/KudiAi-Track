@@ -42,6 +42,7 @@ export const WALLET_SOURCE = {
   ajo_payout:          { label: "Savings withdrawal",   icon: "send",       credit: false },
   transfer_fee:        { label: "Transfer fee",         icon: "wallet",     credit: false },
   cbn_levy:            { label: "CBN transfer levy",    icon: "wallet",     credit: false },
+  wallet_fee:          { label: "Wallet transfer fee",  icon: "wallet",     credit: false },
 };
 
 // ── generic slide-up sheet ─────────────────────────────────────────────────

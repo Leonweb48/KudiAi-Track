@@ -144,14 +144,9 @@ serve(async (req) => {
 
       const amountKobo = Math.round(amountNaira * 100);
 
-      // ── CBN Electronic Money Transfer Levy — ₦50 flat on transfers ≥ ₦10,000.
-      //    The actual charge/credit-split happens inside wallet_credit (source
-      //    'topup' only) so it's atomic with the credit and applies identically
-      //    to a business owner's wallet and an Ajo client's wallet. This copy is
-      //    only for the pre-flight cap check below — same rule, mirrored so we
-      //    don't need a round trip just to estimate it. ──────────────────────
-      const feeKobo = amountKobo >= 1000000 ? 5000 : 0;
-      const netAmountKobo = Math.max(0, amountKobo - feeKobo);
+      // Deposits are always fee-free (wallet_credit, source 'topup', credits the
+      // full gross amount unconditionally) — no levy estimate needed here.
+      const netAmountKobo = amountKobo;
 
       // ── Is this a one-time bill payment (charge-bill), not a wallet top-up?
       //    Check first — a bill charge's dynamic VA isn't tied to any wallet, so
@@ -251,7 +246,7 @@ serve(async (req) => {
       // back rather than trusting our pre-flight estimate above.
       const creditedKobo = Number((creditRow as Record<string, unknown> | null)?.amount_kobo ?? netAmountKobo);
       const creditedMeta = ((creditRow as Record<string, unknown> | null)?.meta ?? {}) as Record<string, unknown>;
-      const actualFeeKobo = Number(creditedMeta.fee_kobo ?? feeKobo);
+      const actualFeeKobo = Number(creditedMeta.fee_kobo ?? 0);
 
       // notify the owner
       fetch(`${SUPABASE_URL}/functions/v1/notify-send`, {

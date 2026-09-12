@@ -1000,17 +1000,31 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     return { error: null, data };
   };
 
-  const asoWithdraw = async (id, amount, pin) => {
+  const asoWithdraw = async (id, amount, pin, cycleId = null, groupId = null) => {
     const { data, error } = await supabase.functions.invoke("ajo-write", {
       body: {
         action: "record_withdrawal", client_id: id, gross_amount: amount,
         pin, owner_id: userId, recorded_by: staffId || null,
+        ...(cycleId ? { cycle_id: cycleId } : {}), ...(groupId ? { group_id: groupId } : {}),
       },
     });
     if (error || !data?.ok) {
       const msg = error?.message || data?.error || "Withdrawal failed";
       console.error("asoWithdraw:", msg);
       if (!data?.error?.includes("PIN") && !data?.error?.includes("balance")) loadData();
+      return { error: msg };
+    }
+    loadData();
+    return { error: null, data };
+  };
+
+  const asoFundWallet = async (id, amount, pin) => {
+    const { data, error } = await supabase.functions.invoke("ajo-write", {
+      body: { action: "fund_client_wallet", client_id: id, amount, pin },
+    });
+    if (error || !data?.ok) {
+      const msg = error?.message || data?.error || "Wallet funding failed";
+      console.error("asoFundWallet:", msg);
       return { error: msg };
     }
     loadData();
@@ -1192,7 +1206,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     // Staff cannot delete transactions — only business owners (no staffId) can
     deleteTransaction: staffId ? null : deleteTransaction,
     addCredit, repayCredit, updateCredit, addExtraCredit, debtPayments,
-    addAsoClient, asoContribute, asoCollectionRecord, asoWithdraw, updateAsoClient, deleteAsoClient, requestAsoClientArchive, cancelAsoClientArchive,
+    addAsoClient, asoContribute, asoCollectionRecord, asoWithdraw, asoFundWallet, updateAsoClient, deleteAsoClient, requestAsoClientArchive, cancelAsoClientArchive,
     asoReverseContribution,
   };
 }

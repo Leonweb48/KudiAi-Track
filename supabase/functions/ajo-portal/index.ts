@@ -155,6 +155,7 @@ serve(async (req) => {
     // ── Per-action ownership guard ────────────────────────────────────────
     const _clientScoped = new Set([
       "get-client","get-contributions","get-active-cycle","get-owner-info",
+      "get-entity-stats",
       "request-withdrawal","get-withdrawal-requests","submit-manual-claim",
       "initialize-payment","confirm-payment","submit-dispute",
       "client-open-cycle",
@@ -169,6 +170,65 @@ serve(async (req) => {
       const denied = await requireClientAccess(client_id);
       if (denied) return denied;
     }
+
+    // ── PIN gate for client-initiated money movement ────────────────────────
+    // request-withdrawal and pay-contribution-wallet both move (or schedule
+    // moving) real money. A PIN must be set — no auto-approve bypass — and it
+    // travels in THIS SAME request, atomically, mirroring how ajo-write
+    // verifies the owner's own PIN before ever reaching the RPC. Lockout
+    // mirrors the owner's profiles.txn_pin_attempts pattern (5 attempts, 30
+    // minutes), stored on aso_clients.portal_pin_attempts/portal_pin_locked_until.
+    const _pinGated = new Set(["request-withdrawal", "pay-contribution-wallet"]);
+    if (_pinGated.has(action as string)) {
+      const { client_id: _pgClientId, pin: _pgPin } = body as { client_id?: string; pin?: string };
+      if (!_pgClientId) return json({ error: "client_id required" }, 400);
+
+      const { data: _pgCl } = await sb.from("aso_clients")
+        .select("portal_pin, portal_pin_hash, portal_pin_attempts, portal_pin_locked_until")
+        .eq("id", _pgClientId).maybeSingle();
+      if (!_pgCl) return json({ error: "Client not found" }, 404);
+
+      if (!_pgCl.portal_pin_hash && !_pgCl.portal_pin) {
+        return json({ error: "Set up your transaction PIN to continue", code: "pin_not_set" }, 400);
+      }
+
+      if (_pgCl.portal_pin_locked_until && new Date(_pgCl.portal_pin_locked_until) > new Date()) {
+        return json({ error: "PIN locked — try again later", code: "pin_locked" }, 423);
+      }
+
+      if (!_pgPin || typeof _pgPin !== "string") {
+        return json({ error: "PIN required", code: "pin_required" }, 400);
+      }
+
+      let _pgValid = false;
+      if (_pgCl.portal_pin_hash) {
+        const { data: v } = await sb.rpc("verify_bcrypt_pin", { p_pin: _pgPin, p_hash: _pgCl.portal_pin_hash });
+        _pgValid = !!v;
+      } else if (_pgCl.portal_pin) {
+        _pgValid = String(_pgPin).trim() === _pgCl.portal_pin;
+      }
+
+      if (!_pgValid) {
+        const MAX_ATTEMPTS = 5;
+        const LOCKOUT_MINUTES = 30;
+        const newAttempts = (_pgCl.portal_pin_attempts || 0) + 1;
+        if (newAttempts >= MAX_ATTEMPTS) {
+          const lockedUntil = new Date(Date.now() + LOCKOUT_MINUTES * 60 * 1000).toISOString();
+          await sb.from("aso_clients")
+            .update({ portal_pin_attempts: 0, portal_pin_locked_until: lockedUntil })
+            .eq("id", _pgClientId);
+          return json({ error: "Invalid PIN — account locked", code: "pin_locked" }, 423);
+        }
+        await sb.from("aso_clients").update({ portal_pin_attempts: newAttempts }).eq("id", _pgClientId);
+        return json({ error: "Invalid PIN", code: "pin_invalid", attempts_left: MAX_ATTEMPTS - newAttempts }, 401);
+      }
+
+      // Correct PIN — reset attempt counter
+      await sb.from("aso_clients")
+        .update({ portal_pin_attempts: 0, portal_pin_locked_until: null })
+        .eq("id", _pgClientId);
+    }
+
     if (action === "create-group" || action === "join-group" || action === "leave-group") {
       const { owner_id: _oid } = body as { owner_id: string };
       if (!_oid || callerId !== _oid) return json({ error: "Forbidden" }, 403);
@@ -306,6 +366,21 @@ serve(async (req) => {
         .eq("status", "active")
         .order("created_at", { ascending: true });
       return json({ cycles: cycles || [] });
+    }
+
+    // ── get-entity-stats — total saved / total withdrawn / fees / locked /
+    //    pending / available for ONE specific personal cycle or group/esusu.
+    //    Thin wrapper around ajo_entity_stats — used by card-open views and
+    //    the withdrawal target picker on both the client and owner portals. ──
+    if (action === "get-entity-stats") {
+      const { client_id, cycle_id, group_id } = body as { client_id: string; cycle_id?: string; group_id?: string };
+      if (!client_id) return json({ error: "client_id required" }, 400);
+      if (!cycle_id && !group_id) return json({ error: "cycle_id or group_id required" }, 400);
+      const { data, error } = await sb.rpc("ajo_entity_stats", {
+        p_client_id: client_id, p_cycle_id: cycle_id || null, p_group_id: group_id || null,
+      });
+      if (error) return json({ error: error.message }, 500);
+      return json({ stats: data });
     }
 
     // ── client-open-cycle — a client opens their own personal-savings card.
@@ -467,23 +542,22 @@ serve(async (req) => {
 
       // ── Per-entity scoping ─────────────────────────────────────────────────────
       // If the client selected a specific cycle or group, cap the request to that
-      // entity's own balance minus any pending requests already against it.
-      // Percentage cycles (commission_model != 'first_period') are freely withdrawable at any
-      // time from the overall balance — skip the per-cycle cap for them; the global
-      // balance + lock checks above are sufficient.
+      // entity's own available balance (via ajo_entity_stats — replaces two RPCs
+      // that didn't exist live, ajo_group_net_balance/ajo_pending_for_entity, and
+      // a third called with a mismatched signature, ajo_cycle_net_balance — every
+      // per-entity withdrawal request was silently rejected with "₦0 available"
+      // before this fix). Percentage cycles (commission_model != 'first_period')
+      // are freely withdrawable at any time from the overall balance — skip the
+      // per-cycle cap for them; the global balance + lock checks above suffice.
       if (reqCycleId) {
         const { data: reqCycleRow } = await sb.from("ajo_cycles")
           .select("commission_model").eq("id", reqCycleId).maybeSingle();
         const isPercentCycle = reqCycleRow && reqCycleRow.commission_model !== "first_period";
 
         if (!isPercentCycle) {
-          const [{ data: cycleNetRaw }, { data: cyclePendingRaw }] = await Promise.all([
-            sb.rpc("ajo_cycle_net_balance",    { p_client_id: client_id, p_cycle_id: reqCycleId }),
-            sb.rpc("ajo_pending_for_entity",   { p_client_id: client_id, p_cycle_id: reqCycleId, p_group_id: null }),
-          ]);
-          const cycleNet     = Number(cycleNetRaw    || 0);
-          const cyclePending = Number(cyclePendingRaw || 0);
-          const cycleAvailNow = Math.max(0, cycleNet - cyclePending);
+          const { data: cycleStats } = await sb.rpc("ajo_entity_stats", { p_client_id: client_id, p_cycle_id: reqCycleId, p_group_id: null });
+          const cycleAvailNow = Number(cycleStats?.available || 0);
+          const cyclePending  = Number(cycleStats?.pending   || 0);
           if (amount > cycleAvailNow) {
             const pendStr = cyclePending > 0
               ? ` — ₦${cyclePending.toLocaleString("en-NG")} already pending review`
@@ -498,13 +572,9 @@ serve(async (req) => {
       }
 
       if (reqGroupId) {
-        const [{ data: groupNetRaw }, { data: groupPendingRaw }] = await Promise.all([
-          sb.rpc("ajo_group_net_balance",  { p_client_id: client_id, p_group_id: reqGroupId }),
-          sb.rpc("ajo_pending_for_entity", { p_client_id: client_id, p_cycle_id: null, p_group_id: reqGroupId }),
-        ]);
-        const groupNet     = Number(groupNetRaw    || 0);
-        const groupPending = Number(groupPendingRaw || 0);
-        const groupAvailNow = Math.max(0, groupNet - groupPending);
+        const { data: groupStats } = await sb.rpc("ajo_entity_stats", { p_client_id: client_id, p_cycle_id: null, p_group_id: reqGroupId });
+        const groupAvailNow = Number(groupStats?.available || 0);
+        const groupPending  = Number(groupStats?.pending   || 0);
         if (amount > groupAvailNow) {
           const pendStr = groupPending > 0
             ? ` — ₦${groupPending.toLocaleString("en-NG")} already pending review`

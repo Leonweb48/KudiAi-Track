@@ -607,6 +607,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [contributeCycleId,     setContributeCycleId]    = useState(null);
   const [selectedCycles,        setSelectedCycles]       = useState([]); // active personal_savings cycles for selected client
   const [selectedClientMems,    setSelectedClientMems]   = useState([]); // group memberships for selected client
+  const [fundPayErr,            setFundPayErr]           = useState("");
   const [receipt,      setReceipt]      = useState(null);
   const [historyFor,   setHistoryFor]   = useState(null); // { client, contributions, cycle }
   const [historyErr,   setHistoryErr]   = useState("");
@@ -636,7 +637,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [showCollection,  setShowCollection]  = useState(false);
   const [collectionCycles, setCollectionCycles] = useState({}); // clientId → cycles[]
 
-  const { asoClients, addAsoClient, asoContribute, asoCollectionRecord, asoWithdraw, asoReverseContribution, updateAsoClient, requestAsoClientArchive, cancelAsoClientArchive, profile, staffMap = {} } = store;
+  const { asoClients, addAsoClient, asoContribute, asoCollectionRecord, asoWithdraw, asoFundWallet, asoReverseContribution, updateAsoClient, requestAsoClientArchive, cancelAsoClientArchive, profile, staffMap = {} } = store;
   const staffOptions = Object.entries(staffMap).map(([id, name]) => ({ id, name }));
 
   const [withdrawalRequests,  setWithdrawalRequests]  = useState([]);
@@ -764,9 +765,13 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       .catch(() => {});
   }, [showCollection]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Fetch group memberships and active cycles for the selected client when contribute modal opens
+  // Fetch group memberships and cycles for the selected client when the
+  // Fund/Pay modal opens — needed for the target picker in BOTH modes.
+  // Withdraw mode also needs COMPLETED cycles (that's exactly when a
+  // first_period cycle becomes withdrawable), so the status filter is wider
+  // than contribute mode's active-only list.
   useEffect(() => {
-    if (!selected?.id || action !== "contribute") {
+    if (!selected?.id || (action !== "contribute" && action !== "withdraw")) {
       setSelectedClientMems([]); setContributeGroupId(null);
       setSelectedCycles([]); setContributeCycleId(null);
       return;
@@ -790,9 +795,9 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         }
       });
     supabase.from("ajo_cycles")
-      .select("id, label, commission_model")
+      .select("id, label, commission_model, status")
       .eq("client_id", selected.id)
-      .eq("status", "active")
+      .in("status", action === "withdraw" ? ["active", "completed"] : ["active"])
       .order("created_at", { ascending: true })
       .then(({ data }) => {
         const cycs = data || [];
@@ -801,6 +806,23 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       })
       .catch(() => {});
   }, [selected?.id, action]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Live saved/withdrawn/available/locked for whatever target is currently
+  // selected in the Fund/Pay modal — same ajo_entity_stats RPC the client
+  // portal uses, so the owner sees identical numbers.
+  const [targetStats,        setTargetStats]        = useState(null);
+  const [targetStatsLoading, setTargetStatsLoading]  = useState(false);
+  useEffect(() => {
+    const cid = contributeCtx === "personal_savings" ? contributeCycleId : null;
+    const gid = contributeCtx !== "personal_savings" ? contributeGroupId : null;
+    if (!selected?.id || (!cid && !gid)) { setTargetStats(null); return; }
+    setTargetStatsLoading(true);
+    supabase.functions.invoke("ajo-portal", {
+      body: { action: "get-entity-stats", client_id: selected.id, cycle_id: cid, group_id: gid },
+    }).then(({ data }) => setTargetStats(data?.stats || null))
+      .catch(() => setTargetStats(null))
+      .finally(() => setTargetStatsLoading(false));
+  }, [selected?.id, contributeCtx, contributeGroupId, contributeCycleId]);
 
   const resolveClientAccount = async () => {
     if (!f.account_number || !f.bank_code) return;
@@ -2895,7 +2917,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       {selected && action && (
         <Modal
           title={`${action === "contribute" ? "Record Contribution" : "Process Withdrawal"} — ${selected.full_name}`}
-          onClose={() => { setSelected(null); setAction(null); setAmt(""); setContributeCtx("personal_savings"); }}>
+          onClose={() => { setSelected(null); setAction(null); setAmt(""); setContributeCtx("personal_savings"); setFundPayErr(""); }}>
 
           <div className="bg-brand-50 dark:bg-brand-900/20 rounded-xl px-4 py-3 mb-3 border border-brand-100 dark:border-brand-800/60">
             <p className="text-xs text-slate-500 dark:text-slate-400">Current balance</p>
@@ -2903,7 +2925,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           </div>
 
           {/* Contribution stats in modal */}
-          {action === "contribute" && (
+          {action === "contribute" && contributeCtx !== "wallet" && (
             <div className="grid grid-cols-3 gap-2 mb-3">
               {[
                 { label: "Made",     value: getContribsMade(selected),    color: "text-green-600 dark:text-green-400" },
@@ -2918,7 +2940,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             </div>
           )}
 
-          {action === "contribute" &&
+          {action === "contribute" && contributeCtx !== "wallet" &&
            (selected.total_saved || 0) === 0 &&
            !pendingDeposits.some(d => d.aso_client_id === selected.id) &&
            (() => {
@@ -2933,22 +2955,34 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             );
           })()}
 
-          {action === "contribute" && selectedClientMems.length > 0 && (() => {
+          {(action === "contribute" || action === "withdraw") && (() => {
+            const isWithdraw = action === "withdraw";
+            const hasCycles  = selectedCycles.length > 0;
             const opts = [
-              { key: "personal_savings", label: "Personal Savings", desc: "Add to client's personal savings", gid: null },
+              // Withdraw mode only offers Personal Savings as a target once a cycle actually exists —
+              // there's nothing to pick from otherwise (prompt below handles that case).
+              ...(!isWithdraw || hasCycles
+                ? [{ key: "personal_savings", label: "Personal Savings", desc: isWithdraw ? "Withdraw from client's personal savings" : "Add to client's personal savings", gid: null }]
+                : []),
               ...selectedClientMems.map(m => {
                 const sg = m.ajo_groups;
                 return sg?.group_mode === "rotating"
-                  ? { key: "esusu_rotation", label: sg.name, desc: "Esusu Rotation — add to the pot", gid: sg.id }
-                  : { key: "group_savings",  label: sg?.name || "Savings Group", desc: "Savings Group — add to group pool", gid: sg?.id };
+                  ? { key: "esusu_rotation", label: sg.name, desc: isWithdraw ? "Esusu Rotation" : "Esusu Rotation — add to the pot", gid: sg.id }
+                  : { key: "group_savings",  label: sg?.name || "Savings Group", desc: isWithdraw ? "Savings Group" : "Savings Group — add to group pool", gid: sg?.id };
               }),
+              ...(!isWithdraw && selected.client_user_id
+                ? [{ key: "wallet", label: "KudiAI Wallet", desc: "Credit the client's wallet directly", gid: null }]
+                : []),
             ];
+            if (opts.length === 0) return null;
             return (
               <div className="mb-3">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Contributing to</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+                  {isWithdraw ? "Withdraw from" : "Fund"}
+                </p>
                 <div className="space-y-1.5">
                   {opts.map(opt => (
-                    <button key={`${opt.key}:${opt.gid || "personal"}`} type="button"
+                    <button key={`${opt.key}:${opt.gid || "x"}`} type="button"
                       onClick={() => { setContributeCtx(opt.key); setContributeGroupId(opt.gid); }}
                       className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border-2 text-left transition ${
                         contributeCtx === opt.key && contributeGroupId === opt.gid
@@ -2971,7 +3005,34 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             );
           })()}
 
-          {action === "contribute" && contributeCtx === "personal_savings" && selectedCycles.length > 1 && (
+          {/* No savings card yet — prompt to create one (either mode) */}
+          {contributeCtx === "personal_savings" && selectedCycles.length === 0 && selectedClientMems.length === 0 && (
+            <div className="mb-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/60 rounded-xl px-3 py-3 text-center">
+              <p className="text-xs text-amber-700 dark:text-amber-400 font-semibold mb-2">This client has no savings card yet.</p>
+              <button
+                type="button"
+                onClick={async () => {
+                  const c = selected;
+                  setSelected(null); setAction(null); setAmt(""); setContributeCtx("personal_savings");
+                  setHistLoading(true);
+                  const [contribRes, cycleRes] = await Promise.all([
+                    supabase.from("ajo_contributions")
+                      .select("id, aso_client_id, owner_id, amount, type, status, created_at, payment_method, contribution_context, cycle_id, reverses_contribution_id, fee_for_contribution_id, notes, recorded_by, paystack_ref, paystack_status, paid_at, approved_at, approved_by, confirmed_at, confirmed_by, initiated_by, payment_channel, proof_url, contribution_source")
+                      .eq("aso_client_id", c.id).order("created_at", { ascending: false }),
+                    supabase.from("ajo_cycles")
+                      .select("id, client_id, label, status, commission_model, commission_balance, expected_amount_per_period, frequency, length_periods, start_date, created_at, commission_percent")
+                      .eq("client_id", c.id).order("created_at", { ascending: true }),
+                  ]);
+                  setHistoryFor({ client: c, contributions: contribRes.data || [], cycles: cycleRes.data || [] });
+                  setHistLoading(false);
+                }}
+                className="text-xs font-bold text-brand-600 dark:text-brand-400 underline underline-offset-2">
+                Create a Savings Card
+              </button>
+            </div>
+          )}
+
+          {contributeCtx === "personal_savings" && selectedCycles.length > 1 && (
             <div className="mb-3">
               <p className="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">Which savings cycle?</p>
               <div className="space-y-1.5">
@@ -2983,11 +3044,36 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                         ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20 text-brand-700 dark:text-brand-300"
                         : "border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200"
                     }`}>
-                    <span>{cyc.label || "Savings"}</span>
+                    <span>{cyc.label || "Savings"}{cyc.status === "completed" ? " (Complete)" : ""}</span>
                     {contributeCycleId === cyc.id && <div className="w-3.5 h-3.5 rounded-full bg-brand-500 flex-shrink-0" />}
                   </button>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Target stats — saved / withdrawn / available / locked for whatever's selected */}
+          {(contributeCycleId || contributeGroupId) && (
+            <div className="mb-3 bg-slate-50 dark:bg-slate-800 rounded-xl p-3">
+              {targetStatsLoading ? (
+                <p className="text-[11px] text-slate-400 text-center py-1">Loading…</p>
+              ) : targetStats ? (
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { label: "Total Saved",     value: targetStats.total_saved },
+                    { label: "Total Withdrawn", value: targetStats.total_withdrawn },
+                    { label: "Available",       value: targetStats.available, bold: true },
+                    ...(targetStats.locked > 0 ? [{ label: "Locked", value: targetStats.locked, amber: true }] : []),
+                  ].map(({ label, value, bold, amber }) => (
+                    <div key={label}>
+                      <p className="text-[10px] text-slate-400 dark:text-slate-500">{label}</p>
+                      <p className={`text-sm tabular-nums ${bold ? "font-extrabold text-green-600 dark:text-green-400" : amber ? "font-bold text-amber-600 dark:text-amber-400" : "font-semibold text-slate-700 dark:text-slate-200"}`}>
+                        {fmt(value)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </div>
           )}
 
@@ -3019,10 +3105,39 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             </button>
           )}
 
+          {fundPayErr && (
+            <p className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-xl mb-3">{fundPayErr}</p>
+          )}
+
           <button
             onClick={async () => {
               if (!amt) return;
               const a = parseFloat(amt);
+              setFundPayErr("");
+
+              if (action === "contribute" && contributeCtx === "wallet") {
+                const savedClient = selected;
+                setSelected(null); setAction(null); setAmt(""); setContributeCtx("personal_savings");
+                setTxnPin({
+                  title: "Confirm Wallet Funding",
+                  amount: Math.round(a * 100),
+                  recipient: savedClient.full_name,
+                  description: "Credits the client's KudiAI Wallet directly",
+                  onApprove: async (pin) => {
+                    setTxnPin(null);
+                    const result = await asoFundWallet(savedClient.id, a, pin);
+                    if (result?.error) {
+                      const msg = typeof result.error === "string" ? result.error : (result.error?.message || "Couldn't fund wallet — try again");
+                      setActionResult({ type: "failure", title: "Wallet Funding Failed", amount: a, counterparty: savedClient.full_name, reason: msg });
+                    } else {
+                      speakConfirmation("ajoDeposit", getLang());
+                      setActionResult({ type: "success", title: "Wallet Funded", amount: a, counterparty: savedClient.full_name });
+                    }
+                  },
+                });
+                return;
+              }
+
               if (action === "contribute") {
                 if (contributeCtx === "personal_savings" && selectedCycles.length > 1 && !contributeCycleId) return;
                 const savedClient = selected;
@@ -3038,9 +3153,18 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                   setContribError(result.error);
                 }
               } else {
+                // Same limits as client self-service: cap to the selected entity's
+                // own available balance (ajo_entity_stats) before ever opening the
+                // PIN sheet.
+                if ((contributeCycleId || contributeGroupId) && targetStats && a > Number(targetStats.available || 0)) {
+                  setFundPayErr(`Only ${fmt(targetStats.available)} is available for withdrawal from this ${contributeCycleId ? "savings card" : "group"}.`);
+                  return;
+                }
                 // Clear modal first so it unmounts before PIN sheet opens
                 const savedClient = selected;
                 const savedAmt = a;
+                const savedCycleId = contributeCtx === "personal_savings" ? contributeCycleId : null;
+                const savedGroupId = contributeCtx !== "personal_savings" ? contributeGroupId : null;
                 setSelected(null); setAction(null); setAmt(""); setContributeCtx("personal_savings");
                 setTxnPin({
                   title: "Confirm Withdrawal",
@@ -3049,7 +3173,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                   description: `Gross withdrawal · balance after: ${savedClient.current_balance - savedAmt >= 0 ? `₦${(savedClient.current_balance - savedAmt).toLocaleString()}` : "pending"}`,
                   onApprove: async (pin) => {
                     setTxnPin(null);
-                    const result = await asoWithdraw(savedClient.id, savedAmt, pin);
+                    const result = await asoWithdraw(savedClient.id, savedAmt, pin, savedCycleId, savedGroupId);
                     if (result?.error) {
                       const msg = typeof result.error === "string" ? result.error : (result.error?.message || "Couldn't complete withdrawal — try again");
                       setActionResult({ type: "failure", title: "Withdrawal Failed", amount: savedAmt, counterparty: savedClient.full_name, reason: msg });
@@ -3064,7 +3188,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             className={`w-full py-3.5 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] shadow-sm ${
               action === "contribute" ? "bg-green-600 hover:bg-green-700" : "bg-red-500 hover:bg-red-600"
             }`}>
-            Confirm {action === "contribute" ? "Contribution" : "Withdrawal"}
+            Confirm {action === "contribute" ? (contributeCtx === "wallet" ? "Wallet Funding" : "Contribution") : "Withdrawal"}
           </button>
         </Modal>
       )}

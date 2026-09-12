@@ -35,7 +35,7 @@ import { setCache, getCache } from "../utils/offlineCache";
 import ContributionCard from "../components/ContributionCard";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
 import { useWallet } from "../hooks/useWallet";
-import { BottomSheet, ActionButton, AccountCard, FundWalletSheet, TransferSheet, ReceivePaymentSheet, WalletMiniAction, WALLET_MINI_ICONS, cleanBankName, WalletTxRow } from "../components/WalletPanel";
+import { BottomSheet, ActionButton, AccountCard, FundWalletSheet, TransferSheet, ReceivePaymentSheet, WalletMiniAction, WALLET_MINI_ICONS, cleanBankName, WalletTxRow, WALLET_SOURCE } from "../components/WalletPanel";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import EsusuRotationDashboard from "../components/EsusuRotationDashboard";
 import LegalScreen from "./LegalScreen";
@@ -636,51 +636,49 @@ function SupportInline({ client, session }) {
 }
 
 // ── Portal-aware transaction PIN modal ───────────────────────────────────────
-// Verifies against aso_clients.portal_pin (via ajo-portal verify-txn-pin).
-// If the client has no PIN set (portal_pin_changed_at is null), auto-approves.
+// The PIN is verified server-side, atomically, INSIDE the money-moving call
+// itself (request-withdrawal / pay-contribution-wallet) — no separate
+// verify-txn-pin round trip. `onApprove(pin)` is the caller's real action; it
+// should throw with a friendly message on failure (the modal shows it and
+// lets the user retry) and resolve normally on success (the caller is
+// responsible for closing the modal once its own success UI is ready).
+// A client with no PIN set is blocked entirely — no auto-approve bypass —
+// and is routed to PIN setup via `onNeedPinSetup`.
 const SHAKE_CSS = `@keyframes _shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)}}.ajo-pin-shake{animation:_shake 0.5s ease}`;
 const PAD_DIGITS = [1,2,3,4,5,6,7,8,9];
 
-function AjoTxnPinModal({ clientId, hasPinSet, title, amount, description, onApprove, onCancel }) {
+function AjoTxnPinModal({ hasPinSet, title, amount, description, onApprove, onCancel, onNeedPinSetup }) {
   const [pin, setPin] = useState("");
   const [err, setErr] = useState("");
   const [shake, setShake] = useState(false);
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    if (!hasPinSet) { onApprove?.(); }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const triggerShake = useCallback(() => {
     setShake(true);
     setTimeout(() => setShake(false), 600);
   }, []);
 
-  const handleVerify = useCallback(async (entered) => {
+  const handleSubmitPin = useCallback(async (entered) => {
     setBusy(true);
     try {
-      const res = await ajoFn("verify-txn-pin", { client_id: clientId, pin: entered });
-      if (res?.ok) { onApprove?.(); return; }
+      await onApprove?.(entered);
+      // success — the caller closes the modal once its own success UI is ready
+    } catch (e) {
       triggerShake();
       setPin("");
-      setErr("Incorrect PIN — try again.");
-    } catch {
-      triggerShake();
-      setPin("");
-      setErr("Something went wrong. Try again.");
+      setErr(e?.message || "Something went wrong. Try again.");
     } finally {
       setBusy(false);
     }
-  }, [clientId, onApprove, triggerShake]);
+  }, [onApprove, triggerShake]);
 
   const handleDigit = useCallback((d) => {
     if (busy || pin.length >= 4) return;
     const next = pin + d;
     setPin(next);
     setErr("");
-    if (next.length === 4) setTimeout(() => handleVerify(next), 150);
-  }, [busy, pin, handleVerify]);
+    if (next.length === 4) setTimeout(() => handleSubmitPin(next), 150);
+  }, [busy, pin, handleSubmitPin]);
 
   const handleDel = useCallback(() => {
     if (busy) return;
@@ -688,7 +686,37 @@ function AjoTxnPinModal({ clientId, hasPinSet, title, amount, description, onApp
     setErr("");
   }, [busy]);
 
-  if (!hasPinSet) return null;
+  if (!hasPinSet) {
+    return (
+      <>
+        <div onClick={onCancel} className="fixed inset-0 bg-black/55" style={{ zIndex: 300 }} />
+        <div className="fixed left-0 right-0 bottom-0 bg-white dark:bg-slate-900 rounded-t-3xl shadow-2xl"
+          style={{ zIndex: 301, paddingBottom: "env(safe-area-inset-bottom, 16px)", animation: "slideUp 0.28s cubic-bezier(0.34,1.56,0.64,1)" }}>
+          <style>{`@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}`}</style>
+          <div className="flex justify-center pt-3 pb-2">
+            <div className="w-10 h-1 bg-slate-200 dark:bg-slate-700 rounded-full" />
+          </div>
+          <div className="px-6 pb-6 flex flex-col items-center gap-3 text-center">
+            <div className="w-12 h-12 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center">
+              <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6 text-amber-600 dark:text-amber-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0110 0v4" />
+              </svg>
+            </div>
+            <p className="font-bold text-[16px] text-slate-900 dark:text-slate-100">Set up your transaction PIN</p>
+            <p className="text-[13px] text-slate-500 dark:text-slate-400">
+              For your security, a transaction PIN is required before you can withdraw, deposit, or move money. It only takes a minute.
+            </p>
+            <button
+              onClick={() => { onCancel?.(); onNeedPinSetup?.(); }}
+              className="w-full mt-2 py-3 bg-brand-500 hover:bg-brand-600 text-white rounded-2xl font-bold text-sm transition active:scale-[0.99]">
+              Set Up PIN
+            </button>
+            <button onClick={onCancel} className="text-sm text-slate-400 py-2">Not now</button>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -763,7 +791,7 @@ function getCycleStats(cycle, contributions) {
   const saved = rows.filter(c => c.type === "contribution").reduce((s, c) => s + Number(c.amount || 0), 0);
   const fees  = rows.filter(c => c.type === "commission" || c.type === "registration_fee").reduce((s, c) => s + Number(c.amount || 0), 0);
   const withd = rows.filter(c => c.type === "withdrawal").reduce((s, c) => s + Number(c.amount || 0), 0);
-  return { saved, net: Math.max(0, saved - fees - withd) };
+  return { saved, fees, withdrawn: withd, net: Math.max(0, saved - fees - withd) };
 }
 
 function getGroupSaved(groupId, startedAt, contributions) {
@@ -773,6 +801,24 @@ function getGroupSaved(groupId, startedAt, contributions) {
     c.type === "contribution" && c.status === "completed" &&
     (!startedAt || new Date(c.created_at) >= new Date(startedAt))
   ).reduce((s, c) => s + Number(c.amount || 0), 0);
+}
+
+// Full saved/withdrawn/available breakdown for one savings group or esusu
+// round — same shape as the server's ajo_entity_stats, computed client-side
+// from already-loaded contributions (no extra round trip; mirrors the RPC's
+// exact formula so the numbers stay consistent wherever they're shown).
+function getGroupStats(groupId, startedAt, contributions, isEsusu) {
+  const rows = contributions.filter(c =>
+    c.group_id === groupId &&
+    c.contribution_context === (isEsusu ? "esusu_rotation" : "group_savings") &&
+    c.status === "completed" &&
+    (!startedAt || new Date(c.created_at) >= new Date(startedAt))
+  );
+  const saved     = rows.filter(c => c.type === "contribution").reduce((s, c) => s + Number(c.amount || 0), 0);
+  const withdrawn = isEsusu
+    ? rows.filter(c => c.type === "esusu_payout").reduce((s, c) => s + Number(c.amount || 0), 0)
+    : rows.filter(c => c.type === "withdrawal" || c.type === "disbursement").reduce((s, c) => s + Number(c.amount || 0), 0);
+  return { saved, withdrawn, available: Math.max(0, saved - withdrawn) };
 }
 
 // Pending-request helpers — subtract outstanding requests from entity ceilings.
@@ -856,7 +902,7 @@ function MoneySummaryRow({ label1, val1, label2, val2, loading, highlightVal2 = 
 // Each card shows static info in its header button; when selected the
 // children (action form) appear below in an inline expansion.
 
-function MoneyCycleCard({ cycle, saved, net, availableNow, locked, lockReason, selected, onSelect, mode, children }) {
+function MoneyCycleCard({ cycle, saved, net, availableNow, withdrawn, locked, lockReason, selected, onSelect, mode, children }) {
   const t = useT();
   return (
     <div className={`mb-2 rounded-xl border-2 transition overflow-hidden ${
@@ -889,6 +935,9 @@ function MoneyCycleCard({ cycle, saved, net, availableNow, locked, lockReason, s
             </span>
           )}
         </div>
+        {withdrawn > 0 && (
+          <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">Withdrawn <span className="font-semibold tabular-nums">{fmt(withdrawn)}</span></p>
+        )}
       </button>
       {selected && children && (
         <div className="px-3.5 pb-3.5 pt-0.5 border-t border-slate-100 dark:border-slate-700">
@@ -899,7 +948,7 @@ function MoneyCycleCard({ cycle, saved, net, availableNow, locked, lockReason, s
   );
 }
 
-function MoneyGroupCard({ group, saved, availableNow, selected, onSelect, mode, children }) {
+function MoneyGroupCard({ group, saved, availableNow, withdrawn, selected, onSelect, mode, children }) {
   const t = useT();
   const rs = group.round_status || "not_started";
   const isReleased = rs === "closed";
@@ -933,6 +982,9 @@ function MoneyGroupCard({ group, saved, availableNow, selected, onSelect, mode, 
             <span className="text-[10px] text-blue-600 dark:text-blue-400 font-medium">{t("ajoPt.groupSavings")}</span>
           )}
         </div>
+        {withdrawn > 0 && (
+          <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">Withdrawn <span className="font-semibold tabular-nums">{fmt(withdrawn)}</span></p>
+        )}
       </button>
       {selected && children && (
         <div className="px-3.5 pb-3.5 pt-0.5 border-t border-slate-100 dark:border-slate-700">
@@ -1012,7 +1064,7 @@ function MoneyEsusuSimpleCard({ group, selected, onSelect, children }) {
   );
 }
 
-function PayContributionModal({ client, clientGroups = [], cycles = [], contributions = [], wallet, onTopUpWallet, onOpenCycle, onClose, onSuccess }) {
+function PayContributionModal({ client, clientGroups = [], cycles = [], contributions = [], wallet, onTopUpWallet, onOpenCycle, onClose, onSuccess, onNeedPinSetup }) {
   const t = useT();
   // ── Core state (unchanged from original) ──────────────────────────────────
   const [status,          setStatus]         = useState("idle");
@@ -1058,9 +1110,9 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], contribu
   }, [fpCycles.length, pctCycles.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Pay from wallet — the only route now (no Paystack for clients) ────────
-  const handlePayWallet = async () => {
+  const handlePayWallet = async (pin) => {
     const amt = parseFloat(customAmt);
-    if (!amt || amt <= 0) { setMessage("Please enter a valid amount."); return; }
+    if (!amt || amt <= 0) { setMessage("Please enter a valid amount."); throw new Error("Please enter a valid amount."); }
     setStatus("loading"); setMessage("");
     setPaidAmt(amt);
     try {
@@ -1068,6 +1120,7 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], contribu
         client_id: client.id, amount: amt, contribution_context: contribCtx,
         group_id: contribGroupId || undefined,
         ...(contribCtx === "personal_savings" && selectedCycleId ? { cycle_id: selectedCycleId } : {}),
+        pin,
       });
       setStatus("done");
       setMessage("Paid from your KudiAI Wallet.");
@@ -1075,6 +1128,7 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], contribu
     } catch (e) {
       setStatus("error");
       setMessage(moneyError(e));
+      throw e;
     }
   };
 
@@ -1139,7 +1193,8 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], contribu
               amount: Math.round(amt * 100),
               description: t("coopMem.savingsContribDesc"),
               hasPinSet: Boolean(client?.portal_pin_changed_at),
-              onApprove: () => { setTxnPin(null); handlePayWallet(); },
+              onApprove: async (pin) => { await handlePayWallet(pin); setTxnPin(null); },
+              onNeedPinSetup: () => onNeedPinSetup?.(),
             });
           }}
           disabled={status === "loading"}
@@ -1297,7 +1352,7 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], contribu
           </>
         )}
 
-        {txnPin && <AjoTxnPinModal {...txnPin} clientId={client?.id} onCancel={() => setTxnPin(null)} />}
+        {txnPin && <AjoTxnPinModal {...txnPin} onCancel={() => setTxnPin(null)} />}
       </div>
     </div>
   );
@@ -1650,7 +1705,7 @@ function ChangePasswordModal({ onClose }) {
 }
 
 // ── Withdrawal request modal ──────────────────────────────────────────────
-function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotationsData = [], contributions = [], withdrawRequests = [], onClose, onSuccess }) {
+function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotationsData = [], contributions = [], withdrawRequests = [], onClose, onSuccess, onNeedPinSetup }) {
   const t = useT();
   // ── Core state (unchanged) ────────────────────────────────────────────────
   const [amount,        setAmount]        = useState("");
@@ -1758,20 +1813,21 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
   // ── handleSubmit — payout auto-routes to the client's own KudiAI Wallet, no
   //    bank account to configure. ajo_record_withdrawal schedules a real
   //    wallet-to-wallet payout (owner -> client) for the next business day. ──
-  const handleSubmit = async () => {
-    if (!amtNum || amtNum <= 0)   { setError(t("error.somethingWrong")); return; }
+  const handleSubmit = async (pin) => {
+    if (!amtNum || amtNum <= 0)   { setError(t("error.somethingWrong")); throw new Error(t("error.somethingWrong")); }
     if (amtNum > activeCeiling) {
       const pendMsg = activePending > 0 ? ` (${fmt(activePending)} already pending)` : "";
       const lockParts = [];
       if (groupLocked > 0) lockParts.push(`${fmt(groupLocked)} committed to group/esusu`);
       if (esusuLocked > 0) lockParts.push(`${fmt(esusuLocked)} locked in active esusu round`);
       if (cycleLocked > 0) lockParts.push(`${fmt(cycleLocked)} locked in first-period cycle`);
-      setError(lockParts.length > 0
+      const msg = lockParts.length > 0
         ? `Only ${fmt(activeCeiling)} is available${pendMsg} — ${lockParts.join(" and ")}`
-        : `Only ${fmt(activeCeiling)} is available${pendMsg}`);
-      return;
+        : `Only ${fmt(activeCeiling)} is available${pendMsg}`;
+      setError(msg);
+      throw new Error(msg);
     }
-    if (netAmt <= 0)              { setError(t("error.somethingWrong")); return; }
+    if (netAmt <= 0)              { setError(t("error.somethingWrong")); throw new Error(t("error.somethingWrong")); }
     setSaving(true); setError("");
     try {
       const reqNotes   = activeTab === "group" && selectedGroup ? `Group savings — ${selectedGroup.name}` : undefined;
@@ -1786,11 +1842,13 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
         ...(reqCycleId ? { cycle_id: reqCycleId } : {}),
         ...(reqGroupId ? { group_id: reqGroupId } : {}),
         ...(reqNotes   ? { notes:    reqNotes }   : {}),
+        pin,
       });
       setDone(true);
       onSuccess();
     } catch (e) {
       setError(moneyError(e));
+      throw e;
     } finally {
       setSaving(false);
     }
@@ -1867,7 +1925,8 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
             amount: Math.round(netAmt * 100),
             description: "Savings withdrawal request",
             hasPinSet: Boolean(client?.portal_pin_changed_at),
-            onApprove: () => { setTxnPin(null); handleSubmit(); },
+            onApprove: async (pin) => { await handleSubmit(pin); setTxnPin(null); },
+            onNeedPinSetup: () => onNeedPinSetup?.(),
           });
         }}
         disabled={saving || !amtNum || amtNum <= 0}
@@ -1974,7 +2033,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
                       const cyPending  = getPendingForCycle(cy.id, withdrawRequests);
                       const cyAvailNow = Math.max(0, stats.net - cyPending);
                       return (
-                        <MoneyCycleCard key={cy.id} cycle={cy} saved={stats.saved} net={stats.net}
+                        <MoneyCycleCard key={cy.id} cycle={cy} saved={stats.saved} net={stats.net} withdrawn={stats.withdrawn}
                           availableNow={locked ? undefined : cyAvailNow}
                           locked={locked}
                           lockReason="Available when your savings plan is complete"
@@ -2000,7 +2059,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
                       const cyPending  = getPendingForCycle(cy.id, withdrawRequests);
                       const cyAvailNow = Math.max(0, stats.net - cyPending);
                       return (
-                        <MoneyCycleCard key={cy.id} cycle={cy} saved={stats.saved} net={stats.net}
+                        <MoneyCycleCard key={cy.id} cycle={cy} saved={stats.saved} net={stats.net} withdrawn={stats.withdrawn}
                           availableNow={cyAvailNow}
                           locked={false} mode="withdraw"
                           selected={selectedCycleId === cy.id}
@@ -2027,12 +2086,13 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
                 )}
                 {savingsGroups.map(g => {
                   const saved      = getGroupSaved(g.id, g.started_at, contributions);
+                  const gWithdrawn = getGroupStats(g.id, g.started_at, contributions, false).withdrawn;
                   const rs         = g.round_status || "not_started";
                   const canWithdraw = rs === "active" || rs === "closed" || rs === "target_met";
                   const gPending   = getPendingForGroup(g.id, withdrawRequests);
                   const gAvailNow  = rs === "closed" ? Math.max(0, saved - gPending) : undefined;
                   return (
-                    <MoneyGroupCard key={g.id} group={g} saved={saved} availableNow={gAvailNow} mode="withdraw"
+                    <MoneyGroupCard key={g.id} group={g} saved={saved} availableNow={gAvailNow} withdrawn={gWithdrawn} mode="withdraw"
                       selected={selectedGrpId === g.id}
                       onSelect={() => { setSelectedGrpId(g.id); setAmount(""); setError(""); }}>
                       {canWithdraw ? withdrawalForm : (
@@ -2075,7 +2135,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
         )}
       </div>
     </div>
-    {txnPin && <AjoTxnPinModal {...txnPin} clientId={client?.id} onCancel={() => setTxnPin(null)} />}
+    {txnPin && <AjoTxnPinModal {...txnPin} onCancel={() => setTxnPin(null)} />}
     </>
   );
 }
@@ -3095,7 +3155,7 @@ function PendingInfoSheet({ item, onClose }) {
 }
 
 // ── History tab ───────────────────────────────────────────────────────────
-function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, cycles = [], rotationsData = [] }) {
+function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, cycles = [], rotationsData = [], wallet }) {
   const t = useT();
   // Build lookup maps so each row can show its entity name
   const cycleNameMap = Object.fromEntries(cycles.map(c => [c.id, c.label || "Personal Savings"]));
@@ -3119,7 +3179,22 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
     status: r.status, date: r.requested_at,
   }));
   const contribItems = contributions.map(c => ({ _type: "contribution", ...c, date: c.created_at }));
-  const allItems = [...withdrawItems, ...contribItems].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  // Merge in the wallet ledger. A single economic event (e.g. a contribution
+  // paid from the wallet) writes BOTH a wallet_ledger row AND an
+  // ajo_contributions row (linked via related_txn_id) — skip the wallet row
+  // when its counterpart is already shown as a contribution/withdrawal item,
+  // so nothing appears twice.
+  const contribIds = new Set(contributions.map(c => c.id));
+  const walletItems = (wallet?.ledger || [])
+    .filter(row => !(row.related_txn_id && contribIds.has(row.related_txn_id)))
+    .map(row => ({
+      _type: "wallet", id: row.id, amount: (row.amount_kobo || 0) / 100,
+      type: row.source, direction: row.direction, status: row.status,
+      date: row.created_at, created_at: row.created_at, _walletRow: row,
+    }));
+
+  const allItems = [...withdrawItems, ...contribItems, ...walletItems].sort((a, b) => new Date(b.date) - new Date(a.date));
 
   const reversedIdSet = new Set(
     contributions
@@ -3134,10 +3209,24 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
     { id: "fees",        label: t("ajoPt.feesTab") },
   ];
 
+  const WALLET_FEE_SOURCES = new Set(["transfer_fee", "cbn_levy", "wallet_fee"]);
   const filtered = allItems.filter(item => {
-    if (typeFilter === "deposits")    return item._type === "contribution" && (item.type === "contribution" || item.type === "esusu_payout");
-    if (typeFilter === "withdrawals") return item._type === "withdrawal_request" || item.type === "withdrawal";
-    if (typeFilter === "fees")        return item._type === "contribution" && (item.type === "withdrawal_fee" || item.type === "registration_fee" || item.type === "commission");
+    if (typeFilter === "deposits") {
+      if (item._type === "contribution") return item.type === "contribution" || item.type === "esusu_payout";
+      if (item._type === "wallet")       return item.direction === "credit";
+      return false;
+    }
+    if (typeFilter === "withdrawals") {
+      if (item._type === "withdrawal_request") return true;
+      if (item._type === "contribution")        return item.type === "withdrawal";
+      if (item._type === "wallet")              return item.type === "withdrawal";
+      return false;
+    }
+    if (typeFilter === "fees") {
+      if (item._type === "contribution") return item.type === "withdrawal_fee" || item.type === "registration_fee" || item.type === "commission";
+      if (item._type === "wallet")       return WALLET_FEE_SOURCES.has(item.type);
+      return false;
+    }
     return true;
   });
 
@@ -3253,15 +3342,18 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
   };
 
   const renderItem = (item) => {
+    const isWallet   = item._type === "wallet";
     const isWdReq    = item._type === "withdrawal_request";
     const isPending  = item.status === "pending";
     const isHeld24h  = item.status === "held_24h";
-    const isReversal = item.type?.startsWith("reversal_");
-    const isReversed = reversedIdSet.has(item.id);
+    const isReversal = !isWallet && item.type?.startsWith("reversal_");
+    const isReversed = !isWallet && reversedIdSet.has(item.id);
     const isManual   = item.payment_method === "manual_transfer";
     const isRejected = item.status === "rejected";
-    // Credits: contribution, esusu_payout, reversal_withdrawal*
-    const isCredit   = !isWdReq && (
+    // Credits: contribution, esusu_payout, reversal_withdrawal* — or, for a
+    // wallet row, whatever direction the ledger says (one source label can
+    // cover both sides of a transfer, e.g. ajo_collection is always a credit).
+    const isCredit   = isWallet ? item.direction === "credit" : !isWdReq && (
       item.type === "contribution" || item.type === "esusu_payout" ||
       item.type === "reversal_withdrawal" || item.type === "reversal_withdrawal_fee" || item.type === "reversal_registration_fee"
     );
@@ -3287,6 +3379,10 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
       : "text-red-500 dark:text-red-400";
 
     const handleTap = () => {
+      if (isWallet) {
+        setReceipt(wallet?.receiptFor?.(item._walletRow, bizName, client?.full_name) || item);
+        return;
+      }
       if (isPending && !isWdReq) { setPendingSheet(item); return; }
       setReceipt(isWdReq ? { ...item, type: "withdrawal" } : item);
     };
@@ -3313,7 +3409,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2">
               <p className={`text-xs font-semibold min-w-0 truncate ${isReversed ? "line-through text-slate-400 dark:text-slate-500" : "text-slate-700 dark:text-slate-200"}`}>
-                {isWdReq ? "Withdrawal Request" : ledgerTypeLabel(item)}
+                {isWdReq ? "Withdrawal Request" : isWallet ? (WALLET_SOURCE[item.type]?.label || item.type) : ledgerTypeLabel(item)}
               </p>
               <span className={`text-sm font-extrabold tabular flex-shrink-0 ${amtCls}`}>
                 {sign}{fmt(item.amount)}
@@ -3327,12 +3423,14 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
               {!isPending && !isHeld24h && !isReversed && <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full capitalize ${statusCls(item.status)}`}>{item.status || "—"}</span>}
               {isWdReq && item.net_amount != null && <span className="text-[10px] text-slate-400 dark:text-slate-500">Net: {fmt(item.net_amount)}</span>}
             </div>
-            <p className="text-[10px] text-slate-400 mt-0.5">
-              {isManual ? "Bank transfer" : (item.payment_method || (isWdReq ? "withdrawal" : "cash"))}
-              {item.paystack_ref && ` · Ref: ${item.paystack_ref.slice(-8)}`}
-            </p>
+            {!isWallet && (
+              <p className="text-[10px] text-slate-400 mt-0.5">
+                {isManual ? "Bank transfer" : (item.payment_method || (isWdReq ? "withdrawal" : "cash"))}
+                {item.paystack_ref && ` · Ref: ${item.paystack_ref.slice(-8)}`}
+              </p>
+            )}
             <p className="text-[10px] text-slate-400">{fmtDateTime(item.created_at || item.date)}</p>
-            {!isWdReq && (
+            {!isWdReq && !isWallet && (
               <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
                 {item.cycle_id
                   ? (cycleNameMap[item.cycle_id] || "Personal Savings")
@@ -5411,6 +5509,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
               ownerInfo={ownerInfo}
               cycles={cycles}
               rotationsData={rotationsData}
+              wallet={wallet}
             />
           )}
           {tab === "me" && (
@@ -5516,6 +5615,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
           onSuccess={(ref, updatedClient) => {
             if (updatedClient) setClient(prev => ({ ...prev, ...updatedClient }));
           }}
+          onNeedPinSetup={() => { setShowPay(false); setTab("me"); }}
         />
       )}
       {showOpenCycle && client && (
@@ -5554,6 +5654,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
           withdrawRequests={withdrawRequests}
           onClose={() => setShowWithdraw(false)}
           onSuccess={() => { refreshWithdrawRequests(); }}
+          onNeedPinSetup={() => { setShowWithdraw(false); setTab("me"); }}
         />
       )}
       {showPwdModal && (
