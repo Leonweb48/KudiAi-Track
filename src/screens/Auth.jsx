@@ -6,6 +6,7 @@ import { AuthShell, AuthCard } from "../components/AuthShell";
 import { Capacitor } from "@capacitor/core";
 import { Browser } from "@capacitor/browser";
 import { useT } from "../contexts/LanguageContext";
+import LegalScreen from "./LegalScreen";
 
 const isNative = Capacitor.isNativePlatform();
 const OAUTH_REDIRECT = isNative
@@ -368,6 +369,8 @@ export default function Auth() {
   const [clientBusinessId,    setClientBusinessId]   = useState("");
   const [showPw,        setShowPw]       = useState(false);
   const [showConfirmPw, setShowConfirmPw] = useState(false);
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [legalView,     setLegalView]    = useState(null); // "terms" | "privacy" | null
   const [loading,       setLoading]      = useState(false);
   const [error,        setError]        = useState(() => {
     const msg = sessionStorage.getItem("auth_block_reason");
@@ -464,6 +467,10 @@ export default function Auth() {
       }
       if (mode === "register" && password !== confirmPass) {
         setError("Passwords do not match. Please check and try again.");
+        return;
+      }
+      if (mode === "register" && !agreedToTerms) {
+        setError("Please agree to the Terms & Conditions and Privacy Policy to continue.");
         return;
       }
       if (mode === "login") {
@@ -1066,8 +1073,38 @@ export default function Auth() {
           </div>
         )}
 
+        {mode === "register" && (
+          <div className="flex items-start gap-2.5 pt-1">
+            <button
+              type="button"
+              onClick={() => setAgreedToTerms(v => !v)}
+              aria-checked={agreedToTerms}
+              role="checkbox"
+              className={`w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 mt-0.5 transition-all ${
+                agreedToTerms ? "bg-emerald-600 border-emerald-600" : "border-gray-300 dark:border-slate-500 bg-white dark:bg-slate-800"
+              }`}
+            >
+              {agreedToTerms && (
+                <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3" stroke="white" strokeWidth={3} strokeLinecap="round">
+                  <path d="M20 6L9 17l-5-5" />
+                </svg>
+              )}
+            </button>
+            <p className="text-[12px] text-gray-500 dark:text-slate-400 leading-snug">
+              I agree to the{" "}
+              <button type="button" onClick={() => setLegalView("terms")} className="font-semibold text-emerald-600 dark:text-emerald-400 underline underline-offset-2">
+                Terms & Conditions
+              </button>
+              {" "}and{" "}
+              <button type="button" onClick={() => setLegalView("privacy")} className="font-semibold text-emerald-600 dark:text-emerald-400 underline underline-offset-2">
+                Privacy Policy
+              </button>
+            </p>
+          </div>
+        )}
+
         <button type="submit"
-          disabled={loading || (mode === "register" && confirmPass.length > 0 && confirmPass !== password)}
+          disabled={loading || (mode === "register" && confirmPass.length > 0 && confirmPass !== password) || (mode === "register" && !agreedToTerms)}
           className="w-full bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-60 text-white font-bold rounded-xl py-3.5 text-sm transition-colors shadow-sm">
           {loading
             ? t("auth.pleaseWait")
@@ -1076,6 +1113,8 @@ export default function Auth() {
             : "Send Reset Code"}
         </button>
       </form>
+
+      {legalView && <LegalScreen type={legalView} onBack={() => setLegalView(null)} />}
 
       {!isForgot && (
         <>
