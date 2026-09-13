@@ -76,6 +76,22 @@ async function sendSms(phone: string | null | undefined, message: string, opts: 
   } catch { /* fire and forget */ }
 }
 
+// A wallet's user_id can belong to a business owner (profiles), an Ajo/Esusu
+// client, or a staff/manager (neither of the latter two ever get a profiles
+// row — see resolveIdentity() in flutterwave/index.ts, the same discriminator
+// used here). profiles-only lookups were silently sending zero deposit/
+// withdrawal emails to client and staff wallets, since sendWalletEmail()
+// no-ops on an empty `to`.
+// deno-lint-ignore no-explicit-any
+async function resolveContact(sb: any, userId: string): Promise<{ email: string; phone: string }> {
+  const { data: profile } = await sb.from("profiles").select("email, phone").eq("id", userId).maybeSingle();
+  if (profile?.email || profile?.phone) return { email: profile?.email || "", phone: profile?.phone || "" };
+  const { data: client } = await sb.from("aso_clients").select("email, phone").eq("client_user_id", userId).maybeSingle();
+  if (client?.email || client?.phone) return { email: client?.email || "", phone: client?.phone || "" };
+  const { data: staff } = await sb.from("staff").select("email, phone").eq("user_id", userId).maybeSingle();
+  return { email: staff?.email || "", phone: staff?.phone || "" };
+}
+
 const fmtNgn = (kobo: number) => `₦${(kobo / 100).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
 const ok  = (m = "ok") => new Response(m, { status: 200, headers: CORS });
 const bad = (m: string, s = 400) =>
@@ -205,7 +221,7 @@ serve(async (req) => {
         .limit(1)
         .maybeSingle();
 
-      const { data: owner } = await sb.from("profiles").select("email, full_name, business_name, phone").eq("id", wallet.user_id).maybeSingle();
+      const owner = await resolveContact(sb, wallet.user_id as string);
       const originator = String((pm.bank_transfer as Record<string, unknown>)?.originator_name || "a customer");
 
       if (pr) {
@@ -224,7 +240,7 @@ serve(async (req) => {
             category: "finance", deepLink: { screen: "wallet" },
           }),
         }).catch(() => {});
-        await sendWalletEmail(sb, owner?.email || "", `Payment received — ${fmtNgn(amountKobo)}`,
+        await sendWalletEmail(sb, owner.email, `Payment received — ${fmtNgn(amountKobo)}`,
           walletEmailHtml({
             icon: "💰", accent: "#16a34a", title: "Payment received",
             rows: [["Amount", fmtNgn(amountKobo)], ["From", originator], ["Into", `${wallet.flw_account_number} · KudiAI wallet`],
@@ -279,10 +295,10 @@ serve(async (req) => {
           category: "finance", deepLink: { screen: "wallet" },
         }),
       }).catch(() => {});
-      await sendSms((owner as Record<string, unknown> | null)?.phone as string, `₦${(creditedKobo / 100).toLocaleString("en-NG")} credited to your KudiAI wallet. — KudiAI`, {
+      await sendSms(owner.phone, `₦${(creditedKobo / 100).toLocaleString("en-NG")} credited to your KudiAI wallet. — KudiAI`, {
         category: "money", user_id: wallet.user_id as string, related_type: "wallet_ledger", related_id: chargeId,
       });
-      await sendWalletEmail(sb, owner?.email || "", `Wallet funded — ${fmtNgn(creditedKobo)}`,
+      await sendWalletEmail(sb, owner.email, `Wallet funded — ${fmtNgn(creditedKobo)}`,
         walletEmailHtml({
           icon: "⬆️", accent: "#2E8020", title: "Wallet funded",
           rows: [["Amount received", fmtNgn(amountKobo)], ["From", originator],
@@ -331,10 +347,10 @@ serve(async (req) => {
           .select("user_id, amount_kobo, fee_kobo, account_name, account_number, bank_code")
           .or(`flw_transfer_id.eq.${transferId}${ref ? `,id.eq.${ref}` : ""}`).limit(1).maybeSingle();
         if (wd) {
-          const { data: o } = await sb.from("profiles").select("email, phone").eq("id", wd.user_id).maybeSingle();
+          const o = await resolveContact(sb, wd.user_id);
           const bankName = bankNm || wd.bank_code;
           if (st === "successful") {
-            await sendWalletEmail(sb, o?.email || "", `Transfer sent — ${fmtNgn(wd.amount_kobo)}`,
+            await sendWalletEmail(sb, o.email, `Transfer sent — ${fmtNgn(wd.amount_kobo)}`,
               walletEmailHtml({
                 icon: "✅", accent: "#0F1D42", title: "Transfer completed",
                 rows: [["Amount", fmtNgn(wd.amount_kobo)], ["To", wd.account_name || wd.account_number],
@@ -345,18 +361,18 @@ serve(async (req) => {
                        ["Reference", `KDT-${transferId}`], ["Time", new Date().toLocaleString("en-NG")]],
                 foot: "Sent from your KudiAI Track wallet. The recipient's bank will show \"KudiAI Track\" and this reference.",
               }));
-            await sendSms((o as Record<string, unknown> | null)?.phone as string, `${fmtNgn(wd.amount_kobo)} transfer to ${wd.account_name || wd.account_number} completed. — KudiAI`, {
+            await sendSms(o.phone, `${fmtNgn(wd.amount_kobo)} transfer to ${wd.account_name || wd.account_number} completed. — KudiAI`, {
               category: "money", user_id: wd.user_id as string, related_type: "wallet_withdrawals", related_id: transferId,
             });
           } else {
-            await sendWalletEmail(sb, o?.email || "", `Transfer ${st} — ${fmtNgn(wd.amount_kobo)} returned`,
+            await sendWalletEmail(sb, o.email, `Transfer ${st} — ${fmtNgn(wd.amount_kobo)} returned`,
               walletEmailHtml({
                 icon: "↩️", accent: "#b91c1c", title: `Transfer ${st}`,
                 rows: [["Amount", fmtNgn(wd.amount_kobo)], ["To", wd.account_name || wd.account_number],
                        ["Status", "returned to your wallet"], ["Reference", `KDT-${transferId}`]],
                 foot: "The bank could not complete this transfer, so the full amount is back in your wallet.",
               }));
-            await sendSms((o as Record<string, unknown> | null)?.phone as string, `${fmtNgn(wd.amount_kobo)} transfer ${st} — returned to your KudiAI wallet. — KudiAI`, {
+            await sendSms(o.phone, `${fmtNgn(wd.amount_kobo)} transfer ${st} — returned to your KudiAI wallet. — KudiAI`, {
               category: "money", user_id: wd.user_id as string, related_type: "wallet_withdrawals", related_id: transferId,
             });
           }
