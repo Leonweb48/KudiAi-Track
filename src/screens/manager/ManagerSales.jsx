@@ -61,7 +61,7 @@ export default function ManagerSales({ store, staff, session, livePerms, initial
           {!allowed.includes("bills")
             ? <PermBlock msg="Bills not enabled" hint="Contact the business owner to enable bill payments." />
             : <div className="h-full overflow-y-auto pb-4">
-                <BillPayments store={store} plan={plan} markup={1.098} pointsEnabled
+                <BillPayments store={store} plan={plan} session={session} walletOnly markup={1.098} pointsEnabled
                   staffName={staff?.full_name}
                   staffEmail={session?.user?.email || staff?.email || ""}
                   businessName={staff?.business_name || store.profile?.business_name}

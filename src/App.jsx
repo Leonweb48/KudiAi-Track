@@ -589,6 +589,7 @@ export default function App() {
                     branches={branchesHook.branches}
                     staffList={store.staffList || []} /></S>,
     bills:        <S><BillPayments store={store} plan={plan} session={session}
+                    walletOnly
                     markup={canDo(plan, "apiAccess") ? 1.01 : 1.098}
                     pointsEnabled
                     staffEmail={session?.user?.email}

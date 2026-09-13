@@ -42,7 +42,7 @@ export function useWallet(userId, enabled = true) {
     // stay in the loading state, don't flash the "activate wallet" screen.
     if (!userId) { setLoading(!loadedOnceRef.current); return; }
     try {
-      const [{ data: w }, { data: l }, { data: wd }, { data: rq }, { data: pf }, { data: cl }] = await Promise.all([
+      const [{ data: w }, { data: l }, { data: wd }, { data: rq }, { data: pf }, { data: cl }, { data: st }] = await Promise.all([
         supabase.from("wallets").select("*").eq("user_id", userId).maybeSingle(),
         supabase.from("wallet_ledger").select("*").eq("user_id", userId)
           .order("created_at", { ascending: false }).limit(50),
@@ -52,6 +52,7 @@ export function useWallet(userId, enabled = true) {
           .order("created_at", { ascending: false }).limit(50),
         supabase.from("profiles").select("full_name, business_name, bvn_verified").eq("id", userId).maybeSingle(),
         supabase.from("aso_clients").select("bvn_verified").eq("client_user_id", userId).maybeSingle(),
+        supabase.from("staff").select("bvn_verified").eq("user_id", userId).maybeSingle(),
       ]);
       setWallet(w || null);
       setLedger(l || []);
@@ -59,11 +60,14 @@ export function useWallet(userId, enabled = true) {
       setRequests(rq || []);
       // Same table-selection rule as the server's resolveIdentity() (flutterwave/
       // index.ts): profiles wins unless it has no name at all (the signal that
-      // this uid is really an Ajo/Esusu client, not a business owner) — a plain
-      // `pf?.bvn_verified ?? cl?.bvn_verified` would pick profiles' (irrelevant,
-      // default-false) value for anyone who happens to also have a profiles row.
+      // this uid is really an Ajo/Esusu client or staff member, not a business
+      // owner) — a plain `pf?.bvn_verified ?? cl?.bvn_verified` would pick
+      // profiles' (irrelevant, default-false) value for anyone who happens to
+      // also have a profiles row. Staff/managers never get a profiles row at
+      // all (no signup trigger creates one for admin-API-created staff auth
+      // users), so cl-then-st is unambiguous — no case where both could apply.
       const pfHasName = !!((pf?.full_name || pf?.business_name || "").trim());
-      setBvnVerified(!!(pfHasName ? pf?.bvn_verified : (cl?.bvn_verified ?? pf?.bvn_verified ?? false)));
+      setBvnVerified(!!(pfHasName ? pf?.bvn_verified : (cl?.bvn_verified ?? st?.bvn_verified ?? pf?.bvn_verified ?? false)));
       const pr = (rq || []).find((r) => r.status === "pending" && new Date(r.expires_at) > new Date());
       setPayReq(pr || null);
       loadedOnceRef.current = true;

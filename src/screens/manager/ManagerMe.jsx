@@ -15,6 +15,7 @@ import TransactionPinModal from "../../components/TransactionPinModal";
 import ForgotPinFlow from "../../components/ForgotPinFlow";
 import ProfileEdit from "../../components/shared/ProfileEdit";
 import NotificationPreferences from "../../components/NotificationPreferences";
+import StaffWalletPanel from "../../components/StaffWalletPanel";
 import { useLanguage } from "../../contexts/LanguageContext";
 import { LANGUAGES, markLangChosen } from "../../utils/i18n";
 
@@ -73,6 +74,7 @@ export default function ManagerMe({
   const [showNotifPrefs,   setShowNotifPrefs]   = useState(false);
   const [showLang,         setShowLang]         = useState(false);
   const [acceptedConsent,  setAcceptedConsent]  = useState(null);
+  const [showWallet,       setShowWallet]       = useState(false);
   const { lang, changeLang } = useLanguage();
 
   const [activityLogs,    setActivityLogs]    = useState([]);
@@ -484,6 +486,7 @@ export default function ManagerMe({
           <Row icon={<RowIcon d={P.doc} />}    label="My Activity"       sub="Your action log and history"           onClick={() => setView("activity")} />
           <Row icon={<RowIcon d={P.credit} />} label="My Commissions"    sub="Commission earnings breakdown"         onClick={() => setView("commissions")} />
           <Row icon={<RowIcon d={P.in} />}     label="My Payments"       sub="Salary and disbursement history"       onClick={() => setView("payments")} />
+          <Row icon={<RowIcon d={P.bank} />}   label="My Wallet"         sub="Activate & manage your KudiAI wallet"  onClick={() => setShowWallet(true)} />
           <Row icon={<RowIcon d={P.check} />}  label="Close My Day"      sub="Submit end-of-day cash reconciliation" onClick={() => setView("reconcile")} />
         </SettingsCard>
       </div>
@@ -625,6 +628,9 @@ export default function ManagerMe({
       </div>
 
       {/* Modals */}
+      {showWallet && (
+        <StaffWalletPanel open onClose={() => setShowWallet(false)} session={session} staffName={staff?.full_name} />
+      )}
       {changingPin && (
         <ChangePinModal
           mode={changingPin}

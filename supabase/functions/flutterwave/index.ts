@@ -112,14 +112,14 @@ async function sha256Hex(input: string): Promise<string> {
 // right one. Shared by provision-account and the two verify-bvn-* actions.
 // deno-lint-ignore no-explicit-any
 async function resolveIdentity(sb: any, targetUid: string): Promise<{
-  table: "profiles" | "aso_clients"; email: string; fullName: string; phoneRaw: string;
+  table: "profiles" | "aso_clients" | "staff"; email: string; fullName: string; phoneRaw: string;
 }> {
   const { data: profile } = await sb.from("profiles")
     .select("email, full_name, business_name, phone").eq("id", targetUid).maybeSingle();
   let email    = profile?.email || "";
   let fullName = (profile?.full_name || profile?.business_name || "").trim();
   let phoneRaw = String(profile?.phone ?? "").replace(/\D/g, "");
-  let table: "profiles" | "aso_clients" = "profiles";
+  let table: "profiles" | "aso_clients" | "staff" = "profiles";
   if (!fullName) {
     const { data: cl } = await sb.from("aso_clients")
       .select("email, full_name, phone").eq("client_user_id", targetUid).maybeSingle();
@@ -128,9 +128,27 @@ async function resolveIdentity(sb: any, targetUid: string): Promise<{
       email    = email || cl.email || "";
       fullName = (cl.full_name || "").trim();
       phoneRaw = phoneRaw || String(cl.phone ?? "").replace(/\D/g, "");
+    } else {
+      // Staff/managers never get a profiles row (no signup trigger creates one
+      // for the admin-API-created auth users manage-staff-account provisions),
+      // so reaching here unambiguously means "staff", not "no identity found".
+      const { data: st } = await sb.from("staff")
+        .select("email, full_name, phone").eq("user_id", targetUid).maybeSingle();
+      if (st) {
+        table    = "staff";
+        email    = email || st.email || "";
+        fullName = (st.full_name || "").trim();
+        phoneRaw = phoneRaw || String(st.phone ?? "").replace(/\D/g, "");
+      }
     }
   }
   return { table, email, fullName, phoneRaw };
+}
+
+// The column that identifies a person within their resolveIdentity() table —
+// profiles/aso_clients/staff each key their own-user link differently.
+function filterColFor(table: "profiles" | "aso_clients" | "staff"): string {
+  return table === "profiles" ? "id" : table === "aso_clients" ? "client_user_id" : "user_id";
 }
 
 // ── bank list cache ─────────────────────────────────────────────────────────
@@ -293,7 +311,7 @@ serve(async (req) => {
         bvn_verification_reference: reference,
         bvn_hash: hash,
         bvn_verified: false, // reset — a stale "verified" flag from a prior BVN must not survive
-      }).eq(table === "profiles" ? "id" : "client_user_id", targetUid);
+      }).eq(filterColFor(table), targetUid);
 
       if (!d.url) {
         // Flutterwave returns a null url when the person already has prior
@@ -329,7 +347,7 @@ serve(async (req) => {
       if (!FLW_V3_SECRET_KEY) return json({ error: "BVN verification is not configured" }, 503);
 
       const { table, fullName } = await resolveIdentity(sb, targetUid);
-      const filterCol = table === "profiles" ? "id" : "client_user_id";
+      const filterCol = filterColFor(table);
       const { data: row } = await sb.from(table)
         .select("bvn_verification_reference").eq(filterCol, targetUid).maybeSingle();
       const reference = row?.bvn_verification_reference as string | undefined;
@@ -439,7 +457,7 @@ serve(async (req) => {
       // platform_config once Flutterwave confirms the product is enabled; no
       // redeploy needed. The reverify banner (frontend) checks the same flag.
       if (!testMode && (await cfg("bvn_verification_enabled", "false")) === "true") {
-        const filterCol = idTable === "profiles" ? "id" : "client_user_id";
+        const filterCol = filterColFor(idTable);
         const { data: verRow } = await sb.from(idTable)
           .select("bvn_verified, bvn_hash, bvn_verified_at").eq(filterCol, targetUid).maybeSingle();
         const effHash = await sha256Hex(effBvn);

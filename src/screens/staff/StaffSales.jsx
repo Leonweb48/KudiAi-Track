@@ -105,6 +105,8 @@ export default function StaffSales({ store, staff, session, livePerms, initialSu
                 <BillPayments
                   store={store}
                   plan={plan}
+                  session={session}
+                  walletOnly
                   markup={1.098}
                   pointsEnabled
                   staffName={staff?.full_name}

@@ -15,6 +15,7 @@ import TransactionPinModal from "../../components/TransactionPinModal";
 import ForgotPinFlow from "../../components/ForgotPinFlow";
 import ProfileEdit from "../../components/shared/ProfileEdit";
 import NotificationPreferences from "../../components/NotificationPreferences";
+import StaffWalletPanel from "../../components/StaffWalletPanel";
 import { useLanguage } from "../../contexts/LanguageContext";
 import { LANGUAGES, markLangChosen } from "../../utils/i18n";
 
@@ -75,6 +76,7 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
   const [showNotifPrefs,    setShowNotifPrefs]    = useState(false);
   const [showLang,          setShowLang]          = useState(false);
   const [acceptedConsent,   setAcceptedConsent]   = useState(null);
+  const [showWallet,        setShowWallet]        = useState(false);
   /* D2: My Activity */
   const [activityLogs,    setActivityLogs]    = useState([]);
   const [activityLoading, setActivityLoading] = useState(false);
@@ -507,6 +509,7 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
           <Row icon={<RowIcon d={P.doc} />}    label="My Activity"          sub="Your action log and history"            onClick={() => setView("activity")} />
           <Row icon={<RowIcon d={P.credit} />} label="My Commissions"       sub="Commission earnings breakdown"          onClick={() => setView("commissions")} />
           <Row icon={<RowIcon d={P.in} />}     label="My Payments"          sub="Salary and disbursement history"        onClick={() => setView("payments")} />
+          <Row icon={<RowIcon d={P.bank} />}   label="My Wallet"            sub="Activate & manage your KudiAI wallet"   onClick={() => setShowWallet(true)} />
           <Row icon={<RowIcon d={P.check} />}  label="Close My Day"         sub="Submit end-of-day cash reconciliation"  onClick={() => setView("reconcile")} />
         </SettingsCard>
       </div>
@@ -637,6 +640,9 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
       </div>
 
       {/* Modals */}
+      {showWallet && (
+        <StaffWalletPanel open onClose={() => setShowWallet(false)} session={session} staffName={staff?.full_name} />
+      )}
       {changingPin && (
         <ChangePinModal
           mode={changingPin}
