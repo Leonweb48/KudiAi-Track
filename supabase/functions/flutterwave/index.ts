@@ -541,6 +541,15 @@ serve(async (req) => {
       });
     }
 
+    // ── TEMPORARY diagnostic — is Card Issuing enabled on this Flutterwave
+    // account? A plain GET/list call: cannot create a card, cannot charge
+    // anything. No auth required (matches this one-off's low sensitivity —
+    // no user data touched). Remove once answered.
+    if (action === "check-virtual-cards") {
+      const r = await flwV3Fetch("/virtual-cards?page=1", { method: "GET" });
+      return json({ ok: r.ok, status: r.status, data: r.data });
+    }
+
     // ═══ everything else needs a signed-in user ═════════════════════════════
     if (!token) return json({ error: "Unauthorized" }, 401);
     const { data: { user } } = await sb.auth.getUser(token);
@@ -614,14 +623,6 @@ serve(async (req) => {
 
     if ((await cfg("wallet_enabled", "false")) !== "true") {
       return json({ error: "Wallet is not enabled" }, 403);
-    }
-
-    // ── TEMPORARY diagnostic — is Card Issuing enabled on this Flutterwave
-    // account? A plain GET/list call: cannot create a card, cannot charge
-    // anything. Remove once answered (see conversation this was added in).
-    if (action === "check-virtual-cards") {
-      const r = await flwV3Fetch("/virtual-cards?page=1", { method: "GET" });
-      return json({ ok: r.ok, status: r.status, data: r.data });
     }
 
     // ── list-banks ────────────────────────────────────────────────────────
