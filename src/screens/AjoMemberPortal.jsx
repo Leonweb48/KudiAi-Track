@@ -5044,15 +5044,12 @@ function MemberWalletSheet({ wallet, testMode, client, businessName, ownerName, 
       };
       await ajoFn("update-profile", { client_id: client.id, fields });
       onProfileUpdate?.(fields);
-      if (!testMode) {
-        const status = bvnVerify.pending ? await bvnVerify.checkAgain() : await bvnVerify.verify(bvn);
-        if (!status.verified) {
-          setErr(status.error || (status.pending
-            ? "Still processing — tap Activate wallet again in a moment."
-            : "BVN verification did not complete. Please try again."));
-          return;
-        }
-      }
+      // Real BVN verification (bvnVerify) is temporarily not required before
+      // activation — Flutterwave has BVN Verification disabled on this
+      // merchant account ("Merchant is not enabled to use BVN service"),
+      // which would otherwise hard-block every activation. Re-add once
+      // Flutterwave confirms the product is enabled. The reverify banner
+      // below still uses bvnVerify directly, for anyone who wants to try.
       await wallet.provisionAccount(bvn, nin);
     } catch (e) {
       setErr(e.message || "Could not activate your wallet");

@@ -40,15 +40,12 @@ export default function Wallet({ session, store }) {
     if (!walletTestMode && !/^\d{11}$/.test(bvn)) { setErr("Enter your 11-digit BVN"); return; }
     setActivating(true);
     try {
-      if (!walletTestMode) {
-        const status = bvnVerify.pending ? await bvnVerify.checkAgain() : await bvnVerify.verify(bvn);
-        if (!status.verified) {
-          setErr(status.error || (status.pending
-            ? "Still processing — tap Activate wallet again in a moment."
-            : "BVN verification did not complete. Please try again."));
-          return;
-        }
-      }
+      // Real BVN verification (bvnVerify) is temporarily not required before
+      // activation — Flutterwave has BVN Verification disabled on this
+      // merchant account ("Merchant is not enabled to use BVN service"),
+      // which would otherwise hard-block every activation. Re-add once
+      // Flutterwave confirms the product is enabled. The reverify banner
+      // below still uses bvnVerify directly, for anyone who wants to try.
       await w.provisionAccount(bvn, nin);
     } catch (e) {
       setErr(e.message || "Could not activate wallet");

@@ -7,7 +7,6 @@ import { sendEmailTrigger } from "../utils/emailTrigger";
 import { compressImage } from "../utils/compressImage";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
 import { useWallet } from "../hooks/useWallet";
-import { useBvnVerification } from "../hooks/useBvnVerification";
 
 /* ── Helpers ───────────────────────────────────────────────────── */
 async function uploadFile(file, bucket, path) {
@@ -32,9 +31,8 @@ export default function Onboarding({ session, onComplete }) {
   const firstName = fullName.split(" ")[0] || email.split("@")[0];
 
   /* ── Step 3 — Open a KudiAI Wallet (Flutterwave KYC), required at signup ── */
-  const { walletEnabled, walletTestMode } = usePlatformConfig();
+  const { walletEnabled } = usePlatformConfig();
   const wallet = useWallet(session?.user?.id || null, walletEnabled);
-  const bvnVerify = useBvnVerification(wallet);
   const [bvn,        setBvn]        = useState("");
   const [walletNin,  setWalletNin]  = useState("");
   const [walletErr,  setWalletErr]  = useState("");
@@ -221,15 +219,11 @@ export default function Onboarding({ session, onComplete }) {
     if (!/^\d{11}$/.test(bvn)) { setWalletErr("Enter your 11-digit BVN."); return; }
     setWalletBusy(true);
     try {
-      if (!walletTestMode) {
-        const status = bvnVerify.pending ? await bvnVerify.checkAgain() : await bvnVerify.verify(bvn);
-        if (!status.verified) {
-          setWalletErr(status.error || (status.pending
-            ? "Still processing — tap Open my wallet again in a moment."
-            : "BVN verification did not complete. Please try again."));
-          return;
-        }
-      }
+      // Real BVN verification (bvnVerify) is temporarily not required before
+      // activation — Flutterwave has BVN Verification disabled on this
+      // merchant account ("Merchant is not enabled to use BVN service"),
+      // which would otherwise hard-block every activation. Re-add once
+      // Flutterwave confirms the product is enabled.
       await wallet.provisionAccount(bvn, walletNin);
       onComplete();
     } catch (err) {
