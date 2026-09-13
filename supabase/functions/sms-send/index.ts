@@ -1,6 +1,22 @@
 // sms-send — internal, service-role-only helper other edge functions call to
-// deliver an SMS via Sendchamp. Modeled on notify-send/index.ts's shape, but
-// simpler: no template system — callers pass the finished message text.
+// deliver a message via Sendchamp's WhatsApp channel. Modeled on
+// notify-send/index.ts's shape; kept the "sms-send" name and its {phone,
+// message, category, user_id, related_type, related_id} call shape so none
+// of its 6 callers needed to change when this switched channels from SMS.
+//
+// Why WhatsApp instead of SMS: Sendchamp's SMS "dnd" route (needed so
+// transactional messages reach DND-registered numbers, the common case in
+// Nigeria) requires a business-verification review that was taking too long.
+// WhatsApp's shared sender number works immediately with no such wait.
+//
+// WhatsApp specifics that matter here: every message this app sends is
+// business-initiated (the recipient hasn't just messaged us first), which
+// per WhatsApp Business policy requires a pre-approved template — free-form
+// text only works inside a customer-opened session. Rather than get a
+// template approved per message type, this uses ONE generic template with a
+// single placeholder that echoes back whatever fully-composed `message`
+// string the caller already built (see WHATSAPP_TEMPLATE_CODE below) — so
+// every existing call site keeps sending a plain message string unchanged.
 //
 // Every attempt (sent, failed, rate-limited, suppressed by preference,
 // invalid phone) is logged to sms_log — the same audit-trail role
@@ -17,8 +33,14 @@ const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
 const SENDCHAMP_API_KEY = Deno.env.get("SENDCHAMP_API_KEY") ?? "";
-const SENDCHAMP_SENDER  = Deno.env.get("SENDCHAMP_SENDER_NAME") || "Sendchamp";
-const SENDCHAMP_URL     = "https://api.sendchamp.com/api/v1/sms/send";
+// Sendchamp's shared/default WhatsApp sender — works with no activation wait.
+// Set SENDCHAMP_WHATSAPP_SENDER once a dedicated KudiAI number is activated.
+const WHATSAPP_SENDER       = Deno.env.get("SENDCHAMP_WHATSAPP_SENDER") || "2348120678278";
+// The Sendchamp dashboard "template_code" for the one generic, Meta-approved
+// template this app uses for every message (see comment above). No default —
+// sends fail closed (logged, not thrown) until this is set post-approval.
+const WHATSAPP_TEMPLATE_CODE = Deno.env.get("SENDCHAMP_WHATSAPP_TEMPLATE_CODE") ?? "";
+const SENDCHAMP_URL          = "https://api.sendchamp.com/api/v1/whatsapp/message/send";
 
 // Reuses the exact category set notify-send already has, plus "otp" — OTP
 // codes are never suppressed by a category preference (a user can't "opt
@@ -34,8 +56,9 @@ const CAT_PREF: Record<string, string> = {
 const RATE_LIMIT_MAX    = 5;
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 
-// Sendchamp expects international format: 234XXXXXXXXXX — no "+", no leading "0".
-// Nigerian numbers in this app's DB show up as either "0803..." or "234803...".
+// Sendchamp's WhatsApp API expects the same international format as SMS did:
+// 234XXXXXXXXXX — no "+", no leading "0". Nigerian numbers in this app's DB
+// show up as either "0803..." or "234803...".
 function normalizeNgPhone(raw: string): string | null {
   const digits = String(raw || "").replace(/\D/g, "");
   if (!digits) return null;
@@ -47,7 +70,7 @@ function normalizeNgPhone(raw: string): string | null {
 
 // deno-lint-ignore no-explicit-any
 async function logSms(sb: any, row: Record<string, unknown>) {
-  try { await sb.from("sms_log").insert(row); } catch { /* logging must never break the caller */ }
+  try { await sb.from("sms_log").insert({ channel: "whatsapp", ...row }); } catch { /* logging must never break the caller */ }
 }
 
 Deno.serve(async (req) => {
@@ -118,23 +141,28 @@ Deno.serve(async (req) => {
 
     if (!SENDCHAMP_API_KEY) {
       await logSms(sb, { phone: normalized, message, category, related_type, related_id, status: "failed", error: "SENDCHAMP_API_KEY not configured" });
-      return json({ ok: false, error: "SMS not configured" });
+      return json({ ok: false, error: "WhatsApp not configured" });
     }
-
-    // Transactional messages (OTP, money alerts) use the "dnd" route so they
-    // still reach DND-registered numbers — the common case in Nigeria.
-    // Lower-priority categories use "non_dnd" to save cost.
-    const route = (category === "otp" || category === "money") ? "dnd" : "non_dnd";
+    if (!WHATSAPP_TEMPLATE_CODE) {
+      await logSms(sb, { phone: normalized, message, category, related_type, related_id, status: "failed", error: "SENDCHAMP_WHATSAPP_TEMPLATE_CODE not configured" });
+      return json({ ok: false, error: "WhatsApp not configured" });
+    }
 
     try {
       const resp = await fetch(SENDCHAMP_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${SENDCHAMP_API_KEY}` },
-        body: JSON.stringify({ to: [normalized], message, sender_name: SENDCHAMP_SENDER, route }),
+        body: JSON.stringify({
+          sender: WHATSAPP_SENDER,
+          recipient: normalized,
+          type: "template",
+          template_code: WHATSAPP_TEMPLATE_CODE,
+          custom_data: { body: { "1": message } },
+        }),
       });
       const respJson = await resp.json().catch(() => ({} as Record<string, unknown>));
       const ok = resp.ok && (respJson as { status?: string })?.status === "success";
-      const reference = (respJson as { data?: { reference?: string } })?.data?.reference ?? null;
+      const reference = (respJson as { data?: { provider_reference?: string } })?.data?.provider_reference ?? null;
 
       await logSms(sb, {
         phone: normalized, message, category, related_type, related_id,
