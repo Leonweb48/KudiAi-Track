@@ -546,7 +546,7 @@ serve(async (req) => {
     // anything. No auth required (matches this one-off's low sensitivity —
     // no user data touched). Remove once answered.
     if (action === "check-virtual-cards") {
-      const r = await flwV3Fetch("/virtual-cards?page=1", { method: "GET" });
+      const r = await flwV3Fetch("/v3/virtual-cards?page=1", { method: "GET" });
       return json({ ok: r.ok, status: r.status, data: r.data });
     }
 
