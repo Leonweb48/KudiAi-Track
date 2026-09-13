@@ -18,9 +18,15 @@
 // string the caller already built (see WHATSAPP_TEMPLATE_CODE below) — so
 // every existing call site keeps sending a plain message string unchanged.
 //
+// Before sending, checks Sendchamp's WhatsApp Number Validation endpoint so a
+// number confirmed NOT on WhatsApp is skipped (logged "not_on_whatsapp")
+// instead of wasting a template send on a guaranteed failure — see
+// isOnWhatsApp() below.
+//
 // Every attempt (sent, failed, rate-limited, suppressed by preference,
-// invalid phone) is logged to sms_log — the same audit-trail role
-// wallet_webhook_log/paystack_webhook_log play for their domains.
+// invalid phone, not on WhatsApp) is logged to sms_log — the same
+// audit-trail role wallet_webhook_log/paystack_webhook_log play for their
+// domains.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -41,6 +47,7 @@ const WHATSAPP_SENDER       = Deno.env.get("SENDCHAMP_WHATSAPP_SENDER") || "2348
 // sends fail closed (logged, not thrown) until this is set post-approval.
 const WHATSAPP_TEMPLATE_CODE = Deno.env.get("SENDCHAMP_WHATSAPP_TEMPLATE_CODE") ?? "";
 const SENDCHAMP_URL          = "https://api.sendchamp.com/api/v1/whatsapp/message/send";
+const WHATSAPP_VALIDATE_URL  = "https://api.sendchamp.com/api/v1/whatsapp/validate";
 
 // Reuses the exact category set notify-send already has, plus "otp" — OTP
 // codes are never suppressed by a category preference (a user can't "opt
@@ -71,6 +78,25 @@ function normalizeNgPhone(raw: string): string | null {
 // deno-lint-ignore no-explicit-any
 async function logSms(sb: any, row: Record<string, unknown>) {
   try { await sb.from("sms_log").insert({ channel: "whatsapp", ...row }); } catch { /* logging must never break the caller */ }
+}
+
+// true/false when Sendchamp could check; null when the check itself failed
+// (network error, non-2xx, unexpected shape) — callers should fail OPEN on
+// null (still attempt the send) rather than silently drop a real message
+// because the validation endpoint had a hiccup.
+async function isOnWhatsApp(phone: string): Promise<boolean | null> {
+  try {
+    const resp = await fetch(WHATSAPP_VALIDATE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${SENDCHAMP_API_KEY}` },
+      body: JSON.stringify({ phone_number: phone }),
+    });
+    const data = await resp.json().catch(() => ({} as Record<string, unknown>));
+    if (!resp.ok || (data as { status?: string })?.status !== "success") return null;
+    return !!(data as { data?: { is_valid?: boolean } })?.data?.is_valid;
+  } catch {
+    return null;
+  }
 }
 
 Deno.serve(async (req) => {
@@ -146,6 +172,15 @@ Deno.serve(async (req) => {
     if (!WHATSAPP_TEMPLATE_CODE) {
       await logSms(sb, { phone: normalized, message, category, related_type, related_id, status: "failed", error: "SENDCHAMP_WHATSAPP_TEMPLATE_CODE not configured" });
       return json({ ok: false, error: "WhatsApp not configured" });
+    }
+
+    // Skip the send (and its cost) when the number is confirmed NOT on
+    // WhatsApp — a guaranteed failure otherwise. Fails open (proceeds to
+    // send) if the validation call itself errors — see isOnWhatsApp().
+    const onWhatsApp = await isOnWhatsApp(normalized);
+    if (onWhatsApp === false) {
+      await logSms(sb, { phone: normalized, message, category, related_type, related_id, status: "not_on_whatsapp" });
+      return json({ ok: false, error: "This number is not on WhatsApp" });
     }
 
     try {
