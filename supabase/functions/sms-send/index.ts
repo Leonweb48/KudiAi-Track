@@ -1,32 +1,30 @@
 // sms-send — internal, service-role-only helper other edge functions call to
-// deliver a message via Sendchamp's WhatsApp channel. Modeled on
-// notify-send/index.ts's shape; kept the "sms-send" name and its {phone,
-// message, category, user_id, related_type, related_id} call shape so none
-// of its 6 callers needed to change when this switched channels from SMS.
+// deliver a message via Meta's WhatsApp Cloud API directly (no BSP/reseller in
+// front of it). Modeled on notify-send/index.ts's shape; kept the "sms-send"
+// name and its {phone, message, category, user_id, related_type, related_id}
+// call shape so none of its 6 callers needed to change across either of this
+// function's two provider migrations (SMS -> Sendchamp WhatsApp -> Meta
+// direct).
 //
-// Why WhatsApp instead of SMS: Sendchamp's SMS "dnd" route (needed so
-// transactional messages reach DND-registered numbers, the common case in
-// Nigeria) requires a business-verification review that was taking too long.
-// WhatsApp's shared sender number works immediately with no such wait.
+// Why direct-to-Meta instead of a BSP: Sendchamp's WhatsApp channel wasn't
+// reachable on this account (dashboard only showed a "test" option, no
+// template/activation UI) — going direct to Meta's own Cloud API removes that
+// reseller layer and its dashboard entirely.
 //
-// WhatsApp specifics that matter here: every message this app sends is
-// business-initiated (the recipient hasn't just messaged us first), which
-// per WhatsApp Business policy requires a pre-approved template — free-form
-// text only works inside a customer-opened session. Rather than get a
-// template approved per message type, this uses ONE generic template with a
-// single placeholder that echoes back whatever fully-composed `message`
-// string the caller already built (see WHATSAPP_TEMPLATE_CODE below) — so
-// every existing call site keeps sending a plain message string unchanged.
-//
-// Before sending, checks Sendchamp's WhatsApp Number Validation endpoint so a
-// number confirmed NOT on WhatsApp is skipped (logged "not_on_whatsapp")
-// instead of wasting a template send on a guaranteed failure — see
-// isOnWhatsApp() below.
+// WhatsApp specifics that still apply regardless of provider: every message
+// this app sends is business-initiated (the recipient hasn't just messaged
+// us first), which per WhatsApp Business Platform policy requires a
+// pre-approved template — free-form text only works inside a customer-opened
+// session. That's a Meta policy, not a BSP one, so it doesn't go away by
+// going direct. Rather than get a template approved per message type, this
+// uses ONE generic template (created in Meta's own WhatsApp Manager) with a
+// single body placeholder that echoes back whatever fully-composed `message`
+// string the caller already built — so every existing call site keeps
+// sending a plain message string unchanged. See META_WHATSAPP_TEMPLATE_NAME.
 //
 // Every attempt (sent, failed, rate-limited, suppressed by preference,
-// invalid phone, not on WhatsApp) is logged to sms_log — the same
-// audit-trail role wallet_webhook_log/paystack_webhook_log play for their
-// domains.
+// invalid phone) is logged to sms_log — the same audit-trail role
+// wallet_webhook_log/paystack_webhook_log play for their domains.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -38,16 +36,20 @@ const corsHeaders = {
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-const SENDCHAMP_API_KEY = Deno.env.get("SENDCHAMP_API_KEY") ?? "";
-// Sendchamp's shared/default WhatsApp sender — works with no activation wait.
-// Set SENDCHAMP_WHATSAPP_SENDER once a dedicated KudiAI number is activated.
-const WHATSAPP_SENDER       = Deno.env.get("SENDCHAMP_WHATSAPP_SENDER") || "2348120678278";
-// The Sendchamp dashboard "template_code" for the one generic, Meta-approved
-// template this app uses for every message (see comment above). No default —
-// sends fail closed (logged, not thrown) until this is set post-approval.
-const WHATSAPP_TEMPLATE_CODE = Deno.env.get("SENDCHAMP_WHATSAPP_TEMPLATE_CODE") ?? "";
-const SENDCHAMP_URL          = "https://api.sendchamp.com/api/v1/whatsapp/message/send";
-const WHATSAPP_VALIDATE_URL  = "https://api.sendchamp.com/api/v1/whatsapp/validate";
+// A System User permanent access token (business_management +
+// whatsapp_business_messaging + whatsapp_business_management scopes) —
+// generated once in Meta Business Settings -> System Users, so it doesn't
+// expire like the "temporary access token" shown during initial app setup.
+const META_TOKEN           = Deno.env.get("META_WHATSAPP_TOKEN") ?? "";
+const META_PHONE_NUMBER_ID = Deno.env.get("META_WHATSAPP_PHONE_NUMBER_ID") ?? "";
+// The Meta WhatsApp Manager "name" of the one generic, Meta-approved
+// template this app uses for every message (see comment above). No
+// default — sends fail closed (logged, not thrown) until this is set.
+const META_TEMPLATE_NAME = Deno.env.get("META_WHATSAPP_TEMPLATE_NAME") ?? "";
+// The language the template was created in (Meta WhatsApp Manager shows this
+// as e.g. "English (US)" -> code "en_US"). Must match exactly or Meta 404s.
+const META_TEMPLATE_LANG = Deno.env.get("META_WHATSAPP_TEMPLATE_LANG") || "en_US";
+const META_API_VERSION   = Deno.env.get("META_WHATSAPP_API_VERSION") || "v21.0";
 
 // Reuses the exact category set notify-send already has, plus "otp" — OTP
 // codes are never suppressed by a category preference (a user can't "opt
@@ -63,9 +65,8 @@ const CAT_PREF: Record<string, string> = {
 const RATE_LIMIT_MAX    = 5;
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 
-// Sendchamp's WhatsApp API expects the same international format as SMS did:
-// 234XXXXXXXXXX — no "+", no leading "0". Nigerian numbers in this app's DB
-// show up as either "0803..." or "234803...".
+// Meta's Cloud API expects E.164 digits with no "+": 234XXXXXXXXXX. Nigerian
+// numbers in this app's DB show up as either "0803..." or "234803...".
 function normalizeNgPhone(raw: string): string | null {
   const digits = String(raw || "").replace(/\D/g, "");
   if (!digits) return null;
@@ -78,25 +79,6 @@ function normalizeNgPhone(raw: string): string | null {
 // deno-lint-ignore no-explicit-any
 async function logSms(sb: any, row: Record<string, unknown>) {
   try { await sb.from("sms_log").insert({ channel: "whatsapp", ...row }); } catch { /* logging must never break the caller */ }
-}
-
-// true/false when Sendchamp could check; null when the check itself failed
-// (network error, non-2xx, unexpected shape) — callers should fail OPEN on
-// null (still attempt the send) rather than silently drop a real message
-// because the validation endpoint had a hiccup.
-async function isOnWhatsApp(phone: string): Promise<boolean | null> {
-  try {
-    const resp = await fetch(WHATSAPP_VALIDATE_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${SENDCHAMP_API_KEY}` },
-      body: JSON.stringify({ phone_number: phone }),
-    });
-    const data = await resp.json().catch(() => ({} as Record<string, unknown>));
-    if (!resp.ok || (data as { status?: string })?.status !== "success") return null;
-    return !!(data as { data?: { is_valid?: boolean } })?.data?.is_valid;
-  } catch {
-    return null;
-  }
 }
 
 Deno.serve(async (req) => {
@@ -154,7 +136,7 @@ Deno.serve(async (req) => {
     }
 
     // Rate limit — real-money safety rail against a spam/abuse loop (e.g.
-    // someone mashing "resend OTP") turning into a runaway Sendchamp bill.
+    // someone mashing "resend OTP") turning into a runaway messaging bill.
     const windowStart = new Date(Date.now() - RATE_LIMIT_WINDOW_MS).toISOString();
     const { count } = await sb.from("sms_log")
       .select("id", { count: "exact", head: true })
@@ -165,39 +147,33 @@ Deno.serve(async (req) => {
       return json({ ok: false, error: "Rate limited" });
     }
 
-    if (!SENDCHAMP_API_KEY) {
-      await logSms(sb, { phone: normalized, message, category, related_type, related_id, status: "failed", error: "SENDCHAMP_API_KEY not configured" });
+    if (!META_TOKEN || !META_PHONE_NUMBER_ID) {
+      await logSms(sb, { phone: normalized, message, category, related_type, related_id, status: "failed", error: "META_WHATSAPP_TOKEN/META_WHATSAPP_PHONE_NUMBER_ID not configured" });
       return json({ ok: false, error: "WhatsApp not configured" });
     }
-    if (!WHATSAPP_TEMPLATE_CODE) {
-      await logSms(sb, { phone: normalized, message, category, related_type, related_id, status: "failed", error: "SENDCHAMP_WHATSAPP_TEMPLATE_CODE not configured" });
+    if (!META_TEMPLATE_NAME) {
+      await logSms(sb, { phone: normalized, message, category, related_type, related_id, status: "failed", error: "META_WHATSAPP_TEMPLATE_NAME not configured" });
       return json({ ok: false, error: "WhatsApp not configured" });
-    }
-
-    // Skip the send (and its cost) when the number is confirmed NOT on
-    // WhatsApp — a guaranteed failure otherwise. Fails open (proceeds to
-    // send) if the validation call itself errors — see isOnWhatsApp().
-    const onWhatsApp = await isOnWhatsApp(normalized);
-    if (onWhatsApp === false) {
-      await logSms(sb, { phone: normalized, message, category, related_type, related_id, status: "not_on_whatsapp" });
-      return json({ ok: false, error: "This number is not on WhatsApp" });
     }
 
     try {
-      const resp = await fetch(SENDCHAMP_URL, {
+      const resp = await fetch(`https://graph.facebook.com/${META_API_VERSION}/${META_PHONE_NUMBER_ID}/messages`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${SENDCHAMP_API_KEY}` },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${META_TOKEN}` },
         body: JSON.stringify({
-          sender: WHATSAPP_SENDER,
-          recipient: normalized,
+          messaging_product: "whatsapp",
+          to: normalized,
           type: "template",
-          template_code: WHATSAPP_TEMPLATE_CODE,
-          custom_data: { body: { "1": message } },
+          template: {
+            name: META_TEMPLATE_NAME,
+            language: { code: META_TEMPLATE_LANG },
+            components: [{ type: "body", parameters: [{ type: "text", text: message }] }],
+          },
         }),
       });
       const respJson = await resp.json().catch(() => ({} as Record<string, unknown>));
-      const ok = resp.ok && (respJson as { status?: string })?.status === "success";
-      const reference = (respJson as { data?: { provider_reference?: string } })?.data?.provider_reference ?? null;
+      const ok = resp.ok && !!(respJson as { messages?: unknown[] })?.messages?.length;
+      const reference = (respJson as { messages?: { id?: string }[] })?.messages?.[0]?.id ?? null;
 
       await logSms(sb, {
         phone: normalized, message, category, related_type, related_id,
