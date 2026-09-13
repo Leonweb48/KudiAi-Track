@@ -616,6 +616,14 @@ serve(async (req) => {
       return json({ error: "Wallet is not enabled" }, 403);
     }
 
+    // ── TEMPORARY diagnostic — is Card Issuing enabled on this Flutterwave
+    // account? A plain GET/list call: cannot create a card, cannot charge
+    // anything. Remove once answered (see conversation this was added in).
+    if (action === "check-virtual-cards") {
+      const r = await flwV3Fetch("/virtual-cards?page=1", { method: "GET" });
+      return json({ ok: r.ok, status: r.status, data: r.data });
+    }
+
     // ── list-banks ────────────────────────────────────────────────────────
     if (action === "list-banks") {
       if (_banks.list.length && Date.now() < _banks.exp) return json({ ok: true, banks: _banks.list });
