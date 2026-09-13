@@ -28,6 +28,7 @@ export function useWallet(userId, enabled = true) {
   const [requests, setRequests] = useState([]);      // wallet_payment_requests (all)
   const [banks, setBanks]       = useState([]);      // bank code → name (for receipts)
   const [payRequest, setPayReq] = useState(null);   // active pending "receive payment" request
+  const [bvnVerified, setBvnVerified] = useState(false);
   const [loading, setLoading]   = useState(true);
   const [busy, setBusy]         = useState(false);
   const loadRef = useRef(() => {});
@@ -41,7 +42,7 @@ export function useWallet(userId, enabled = true) {
     // stay in the loading state, don't flash the "activate wallet" screen.
     if (!userId) { setLoading(!loadedOnceRef.current); return; }
     try {
-      const [{ data: w }, { data: l }, { data: wd }, { data: rq }] = await Promise.all([
+      const [{ data: w }, { data: l }, { data: wd }, { data: rq }, { data: pf }, { data: cl }] = await Promise.all([
         supabase.from("wallets").select("*").eq("user_id", userId).maybeSingle(),
         supabase.from("wallet_ledger").select("*").eq("user_id", userId)
           .order("created_at", { ascending: false }).limit(50),
@@ -49,11 +50,14 @@ export function useWallet(userId, enabled = true) {
           .order("created_at", { ascending: false }).limit(50),
         supabase.from("wallet_payment_requests").select("*").eq("user_id", userId)
           .order("created_at", { ascending: false }).limit(50),
+        supabase.from("profiles").select("bvn_verified").eq("id", userId).maybeSingle(),
+        supabase.from("aso_clients").select("bvn_verified").eq("client_user_id", userId).maybeSingle(),
       ]);
       setWallet(w || null);
       setLedger(l || []);
       setWd(wd || []);
       setRequests(rq || []);
+      setBvnVerified(!!(pf?.bvn_verified ?? cl?.bvn_verified ?? false));
       const pr = (rq || []).find((r) => r.status === "pending" && new Date(r.expires_at) > new Date());
       setPayReq(pr || null);
       loadedOnceRef.current = true;
@@ -197,13 +201,13 @@ export function useWallet(userId, enabled = true) {
   // that read the hook don't re-render (and re-run effects) on every tick.
   return useMemo(() => ({
     wallet, ledger, withdrawals, requests, banks, payRequest, loading, busy,
-    hasAccount, balanceKobo, balanceNaira: balanceKobo / 100,
+    hasAccount, bvnVerified, balanceKobo, balanceNaira: balanceKobo / 100,
     refresh: load, receiptFor,
     provisionAccount, simulateTopup, listBanks, resolveAccount, transfer,
     startBvnVerification, checkBvnVerification,
     createPaymentRequest, cancelPaymentRequest,
   }), [
-    wallet, ledger, withdrawals, requests, banks, payRequest, loading, busy, hasAccount, balanceKobo,
+    wallet, ledger, withdrawals, requests, banks, payRequest, loading, busy, hasAccount, bvnVerified, balanceKobo,
     load, receiptFor, provisionAccount, simulateTopup, listBanks, resolveAccount, transfer,
     startBvnVerification, checkBvnVerification,
     createPaymentRequest, cancelPaymentRequest,

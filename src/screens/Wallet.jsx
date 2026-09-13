@@ -25,6 +25,10 @@ export default function Wallet({ session, store }) {
   const [bvn, setBvn] = useState("");
   const [nin, setNin] = useState("");
   const [activating, setActivating] = useState(false);
+  const [showReverify, setShowReverify] = useState(false);
+  const [reverifyBvn, setReverifyBvn] = useState("");
+  const [reverifyBusy, setReverifyBusy] = useState(false);
+  const [reverifyErr, setReverifyErr] = useState("");
 
   const openReceipt = (row) => setReceipt(w.receiptFor(row, store?.profile?.business_name, store?.profile?.owner_name));
 
@@ -50,6 +54,30 @@ export default function Wallet({ session, store }) {
       setErr(e.message || "Could not activate wallet");
     } finally {
       setActivating(false);
+    }
+  };
+
+  // Re-verifying an already-activated wallet — never touches provisionAccount,
+  // just runs the BVN consent flow again and refreshes bvn_verified.
+  const doReverify = async () => {
+    setReverifyErr("");
+    if (!/^\d{11}$/.test(reverifyBvn)) { setReverifyErr("Enter your 11-digit BVN"); return; }
+    setReverifyBusy(true);
+    try {
+      const status = bvnVerify.pending ? await bvnVerify.checkAgain() : await bvnVerify.verify(reverifyBvn);
+      if (!status.verified) {
+        setReverifyErr(status.error || (status.pending
+          ? "Still processing — tap Reverify again in a moment."
+          : "BVN verification did not complete. Please try again."));
+        return;
+      }
+      await w.refresh();
+      setShowReverify(false);
+      setReverifyBvn("");
+    } catch (e) {
+      setReverifyErr(e.message || "Could not verify your BVN");
+    } finally {
+      setReverifyBusy(false);
     }
   };
 
@@ -153,6 +181,32 @@ export default function Wallet({ session, store }) {
         ) : (
           <>
             <AccountCard wallet={w.wallet} displayName={store?.profile?.business_name || store?.profile?.owner_name} />
+
+            {!w.bvnVerified && !walletTestMode && (
+              <div className="rounded-2xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-4 py-3.5">
+                <p className="text-[12.5px] font-bold text-amber-700 dark:text-amber-300">Please reverify your BVN</p>
+                <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5 leading-relaxed">
+                  We've added real BVN verification for wallet security. Your wallet keeps working normally, but please reverify to stay in good standing.
+                </p>
+                {!showReverify ? (
+                  <button onClick={() => setShowReverify(true)}
+                    className="mt-2.5 w-full py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold text-[12.5px] transition active:scale-[0.99]">
+                    Reverify now
+                  </button>
+                ) : (
+                  <div className="mt-3 space-y-2">
+                    <input inputMode="numeric" value={reverifyBvn}
+                      onChange={(e) => setReverifyBvn(e.target.value.replace(/\D/g, "").slice(0, 11))}
+                      placeholder="11-digit BVN" className={idInput} />
+                    {reverifyErr && <p className="text-[11px] text-red-500">{reverifyErr}</p>}
+                    <button onClick={doReverify} disabled={reverifyBusy}
+                      className="w-full py-2.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-xl font-bold text-[12.5px] transition active:scale-[0.99]">
+                      {reverifyBusy ? "Verifying…" : "Submit"}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* quick actions */}
             <div className="rounded-3xl bg-white dark:bg-slate-800 shadow-card border border-slate-100 dark:border-slate-700/60 p-4">

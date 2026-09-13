@@ -5022,6 +5022,10 @@ function MemberWalletSheet({ wallet, testMode, client, businessName, ownerName, 
   const [err, setErr] = useState("");
   const [receipt, setReceipt] = useState(null);
   const bvnVerify = useBvnVerification(wallet);
+  const [showReverify, setShowReverify] = useState(false);
+  const [reverifyBvn, setReverifyBvn] = useState("");
+  const [reverifyBusy, setReverifyBusy] = useState(false);
+  const [reverifyErr, setReverifyErr] = useState("");
 
   const lgas  = getLGAs(state);
   const wards = getWards(state, lga);
@@ -5054,6 +5058,28 @@ function MemberWalletSheet({ wallet, testMode, client, businessName, ownerName, 
       setErr(e.message || "Could not activate your wallet");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const doReverify = async () => {
+    setReverifyErr("");
+    if (!/^\d{11}$/.test(reverifyBvn)) { setReverifyErr("Enter your 11-digit BVN"); return; }
+    setReverifyBusy(true);
+    try {
+      const status = bvnVerify.pending ? await bvnVerify.checkAgain() : await bvnVerify.verify(reverifyBvn);
+      if (!status.verified) {
+        setReverifyErr(status.error || (status.pending
+          ? "Still processing — tap Reverify again in a moment."
+          : "BVN verification did not complete. Please try again."));
+        return;
+      }
+      await wallet.refresh();
+      setShowReverify(false);
+      setReverifyBvn("");
+    } catch (e) {
+      setReverifyErr(e.message || "Could not verify your BVN");
+    } finally {
+      setReverifyBusy(false);
     }
   };
 
@@ -5158,6 +5184,33 @@ function MemberWalletSheet({ wallet, testMode, client, businessName, ownerName, 
           <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-1">Balance</p>
           <AmountDisplay amount={wallet.balanceKobo} fromKobo size="hero" align="left" className="mb-4" />
           <AccountCard wallet={wallet.wallet} displayName={businessName || ownerName} />
+
+          {!wallet.bvnVerified && !testMode && (
+            <div className="mt-3 rounded-2xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-4 py-3.5">
+              <p className="text-[12.5px] font-bold text-amber-700 dark:text-amber-300">Please reverify your BVN</p>
+              <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5 leading-relaxed">
+                We've added real BVN verification for wallet security. Your wallet keeps working normally, but please reverify to stay in good standing.
+              </p>
+              {!showReverify ? (
+                <button onClick={() => setShowReverify(true)}
+                  className="mt-2.5 w-full py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold text-[12.5px] transition active:scale-[0.99]">
+                  Reverify now
+                </button>
+              ) : (
+                <div className="mt-3 space-y-2">
+                  <input inputMode="numeric" value={reverifyBvn}
+                    onChange={(e) => setReverifyBvn(e.target.value.replace(/\D/g, "").slice(0, 11))}
+                    placeholder="11-digit BVN" className="w-full px-3.5 py-3 rounded-xl border border-amber-200 dark:border-amber-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-[14px] font-semibold tracking-wider focus:outline-none" />
+                  {reverifyErr && <p className="text-[11px] text-red-500">{reverifyErr}</p>}
+                  <button onClick={doReverify} disabled={reverifyBusy}
+                    className="w-full py-2.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-xl font-bold text-[12.5px] transition active:scale-[0.99]">
+                    {reverifyBusy ? "Verifying…" : "Submit"}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="flex items-center gap-2 mt-4 mb-2">
             <ActionButton icon="plus" label="Fund" onClick={onFund} />
             <ActionButton icon="send" label="Transfer" tone="slate" onClick={onTransfer} />
