@@ -170,6 +170,7 @@ serve(async (req) => {
       "get-client","get-contributions","get-active-cycle","get-owner-info",
       "get-entity-stats",
       "request-withdrawal","get-withdrawal-requests","submit-manual-claim",
+      "pay-contribution-wallet",
       "initialize-payment","confirm-payment","submit-dispute",
       "client-open-cycle",
       "get-goal","set-goal","delete-goal","get-txn-pin-status","set-txn-pin","verify-txn-pin",
@@ -223,23 +224,20 @@ serve(async (req) => {
 
       if (!_pgValid) {
         const MAX_ATTEMPTS = 5;
-        const LOCKOUT_MINUTES = 30;
-        const newAttempts = (_pgCl.portal_pin_attempts || 0) + 1;
-        if (newAttempts >= MAX_ATTEMPTS) {
-          const lockedUntil = new Date(Date.now() + LOCKOUT_MINUTES * 60 * 1000).toISOString();
-          await sb.from("aso_clients")
-            .update({ portal_pin_attempts: 0, portal_pin_locked_until: lockedUntil })
-            .eq("id", _pgClientId);
+        // Atomic RPC — a plain read-then-write here let two concurrent wrong-PIN
+        // submissions both read the same old attempt count and both write the
+        // same incremented value, undercounting attempts under concurrency.
+        const { data: _failRows } = await sb.rpc("ajo_client_pin_fail", { p_client_id: _pgClientId });
+        const _failRow = (_failRows as { attempts: number; locked: boolean }[] | null)?.[0];
+        if (_failRow?.locked) {
           return json({ error: "Invalid PIN — account locked", code: "pin_locked" }, 423);
         }
-        await sb.from("aso_clients").update({ portal_pin_attempts: newAttempts }).eq("id", _pgClientId);
-        return json({ error: "Invalid PIN", code: "pin_invalid", attempts_left: MAX_ATTEMPTS - newAttempts }, 401);
+        const attemptsLeft = MAX_ATTEMPTS - (_failRow?.attempts ?? 0);
+        return json({ error: "Invalid PIN", code: "pin_invalid", attempts_left: attemptsLeft }, 401);
       }
 
       // Correct PIN — reset attempt counter
-      await sb.from("aso_clients")
-        .update({ portal_pin_attempts: 0, portal_pin_locked_until: null })
-        .eq("id", _pgClientId);
+      await sb.rpc("ajo_client_pin_reset", { p_client_id: _pgClientId });
     }
 
     if (action === "create-group" || action === "join-group" || action === "leave-group") {

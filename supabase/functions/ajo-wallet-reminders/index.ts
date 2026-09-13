@@ -17,11 +17,14 @@ const json = (data: unknown, status = 200) =>
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY  = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
+// Both return the in-flight request so the caller can await it — fired
+// without awaiting, these were racing the function's own return (and the
+// isolate shutdown that follows), silently dropping reminders under load.
 function sendSms(phone: string | null | undefined, message: string, opts: {
   category?: string; user_id?: string | null; related_type?: string; related_id?: string;
-} = {}): void {
-  if (!phone) return;
-  fetch(`${SUPABASE_URL}/functions/v1/sms-send`, {
+} = {}): Promise<unknown> {
+  if (!phone) return Promise.resolve();
+  return fetch(`${SUPABASE_URL}/functions/v1/sms-send`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}` },
     body: JSON.stringify({ action: "send", phone, message, category: opts.category ?? "savings", user_id: opts.user_id ?? null, related_type: opts.related_type ?? null, related_id: opts.related_id ?? null }),
@@ -31,9 +34,9 @@ function sendSms(phone: string | null | undefined, message: string, opts: {
 function notifyUser(userId: string | null | undefined, opts: {
   type: string; title: string; body: string;
   priority?: string; deepLink?: Record<string, unknown> | null; category?: string;
-}): void {
-  if (!userId) return;
-  fetch(`${SUPABASE_URL}/functions/v1/notify-send`, {
+}): Promise<unknown> {
+  if (!userId) return Promise.resolve();
+  return fetch(`${SUPABASE_URL}/functions/v1/notify-send`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}` },
     body: JSON.stringify({ action: "notify", userId, type: opts.type, title: opts.title, body: opts.body, priority: opts.priority ?? "normal", deepLink: opts.deepLink ?? null, category: opts.category ?? "savings" }),
@@ -55,20 +58,22 @@ Deno.serve(async (req) => {
     phone: string | null; email: string | null;
   }[];
 
+  const pending: Promise<unknown>[] = [];
   for (const r of candidates) {
-    sendSms(
+    pending.push(sendSms(
       r.phone,
       "KudiAI: Saving needs no BVN. Open your free digital wallet to fund/withdraw instantly — BVN is a CBN rule, only for that. Open the app to activate.",
       { category: "savings", user_id: r.client_user_id, related_type: "aso_clients", related_id: r.client_id },
-    );
-    notifyUser(r.client_user_id, {
+    ));
+    pending.push(notifyUser(r.client_user_id, {
       type: "wallet_activation_reminder",
       title: "Your KudiAI Wallet is ready to activate",
       body: "Fund & withdraw instantly. BVN is only for the wallet — a CBN rule, never for your savings.",
       priority: "normal", category: "savings",
       deepLink: { tab: "home", openWallet: true },
-    });
+    }));
   }
+  await Promise.allSettled(pending);
 
   return json({ ok: true, reminded: candidates.length });
 });

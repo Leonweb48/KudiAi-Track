@@ -425,19 +425,30 @@ serve(async (req) => {
       }
 
       // profiles (business owner) first, aso_clients (an Ajo/savings client) as fallback
-      const { fullName: idFullName, phoneRaw: idPhone, email: idEmail } = await resolveIdentity(sb, targetUid);
+      const { table: idTable, fullName: idFullName, phoneRaw: idPhone, email: idEmail } = await resolveIdentity(sb, targetUid);
       const email    = idEmail || `wallet+${targetUid.slice(0, 8)}@kudiai.app`;
       const fullName = idFullName || "KudiAI Owner";
       const phoneRaw = idPhone;
       const [fn, ...ln] = fullName.split(/\s+/);
 
-      // NOTE: real BVN verification (verify-bvn-init/verify-bvn-status, Flutterwave
-      // v3) is NOT enforced here right now — Flutterwave has BVN Verification
-      // disabled on this merchant account ("Merchant is not enabled to use BVN
-      // service"), which would otherwise hard-block every wallet activation. The
-      // verification actions/columns/UI stay in place; re-add the check below once
-      // Flutterwave confirms the product is enabled:
-      //   if (!testMode) { … require bvn_verified && bvn_hash match && <24h … }
+      // Real BVN verification (verify-bvn-init/verify-bvn-status, Flutterwave v3)
+      // is gated on this flag rather than always-on, because Flutterwave has BVN
+      // Verification disabled on this merchant account ("Merchant is not enabled
+      // to use BVN service") — enforcing it unconditionally would hard-block
+      // every wallet activation. Flip bvn_verification_enabled to 'true' in
+      // platform_config once Flutterwave confirms the product is enabled; no
+      // redeploy needed. The reverify banner (frontend) checks the same flag.
+      if (!testMode && (await cfg("bvn_verification_enabled", "false")) === "true") {
+        const filterCol = idTable === "profiles" ? "id" : "client_user_id";
+        const { data: verRow } = await sb.from(idTable)
+          .select("bvn_verified, bvn_hash, bvn_verified_at").eq(filterCol, targetUid).maybeSingle();
+        const effHash = await sha256Hex(effBvn);
+        const verifiedRecently = !!verRow?.bvn_verified_at
+          && (Date.now() - new Date(verRow.bvn_verified_at as string).getTime()) < 24 * 3600 * 1000;
+        if (!verRow?.bvn_verified || verRow.bvn_hash !== effHash || !verifiedRecently) {
+          return json({ error: "Please verify your BVN first", code: "bvn_not_verified" }, 400);
+        }
+      }
 
       let customerId = w.flw_customer_id as string | null;
       if (!customerId) {

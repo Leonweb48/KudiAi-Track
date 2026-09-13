@@ -836,16 +836,18 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   // portal uses, so the owner sees identical numbers.
   const [targetStats,        setTargetStats]        = useState(null);
   const [targetStatsLoading, setTargetStatsLoading]  = useState(false);
+  const targetStatsReqRef = useRef(0);
   useEffect(() => {
     const cid = contributeCtx === "personal_savings" ? contributeCycleId : null;
     const gid = contributeCtx !== "personal_savings" ? contributeGroupId : null;
+    const reqId = ++targetStatsReqRef.current;
     if (!selected?.id || (!cid && !gid)) { setTargetStats(null); return; }
     setTargetStatsLoading(true);
     supabase.functions.invoke("ajo-portal", {
       body: { action: "get-entity-stats", client_id: selected.id, cycle_id: cid, group_id: gid },
-    }).then(({ data }) => setTargetStats(data?.stats || null))
-      .catch(() => setTargetStats(null))
-      .finally(() => setTargetStatsLoading(false));
+    }).then(({ data }) => { if (targetStatsReqRef.current === reqId) setTargetStats(data?.stats || null); })
+      .catch(() => { if (targetStatsReqRef.current === reqId) setTargetStats(null); })
+      .finally(() => { if (targetStatsReqRef.current === reqId) setTargetStatsLoading(false); });
   }, [selected?.id, contributeCtx, contributeGroupId, contributeCycleId]);
 
   const resolveClientAccount = async () => {

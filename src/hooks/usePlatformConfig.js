@@ -41,6 +41,10 @@ export function usePlatformConfig() {
     enterpriseFeePct: Number(config?.enterprise_bill_fee_pct ?? "0.01") || 0.01,
     walletEnabled: config?.wallet_enabled === "true",
     walletTestMode: config?.wallet_test_mode !== "false",   // default on until explicitly disabled
+    // Off until Flutterwave confirms BVN Verification is enabled on this merchant
+    // account — flipping this on is the only thing needed to re-enable both the
+    // backend enforcement (flutterwave/index.ts) and the reverify banners.
+    bvnVerificationEnabled: config?.bvn_verification_enabled === "true",
     walletMinTopupKobo: Number(config?.wallet_min_topup_kobo ?? "10000") || 10000,
     walletMaxWithdrawalKobo: Number(config?.wallet_max_withdrawal_kobo ?? "5000000") || 5000000,
     configLoading: loading,

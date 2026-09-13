@@ -1844,15 +1844,19 @@ serve(async (req: Request) => {
       });
     }
 
-    // 4. Full owner summary with all details
+    // 4. Full owner summary with all details. beneficiary_new_balance/position
+    //    are joined per-winner (like name/email above) rather than only the
+    //    first beneficiary's — a payout can settle more than one winner in a
+    //    round, and reporting just beneficiaries[0] silently misrepresented
+    //    every other winner's balance/position to the owner.
     await fireAjoEmail("ajo_esusu_payout_owner_summary", {
       ...sharedContext,
       owner_email:             ownerEmail,
       beneficiary_name:        beneficiaryNames,
       beneficiary_email:       beneficiaries.map(b => b.email).filter(Boolean).join(", "),
-      beneficiary_new_balance: balanceMap[beneficiaries[0]?.client_id] || 0,
+      beneficiary_new_balance: beneficiaries.map(b => balanceMap[b.client_id] || 0).join(", "),
       pot_amount:              potAmount,
-      position:                beneficiaries[0]?.position || 0,
+      position:                beneficiaries.map(b => b.position).join(", "),
       winner_count:            beneficiaries.length,
       debtor_count:            epResult.debtor_count || 0,
       debtors,
@@ -1868,7 +1872,7 @@ serve(async (req: Request) => {
         staff_email:       staffEmail,
         beneficiary_name:  beneficiaryNames,
         pot_amount:        potAmount,
-        position:          beneficiaries[0]?.position || 0,
+        position:          beneficiaries.map(b => b.position).join(", "),
         debtor_count:      epResult.debtor_count || 0,
       });
     }

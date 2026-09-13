@@ -50,14 +50,20 @@ export function useWallet(userId, enabled = true) {
           .order("created_at", { ascending: false }).limit(50),
         supabase.from("wallet_payment_requests").select("*").eq("user_id", userId)
           .order("created_at", { ascending: false }).limit(50),
-        supabase.from("profiles").select("bvn_verified").eq("id", userId).maybeSingle(),
+        supabase.from("profiles").select("full_name, business_name, bvn_verified").eq("id", userId).maybeSingle(),
         supabase.from("aso_clients").select("bvn_verified").eq("client_user_id", userId).maybeSingle(),
       ]);
       setWallet(w || null);
       setLedger(l || []);
       setWd(wd || []);
       setRequests(rq || []);
-      setBvnVerified(!!(pf?.bvn_verified ?? cl?.bvn_verified ?? false));
+      // Same table-selection rule as the server's resolveIdentity() (flutterwave/
+      // index.ts): profiles wins unless it has no name at all (the signal that
+      // this uid is really an Ajo/Esusu client, not a business owner) — a plain
+      // `pf?.bvn_verified ?? cl?.bvn_verified` would pick profiles' (irrelevant,
+      // default-false) value for anyone who happens to also have a profiles row.
+      const pfHasName = !!((pf?.full_name || pf?.business_name || "").trim());
+      setBvnVerified(!!(pfHasName ? pf?.bvn_verified : (cl?.bvn_verified ?? pf?.bvn_verified ?? false)));
       const pr = (rq || []).find((r) => r.status === "pending" && new Date(r.expires_at) > new Date());
       setPayReq(pr || null);
       loadedOnceRef.current = true;
@@ -150,11 +156,16 @@ export function useWallet(userId, enabled = true) {
   const transfer = useCallback((amount_kobo, bank_code, account_number, pin, narration = "", book_expense = false, confirmed_name = "") =>
     invoke("transfer", { amount_kobo, bank_code, account_number, pin, narration, book_expense, confirmed_name }), [invoke]);
 
-  // Real BVN identity verification (Flutterwave v3 consent/OTP flow) — must
-  // complete successfully before provisionAccount(bvn, ...) will be accepted
-  // server-side. redirect_url lets native pass its custom-scheme callback.
+  // Real BVN identity verification (Flutterwave v3 consent/OTP flow). Only
+  // enforced server-side (and only offered in the UI) while platform_config's
+  // bvn_verification_enabled is 'true' — currently off, since Flutterwave has
+  // BVN Verification disabled on this merchant account. redirect_url lets
+  // native pass its custom-scheme callback.
   const startBvnVerification = useCallback((bvn, redirect_url) => invoke("verify-bvn-init", { bvn, redirect_url }), [invoke]);
-  const checkBvnVerification = useCallback(() => invoke("verify-bvn-status"), [invoke]);
+  // fwRead, not invoke — this gets polled up to 5x by useBvnVerification while
+  // waiting for consent to complete; invoke's busy-toggle would flicker the
+  // "Activate wallet" button and queue a redundant full wallet reload per poll.
+  const checkBvnVerification = useCallback(() => fwRead("verify-bvn-status"), []);
 
   const createPaymentRequest = useCallback(async (amountKobo, customerName = "", note = "") => {
     const { data, error } = await supabase.rpc("wallet_create_payment_request", {

@@ -267,8 +267,10 @@ serve(async (req) => {
       const creditedMeta = ((creditRow as Record<string, unknown> | null)?.meta ?? {}) as Record<string, unknown>;
       const actualFeeKobo = Number(creditedMeta.fee_kobo ?? 0);
 
-      // notify the owner
-      fetch(`${SUPABASE_URL}/functions/v1/notify-send`, {
+      // notify the owner — awaited so the function doesn't return (and the
+      // isolate get torn down) before these fire-and-forget requests actually
+      // leave, which was silently dropping the SMS/push on some deliveries.
+      await fetch(`${SUPABASE_URL}/functions/v1/notify-send`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}` },
         body: JSON.stringify({
@@ -277,7 +279,7 @@ serve(async (req) => {
           category: "finance", deepLink: { screen: "wallet" },
         }),
       }).catch(() => {});
-      sendSms((owner as Record<string, unknown> | null)?.phone as string, `₦${(creditedKobo / 100).toLocaleString("en-NG")} credited to your KudiAI wallet. — KudiAI`, {
+      await sendSms((owner as Record<string, unknown> | null)?.phone as string, `₦${(creditedKobo / 100).toLocaleString("en-NG")} credited to your KudiAI wallet. — KudiAI`, {
         category: "money", user_id: wallet.user_id as string, related_type: "wallet_ledger", related_id: chargeId,
       });
       await sendWalletEmail(sb, owner?.email || "", `Wallet funded — ${fmtNgn(creditedKobo)}`,
@@ -343,7 +345,7 @@ serve(async (req) => {
                        ["Reference", `KDT-${transferId}`], ["Time", new Date().toLocaleString("en-NG")]],
                 foot: "Sent from your KudiAI Track wallet. The recipient's bank will show \"KudiAI Track\" and this reference.",
               }));
-            sendSms((o as Record<string, unknown> | null)?.phone as string, `${fmtNgn(wd.amount_kobo)} transfer to ${wd.account_name || wd.account_number} completed. — KudiAI`, {
+            await sendSms((o as Record<string, unknown> | null)?.phone as string, `${fmtNgn(wd.amount_kobo)} transfer to ${wd.account_name || wd.account_number} completed. — KudiAI`, {
               category: "money", user_id: wd.user_id as string, related_type: "wallet_withdrawals", related_id: transferId,
             });
           } else {
@@ -354,7 +356,7 @@ serve(async (req) => {
                        ["Status", "returned to your wallet"], ["Reference", `KDT-${transferId}`]],
                 foot: "The bank could not complete this transfer, so the full amount is back in your wallet.",
               }));
-            sendSms((o as Record<string, unknown> | null)?.phone as string, `${fmtNgn(wd.amount_kobo)} transfer ${st} — returned to your KudiAI wallet. — KudiAI`, {
+            await sendSms((o as Record<string, unknown> | null)?.phone as string, `${fmtNgn(wd.amount_kobo)} transfer ${st} — returned to your KudiAI wallet. — KudiAI`, {
               category: "money", user_id: wd.user_id as string, related_type: "wallet_withdrawals", related_id: transferId,
             });
           }

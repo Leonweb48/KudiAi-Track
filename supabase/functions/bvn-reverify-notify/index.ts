@@ -13,11 +13,14 @@ const json = (data: unknown, status = 200) =>
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY  = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
+// Both return the in-flight request so the caller can await it — fired
+// without awaiting, these were racing the function's own return (and the
+// isolate shutdown that follows), silently dropping notifications under load.
 function sendSms(phone: string | null | undefined, message: string, opts: {
   category?: string; user_id?: string | null; related_type?: string; related_id?: string;
-} = {}): void {
-  if (!phone) return;
-  fetch(`${SUPABASE_URL}/functions/v1/sms-send`, {
+} = {}): Promise<unknown> {
+  if (!phone) return Promise.resolve();
+  return fetch(`${SUPABASE_URL}/functions/v1/sms-send`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}` },
     body: JSON.stringify({ action: "send", phone, message, category: opts.category ?? "money", user_id: opts.user_id ?? null, related_type: opts.related_type ?? null, related_id: opts.related_id ?? null }),
@@ -27,9 +30,9 @@ function sendSms(phone: string | null | undefined, message: string, opts: {
 function notifyUser(userId: string | null | undefined, opts: {
   type: string; title: string; body: string;
   priority?: string; deepLink?: Record<string, unknown> | null; category?: string;
-}): void {
-  if (!userId) return;
-  fetch(`${SUPABASE_URL}/functions/v1/notify-send`, {
+}): Promise<unknown> {
+  if (!userId) return Promise.resolve();
+  return fetch(`${SUPABASE_URL}/functions/v1/notify-send`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}` },
     body: JSON.stringify({ action: "notify", userId, type: opts.type, title: opts.title, body: opts.body, priority: opts.priority ?? "normal", deepLink: opts.deepLink ?? null, category: opts.category ?? "money" }),
@@ -50,21 +53,23 @@ Deno.serve(async (req) => {
     email: string | null; kind: "owner" | "ajo_client";
   }[];
 
+  const pending: Promise<unknown>[] = [];
   for (const r of targets) {
-    sendSms(
+    pending.push(sendSms(
       r.phone,
       "KudiAI: We've added real BVN verification to keep wallets secure. Please open the app and reverify your BVN to keep using it smoothly.",
       { category: "money", user_id: r.user_id, related_type: r.kind, related_id: r.user_id },
-    );
-    notifyUser(r.user_id, {
+    ));
+    pending.push(notifyUser(r.user_id, {
       type: "bvn_reverification_required",
       title: "Please reverify your BVN",
       body: "We've added real BVN verification for wallet security. Reverify to keep using your wallet smoothly.",
       priority: "high",
       category: "money",
       deepLink: r.kind === "owner" ? { tab: "wallet" } : { tab: "home", openWallet: true },
-    });
+    }));
   }
+  await Promise.allSettled(pending);
 
   return json({ ok: true, notified: targets.length });
 });

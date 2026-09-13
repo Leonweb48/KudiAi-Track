@@ -3076,13 +3076,16 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
   const contribItems = contributions.map(c => ({ _type: "contribution", ...c, date: c.created_at }));
 
   // Merge in the wallet ledger. A single economic event (e.g. a contribution
-  // paid from the wallet) writes BOTH a wallet_ledger row AND an
-  // ajo_contributions row (linked via related_txn_id) — skip the wallet row
-  // when its counterpart is already shown as a contribution/withdrawal item,
-  // so nothing appears twice.
+  // paid from the wallet, or a withdrawal settled to the wallet) writes BOTH a
+  // wallet_ledger row AND an ajo_contributions/ajo_withdrawal_requests row
+  // (linked via related_txn_id) — skip the wallet row when its counterpart is
+  // already shown as a contribution/withdrawal item, so nothing appears
+  // twice. A settled payout's wallet_ledger row points at the withdrawal
+  // request's id, not a contribution's, so both id sets must be checked.
   const contribIds = new Set(contributions.map(c => c.id));
+  const withdrawalIds = new Set(withdrawRequests.map(r => r.id));
   const walletItems = (wallet?.ledger || [])
-    .filter(row => !(row.related_txn_id && contribIds.has(row.related_txn_id)))
+    .filter(row => !(row.related_txn_id && (contribIds.has(row.related_txn_id) || withdrawalIds.has(row.related_txn_id))))
     .map(row => ({
       _type: "wallet", id: row.id, amount: (row.amount_kobo || 0) / 100,
       type: row.source, direction: row.direction, status: row.status,
@@ -5007,7 +5010,7 @@ function WalletActivationBanner({ onActivate, onDismiss }) {
 }
 
 // ── KudiAI Wallet — activation (BVN) or balance/actions, for the client ────
-function MemberWalletSheet({ wallet, testMode, client, businessName, ownerName, onClose, onProfileUpdate, onFund, onTransfer }) {
+function MemberWalletSheet({ wallet, testMode, bvnVerificationEnabled, client, businessName, ownerName, onClose, onProfileUpdate, onFund, onTransfer }) {
   const [bvn, setBvn] = useState("");
   const [nin, setNin] = useState("");
   const [address,  setAddress]  = useState(client?.address || "");
@@ -5182,7 +5185,7 @@ function MemberWalletSheet({ wallet, testMode, client, businessName, ownerName, 
           <AmountDisplay amount={wallet.balanceKobo} fromKobo size="hero" align="left" className="mb-4" />
           <AccountCard wallet={wallet.wallet} displayName={businessName || ownerName} />
 
-          {!wallet.bvnVerified && !testMode && (
+          {bvnVerificationEnabled && !wallet.bvnVerified && !testMode && (
             <div className="mt-3 rounded-2xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-4 py-3.5">
               <p className="text-[12.5px] font-bold text-amber-700 dark:text-amber-300">Please reverify your BVN</p>
               <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5 leading-relaxed">
@@ -5279,7 +5282,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
 
   // KudiAI Wallet — same wallet infra as the owner side. client_user_id IS a
   // real auth.users id, so this "just works" once the platform flag is on.
-  const { walletEnabled, walletTestMode, walletMaxWithdrawalKobo } = usePlatformConfig();
+  const { walletEnabled, walletTestMode, walletMaxWithdrawalKobo, bvnVerificationEnabled } = usePlatformConfig();
   const walletUserId = client?.client_user_id || session?.user?.id || null;
   const wallet = useWallet(walletUserId, walletEnabled);
 
@@ -5745,6 +5748,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
         <MemberWalletSheet
           wallet={wallet}
           testMode={walletTestMode}
+          bvnVerificationEnabled={bvnVerificationEnabled}
           client={client}
           businessName={client?.full_name}
           ownerName={client?.full_name}

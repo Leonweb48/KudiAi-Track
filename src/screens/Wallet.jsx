@@ -15,7 +15,7 @@ import { fmt } from "../utils/helpers";
 export default function Wallet({ session, store }) {
   const userId = session?.user?.id || null;
   const navigate = useNavigate();
-  const { walletEnabled, walletTestMode, walletMaxWithdrawalKobo, configLoading } = usePlatformConfig();
+  const { walletEnabled, walletTestMode, walletMaxWithdrawalKobo, configLoading, bvnVerificationEnabled } = usePlatformConfig();
   const w = useWallet(userId, walletEnabled);
   const bvnVerify = useBvnVerification(w);
   const [hidden, setHidden] = useState(() => sessionStorage.getItem("kt_balance_hidden") === "1");
@@ -179,7 +179,7 @@ export default function Wallet({ session, store }) {
           <>
             <AccountCard wallet={w.wallet} displayName={store?.profile?.business_name || store?.profile?.owner_name} />
 
-            {!w.bvnVerified && !walletTestMode && (
+            {bvnVerificationEnabled && !w.bvnVerified && !walletTestMode && (
               <div className="rounded-2xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-4 py-3.5">
                 <p className="text-[12.5px] font-bold text-amber-700 dark:text-amber-300">Please reverify your BVN</p>
                 <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5 leading-relaxed">
