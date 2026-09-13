@@ -13,9 +13,12 @@ import { usePlatformConfig } from "../hooks/usePlatformConfig";
 // staff log in with a separate account (see resolveIdentity()'s "staff" branch in
 // supabase/functions/flutterwave/index.ts). No Ajo-style mandatory KYC (address/next-of-
 // kin) gate — provision-account itself only ever required a BVN.
-export default function StaffWalletPanel({ open, onClose, session, staffName }) {
+// Mount/unmount this component itself to open/close it (same convention as
+// MemberWalletSheet) — no internal `open` prop, since a wallet realtime
+// subscription should only exist while the sheet is actually up.
+export default function StaffWalletPanel({ onClose, session, staffName }) {
   const { walletEnabled, walletTestMode, walletMaxWithdrawalKobo } = usePlatformConfig();
-  const wallet = useWallet(open ? (session?.user?.id || null) : null, walletEnabled);
+  const wallet = useWallet(session?.user?.id || null, walletEnabled);
 
   const [bvn, setBvn] = useState("");
   const [busy, setBusy] = useState(false);
@@ -37,8 +40,6 @@ export default function StaffWalletPanel({ open, onClose, session, staffName }) 
   };
 
   const openReceipt = (row) => setReceipt(wallet.receiptFor(row, staffName, staffName));
-
-  if (!open) return null;
 
   return (
     <>

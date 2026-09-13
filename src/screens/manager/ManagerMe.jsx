@@ -629,7 +629,7 @@ export default function ManagerMe({
 
       {/* Modals */}
       {showWallet && (
-        <StaffWalletPanel open onClose={() => setShowWallet(false)} session={session} staffName={staff?.full_name} />
+        <StaffWalletPanel onClose={() => setShowWallet(false)} session={session} staffName={staff?.full_name} />
       )}
       {changingPin && (
         <ChangePinModal
