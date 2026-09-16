@@ -66,6 +66,30 @@ test("Ajo fee income is ₦300; contribution is liability not income", () => {
   expect(r.liabilities.ajoReleased.amount).toBe(500);  // payout released
 });
 
+// ── Test 3b: Ajo commission collected via the Ajo ledger (not transactions) ───
+// Real Ajo commission/registration/withdrawal fees are recorded in
+// ajo_contributions, never mirrored into the transactions table. The engine
+// must recognize them as service income when passed via ajoEntries.
+test("Ajo-ledger commission/fee entries count as service income (zero COGS)", () => {
+  const ledger = {
+    ajoEntries: [
+      { id: "a1", type: "contribution",     amount: 5000, date: "2026-07-10" },
+      { id: "a2", type: "commission",       amount: 300,  date: "2026-07-11" },
+      { id: "a3", type: "registration_fee", amount: 200,  date: "2026-07-12" },
+      { id: "a4", type: "withdrawal_fee",   amount: 100,  date: "2026-07-13" },
+    ],
+  };
+  const r = compute(ledger, RANGE);
+
+  expect(r.profit.revenue.amount).toBe(600);            // commission + reg + withdrawal fees
+  expect(r.profit.cogs.amount).toBe(0);
+  expect(r.profit.grossProfit.amount).toBe(600);         // zero-COGS service income
+  expect(r.profit.netProfit.amount).toBe(600);
+  expect(r.cash.in.amount).toBe(600);                    // real cash, not the contribution (liability)
+  expect(r.cash.byStream.ajoFeeIncome.amount).toBe(600);
+  expect(r.liabilities.ajoHeld.amount).toBe(5000);       // contribution stays liability-only
+});
+
 // ── Test 4: COGS — costed item + uncosted stub ────────────────────────────────
 // Rule: COGS = cost_price × quantity for costed products only.
 // Stub sales (needs_costing=true) → revenue tracked, margin unknown → unmeasured.
@@ -520,16 +544,16 @@ test("C6: manual item with cost_price_kobo is measured; item without goes to unm
   expect(r.cash.in.amount).toBeCloseTo(8000);
 });
 
-test("C7: failed bill transactions excluded from cash-out and byStream.billPayments", () => {
+test("C7: bill payments (success or failed) are pass-through, excluded from cash-out; split by status in byStream", () => {
   const transactions = [
     { id: "t1", type: "out", amount: 1000, bill_status: "failed",  payment_type: "bill_payment", category: "expense", transaction_date: "2026-07-10" },
     { id: "t2", type: "out", amount: 2000, bill_status: "success", payment_type: "bill_payment", category: "expense", transaction_date: "2026-07-10" },
   ];
   const r = compute({ transactions }, RANGE);
 
-  // Only the successful bill should appear in cash out
-  expect(r.cash.out.amount).toBeCloseTo(2000);
-  // byStream.billPayments excludes the failed one
+  // R6: ALL bill payments are pass-through — neither success nor failed appear in cash.out
+  expect(r.cash.out.amount).toBeCloseTo(0);
+  // byStream.billPayments captures the successful one
   expect(r.cash.byStream.billPayments.amount).toBeCloseTo(2000);
   // Failed bills tracked separately for Finance page display
   expect(r.cash.byStream.failedBills.amount).toBeCloseTo(1000);

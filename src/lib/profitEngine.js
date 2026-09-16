@@ -7,7 +7,10 @@
  *   products       — inventory.products (for COGS lookup)
  *   asoClients     — store.asoClients (for Ajo liability fallback)
  *   ajoEntries?    — optional [{ id, type, amount, date }] from an Ajo ledger table
- *                    type: "contribution" | "payout"
+ *                    type: "contribution" | "payout" | "commission" | "registration_fee" | "withdrawal_fee"
+ *                    The fee/commission types are Ajo service income (R2) — zero COGS,
+ *                    same treatment as a transactions row with a matching category.
+ *                    "contribution"/"payout" remain liability-only (never income).
  *   debtPayments?  — optional store.debtPayments (for interest-earned recognition)
  *   credits?       — optional store.credits (for interest allocation)
  *
@@ -60,8 +63,9 @@ const REVENUE_CATS = new Set([
   "sale", "credit sale",
   "registration_fee", "withdrawal_fee", "commission",
 ]);
-const SERVICE_CATS = new Set(["registration_fee", "withdrawal_fee", "commission"]);
-const STOCK_CATS   = new Set(["stock"]);
+const SERVICE_CATS   = new Set(["registration_fee", "withdrawal_fee", "commission"]);
+const STOCK_CATS     = new Set(["stock"]);
+const AJO_INCOME_TYPES = SERVICE_CATS; // same three types, sourced from ajoEntries instead of transactions
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function parseTxDate(t) {
@@ -293,7 +297,17 @@ export function compute(ledger, range) {
   const interestEarned = { ...pool(interestItems), meta: interestMeta };
   // Interest: zero COGS, fully measured — contributes to gross profit
   measuredRev += interestEarned.amount;
-  // Recalculate grossProfit with interest included
+
+  // ── Ajo service income (R2, sourced from the Ajo ledger, not transactions) ─
+  // registration_fee/withdrawal_fee/commission rows collected via the Ajo
+  // wallet-collection flow never get mirrored into `transactions`, so without
+  // this they silently vanished from profit. Zero COGS, same as their
+  // transactions-category counterparts.
+  const ajoIncomeEntries = ajoEntries.filter(e => AJO_INCOME_TYPES.has(e.type) && inRange(e.date, from, to));
+  const ajoIncomeItems   = ajoIncomeEntries.map(e => ({ id: e.id, amount: e.amount }));
+  measuredRev += ajoIncomeItems.reduce((s, x) => s + x.amount, 0);
+
+  // Recalculate grossProfit with interest + Ajo service income included
   grossProfit.amount = measuredRev - cogsAmount;
 
   // ── Revenue total (R1 + R2 + R7) ─────────────────────────────────────────
@@ -301,6 +315,7 @@ export function compute(ledger, range) {
     ...revTxs.map(t => ({ id: t.id, amount: t.amount })),
     ...invPmtItems,
     ...interestItems,
+    ...ajoIncomeItems,
   ];
   const revenue = pool(revItems);
 
@@ -311,6 +326,7 @@ export function compute(ledger, range) {
   const cashInItems = [
     ...txsIn.map(t => ({ id: t.id, amount: t.amount })),
     ...invPmtItems,
+    ...ajoIncomeItems,
   ];
   const cashIn  = pool(cashInItems);
   // Bill payments (successful or failed) are pass-through — excluded from business cash-out.
@@ -323,7 +339,10 @@ export function compute(ledger, range) {
     creditSales:      pool(txsIn.filter(t => t.category === "credit sale").map(t => ({ id: t.id, amount: t.amount }))),
     creditRepayments: pool(txsIn.filter(t => t.category === "debt repayment").map(t => ({ id: t.id, amount: t.amount }))),
     invoicePayments:  pool(invPmtItems),
-    ajoFeeIncome:     pool(txsIn.filter(t => SERVICE_CATS.has(t.category)).map(t => ({ id: t.id, amount: t.amount }))),
+    ajoFeeIncome:     pool([
+      ...txsIn.filter(t => SERVICE_CATS.has(t.category)).map(t => ({ id: t.id, amount: t.amount })),
+      ...ajoIncomeItems,
+    ]),
     interestEarned,
     expenses:         pool(expTxs.map(t => ({ id: t.id, amount: t.amount }))),
     stockInvestment:  pool(txsOut.filter(t => STOCK_CATS.has(t.category)).map(t => ({ id: t.id, amount: t.amount }))),

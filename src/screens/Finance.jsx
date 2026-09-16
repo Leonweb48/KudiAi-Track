@@ -10,6 +10,7 @@ import { canDo, getLowestPlanWithFeature } from "../utils/plans";
 import { fmt, isBillPayment } from "../utils/helpers";
 import { AmountDisplay }    from "../components/shared/AmountDisplay";
 import { compute, computeCapital } from "../lib/profitEngine";
+import { supabase } from "../utils/supabase";
 
 /* ── Period config ───────────────────────────────────────────────────────────── */
 const PERIODS = [
@@ -981,6 +982,29 @@ export default function Finance({
 
   const openSection = (id) => { setSection(id); onAutoOpened?.(); };
 
+  // Ajo commission/registration/withdrawal fees live only in ajo_contributions —
+  // they never get mirrored into `transactions`, so without this the P&L engine
+  // silently drops all Ajo income. Fetch enough history to cover both the
+  // current period and the prior period used for the trend comparison below.
+  const [ajoIncomeEntries, setAjoIncomeEntries] = useState([]);
+  useEffect(() => {
+    if (!userId) return;
+    const now        = new Date();
+    const start      = getPeriodStart(period);
+    const priorStart = new Date(start - (now - start));
+    supabase
+      .from("ajo_contributions")
+      .select("id, amount, type, created_at")
+      .eq("owner_id", userId)
+      .in("type", ["commission", "registration_fee", "withdrawal_fee"])
+      .eq("status", "completed")
+      .gte("created_at", priorStart.toISOString())
+      .then(({ data }) => setAjoIncomeEntries(
+        (data || []).map(e => ({ id: e.id, type: e.type, amount: parseFloat(e.amount) || 0, date: e.created_at }))
+      ))
+      .catch(() => {});
+  }, [userId, period]);
+
   /* ── Period-filtered P&L (client-side) ───────────────────────────────────── */
   const { netPL, cashNet,
           trendPct, trendUp, sparkData, expenseBreakdown, engine, capitalResult } = useMemo(() => {
@@ -1004,6 +1028,7 @@ export default function Finance({
       asoClients:   store.asoClients        || [],
       debtPayments: store.debtPayments      || [],
       credits:      store.credits           || [],
+      ajoEntries:   ajoIncomeEntries,
     };
     const engine      = compute(ledger, { from: start,      to: now });
     const enginePrior = compute(ledger, { from: priorStart, to: priorEnd });
@@ -1045,7 +1070,7 @@ export default function Finance({
       engine,
       capitalResult,
     };
-  }, [store.transactions, store.asoClients, store.debtPayments, store.credits, store.profile, inventory?.products, invoiceHook?.invoices, period]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [store.transactions, store.asoClients, store.debtPayments, store.credits, store.profile, inventory?.products, invoiceHook?.invoices, period, ajoIncomeEntries]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── Finance tools summary values ─────────────────────────────────────────── */
   const creditOutstanding = credits.reduce((s, c) => s + (c.outstanding || 0), 0);

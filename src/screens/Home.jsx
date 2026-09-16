@@ -150,6 +150,26 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [asoClients.length]);
 
+  // Ajo commission/registration/withdrawal fees live only in ajo_contributions —
+  // they never get mirrored into `transactions`, so profitEngine needs them fed
+  // in directly (as ajoEntries) or "Today's Profit" silently drops all Ajo income.
+  const [ajoIncomeEntries, setAjoIncomeEntries] = useState([]);
+  useEffect(() => {
+    if (!profile?.id) return;
+    const todayStart = new Date().toISOString().slice(0, 10) + "T00:00:00";
+    supabase
+      .from("ajo_contributions")
+      .select("id, amount, type, created_at")
+      .eq("owner_id", profile.id)
+      .in("type", ["commission", "registration_fee", "withdrawal_fee"])
+      .eq("status", "completed")
+      .gte("created_at", todayStart)
+      .then(({ data }) => setAjoIncomeEntries(
+        (data || []).map(e => ({ id: e.id, type: e.type, amount: parseFloat(e.amount) || 0, date: e.created_at }))
+      ))
+      .catch(() => {});
+  }, [profile?.id]);
+
   const { slotMap, loading: camLoading, recordEvent } = useCampaigns(
     ["home_banner","popup","feed_card","upsell_inline","announcement_bar","tab_card_quad","tab_card_duo"],
     "business",
@@ -163,8 +183,9 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
   const annBars      = slotMap.announcement_bar || [];
   const tabCard = (slotMap.tab_card_quad || [])[0] ?? (slotMap.tab_card_duo || [])[0] ?? null;
 
-  const todayTx = transactions.filter(tx => tx.transaction_date === today());
-  const cashIn  = todayTx.filter(tx => tx.type === "in" ).reduce((s, tx) => s + tx.amount, 0);
+  const todayTx      = transactions.filter(tx => tx.transaction_date === today());
+  const todayAjoFees = ajoIncomeEntries.reduce((s, e) => s + e.amount, 0);
+  const cashIn  = todayTx.filter(tx => tx.type === "in" ).reduce((s, tx) => s + tx.amount, 0) + todayAjoFees;
   const cashOut = todayTx.filter(tx => tx.type === "out" && !isBillPayment(tx)).reduce((s, tx) => s + tx.amount, 0);
 
   // Same ledger + engine as Finance page so "Today's Profit" matches Finance Net P&L
@@ -178,8 +199,9 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
       asoClients,
       debtPayments: debtPayments           || [],
       credits,
+      ajoEntries:   ajoIncomeEntries,
     }, { from: s, to: e });
-  }, [transactions, invoiceHook?.invoices, inventory?.products, asoClients, debtPayments, credits]);
+  }, [transactions, invoiceHook?.invoices, inventory?.products, asoClients, debtPayments, credits, ajoIncomeEntries]);
 
   const profit        = todayEngine.profit.netProfit.amount;
   const todayExpenses = todayEngine.profit.expenses.amount;
@@ -210,6 +232,7 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
       {isPaidPlan(plan)
         ? <PaidProfileBanner
             profile={profile}
+            walletActive={wallet.hasAccount}
             onOpen={() => setShowCompleteFlow(true)}
             onGoVerification={onGoVerification}
             onGoSettings={onGoSettings}
