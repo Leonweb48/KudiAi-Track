@@ -271,8 +271,8 @@ function ProductDetail({ product, movements, onClose, onEdit, onDelete, onAdjust
             {onAdjust && (
               <button onClick={() => onAdjust(product)} className="px-3 py-1.5 text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-xl active:scale-95">Adjust</button>
             )}
-            <button onClick={onEdit} className="px-3 py-1.5 text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-xl active:scale-95">Edit</button>
-            <button onClick={onDelete} className="px-3 py-1.5 text-xs font-bold bg-red-50 dark:bg-red-900/20 text-red-500 rounded-xl active:scale-95">Delete</button>
+            <button onClick={() => onEdit(product)} className="px-3 py-1.5 text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-xl active:scale-95">Edit</button>
+            <button onClick={() => onDelete(product)} className="px-3 py-1.5 text-xs font-bold bg-red-50 dark:bg-red-900/20 text-red-500 rounded-xl active:scale-95">Delete</button>
           </div>
         )}
       </div>
@@ -591,9 +591,10 @@ function ProductCard({ product, onView, onSale, onRestock, isOwner, onEdit, onAs
 }
 
 /* ── Costing sheet — lets owner set cost_price + opening qty on an auto-stub ── */
-function CostingSheet({ prod, onSave, onClose, saving }) {
+function CostingSheet({ prod, onSave, onClose, onDiscard, saving, discarding }) {
   const [costPrice, setCostPrice] = useState("");
   const [openQty,   setOpenQty]   = useState("");
+  const [confirmingDiscard, setConfirmingDiscard] = useState(false);
   const sp = (prod.selling_price || 0).toLocaleString("en-NG");
   const m  = costPrice ? Math.round(((parseFloat(costPrice) > 0)
     ? ((prod.selling_price - parseFloat(costPrice)) / parseFloat(costPrice)) * 100
@@ -672,6 +673,31 @@ function CostingSheet({ prod, onSave, onClose, saving }) {
               {saving ? "Saving…" : "Save"}
             </button>
           </div>
+
+          {onDiscard && (
+            confirmingDiscard ? (
+              <div className="mt-3 px-3 py-2.5 bg-red-50 dark:bg-red-900/20 rounded-xl">
+                <p className="text-[11px] text-red-600 dark:text-red-400 mb-2">
+                  Discard "{prod.product_name}"? This removes it from your product list — sales already recorded against it stay in your history as revenue-only.
+                </p>
+                <div className="flex gap-2">
+                  <button onClick={() => setConfirmingDiscard(false)}
+                    className="flex-1 h-9 rounded-lg text-xs font-semibold text-slate-500 dark:text-slate-400">
+                    Keep it
+                  </button>
+                  <button onClick={() => onDiscard(prod)} disabled={discarding}
+                    className="flex-1 h-9 rounded-lg bg-red-500 text-white text-xs font-bold active:scale-95 transition disabled:opacity-40">
+                    {discarding ? "Discarding…" : "Yes, discard"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button onClick={() => setConfirmingDiscard(true)}
+                className="w-full mt-3 h-9 text-xs font-semibold text-red-500 dark:text-red-400 active:opacity-70 transition">
+                Discard this item instead
+              </button>
+            )
+          )}
         </div>
       </div>
     </>
@@ -696,6 +722,7 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
   const [saving,      setSaving]      = useState(false);
   const [costingProd, setCostingProd] = useState(null);
   const [assigningProduct, setAssigningProduct] = useState(null);
+  const [discardingStub, setDiscardingStub] = useState(false);
 
   const { products, movements, loading, dbError, analytics, stubStats,
           addProduct, updateProduct, deleteProduct, recordMovement,
@@ -782,6 +809,13 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
     setSaving(true);
     const ok = await completeCosting(costingProd.id, costPrice, openQty);
     setSaving(false);
+    if (ok) setCostingProd(null);
+  };
+
+  const handleDiscardStub = async (prod) => {
+    setDiscardingStub(true);
+    const ok = await deleteProduct(prod.id);
+    setDiscardingStub(false);
     if (ok) setCostingProd(null);
   };
 
@@ -1048,7 +1082,9 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
           prod={costingProd}
           onSave={handleCompleteCosting}
           onClose={() => setCostingProd(null)}
+          onDiscard={handleDiscardStub}
           saving={saving}
+          discarding={discardingStub}
         />
       )}
 
