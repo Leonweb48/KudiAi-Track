@@ -13,6 +13,7 @@ import { usePermissions }    from "./hooks/usePermissions";
 import { useNotifications }  from "./hooks/useNotifications";
 import { useConsent }        from "./hooks/useConsent";
 import { usePlatformConfig } from "./hooks/usePlatformConfig";
+import { supabase }          from "./utils/supabase";
 import { unlockAudio }       from "./utils/tts";
 import { canDo }             from "./utils/plans";
 import {
@@ -408,6 +409,18 @@ export default function App() {
   const closeUpgrade  = () => setShowUpgrade(false);
   const finishUpgrade = (planId) => { setReady(planId); setShowUpgrade(false); };
 
+  // ── Wallet-active check (settlement account compliance) ────────────────────
+  // Lightweight, non-realtime lookup — deliberately not a full useWallet()
+  // instance (that opens a realtime channel; App.jsx is always-mounted and
+  // Home.jsx/Wallet.jsx already each run their own useWallet instance).
+  const [walletActive, setWalletActive] = useState(false);
+  useEffect(() => {
+    if (!userId) return;
+    supabase.from("wallets").select("flw_account_number").eq("user_id", userId).maybeSingle()
+      .then(({ data }) => setWalletActive(!!data?.flw_account_number))
+      .catch(() => {});
+  }, [userId]);
+
   // ── Paid-plan compliance tracking ───────────────────────────────────────────
   // Record when the owner first hits a paid plan (sets grace period start once).
   // Show a one-time explanation modal for new and existing paid users who are
@@ -420,19 +433,19 @@ export default function App() {
       return;
     }
     recordPaidSince(userId);
-    if (!isComplianceIntroShown(userId) && !isPaidCompliant(store.profile || {})) {
+    if (!isComplianceIntroShown(userId) && !isPaidCompliant(store.profile || {}, walletActive)) {
       setShowComplianceIntro(true);
       markComplianceIntroShown(userId);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, plan, store.loading]);
+  }, [userId, plan, store.loading, walletActive]);
 
   // Compliance state — recomputed from live profile on every render.
   const paidPlan       = isPaidPlan(plan);
-  const paidCompliant  = isPaidCompliant(store.profile || {});
+  const paidCompliant  = isPaidCompliant(store.profile || {}, walletActive);
   const { inGrace, graceDaysLeft } = getPaidGraceInfo(userId || "");
   const complianceCtx  = { isPaid: paidPlan, isCompliant: paidCompliant, inGrace };
-  const missingPaidFields = paidPlan && !paidCompliant ? getMissingPaidFields(store.profile || {}) : [];
+  const missingPaidFields = paidPlan && !paidCompliant ? getMissingPaidFields(store.profile || {}, walletActive) : [];
 
   // Allow slot CTAs (promo_code action) to open the upgrade screen from anywhere
   useEffect(() => {

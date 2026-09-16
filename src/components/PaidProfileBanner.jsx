@@ -4,10 +4,10 @@ import { getMissingPaidFields, getPaidGraceInfo } from "../utils/paidCompliance"
 // Non-dismissible compliance banner for paid-plan owners.
 // Unlike the free-plan nudge (ProfileCompletionBanner), this banner cannot be
 // dismissed — it stays until every required item is satisfied.
-export default function PaidProfileBanner({ profile, onOpen, onGoVerification, onGoSettings }) {
+export default function PaidProfileBanner({ profile, walletActive = false, onOpen, onGoVerification, onGoSettings }) {
   if (!profile?.id) return null;
 
-  const missing = getMissingPaidFields(profile);
+  const missing = getMissingPaidFields(profile, walletActive);
   if (missing.length === 0) return null;
 
   const { graceDaysLeft, inGrace } = getPaidGraceInfo(profile.id);

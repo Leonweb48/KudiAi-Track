@@ -2,12 +2,14 @@
 // Register this URL in your Paystack dashboard under Settings → Webhooks:
 //   https://<project-ref>.supabase.co/functions/v1/paystack-webhook
 //
-// Handles charge.success to:
+// Handles charge.success for the surfaces still on Paystack (subscriptions,
+// bills, org registration). Ajo contributions are wallet-funded now (see
+// flutterwave-webhook) — Paystack is no longer a valid settlement path for
+// them, so any unrouted charge (no matching payment_type) is logged and
+// ignored rather than treated as an Ajo contribution.
 //   1. Verify HMAC-SHA512 signature (security)
 //   2. Deduplicate via paystack_webhook_log (idempotency)
-//   3. Update the pending ajo_contributions record to completed
-//   4. Update client's current_balance, total_saved, next_contribution_date
-//   5. Fire email notification
+//   3. Route by metadata.payment_type to the matching handler
 
 import { serve }        from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -74,10 +76,7 @@ serve(async (req) => {
 
   if (event !== "charge.success") return ok("ignored");
 
-  const channel  = (data.channel ?? data.payment_channel ?? "card") as string;
   const paidAt   = (data.paid_at ?? data.created_at ?? new Date().toISOString()) as string;
-  const clientId = meta.client_id as string | undefined;
-  const ownerId  = meta.owner_id  as string | undefined;
 
   if (!reference) return err("Missing reference", 400);
 
@@ -117,56 +116,12 @@ serve(async (req) => {
     return ok("org registration processed");
   }
 
-  // ── 4. Find the pending contribution record (Ajo) ────────────────────────
-  const { data: contrib, error: contribErr } = await sb
-    .from("ajo_contributions")
-    .select("id, aso_client_id, owner_id, amount, paystack_status")
-    .eq("paystack_ref", reference)
-    .maybeSingle();
-
-  if (contribErr) {
-    console.error(`[paystack-webhook] Error fetching contribution: ${contribErr.message}`);
-    return ok("db error logged");
-  }
-
-  if (!contrib) {
-    // Contribution record not found — this can happen when the record was created
-    // before our pending flow (e.g. older cash records). Log and move on.
-    console.warn(`[paystack-webhook] No contribution found for ref: ${reference}`);
-    // If metadata has client_id, try to create the record
-    if (clientId && ownerId) {
-      await recordNewContribution(sb, clientId, ownerId, amountNgn, reference, channel, paidAt);
-    }
-    return ok("no record — attempted fallback");
-  }
-
-  if (contrib.paystack_status === "success") {
-    return ok("already confirmed");
-  }
-
-  // ── 5 & 6. Atomic confirmation via RPC (flips status + updates balance) ──
-  // ajo_confirm_payment is SECURITY DEFINER — service role can call it.
-  // It locks on the pending row then updates aso_clients in one transaction.
-  const { error: rpcErr } = await sb.rpc("ajo_confirm_payment", {
-    p_paystack_ref: reference,
-    p_paid_at:      paidAt,
-    p_channel:      channel,
-  });
-  if (rpcErr) {
-    console.error(`[paystack-webhook] ajo_confirm_payment failed: ${rpcErr.message}`);
-    return ok("rpc error logged");
-  }
-
-  const resolvedClientId = contrib.aso_client_id ?? clientId;
-
-  // ── 7. Fire email notification ────────────────────────────────────────
-  const resolvedOwnerId = contrib.owner_id ?? ownerId;
-  if (resolvedClientId) {
-    await fireContributionEmail(sb, resolvedClientId, resolvedOwnerId, amountNgn, reference, paidAt);
-  }
-
-  console.log(`[paystack-webhook] Processed charge.success: ref=${reference} amount=₦${amountNgn}`);
-  return ok("processed");
+  // Ajo contributions are wallet-funded now (see flutterwave-webhook) —
+  // Paystack is no longer a valid settlement path for them. A confirmed
+  // zero-pending-rows check found no in-flight legacy contributions, so this
+  // branch was removed outright rather than kept as a dead-letter handler.
+  console.warn(`[paystack-webhook] Unrouted charge.success (no matching payment_type): ref=${reference}`);
+  return ok("unrouted — ignored");
 });
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -401,57 +356,6 @@ async function handleBillPayment(
   }
 }
 
-async function updateClientBalance(
-  sb: ReturnType<typeof createClient>,
-  clientId: string,
-  amount: number,
-) {
-  const { data: cl } = await sb
-    .from("aso_clients")
-    .select("current_balance, total_saved, contribution_frequency, next_contribution_date")
-    .eq("id", clientId)
-    .maybeSingle();
-  if (!cl) return;
-
-  const freqDays: Record<string, number> = { daily: 1, weekly: 7, monthly: 30 };
-  const days = freqDays[cl.contribution_frequency] || 30;
-  const base = cl.next_contribution_date || new Date().toISOString().slice(0, 10);
-  const nd   = new Date(base);
-  nd.setDate(nd.getDate() + days);
-
-  await sb.from("aso_clients").update({
-    current_balance:        (cl.current_balance || 0) + amount,
-    total_saved:            (cl.total_saved     || 0) + amount,
-    next_contribution_date: nd.toISOString().slice(0, 10),
-  }).eq("id", clientId);
-}
-
-async function recordNewContribution(
-  sb: ReturnType<typeof createClient>,
-  clientId: string,
-  ownerId: string,
-  amount: number,
-  reference: string,
-  channel: string,
-  paidAt: string,
-) {
-  await sb.from("ajo_contributions").insert({
-    aso_client_id:   clientId,
-    owner_id:        ownerId,
-    amount,
-    type:            "contribution",
-    payment_method:  "paystack",
-    paystack_ref:    reference,
-    paystack_status: "success",
-    payment_channel: channel,
-    paid_at:         paidAt,
-    status:          "completed",
-    initiated_by:    "client",
-    notes:           `Self-pay via Paystack · ref: ${reference}`,
-  });
-  await updateClientBalance(sb, clientId, amount);
-}
-
 async function firePaymentFailureEmail(
   userEmail: string,
   planName: string,
@@ -601,63 +505,3 @@ async function handleOrgRegistrationPayment(
   console.log(`[paystack-webhook] org_registration: activated org ${orgId} (${org.name})`);
 }
 
-async function fireContributionEmail(
-  sb: ReturnType<typeof createClient>,
-  clientId: string,
-  ownerId: string | undefined,
-  amount: number,
-  reference: string,
-  paidAt: string,
-) {
-  try {
-    const { data: cl } = await sb
-      .from("aso_clients")
-      .select("full_name, email, current_balance, staff_id")
-      .eq("id", clientId)
-      .maybeSingle();
-    if (!cl) return;
-
-    const emailData: Record<string, unknown> = {
-      client_id:   clientId,
-      client_name: cl.full_name  || "",
-      client_email: cl.email     || "",
-      amount,
-      balance:     cl.current_balance || 0,
-      date:        new Date(paidAt).toLocaleDateString("en-NG"),
-      paystack_ref: reference,
-    };
-
-    if (ownerId) {
-      const { data: owner } = await sb
-        .from("profiles")
-        .select("email, business_name")
-        .eq("id", ownerId)
-        .maybeSingle();
-      if (owner?.email)         emailData.owner_email    = owner.email;
-      if (owner?.email)         emailData.user_email     = owner.email;
-      if (owner?.business_name) emailData.business_name  = owner.business_name;
-      emailData.owner_id = ownerId;
-    }
-
-    if (cl.staff_id) {
-      const { data: staff } = await sb
-        .from("staff")
-        .select("email, full_name")
-        .eq("id", cl.staff_id)
-        .maybeSingle();
-      if (staff?.email)     emailData.staff_email = staff.email;
-      if (staff?.full_name) emailData.staff_name  = staff.full_name;
-    }
-
-    await fetch("https://admin.kudiai.app/api/public/email-trigger", {
-      method:  "POST",
-      headers: {
-        "Content-Type":   "application/json",
-        "x-trigger-secret": EMAIL_TRIGGER_SECRET,
-      },
-      body: JSON.stringify({ event: "ajo_contribution", data: emailData }),
-    }).catch(() => null);
-  } catch (e) {
-    console.error("[paystack-webhook] Email notification failed:", e);
-  }
-}

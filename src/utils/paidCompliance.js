@@ -6,9 +6,11 @@
 import { normalizeSlug } from "./plans";
 
 // ── Required fields for paid-plan owners ─────────────────────────────────────
-// 13 data fields + 1 identity-verification check = 14 compliance items.
-// Settlement account is checked via settlement_account_number (set when a
-// Paystack subaccount is linked in Settings).
+// 13 data fields + 1 identity-verification check + 1 wallet-activation check
+// = 15 compliance items. Settlement account is now the owner's own KudiAI
+// (Flutterwave) wallet — checked separately via the `walletActive` param on
+// getMissingPaidFields, not a plain profile field (Paystack-linked bank
+// settlement was retired; the wallet is genuinely where Ajo money lands).
 export const PAID_REQUIRED_FIELDS = [
   // Personal details
   { key: "gender",                  label: "Gender",                   group: "Personal details" },
@@ -26,10 +28,8 @@ export const PAID_REQUIRED_FIELDS = [
   { key: "business_state",          label: "Business state",           group: "Business location" },
   { key: "business_lga",            label: "Business LGA",             group: "Business location" },
   { key: "business_address",        label: "Business address",         group: "Business location" },
-  // Settlement account
-  { key: "settlement_account_number", label: "Settlement bank account", group: "Settlement account" },
-  // Identity verification is a special check (not a plain field):
-  // verification_status must be tier1_verified or tier2_verified
+  // Settlement account (wallet) and identity verification are special checks
+  // (not plain profile fields) — see getMissingPaidFields below.
 ];
 
 // Premium features restricted after the grace period expires (core money
@@ -66,9 +66,15 @@ function isIdentityVerified(profile) {
   return st === "tier1_verified" || st === "tier2_verified";
 }
 
-// Returns all missing compliance items (fields + identity check).
-export function getMissingPaidFields(profile) {
+// Returns all missing compliance items (fields + identity check + wallet).
+// walletActive: whether the owner's KudiAI (Flutterwave) wallet has been
+// provisioned — the settlement destination. Defaults to false (missing) when
+// not passed, so existing callers that haven't been updated yet fail safe.
+export function getMissingPaidFields(profile, walletActive = false) {
   const missing = PAID_REQUIRED_FIELDS.filter(f => !isFilled(profile?.[f.key]));
+  if (!walletActive) {
+    missing.push({ key: "settlement_account", label: "Active KudiAI wallet", group: "Settlement account" });
+  }
   if (!isIdentityVerified(profile)) {
     missing.push({ key: "verification", label: "Identity verified (NIN)", group: "Verification" });
   }
@@ -76,8 +82,8 @@ export function getMissingPaidFields(profile) {
 }
 
 // True when the owner has satisfied every requirement.
-export function isPaidCompliant(profile) {
-  return getMissingPaidFields(profile).length === 0;
+export function isPaidCompliant(profile, walletActive = false) {
+  return getMissingPaidFields(profile, walletActive).length === 0;
 }
 
 // ── Grace period ──────────────────────────────────────────────────────────────
