@@ -123,6 +123,7 @@ export function AddTxnModal({
   const [itemName,          setItemName]          = useState("");
   const [qty,               setQty]               = useState("1");
   const [unitPrice,         setUnitPrice]         = useState("");
+  const [itemCostPrice,     setItemCostPrice]     = useState("");
   const [showSugs,          setShowSugs]          = useState(false);
   const [fuzzySugDismissed, setFuzzySugDismissed] = useState(false);
 
@@ -262,12 +263,14 @@ export function AddTxnModal({
   const selectSuggestion = (p) => {
     setItemName(p.product_name);
     setUnitPrice(String(p.selling_price || ""));
+    setItemCostPrice("");
     setShowSugs(false);
   };
 
   /* ── Add current item form to cart ── */
   const addLineItem = () => {
     if (!canAddItem) return;
+    const enteredCostPrice = !matchedProduct ? (parseFloat(itemCostPrice) || null) : null;
     setLineItems(prev => [...prev, {
       name:         itemName.trim(),
       qty:          qtyNum,
@@ -275,11 +278,13 @@ export function AddTxnModal({
       lineTotal,
       productId:    matchedProduct?.id    ?? null,
       costPrice:    matchedProduct?.cost_price ?? null,
-      needsCosting: !matchedProduct || matchedProduct.needs_costing || !(matchedProduct.cost_price > 0),
+      enteredCostPrice,
+      needsCosting: matchedProduct ? (matchedProduct.needs_costing || !(matchedProduct.cost_price > 0)) : !enteredCostPrice,
     }]);
     setItemName("");
     setQty("1");
     setUnitPrice("");
+    setItemCostPrice("");
     setShowSugs(false);
     setFuzzySugDismissed(false);
     setSaveError("");
@@ -339,11 +344,13 @@ export function AddTxnModal({
         });
       }
 
-      /* Auto-stub for unrecognised item names (fire-and-forget) */
+      /* Auto-stub for unrecognised item names (fire-and-forget).
+         Carries the cost price entered above, if any, so the product is
+         already costed — no separate trip to Needs Costing required. */
       if (type === "in" && inventory?.createAutoStub) {
         lineItems.forEach(li => {
           if (li.name && !li.productId) {
-            inventory.createAutoStub(li.name, li.unitPrice, li.qty);
+            inventory.createAutoStub(li.name, li.unitPrice, li.qty, li.enteredCostPrice);
           }
         });
       }
@@ -570,6 +577,33 @@ export function AddTxnModal({
               <p className="text-[11px] text-slate-400 dark:text-slate-500 text-right">
                 Line total: <strong className="text-slate-700 dark:text-slate-200">₦{fmtMoney(lineTotal)}</strong>
               </p>
+            )}
+
+            {/* Cost price — new (unrecognised) item on a sale only. Optional:
+                skip it for services/one-offs with no real COGS. Without this,
+                the item is auto-stubbed with no cost and never contributes to
+                profit until someone finds it in the Needs Costing queue. */}
+            {type === "in" && itemName.trim() && !matchedProduct && (
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">
+                  Cost price <span className="normal-case font-medium">(optional — helps track profit)</span>
+                </label>
+                <AmountInput
+                  value={itemCostPrice}
+                  onChange={v => setItemCostPrice(v)}
+                  placeholder="0.00"
+                  label="Cost price"
+                />
+                {itemCostPrice && unitPriceVal > 0 && (
+                  parseFloat(itemCostPrice) > 0 ? (
+                    <p className={`text-[11px] mt-1 font-semibold ${unitPriceVal > parseFloat(itemCostPrice) ? "text-green-600 dark:text-green-400" : "text-red-500"}`}>
+                      {unitPriceVal > parseFloat(itemCostPrice)
+                        ? `${Math.round(((unitPriceVal - parseFloat(itemCostPrice)) / parseFloat(itemCostPrice)) * 100)}% margin`
+                        : "Selling at or below cost"}
+                    </p>
+                  ) : null
+                )}
+              </div>
             )}
 
             {/* Add item button */}

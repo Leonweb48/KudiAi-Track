@@ -175,14 +175,16 @@ export function useInventory(userId, staffId = null, branchId = null, staffName 
   }, []);
 
   // Auto-stub: called fire-and-forget from AddTxnModal when a sale has an item_name
-  // that doesn't match any existing product. Creates a placeholder with no cost_price
-  // or quantity, flagged needs_costing=true for the owner to complete later.
-  const createAutoStub = useCallback(async (name, sellingPrice, saleQty) => {
+  // that doesn't match any existing product. If a cost price was entered at the
+  // point of sale (costPrice), the product is created already-costed; otherwise
+  // it's a placeholder with no cost_price, flagged needs_costing=true.
+  const createAutoStub = useCallback(async (name, sellingPrice, saleQty, costPrice) => {
     if (!supabase || !userId || !name?.trim()) return;
     const normName = name.trim();
     const normLow  = normName.toLowerCase();
     if (products.some(p => p.product_name.toLowerCase().trim() === normLow)) return;
 
+    const cost = parseFloat(costPrice) || 0;
     const prodId = uid();
     const prod = {
       id:                  prodId,
@@ -191,12 +193,12 @@ export function useInventory(userId, staffId = null, branchId = null, staffName 
       product_name:        normName,
       sku:                 "",
       category:            "",
-      cost_price:          null,
+      cost_price:          cost > 0 ? cost : null,
       selling_price:       parseFloat(sellingPrice) || 0,
       quantity:            null,
       low_stock_threshold: 5,
       source:              "auto_sale",
-      needs_costing:       true,
+      needs_costing:       !(cost > 0),
     };
     const mov = {
       id:         uid(),
