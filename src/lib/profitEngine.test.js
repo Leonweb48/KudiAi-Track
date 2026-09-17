@@ -113,6 +113,37 @@ test("costed item gives COGS and gross profit; stub goes to unmeasured", () => {
   expect(r.profit.unmeasured.revenue).toBe(2000);
 });
 
+// ── Test 4b: a later product price edit must not change a past sale's profit ─
+// Bug: COGS was always re-derived from the product's CURRENT cost_price, so
+// editing a product retroactively changed the profit of every past sale of
+// it. A snapshot taken at sale time (transaction.cost_price for a single-item
+// sale, line_items[].costPrice for a cart sale) must win over the product's
+// current price whenever both are present.
+test("cost_price snapshot on the transaction wins over the product's current cost price", () => {
+  const ledger = {
+    products: [
+      // Cost price has since been edited from 700 -> 1200 after the sale.
+      { id: "p1", product_name: "Widget", cost_price: 1200, selling_price: 1500, needs_costing: false },
+    ],
+    transactions: [
+      // Single-item sale — snapshot stored directly on the transaction.
+      { id: "t1", type: "in", category: "sale", amount: 1000, item_name: "Widget", quantity: 1, cost_price: 700, transaction_date: "2026-07-10" },
+      // Cart sale — snapshot stored per line item.
+      {
+        id: "t2", type: "in", category: "sale", amount: 2000, transaction_date: "2026-07-11",
+        line_items: [{ name: "Widget", qty: 2, lineTotal: 2000, productId: "p1", costPrice: 700 }],
+      },
+    ],
+  };
+  const r = compute(ledger, RANGE);
+
+  // COGS must use the SNAPSHOTTED 700, not the product's current 1200.
+  expect(r.profit.cogs.amount).toBe(2100);              // (700 × 1) + (700 × 2)
+  expect(r.profit.revenue.amount).toBe(3000);
+  expect(r.profit.grossProfit.amount).toBe(900);         // 3000 − 2100
+  expect(r.profit.unmeasured.count).toBe(0);
+});
+
 // ── Test 5: Stock purchase is cash-out but not a P&L expense ─────────────────
 // Rule: category="stock" = inventory investment — appears in cash.out + byStream.stockInvestment
 // but is excluded from P&L expenses (it converts cash to inventory asset).

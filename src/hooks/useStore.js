@@ -629,6 +629,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
       amount:           parseFloat(t.amount)   || 0,
       item_name:        t.item_name         != null ? t.item_name : null,
       quantity:         t.quantity          != null ? (parseInt(t.quantity) || 1) : null,
+      cost_price:       t.cost_price        != null ? (parseFloat(t.cost_price) || null) : null,
       customer_name:    t.customer_name     || "",
       payment_type:     t.payment_type      || "cash",
       note:             t.note              || "",

@@ -307,6 +307,11 @@ export function AddTxnModal({
       unit_price:       isSingle ? first.unitPrice : null,
       item_name:        isSingle ? (first.name || null) : null,
       quantity:         isSingle ? first.qty : null,
+      // Snapshot the cost price NOW, at the moment of sale — profit for this
+      // sale must never be re-derived later from whatever the product's cost
+      // price has since been edited to. Multi-item sales already carry this
+      // per line in line_items[].costPrice.
+      cost_price:       isSingle ? (first.costPrice ?? first.enteredCostPrice ?? null) : null,
       customer_name:    customerName,
       payment_type:     paymentType,
       note:             finalNote,

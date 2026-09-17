@@ -147,9 +147,18 @@ export function compute(ledger, range) {
         const prod = li.productId
           ? (productById.get(li.productId) || (liName ? productByName.get(liName) : null))
           : (liName ? productByName.get(liName) : null);
-        if (prod && !prod.needs_costing && (prod.cost_price || 0) > 0) {
+        // A cost snapshotted at sale time (li.costPrice, or a manually-entered
+        // one) is authoritative for THIS sale and must win over the product's
+        // current cost — editing the product later must never change the
+        // profit already recorded for a past sale. Only fall back to the
+        // live lookup for older rows that predate this snapshot.
+        const snapshotCost = li.costPrice ?? li.enteredCostPrice ?? null;
+        const unitCost = snapshotCost != null && snapshotCost > 0
+          ? snapshotCost
+          : (prod && !prod.needs_costing ? (prod.cost_price || 0) : 0);
+        if (unitCost > 0) {
           txMeasured += li.lineTotal;
-          cogsAmount += prod.cost_price * (li.qty || 1);
+          cogsAmount += unitCost * (li.qty || 1);
         } else {
           txUnmeasured += li.lineTotal;
         }
@@ -164,9 +173,17 @@ export function compute(ledger, range) {
       continue;
     }
     const prod = productByName.get(name);
-    if (prod && !prod.needs_costing && (prod.cost_price || 0) > 0) {
+    // Same rule as above: a transaction-level cost_price snapshot (captured
+    // at sale time for single-item POS sales) wins over the product's
+    // current cost price. Rows recorded before this snapshot existed have
+    // no choice but the live lookup.
+    const snapshotCost = t.cost_price != null && t.cost_price > 0 ? t.cost_price : null;
+    const unitCost = snapshotCost != null
+      ? snapshotCost
+      : (prod && !prod.needs_costing ? (prod.cost_price || 0) : 0);
+    if (unitCost > 0) {
       measuredRev += t.amount;
-      cogsAmount  += prod.cost_price * (t.quantity || 1);
+      cogsAmount  += unitCost * (t.quantity || 1);
       cogsTxIds.push(t.id);
     } else {
       unmeasItems.push({ id: t.id, amount: t.amount });
