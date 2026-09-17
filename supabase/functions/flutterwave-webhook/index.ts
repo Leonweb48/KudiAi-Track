@@ -231,7 +231,12 @@ serve(async (req) => {
           p_amount_kobo: amountKobo,
         });
         if (sErr) { console.error("[flw-webhook] wallet_record_sale:", sErr.message); return bad("sale record failed", 500); }
-        fetch(`${SUPABASE_URL}/functions/v1/notify-send`, {
+        // Awaited — same reason as the topup path below: the function returns
+        // (and the Deno isolate can be torn down) right after sendWalletEmail
+        // resolves, which was silently dropping this un-awaited fetch before
+        // it ever reached notify-send. Email always arrived because it was
+        // already awaited; the in-app bell/push never did.
+        await fetch(`${SUPABASE_URL}/functions/v1/notify-send`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}` },
           body: JSON.stringify({
