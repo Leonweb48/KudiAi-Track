@@ -247,7 +247,7 @@ export default function Wallet({ session, store }) {
       <TransferSheet open={sheet === "transfer"} onClose={() => setSheet(null)}
         balanceKobo={w.balanceKobo} maxKobo={walletMaxWithdrawalKobo}
         dailyCapKobo={walletDailyWithdrawalCapKobo} dailyUsedKobo={w.dailyUsedKobo}
-        banks={w.banks} api={w} onDone={w.refresh}
+        banks={w.banks} api={w} onDone={w.refresh} ownerId={userId}
         businessName={store?.profile?.business_name} ownerName={store?.profile?.owner_name} />
       <ReceivePaymentSheet open={sheet === "receive"} onClose={() => setSheet(null)}
         wallet={w.wallet} payRequest={w.payRequest} testMode={walletTestMode} api={w}

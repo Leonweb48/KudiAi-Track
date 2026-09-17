@@ -5,6 +5,11 @@ import BankSelect from "./shared/BankSelect";
 import TransactionDetailModal from "./shared/TransactionDetailModal";
 import { fmt, fmtDateTime } from "../utils/helpers";
 import { hapticSuccess } from "../utils/haptics";
+import { supabase } from "../utils/supabase";
+import {
+  getBeneficiaries, saveBeneficiary, upsertRemote, syncLocalToRemote,
+  fetchAllRemote, benDisplayName, benSubLabel,
+} from "../utils/billBeneficiaries";
 
 // Locates the just-completed ledger row (by the withdrawal id the transfer
 // action returns, or the payment-request id a "receive" resolved to) so the
@@ -283,7 +288,7 @@ export function FundWalletSheet({ open, onClose, wallet, testMode, api, business
 }
 
 // ── Transfer — bank-transfer style, PIN-confirmed, instant ─────────────────
-export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKobo = 0, dailyUsedKobo = 0, banks, api, businessName, ownerName, onDone }) {
+export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKobo = 0, dailyUsedKobo = 0, banks, api, businessName, ownerName, ownerId, onDone }) {
   const [step, setStep] = useState("to");     // to | amount | review | pin | done
   const [acctNo, setAcctNo] = useState("");
   const [bank, setBank] = useState(null);
@@ -298,6 +303,7 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
   const [err, setErr] = useState("");
   const [fee, setFee] = useState(0);
   const [wdId, setWdId] = useState("");
+  const [savedRecipients, setSavedRecipients] = useState(() => getBeneficiaries("bank_transfer"));
   const [receipt, setReceipt] = useState(null);
   const [receiptLoading, setReceiptLoading] = useState(false);
   const reqRef = useRef(0);       // guards against a stale lookup clobbering a newer one
@@ -310,6 +316,24 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
     setWdId(""); setReceipt(null); setReceiptLoading(false);
     doneKeyRef.current = "";
   }, [open]);
+
+  // Saved recipients — same offline-first + remote-sync mechanism Bills
+  // already uses, just a different category. Refresh whenever the sheet
+  // opens so a recipient saved on another device shows up too.
+  useEffect(() => {
+    if (!open || !ownerId) return;
+    syncLocalToRemote(supabase, ownerId).then(() => fetchAllRemote(supabase, ownerId)).then((all) => {
+      setSavedRecipients(all.filter((b) => b.cat === "bank_transfer"));
+    });
+  }, [open, ownerId]);
+
+  const pickSavedRecipient = (ben) => {
+    setAcctNo(ben.accountNo);
+    setBank({ code: ben.bankCode, name: ben.bankName });
+    setName(ben.verifyName || "");
+    setManual(false);
+    doneKeyRef.current = ""; // force the auto-verify effect to re-resolve, never trust a stored name
+  };
 
   // Transfers post their ledger row before the edge call even returns
   // (the funds hold commits, then Flutterwave is called) — so realtime has
@@ -375,6 +399,9 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
     return [...by.values()];
   }, [banks]);
 
+  const isFirstTimeRecipient = !!(bank?.code && acctNo.length === 10) &&
+    !savedRecipients.some((b) => b.bankCode === bank.code && b.accountNo === acctNo);
+
   const kobo = Math.round((parseFloat(amount) || 0) * 100);
   const dailyLeftKobo = Math.max(0, dailyCapKobo - dailyUsedKobo);
   const cap = Math.min(balanceKobo, maxKobo, dailyCapKobo > 0 ? dailyLeftKobo : Infinity);
@@ -387,6 +414,9 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
       setWdId(r?.withdrawal_id || "");
       setStep("done");
       hapticSuccess();
+      const benForm = { accountNo: acctNo.trim(), bankCode: bank.code, bankName: bank.name };
+      saveBeneficiary("bank_transfer", benForm, recipientName);
+      if (ownerId) upsertRemote(supabase, ownerId, "bank_transfer", benForm, recipientName);
       onDone?.();
     } catch (e) {
       setErr(e.message || "Transfer failed");
@@ -474,6 +504,20 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
           </div>
         ) : (
           <div className="space-y-4">
+            {savedRecipients.length > 0 && (
+              <div>
+                <label className={labelCls}>Recent recipients</label>
+                <div className="flex gap-2 overflow-x-auto pb-1 mt-1.5 -mx-1 px-1">
+                  {savedRecipients.slice(0, 8).map((b) => (
+                    <button key={b.id} onClick={() => pickSavedRecipient(b)}
+                      className="flex-shrink-0 flex flex-col items-start rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 px-3 py-2 text-left active:scale-[0.97] transition-transform">
+                      <span className="text-[12px] font-bold text-slate-800 dark:text-slate-100 whitespace-nowrap">{benDisplayName(b)}</span>
+                      <span className="text-[10px] text-slate-400 whitespace-nowrap">{benSubLabel(b)}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div>
               <label className={labelCls}>Account number</label>
               <input inputMode="numeric" autoFocus value={acctNo}
@@ -500,6 +544,11 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
                 <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold uppercase tracking-wide">Account name</p>
                 <p className="text-[15px] font-extrabold text-emerald-800 dark:text-emerald-300">{name}</p>
               </div>
+            )}
+            {name && isFirstTimeRecipient && (
+              <p className="text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                <Icon name="warn" size={12} /> First time sending to this account — double-check the details.
+              </p>
             )}
             {manual && !name && (
               <div>

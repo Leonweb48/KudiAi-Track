@@ -9,7 +9,7 @@ const BACKFILL_KEY = "kt_bill_bens_synced";
 const MAX_TOTAL    = 60;
 
 // Categories where saving makes sense (exclude one-time exam pins, wholesale, loans)
-export const BEN_CATS = new Set(["airtime", "data", "electricity", "cable", "betting", "spectranet", "smile"]);
+export const BEN_CATS = new Set(["airtime", "data", "electricity", "cable", "betting", "spectranet", "smile", "bank_transfer"]);
 
 function load() {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); } catch { return []; }
@@ -25,6 +25,9 @@ function dedupeKey(cat, fields) {
   if (cat === "cable")                     return fields.smartcard || "";
   if (cat === "betting")                   return `${fields.company || ""}:${fields.customerId || ""}`;
   if (cat === "spectranet" || cat === "smile") return fields.accountNo || "";
+  // NUBAN account numbers are only unique WITHIN a bank — same reasoning as
+  // betting's company:customerId composite key above.
+  if (cat === "bank_transfer")             return `${fields.bankCode || ""}:${fields.accountNo || ""}`;
   return "";
 }
 
@@ -37,6 +40,7 @@ function pickFields(cat, form) {
   if (cat === "betting")     return { customerId: form.customerId || "", company: form.company || "" };
   if (cat === "spectranet")  return { accountNo: form.accountNo || "" };
   if (cat === "smile")       return { accountNo: form.accountNo || "" };
+  if (cat === "bank_transfer") return { accountNo: form.accountNo || "", bankCode: form.bankCode || "", bankName: form.bankName || "" };
   return {};
 }
 
@@ -54,12 +58,13 @@ export function benDisplayName(ben) {
 
 // Short secondary label (category + key detail)
 export function benSubLabel(ben) {
-  const catMap = { airtime: "Airtime", data: "Data", electricity: "Electricity", cable: "Cable TV", betting: "Betting", spectranet: "Spectranet", smile: "Smile 4G" };
+  const catMap = { airtime: "Airtime", data: "Data", electricity: "Electricity", cable: "Cable TV", betting: "Betting", spectranet: "Spectranet", smile: "Smile 4G", bank_transfer: "Bank Transfer" };
   const base = catMap[ben.cat] || ben.cat;
   if ((ben.cat === "airtime" || ben.cat === "data") && ben.network) return `${base} · ${ben.network}`;
   if (ben.cat === "electricity" && ben.meterType)  return `${ben.meterType} meter`;
   if (ben.cat === "cable" && ben.provider)          return ben.provider.toUpperCase();
   if (ben.cat === "betting" && ben.company)         return ben.company;
+  if (ben.cat === "bank_transfer" && ben.bankName)  return `${ben.bankName} · ${ben.accountNo}`;
   return base;
 }
 
@@ -118,6 +123,8 @@ function rowToBen(row) {
     smartcard:  row.smartcard    || "",
     customerId: row.customer_id  || "",
     accountNo:  row.account_no   || "",
+    bankCode:   row.bank_code    || "",
+    bankName:   row.bank_name    || "",
   };
 }
 
@@ -137,6 +144,8 @@ function toRow(ownerId, cat, form, verifyName) {
     smartcard:   fields.smartcard  || null,
     customer_id: fields.customerId || null,
     account_no:  fields.accountNo  || null,
+    bank_code:   fields.bankCode   || null,
+    bank_name:   fields.bankName   || null,
     saved_at:    new Date().toISOString(),
   };
 }
@@ -177,6 +186,8 @@ export async function syncLocalToRemote(sb, ownerId) {
         smartcard:   b.smartcard   || null,
         customer_id: b.customerId  || null,
         account_no:  b.accountNo   || null,
+        bank_code:   b.bankCode    || null,
+        bank_name:   b.bankName    || null,
         saved_at:    b.savedAt ? new Date(b.savedAt).toISOString() : new Date().toISOString(),
       };
     })
