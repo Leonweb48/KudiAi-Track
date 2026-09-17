@@ -642,6 +642,8 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const staffOptions = Object.entries(staffMap).map(([id, name]) => ({ id, name }));
 
   const [withdrawalRequests,  setWithdrawalRequests]  = useState([]);
+  const [stuckPayouts,        setStuckPayouts]        = useState([]);
+  const [retryingPayoutId,    setRetryingPayoutId]    = useState(null);
   const [processingId,        setProcessingId]        = useState(null);
   const [cancellingArchiveId, setCancellingArchiveId] = useState(null);
   const [approveError,        setApproveError]        = useState({ id: null, text: "" });
@@ -880,6 +882,41 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       setWdError(null);
     } catch {
       setWdError("Couldn't refresh — tap to retry");
+    }
+  };
+
+  // Approved withdrawals whose actual wallet transfer never landed — either
+  // failed at settlement (e.g. wallet balance was short that morning) or the
+  // cron's scheduled date has already passed with nothing settling it. The
+  // settlement cron only ever looks at status='pending' rows, so a 'failed'
+  // row is otherwise stuck forever with zero visibility.
+  const reloadStuckPayouts = async () => {
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const { data, error } = await supabase
+        .from("ajo_wallet_payouts")
+        .select("id, amount_kobo, status, scheduled_date, failure_reason, client_id, aso_clients(full_name)")
+        .or(`status.eq.failed,and(status.eq.pending,scheduled_date.lt.${today})`)
+        .order("scheduled_date", { ascending: true });
+      if (error) throw error;
+      setStuckPayouts(data || []);
+    } catch {
+      // Non-critical — silently skip, the withdrawal-requests list still works.
+    }
+  };
+
+  const handleRetryPayout = async (payoutId) => {
+    setRetryingPayoutId(payoutId);
+    try {
+      const { data, error } = await supabase.functions.invoke("ajo-write", {
+        body: { action: "retry_wallet_payout", payout_id: payoutId },
+      });
+      if (error || !data?.ok) throw new Error(data?.error || "Retry failed — try again");
+      await reloadStuckPayouts();
+    } catch (e) {
+      setApproveError({ id: payoutId, text: e.message || "Retry failed — try again" });
+    } finally {
+      setRetryingPayoutId(null);
     }
   };
 
@@ -1322,6 +1359,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   useEffect(() => {
     if (!canDo(plan, "aso")) return;
     reloadWithdrawalRequests();
+    reloadStuckPayouts();
     reloadPendingDeposits();
     loadGroups();
     loadGroupApprovals();
@@ -1844,6 +1882,36 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           </div>
         </div>
       </div>
+
+      {/* Stuck wallet payouts — approved withdrawals whose wallet transfer never landed */}
+      {stuckPayouts.length > 0 && (
+        <div className="mb-3 rounded-2xl border border-red-200 dark:border-red-800/50 bg-red-50 dark:bg-red-900/20 px-4 py-3.5">
+          <p className="text-xs font-bold text-red-700 dark:text-red-400 mb-2">
+            {stuckPayouts.length} payout{stuckPayouts.length !== 1 ? "s" : ""} approved but not yet paid
+          </p>
+          <div className="space-y-2">
+            {stuckPayouts.map(p => (
+              <div key={p.id} className="flex items-center justify-between gap-2 bg-white dark:bg-slate-800 rounded-xl px-3 py-2.5">
+                <div className="min-w-0">
+                  <p className="text-[13px] font-semibold text-slate-700 dark:text-slate-200 truncate">
+                    {p.aso_clients?.full_name || "Client"} · ₦{(p.amount_kobo / 100).toLocaleString("en-NG")}
+                  </p>
+                  <p className="text-[10px] text-red-500 dark:text-red-400 mt-0.5">
+                    {p.status === "failed" ? (p.failure_reason || "Failed at settlement") : `Was due ${p.scheduled_date} — never settled`}
+                  </p>
+                </div>
+                <button onClick={() => handleRetryPayout(p.id)} disabled={retryingPayoutId === p.id}
+                  className="flex-shrink-0 px-3 py-1.5 rounded-lg bg-red-600 text-white text-[11px] font-bold disabled:opacity-50 active:scale-95 transition">
+                  {retryingPayoutId === p.id ? "Retrying…" : "Retry"}
+                </button>
+              </div>
+            ))}
+          </div>
+          <p className="text-[10px] text-red-500/80 dark:text-red-400/70 mt-2">
+            Usually means your wallet balance was too low when this was due — top up, then retry.
+          </p>
+        </div>
+      )}
 
       {/* Withdrawal requests panel */}
       {wdError && (
@@ -2713,7 +2781,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                     const [contribRes, cycleRes] = await Promise.all([
                       supabase
                         .from("ajo_contributions")
-                        .select("id, aso_client_id, owner_id, amount, type, status, created_at, payment_method, contribution_context, cycle_id, reverses_contribution_id, fee_for_contribution_id, notes, recorded_by, paystack_ref, paystack_status, paid_at, approved_at, approved_by, confirmed_at, confirmed_by, initiated_by, payment_channel, proof_url, contribution_source")
+                        .select("id, aso_client_id, owner_id, amount, type, status, created_at, payment_method, contribution_context, cycle_id, group_id, reverses_contribution_id, fee_for_contribution_id, notes, recorded_by, paystack_ref, paystack_status, paid_at, approved_at, approved_by, confirmed_at, confirmed_by, initiated_by, payment_channel, proof_url, contribution_source, ajo_groups(name)")
                         .eq("aso_client_id", c.id)
                         .order("created_at", { ascending: false }),
                       supabase
@@ -3058,7 +3126,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                   setHistLoading(true);
                   const [contribRes, cycleRes] = await Promise.all([
                     supabase.from("ajo_contributions")
-                      .select("id, aso_client_id, owner_id, amount, type, status, created_at, payment_method, contribution_context, cycle_id, reverses_contribution_id, fee_for_contribution_id, notes, recorded_by, paystack_ref, paystack_status, paid_at, approved_at, approved_by, confirmed_at, confirmed_by, initiated_by, payment_channel, proof_url, contribution_source")
+                      .select("id, aso_client_id, owner_id, amount, type, status, created_at, payment_method, contribution_context, cycle_id, group_id, reverses_contribution_id, fee_for_contribution_id, notes, recorded_by, paystack_ref, paystack_status, paid_at, approved_at, approved_by, confirmed_at, confirmed_by, initiated_by, payment_channel, proof_url, contribution_source, ajo_groups(name)")
                       .eq("aso_client_id", c.id).order("created_at", { ascending: false }),
                     supabase.from("ajo_cycles")
                       .select("id, client_id, label, status, commission_model, commission_balance, expected_amount_per_period, frequency, length_periods, start_date, created_at, commission_percent")

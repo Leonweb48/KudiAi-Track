@@ -263,11 +263,8 @@ export default function EsusuRotationDashboard({
   const [closeResult,   setCloseResult]  = useState(null);
   const [closeConfirm,  setCloseConfirm] = useState(false);
 
-  const { group = null, round = null, turns = [], members = [], contribution_ticks = {}, pot_size = 0, pending_debts = [] } = data || {};
+  const { group = null, round = null, turns = [], members = [], contribution_ticks = {}, pot_size = 0 } = data || {};
 
-  // Build debt lookup: client_id → amount owed (from previous payout periods)
-  const debtMap = {};
-  pending_debts.forEach(d => { debtMap[d.debtor_client_id] = Number(d.amount || 0); });
   const showNames = isOwner || (group?.privacy_show_names !== false);
 
   const slots         = round?.payout_slots_per_round || 1;
@@ -459,7 +456,6 @@ export default function EsusuRotationDashboard({
           <div className="flex flex-wrap gap-2">
             {members.map(mb => {
               const hasPaid  = contribution_ticks[mb.id];
-              const debtAmt  = debtMap[mb.id];
               const isMe     = mb.id === myClientId;
               return (
                 <div key={mb.id} title={displayName(mb.display_name, showNames)}
@@ -467,15 +463,10 @@ export default function EsusuRotationDashboard({
                     ${isMe ? "ring-2 ring-brand-500 ring-offset-1" : ""}
                     ${hasPaid
                       ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800/50 text-green-700 dark:text-green-300"
-                      : debtAmt
-                      ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800/50 text-red-600 dark:text-red-400"
                       : "bg-slate-50 dark:bg-slate-700/50 border-slate-200 dark:border-slate-600 text-slate-400"
                     }`}>
-                  <span>{hasPaid ? "✓" : debtAmt ? "!" : "·"}</span>
+                  <span>{hasPaid ? "✓" : "·"}</span>
                   <span>{displayName(mb.display_name, showNames)}</span>
-                  {debtAmt && isOwner && (
-                    <span className="opacity-70">{fmtCur(debtAmt)}</span>
-                  )}
                 </div>
               );
             })}

@@ -1580,7 +1580,7 @@ function ChangePasswordModal({ onClose }) {
 }
 
 // ── Withdrawal request modal ──────────────────────────────────────────────
-function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotationsData = [], contributions = [], withdrawRequests = [], onClose, onSuccess, onNeedPinSetup }) {
+function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotationsData = [], contributions = [], withdrawRequests = [], walletActive = true, onClose, onSuccess, onNeedPinSetup }) {
   const t = useT();
   // ── Core state (unchanged) ────────────────────────────────────────────────
   const [amount,        setAmount]        = useState("");
@@ -1776,6 +1776,12 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
           Paid straight to your <strong>KudiAI Wallet</strong> — no bank account to set up. Once approved, it lands on the next business working day (no weekends or public holidays).
         </p>
       </div>
+
+      {!walletActive && (
+        <p className="text-[11px] text-amber-600 dark:text-amber-400 mb-3 leading-relaxed">
+          Your KudiAI wallet isn't active yet — activate it first so this can actually be paid out once approved.
+        </p>
+      )}
 
       {error && <p className="text-xs text-red-500 mb-3">{error}</p>}
 
@@ -1994,18 +2000,21 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
                 {esusuRounds.length === 0 && (
                   <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">No active esusu round</p>
                 )}
-                {esusuRounds.map(rd => (
-                  <MoneyEsusuCard key={rd.group?.id} rd={rd} client={client}
-                    esusuLockedTotal={esusuLocked} roundCount={esusuRounds.length}
-                    mode="withdraw"
-                    selected={false}
-                    onSelect={() => {}}>
-                    {null}
-                  </MoneyEsusuCard>
-                ))}
-                <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center pt-2 leading-relaxed">
-                  Esusu payouts are credited to your main balance when your turn is complete. Withdraw from the Personal tab after you receive your payout.
-                </p>
+                {esusuRounds.map(rd => {
+                  const myTurn  = (rd.turns || []).find(turn => turn.client_id === client.id);
+                  const hasPaid = myTurn?.status === "paid";
+                  return (
+                    <MoneyEsusuCard key={rd.group?.id} rd={rd} client={client}
+                      esusuLockedTotal={esusuLocked} roundCount={esusuRounds.length}
+                      mode="withdraw"
+                      selected={selectedGrpId === rd.group?.id}
+                      onSelect={() => { setSelectedGrpId(rd.group?.id); setAmount(""); setError(""); }}>
+                      {hasPaid ? withdrawalForm : (
+                        <p className="pt-3 text-xs text-amber-600 dark:text-amber-400">Available to withdraw once your turn's payout has been credited.</p>
+                      )}
+                    </MoneyEsusuCard>
+                  );
+                })}
               </div>
             )}
           </>
@@ -5778,6 +5787,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
           rotationsData={rotationsData}
           contributions={contributions}
           withdrawRequests={withdrawRequests}
+          walletActive={wallet.hasAccount}
           onClose={() => setShowWithdraw(false)}
           onSuccess={() => { refreshWithdrawRequests(); }}
           onNeedPinSetup={() => { setShowWithdraw(false); setTab("me"); }}
