@@ -1009,17 +1009,19 @@ function MoneyGroupCard({ group, saved, availableNow, withdrawn, selected, onSel
   );
 }
 
-// Esusu card — "Group pot (all members)" is always distinct from client's stake
-function MoneyEsusuCard({ rd, client, esusuLockedTotal, roundCount, selected, onSelect, mode, children }) {
+// Esusu card — "Group pot (all members)" is always distinct from what THIS
+// client can actually withdraw from THIS circle (availableNow: their own
+// received payouts minus what they've already withdrawn, same figure the
+// withdrawal ceiling itself is computed from — never a pooled average across
+// every circle they're in).
+function MoneyEsusuCard({ rd, client, myContribution = 0, availableNow = 0, selected, onSelect, mode, children }) {
   const t = useT();
   const myTurn = (rd.turns || []).find(turn => turn.client_id === client.id);
-  const myTurnStatus = myTurn?.status;
-  const hasPaid = myTurnStatus === "paid";
-  const isCurrent = myTurnStatus === "current";
+  const isCurrent = myTurn?.status === "current";
+  const hasAvailable = availableNow > 0;
   const hasPaidContrib = !!rd.contribution_ticks?.[client.id];
-  const myStake = roundCount > 0 ? Math.round(esusuLockedTotal / roundCount) : 0;
-  const statusLabel = hasPaid ? t("ajoPt.payoutReceived") : isCurrent ? t("ajoPt.yourTurn") : t("ajoPt.waiting");
-  const statusColor = hasPaid
+  const statusLabel = hasAvailable ? t("ajoPt.payoutReceived") : isCurrent ? t("ajoPt.yourTurn") : t("ajoPt.waiting");
+  const statusColor = hasAvailable
     ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400"
     : isCurrent ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400"
     : "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400";
@@ -1042,11 +1044,11 @@ function MoneyEsusuCard({ rd, client, esusuLockedTotal, roundCount, selected, on
             {hasPaidContrib ? t("ajoPt.periodPaid") : "Pending"}
           </span>
         </div>
-        {mode === "withdraw" && myStake > 0 && !hasPaid && (
-          <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">{fmt(myStake)} locked — released when your turn arrives</p>
+        {mode === "withdraw" && hasAvailable && (
+          <span className="text-xs font-bold text-green-600 dark:text-green-400 tabular-nums block mt-1">{fmt(availableNow)} available</span>
         )}
-        {mode === "withdraw" && hasPaid && (
-          <p className="text-[10px] text-green-600 dark:text-green-400 mt-1">{t("ajoPt.payoutCredited")}</p>
+        {mode === "withdraw" && !hasAvailable && myContribution > 0 && (
+          <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">{fmt(myContribution)} of your contributions locked in this circle — released on your payout turn</p>
         )}
       </button>
       {selected && children && (
@@ -2011,15 +2013,21 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
                   <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">No active esusu round</p>
                 )}
                 {esusuRounds.map(rd => {
-                  const myTurn  = (rd.turns || []).find(turn => turn.client_id === client.id);
-                  const hasPaid = myTurn?.status === "paid";
+                  const grpId    = rd.group?.id;
+                  // Same formula the ceiling itself uses (getGroupStats isEsusu,
+                  // no startedAt filter) — a payout from an earlier round that
+                  // hasn't been withdrawn yet still counts as available now, even
+                  // if this circle has since moved on to a later round.
+                  const stats    = getGroupStats(grpId, null, contributions, true);
+                  const gPending = getPendingForGroup(grpId, withdrawRequests);
+                  const availNow = Math.max(0, stats.available - gPending);
                   return (
-                    <MoneyEsusuCard key={rd.group?.id} rd={rd} client={client}
-                      esusuLockedTotal={esusuLocked} roundCount={esusuRounds.length}
+                    <MoneyEsusuCard key={grpId} rd={rd} client={client}
+                      myContribution={stats.saved} availableNow={availNow}
                       mode="withdraw"
-                      selected={selectedGrpId === rd.group?.id}
-                      onSelect={() => { setSelectedGrpId(rd.group?.id); setAmount(""); setError(""); }}>
-                      {hasPaid ? withdrawalForm : (
+                      selected={selectedGrpId === grpId}
+                      onSelect={() => { setSelectedGrpId(grpId); setAmount(""); setError(""); }}>
+                      {availNow > 0 ? withdrawalForm : (
                         <p className="pt-3 text-xs text-amber-600 dark:text-amber-400">Available to withdraw once your turn's payout has been credited.</p>
                       )}
                     </MoneyEsusuCard>
