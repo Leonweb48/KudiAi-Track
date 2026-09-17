@@ -16,30 +16,17 @@
 -- ═════════════════════════════════════════════════════════════════════════════
 
 -- ── 1. Widen wallet_ledger.source to accept subscription payments ────────────
--- The CHECK was declared inline in CREATE TABLE, so its name is whatever
--- Postgres auto-assigned — find it by definition rather than guessing.
-DO $$
-DECLARE
-  v_conname TEXT;
-BEGIN
-  SELECT con.conname INTO v_conname
-  FROM pg_constraint con
-  JOIN pg_class rel ON rel.oid = con.conrelid
-  JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
-  WHERE nsp.nspname = 'public'
-    AND rel.relname = 'wallet_ledger'
-    AND con.contype = 'c'
-    AND pg_get_constraintdef(con.oid) ILIKE '%source%';
-  IF v_conname IS NOT NULL THEN
-    EXECUTE format('ALTER TABLE public.wallet_ledger DROP CONSTRAINT %I', v_conname);
-  END IF;
-END $$;
-
-ALTER TABLE public.wallet_ledger
-  ADD CONSTRAINT wallet_ledger_source_check
+-- wallet_ledger_source_check has been redefined by several migrations since
+-- it was first declared (sale, ajo_*, transfer_fee, cbn_levy, wallet_fee all
+-- came later) — this carries the full live list forward plus the two new
+-- values, same drop-and-recreate convention every prior widening used.
+ALTER TABLE public.wallet_ledger DROP CONSTRAINT IF EXISTS wallet_ledger_source_check;
+ALTER TABLE public.wallet_ledger ADD CONSTRAINT wallet_ledger_source_check
   CHECK (source IN (
-    'topup','bill_spend','bill_reversal',
+    'topup','sale','bill_spend','bill_reversal',
     'withdrawal','withdrawal_reversal','adjustment',
+    'ajo_contribution','ajo_collection','ajo_payout',
+    'transfer_fee','cbn_levy','wallet_fee',
     'subscription_spend','subscription_reversal'
   ));
 
