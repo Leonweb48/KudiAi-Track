@@ -789,10 +789,13 @@ function AjoTxnPinModal({ hasPinSet, title, amount, description, onApprove, onCa
 // Pure helpers — re-derive from live contribution rows each render so
 // realtime updates (via ajo_client_sync) propagate automatically.
 
+// Mirrors ajo_entity_stats' cycle branch (server) — keep the fee type list in
+// sync with it; a fee type here that isn't summed there (or vice versa) is
+// exactly the class of drift that caused this session's withdrawal-ceiling bugs.
 function getCycleStats(cycle, contributions) {
   const rows = contributions.filter(c => c.cycle_id === cycle.id && c.status === "completed");
   const saved = rows.filter(c => c.type === "contribution").reduce((s, c) => s + Number(c.amount || 0), 0);
-  const fees  = rows.filter(c => c.type === "commission" || c.type === "registration_fee").reduce((s, c) => s + Number(c.amount || 0), 0);
+  const fees  = rows.filter(c => c.type === "commission" || c.type === "registration_fee" || c.type === "withdrawal_fee").reduce((s, c) => s + Number(c.amount || 0), 0);
   const withd = rows.filter(c => c.type === "withdrawal").reduce((s, c) => s + Number(c.amount || 0), 0);
   return { saved, fees, withdrawn: withd, net: Math.max(0, saved - fees - withd) };
 }
@@ -1694,7 +1697,11 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
   const pctTotal  = pctCycles.reduce((s, cy) => s + getCycleStats(cy, contributions).saved, 0);
   const pctAvail  = pctCycles.reduce((s, cy) => s + getCycleStats(cy, contributions).net, 0);
   const grpTotal  = savingsGroups.reduce((s, g) => s + getGroupSaved(g.id, g.started_at, contributions), 0);
-  const grpAvail  = savingsGroups.filter(g => g.round_status === "closed").reduce((s, g) => s + getGroupSaved(g.id, g.started_at, contributions), 0);
+  // Net of anything already withdrawn — getGroupSaved alone is a historical
+  // "total contributed" rollup, not "still available," and would overstate
+  // this for any group with a prior withdrawal against it.
+  const grpAvail  = savingsGroups.filter(g => g.round_status === "closed")
+    .reduce((s, g) => s + getGroupStats(g.id, g.started_at, contributions, false).available, 0);
 
   // Pending deduction — subtract outstanding requests from the ceiling shown/enforced
   const totalPending     = getTotalPending(withdrawRequests);
