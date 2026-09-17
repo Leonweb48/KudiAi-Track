@@ -494,6 +494,8 @@ const WALLET_TITLES = {
   sale:                'Payment Received',
   bill_spend:          'Bill Payment',
   bill_reversal:       'Bill Refund',
+  subscription_spend:  'Plan Upgrade',
+  subscription_reversal: 'Plan Refund',
   withdrawal:          'Transfer',
   withdrawal_reversal: 'Transfer Refund',
   adjustment:          'Wallet Adjustment',
@@ -594,6 +596,16 @@ export function buildWalletReceipt(row, ctx = {}) {
       narration && { label: src === 'bill_reversal' ? 'Refund for' : 'Paid for', value: narration },
       src === 'bill_reversal' ? { label: 'Credited to', value: walletParty } : { label: 'Paid by', value: sender },
       row.flw_reference && { label: 'Provider Ref.', value: row.flw_reference, copy: true },
+      row.balance_after_kobo != null && { label: 'Account balance after', value: fmtAmt(row.balance_after_kobo / 100) },
+      { label: 'Payment Method', value: 'KudiAI Wallet' },
+      { label: 'Status',    value: humanize(row.status) },
+      { label: 'Reference', value: ref, copy: true },
+    ];
+  } else if (src === 'subscription_spend' || src === 'subscription_reversal') {
+    fields = [
+      { label: 'Transaction Type', value: src === 'subscription_reversal' ? 'Subscription refund — credited to wallet' : 'Subscription payment' },
+      narration && { label: src === 'subscription_reversal' ? 'Refund for' : 'Paid for', value: narration },
+      src === 'subscription_reversal' ? { label: 'Credited to', value: walletParty } : { label: 'Paid by', value: sender },
       row.balance_after_kobo != null && { label: 'Account balance after', value: fmtAmt(row.balance_after_kobo / 100) },
       { label: 'Payment Method', value: 'KudiAI Wallet' },
       { label: 'Status',    value: humanize(row.status) },
