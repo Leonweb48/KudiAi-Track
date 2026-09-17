@@ -15,8 +15,6 @@ import { canDo, planLimits } from "../utils/plans";
 import { createReportPdf, fmtCurrency, fmtDate } from "../utils/generateReportPdf";
 import { buildTransactionsCSV, transactionsCSVFilename, shareCSV } from "../utils/exportCSV";
 import { useT } from "../contexts/LanguageContext";
-import { Capacitor } from "@capacitor/core";
-import { App as CapApp } from "@capacitor/app";
 export { AddTxnModal };
 
 
@@ -440,38 +438,10 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* ── Resume refresh — visibilitychange (web) + appStateChange (APK), debounced 10s ── */
-  const lastResumeRef = useRef(0);
-
-  useEffect(() => {
-    const onResume = () => {
-      if (Date.now() - lastResumeRef.current < 10_000) return;
-      lastResumeRef.current = Date.now();
-      storeRef.current.silentRefresh?.().catch(() => {});
-    };
-
-    const onVisibility = () => { if (!document.hidden) onResume(); };
-    document.addEventListener("visibilitychange", onVisibility);
-
-    let appListener;
-    if (Capacitor.isNativePlatform()) {
-      CapApp.addListener("appStateChange", ({ isActive }) => { if (isActive) onResume(); })
-        .then(l => { appListener = l; });
-    }
-
-    return () => {
-      document.removeEventListener("visibilitychange", onVisibility);
-      appListener?.remove();
-    };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  /* ── 30s backup poll — only fires when realtime channel is not SUBSCRIBED ── */
-  useEffect(() => {
-    const id = setInterval(() => {
-      if (!storeRef.current.rtConnected) storeRef.current.silentRefresh?.().catch(() => {});
-    }, 30_000);
-    return () => clearInterval(id);
-  }, []);
+  /* ── Resume refresh + 30s backup poll now live in useStore.js itself (applies
+     to every screen backed by this same store, Home included — used to be
+     scoped to this screen only, which left Home with no coverage at all).
+     Removed here to avoid double-fetching on the same resume event. ── */
 
   /* ── Filter chip definitions ── */
   const FILTERS = [

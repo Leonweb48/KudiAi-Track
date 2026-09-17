@@ -678,6 +678,7 @@ export default function App() {
             syncResult={store.syncResult}
             syncFailed={store.syncFailed}
             pendingCount={store.pendingCount}
+            onRetry={store.reloadData}
           />
 
           {upgradeAvailable && !upgradeBannerDismissed && (

@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import Icon from "./Icon";
 import { formatSyncTime } from "../utils/offlineCache";
 
-export default function SyncBar({ isOnline, fromCache, dbError, loadError, lastSyncTime, syncing, syncResult, syncFailed = false, pendingCount = 0 }) {
+export default function SyncBar({ isOnline, fromCache, dbError, loadError, lastSyncTime, syncing, syncResult, syncFailed = false, pendingCount = 0, onRetry }) {
   const [showResult, setShowResult] = useState(false);
 
   useEffect(() => {
@@ -19,10 +19,11 @@ export default function SyncBar({ isOnline, fromCache, dbError, loadError, lastS
     </div>
   );
   if (loadError) return (
-    <div className="flex-none flex items-center gap-2 px-4 py-2 bg-orange-50 dark:bg-orange-900/20 border-b border-orange-100 dark:border-orange-800/30">
+    <button type="button" onClick={onRetry}
+      className="flex-none w-full flex items-center gap-2 px-4 py-2 bg-orange-50 dark:bg-orange-900/20 border-b border-orange-100 dark:border-orange-800/30 text-left">
       <Icon name="warn" size={13} className="text-orange-500 flex-shrink-0" />
-      <span className="text-[11px] font-semibold text-orange-700 dark:text-orange-300">Data couldn't be loaded — pull down to retry</span>
-    </div>
+      <span className="text-[11px] font-semibold text-orange-700 dark:text-orange-300">Data couldn't be loaded — tap to retry</span>
+    </button>
   );
   if (!isOnline && fromCache) return (
     <div className="flex-none flex items-center gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-100 dark:border-amber-800/30">

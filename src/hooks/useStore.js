@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { Capacitor } from "@capacitor/core";
+import { App as CapApp } from "@capacitor/app";
 import { supabase } from "../utils/supabase";
 import { uid, today, isBillPayment } from "../utils/helpers";
 import { logAudit } from "../utils/auditLog";
@@ -421,6 +423,46 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
 
   // Keep loadDataRef current so reconnect handler always calls latest version.
   useEffect(() => { loadDataRef.current = loadData; }, [loadData]);
+
+  // ── Resume refresh — visibilitychange (web) + appStateChange (APK), debounced
+  //    10s. Lives here (not in individual screens) so every consumer of this
+  //    store — Home included — gets fresh data on every app open/resume, not
+  //    just a true cold boot. This is App-level coverage that existed once
+  //    (a global pull-to-refresh, removed in the "realtime-first refresh
+  //    consolidation" pass) and was only partially replaced — four other
+  //    screens got their own scoped resume handler, but this shared store
+  //    (which backs Home, the owner's actual landing screen) never did. Do
+  //    not narrow this back down to a single screen — see the memory note on
+  //    this invariant before touching it again. ──
+  const lastResumeRef = useRef(0);
+  useEffect(() => {
+    const onResume = () => {
+      if (Date.now() - lastResumeRef.current < 10_000) return;
+      lastResumeRef.current = Date.now();
+      loadDataRef.current?.(true).catch(() => {});
+    };
+    const onVisibility = () => { if (!document.hidden) onResume(); };
+    document.addEventListener("visibilitychange", onVisibility);
+
+    let appListener;
+    if (Capacitor.isNativePlatform()) {
+      CapApp.addListener("appStateChange", ({ isActive }) => { if (isActive) onResume(); })
+        .then(l => { appListener = l; });
+    }
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      appListener?.remove();
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── 30s backup poll — only fires when the realtime channel isn't connected ──
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (!rtConnected) loadDataRef.current?.(true).catch(() => {});
+    }, 30_000);
+    return () => clearInterval(id);
+  }, [rtConnected]);
 
   // ── Realtime: live sync for aso_clients balance changes ───────────────
   useEffect(() => {
