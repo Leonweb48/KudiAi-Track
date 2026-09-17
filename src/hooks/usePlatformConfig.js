@@ -47,6 +47,10 @@ export function usePlatformConfig() {
     bvnVerificationEnabled: config?.bvn_verification_enabled === "true",
     walletMinTopupKobo: Number(config?.wallet_min_topup_kobo ?? "10000") || 10000,
     walletMaxWithdrawalKobo: Number(config?.wallet_max_withdrawal_kobo ?? "5000000") || 5000000,
+    // Mirrors the server-side cap already enforced in wallet_hold_transfer
+    // (SUM of today's withdrawals) — this value is display-only, the RPC
+    // remains the sole authority on whether a transfer is actually allowed.
+    walletDailyWithdrawalCapKobo: Number(config?.wallet_daily_withdrawal_cap_kobo ?? "10000000") || 10000000,
     configLoading: loading,
   };
 }

@@ -355,6 +355,17 @@ serve(async (req) => {
           const o = await resolveContact(sb, wd.user_id);
           const bankName = bankNm || wd.bank_code;
           if (st === "successful") {
+            // In-app bell + push — on the default channel, never wallet_credit
+            // (that sound/channel is reserved for money coming IN, not out).
+            await fetch(`${SUPABASE_URL}/functions/v1/notify-send`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}` },
+              body: JSON.stringify({
+                action: "notify", userId: wd.user_id, type: "wallet_transfer_sent",
+                title: "Transfer sent", body: `₦${(wd.amount_kobo / 100).toLocaleString()} sent to ${wd.account_name || wd.account_number}`,
+                category: "money", priority: "high", deepLink: { screen: "wallet" },
+              }),
+            }).catch(() => {});
             await sendWalletEmail(sb, o.email, `Transfer sent — ${fmtNgn(wd.amount_kobo)}`,
               walletEmailHtml({
                 icon: "✅", accent: "#0F1D42", title: "Transfer completed",
@@ -370,6 +381,15 @@ serve(async (req) => {
               category: "money", user_id: wd.user_id as string, related_type: "wallet_withdrawals", related_id: transferId,
             });
           } else {
+            await fetch(`${SUPABASE_URL}/functions/v1/notify-send`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}` },
+              body: JSON.stringify({
+                action: "notify", userId: wd.user_id, type: "wallet_transfer_failed",
+                title: "Transfer returned", body: `₦${(wd.amount_kobo / 100).toLocaleString()} to ${wd.account_name || wd.account_number} could not be completed — returned to your wallet`,
+                category: "money", priority: "high", deepLink: { screen: "wallet" },
+              }),
+            }).catch(() => {});
             await sendWalletEmail(sb, o.email, `Transfer ${st} — ${fmtNgn(wd.amount_kobo)} returned`,
               walletEmailHtml({
                 icon: "↩️", accent: "#b91c1c", title: `Transfer ${st}`,

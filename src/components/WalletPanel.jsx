@@ -4,6 +4,7 @@ import TransactionPinModal from "./TransactionPinModal";
 import BankSelect from "./shared/BankSelect";
 import TransactionDetailModal from "./shared/TransactionDetailModal";
 import { fmt, fmtDateTime } from "../utils/helpers";
+import { hapticSuccess } from "../utils/haptics";
 
 // Locates the just-completed ledger row (by the withdrawal id the transfer
 // action returns, or the payment-request id a "receive" resolved to) so the
@@ -282,7 +283,7 @@ export function FundWalletSheet({ open, onClose, wallet, testMode, api, business
 }
 
 // ── Transfer — bank-transfer style, PIN-confirmed, instant ─────────────────
-export function TransferSheet({ open, onClose, balanceKobo, maxKobo, banks, api, businessName, ownerName, onDone }) {
+export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKobo = 0, dailyUsedKobo = 0, banks, api, businessName, ownerName, onDone }) {
   const [step, setStep] = useState("to");     // to | amount | review | pin | done
   const [acctNo, setAcctNo] = useState("");
   const [bank, setBank] = useState(null);
@@ -375,7 +376,8 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, banks, api,
   }, [banks]);
 
   const kobo = Math.round((parseFloat(amount) || 0) * 100);
-  const cap = Math.min(balanceKobo, maxKobo);
+  const dailyLeftKobo = Math.max(0, dailyCapKobo - dailyUsedKobo);
+  const cap = Math.min(balanceKobo, maxKobo, dailyCapKobo > 0 ? dailyLeftKobo : Infinity);
 
   const doTransfer = async (pin) => {
     setBusy(true); setErr("");
@@ -384,6 +386,7 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, banks, api,
       setFee(Number(r?.fee_kobo || 0));
       setWdId(r?.withdrawal_id || "");
       setStep("done");
+      hapticSuccess();
       onDone?.();
     } catch (e) {
       setErr(e.message || "Transfer failed");
@@ -450,7 +453,10 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, banks, api,
               <label className={labelCls}>Amount</label>
               <input inputMode="decimal" autoFocus value={amount}
                 onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ""))} placeholder="0" className={inputCls} />
-              <p className="text-[11px] text-slate-400 mt-1.5">Available {fmt(balanceKobo / 100)} · up to {fmt(cap / 100)} per transfer</p>
+              <p className="text-[11px] text-slate-400 mt-1.5">
+                Available {fmt(balanceKobo / 100)} · up to {fmt(Math.min(balanceKobo, maxKobo) / 100)} per transfer
+                {dailyCapKobo > 0 && <> · {fmt(dailyLeftKobo / 100)} left today</>}
+              </p>
             </div>
             <div>
               <label className={labelCls}>Narration <span className="text-slate-300 font-normal">optional</span></label>

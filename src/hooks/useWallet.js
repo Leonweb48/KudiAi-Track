@@ -28,6 +28,7 @@ export function useWallet(userId, enabled = true) {
   const [requests, setRequests] = useState([]);      // wallet_payment_requests (all)
   const [banks, setBanks]       = useState([]);      // bank code → name (for receipts)
   const [payRequest, setPayReq] = useState(null);   // active pending "receive payment" request
+  const [dailyUsedKobo, setDailyUsedKobo] = useState(0); // today's withdrawals so far — mirrors wallet_hold_transfer's own check
   const [bvnVerified, setBvnVerified] = useState(false);
   const [loading, setLoading]   = useState(true);
   const [busy, setBusy]         = useState(false);
@@ -42,7 +43,7 @@ export function useWallet(userId, enabled = true) {
     // stay in the loading state, don't flash the "activate wallet" screen.
     if (!userId) { setLoading(!loadedOnceRef.current); return; }
     try {
-      const [{ data: w }, { data: l }, { data: wd }, { data: rq }, { data: pf }, { data: cl }, { data: st }] = await Promise.all([
+      const [{ data: w }, { data: l }, { data: wd }, { data: rq }, { data: pf }, { data: cl }, { data: st }, { data: du }] = await Promise.all([
         supabase.from("wallets").select("*").eq("user_id", userId).maybeSingle(),
         supabase.from("wallet_ledger").select("*").eq("user_id", userId)
           .order("created_at", { ascending: false }).limit(50),
@@ -53,11 +54,13 @@ export function useWallet(userId, enabled = true) {
         supabase.from("profiles").select("full_name, business_name, bvn_verified").eq("id", userId).maybeSingle(),
         supabase.from("aso_clients").select("bvn_verified").eq("client_user_id", userId).maybeSingle(),
         supabase.from("staff").select("bvn_verified").eq("user_id", userId).maybeSingle(),
+        supabase.rpc("wallet_daily_transfer_used", { p_user_id: userId }),
       ]);
       setWallet(w || null);
       setLedger(l || []);
       setWd(wd || []);
       setRequests(rq || []);
+      setDailyUsedKobo(Number(du || 0));
       // Same table-selection rule as the server's resolveIdentity() (flutterwave/
       // index.ts): profiles wins unless it has no name at all (the signal that
       // this uid is really an Ajo/Esusu client or staff member, not a business
@@ -93,6 +96,12 @@ export function useWallet(userId, enabled = true) {
         (p) => {
           if (!p.new) return;
           setLedger((prev) => (prev.some((r) => r.id === p.new.id) ? prev : [p.new, ...prev].slice(0, 50)));
+          // Keep the "left today" hint live without a full reload — a freshly
+          // held transfer lands as source='withdrawal' status='pending', which
+          // wallet_daily_transfer_used already counts.
+          if (p.new.source === "withdrawal") {
+            setDailyUsedKobo((prev) => prev + (Number(p.new.amount_kobo) || 0));
+          }
         })
       .on("postgres_changes",
         { event: "UPDATE", schema: "public", table: "wallet_ledger", filter: `user_id=eq.${userId}` },
@@ -216,13 +225,13 @@ export function useWallet(userId, enabled = true) {
   // that read the hook don't re-render (and re-run effects) on every tick.
   return useMemo(() => ({
     wallet, ledger, withdrawals, requests, banks, payRequest, loading, busy,
-    hasAccount, bvnVerified, balanceKobo, balanceNaira: balanceKobo / 100,
+    hasAccount, bvnVerified, balanceKobo, balanceNaira: balanceKobo / 100, dailyUsedKobo,
     refresh: load, receiptFor,
     provisionAccount, simulateTopup, listBanks, resolveAccount, transfer,
     startBvnVerification, checkBvnVerification,
     createPaymentRequest, cancelPaymentRequest,
   }), [
-    wallet, ledger, withdrawals, requests, banks, payRequest, loading, busy, hasAccount, bvnVerified, balanceKobo,
+    wallet, ledger, withdrawals, requests, banks, payRequest, loading, busy, hasAccount, bvnVerified, balanceKobo, dailyUsedKobo,
     load, receiptFor, provisionAccount, simulateTopup, listBanks, resolveAccount, transfer,
     startBvnVerification, checkBvnVerification,
     createPaymentRequest, cancelPaymentRequest,

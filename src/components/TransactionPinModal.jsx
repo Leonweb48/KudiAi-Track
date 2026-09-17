@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import { supabase } from "../utils/supabase";
 import PinDots from "./PinDots";
+import { hapticSuccess, hapticError } from "../utils/haptics";
 
 const shakeCSS = `
 @keyframes shake {
@@ -58,10 +59,12 @@ export default function TransactionPinModal({
       if (fnError) throw fnError;
 
       if (data?.success) {
+        hapticSuccess();
         onApprove?.(enteredPin);
         return; // modal closes — no need to reset verifying
       }
 
+      hapticError();
       triggerShake();
       setPin("");
       setVerifying(false);
@@ -73,6 +76,7 @@ export default function TransactionPinModal({
       const left = data?.attemptsLeft ?? "";
       setError(`Incorrect PIN.${left ? ` ${left} attempt${left === 1 ? "" : "s"} remaining.` : ""}`);
     } catch {
+      hapticError();
       triggerShake();
       setPin("");
       setVerifying(false);
