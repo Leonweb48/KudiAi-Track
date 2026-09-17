@@ -4908,19 +4908,26 @@ function AjoMemberBillsWrapper({ client, ownerInfo, session, wallet }) {
 // aso_clients row; the server ignores anything else the client might send.
 // Used both from the always-visible "Open New Card" entry point on Overview
 // and from the goal-setting flow when a client has no card to attach a goal to.
+const CARD_FREQUENCIES = [
+  { id: "daily",   label: "Daily"   },
+  { id: "weekly",  label: "Weekly"  },
+  { id: "monthly", label: "Monthly" },
+];
+
 function OpenCycleSheet({ client, cycleCount = 0, onClose, onOpened }) {
-  const [name,    setName]    = useState("");
-  const [amount,  setAmount]  = useState("");
-  const [model,   setModel]   = useState("first_period");
-  const [opening, setOpening] = useState(false);
-  const [err,     setErr]     = useState("");
+  const [name,      setName]      = useState("");
+  const [amount,    setAmount]    = useState("");
+  const [model,     setModel]     = useState("first_period");
+  const [frequency, setFrequency] = useState(CARD_FREQUENCIES.some(f => f.id === client?.contribution_frequency) ? client.contribution_frequency : "monthly");
+  const [opening,   setOpening]   = useState(false);
+  const [err,       setErr]       = useState("");
   const canPercent = Number(client?.commission_percent) > 0;
 
   const open = async () => {
     setOpening(true); setErr("");
     try {
       const res = await ajoFn("client-open-cycle", {
-        client_id: client.id, commission_model: model,
+        client_id: client.id, commission_model: model, frequency,
         ...(name.trim() ? { label: name.trim() } : {}),
         ...(amount && Number(amount) > 0 ? { amount: Number(amount) } : {}),
       });
@@ -4958,6 +4965,21 @@ function OpenCycleSheet({ client, cycleCount = 0, onClose, onOpened }) {
             <input type="number" inputMode="decimal" min="1" value={amount} onChange={e => setAmount(e.target.value)}
               placeholder={client?.contribution_amount > 0 ? String(client.contribution_amount) : "0.00"}
               className="flex-1 bg-transparent text-[14px] font-semibold text-slate-900 dark:text-slate-50 outline-none placeholder:font-normal placeholder:text-slate-400 tabular [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+          </div>
+        </div>
+        <div>
+          <label className="text-[12px] font-semibold text-slate-500 dark:text-slate-400">How often</label>
+          <div className="flex gap-2 mt-1.5">
+            {CARD_FREQUENCIES.map(f => (
+              <button key={f.id} type="button" onClick={() => setFrequency(f.id)}
+                className={`flex-1 py-2.5 rounded-xl text-[13px] font-bold transition-transform active:scale-[0.98] ${
+                  frequency === f.id
+                    ? "bg-brand-500 text-white"
+                    : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300"
+                }`}>
+                {f.label}
+              </button>
+            ))}
           </div>
         </div>
       </div>

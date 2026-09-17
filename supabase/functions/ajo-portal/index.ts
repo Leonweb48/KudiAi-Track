@@ -410,9 +410,10 @@ serve(async (req) => {
     //    now, their own card name (so they can hold more than one at a time)
     //    and their own target deposit amount per period. ─────────────────────
     if (action === "client-open-cycle") {
-      const { client_id, commission_model: reqModel, label: reqLabel, amount: reqAmount } =
-        body as { client_id: string; commission_model?: string; label?: string; amount?: number };
+      const { client_id, commission_model: reqModel, label: reqLabel, amount: reqAmount, frequency: reqFrequency } =
+        body as { client_id: string; commission_model?: string; label?: string; amount?: number; frequency?: string };
       if (!client_id) return json({ error: "client_id required" }, 400);
+      const frequency = ["daily", "weekly", "monthly"].includes(reqFrequency || "") ? reqFrequency : undefined;
       // client-open-cycle is caller-restricted to the client themselves —
       // _clientScoped's requireClientAccess above also lets the owner/staff
       // through, but this action is specifically the client's self-service path.
@@ -450,10 +451,13 @@ serve(async (req) => {
         p_commission_model: model,
         p_label:            label,
         p_amount:           amount,
-        // start/length/pct/frequency intentionally omitted — the RPC fills
-        // each from this client's own aso_clients row. When neither the
-        // client nor the business set a fixed amount, allow a flexible card
-        // (no per-period target) rather than blocking self-service.
+        // start/length/pct intentionally omitted — the RPC fills each from
+        // this client's own aso_clients row. frequency is now client-chosen
+        // (daily/weekly/monthly, validated above); falls back to the same
+        // aso_clients default when omitted. When neither the client nor the
+        // business set a fixed amount, allow a flexible card (no per-period
+        // target) rather than blocking self-service.
+        p_frequency:      frequency,
         p_allow_flexible: true,
       });
       if (ocErr) return json({ ok: false, error: ocErr.message });
