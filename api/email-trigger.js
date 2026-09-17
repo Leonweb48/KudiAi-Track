@@ -877,6 +877,59 @@ export default async function handler(req, res) {
       `, "linear-gradient(135deg,#059669 0%,#10b981 100%)"));
   }
 
+  // ── Daily business summary (yesterday's revenue/profit) ─────────────────────
+  // net_approx is only present when has_profit is true (enough of yesterday's
+  // revenue actually had a cost price behind it to trust a profit figure) —
+  // computed by the SAME profitEngine.compute() used for "Today's Profit" on
+  // Home, so this number always matches what the owner sees in the app.
+  else if (event === "daily_summary") {
+    const netProfit = d.net_approx;
+    const isLoss    = d.has_profit && netProfit != null && netProfit < 0;
+    const color     = !d.has_profit ? "#4f46e5" : isLoss ? "#dc2626" : "#059669";
+    const headerBg  = !d.has_profit
+      ? "linear-gradient(135deg,#4f46e5 0%,#6366f1 100%)"
+      : isLoss
+        ? "linear-gradient(135deg,#dc2626 0%,#f87171 100%)"
+        : "linear-gradient(135deg,#059669 0%,#10b981 100%)";
+    const headline  = d.has_profit ? (isLoss ? "Yesterday's Deficit" : "Yesterday's Profit") : "Yesterday's Business Summary";
+    const bizName   = str(d.business_name) || "your business";
+    const dateLabel = str(d.period_label);
+
+    q(d.owner_email || d.user_email, `${headline} — ${dateLabel}${d.has_profit ? ` · ${fmt(Math.abs(netProfit))}` : ""}`,
+      emailHtml(headline, `
+        <p style="font-size:14px;color:#374151;margin:0 0 16px;">Here's how <strong>${bizName}</strong> did on <strong>${dateLabel}</strong>.</p>
+        ${d.has_profit ? `
+          <div style="background:${isLoss ? "#fef2f2" : "#f0fdf4"};border:1px solid ${isLoss ? "#fecaca" : "#bbf7d0"};border-radius:12px;padding:20px;text-align:center;margin:0 0 20px;">
+            <p style="margin:0 0 4px;font-size:11px;color:${color};font-weight:700;text-transform:uppercase;letter-spacing:1px;">${isLoss ? "Net Deficit" : "Net Profit"}</p>
+            <p style="margin:0;font-size:32px;font-weight:900;color:${color};">${fmt(Math.abs(netProfit))}</p>
+          </div>
+        ` : `
+          <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:16px 20px;margin:0 0 20px;">
+            <p style="margin:0;font-size:13px;color:#92400e;">Revenue is in, but only ${d.coverage_pct}% of yesterday's sales have a cost price set — not enough to show a reliable profit figure. Set cost prices on your products for a complete picture.</p>
+          </div>
+        `}
+        ${detailRows([
+          ["Revenue",      fmt(d.revenue)],
+          ["Expenses",     fmt(d.expenses)],
+          ["Transactions", d.tx_count],
+        ])}
+        ${d.capital_status ? `
+          <div style="background:${d.capital_status === "red" ? "#fef2f2" : d.capital_status === "amber" ? "#fffbeb" : "#f0fdf4"};border:1px solid ${d.capital_status === "red" ? "#fecaca" : d.capital_status === "amber" ? "#fde68a" : "#bbf7d0"};border-radius:8px;padding:10px 14px;margin:0 0 14px;font-size:12px;color:${d.capital_status === "red" ? "#991b1b" : d.capital_status === "amber" ? "#92400e" : "#166534"};">
+            ${d.capital_status === "healthy"
+              ? "✓ Working capital is healthy."
+              : d.capital_status === "amber"
+                ? `⚠ Working capital is under pressure${d.capital_shortfall ? ` — ${fmt(d.capital_shortfall)} short` : ""}.`
+                : `⚠ Working capital shortfall${d.capital_shortfall ? `: ${fmt(d.capital_shortfall)}` : ""} — review expenses.`}
+          </div>
+        ` : ""}
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+          <tr><td align="center">
+            <a href="https://kudiai.app" style="display:inline-block;background:linear-gradient(135deg,#4f46e5,#6366f1);color:#fff;font-size:14px;font-weight:700;text-decoration:none;padding:13px 36px;border-radius:10px;">Open KudiAI Track →</a>
+          </td></tr>
+        </table>
+      `, headerBg));
+  }
+
   // ── Fallback: unknown event — still log it ───────────────────────────────────
   else {
     await logDelivery(sb, str(d.user_email || d.owner_email), `[${event}] no handler`, "failed", `No email handler for event: ${event}`);

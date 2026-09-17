@@ -2,10 +2,10 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Capacitor } from "@capacitor/core";
 import { App as CapApp } from "@capacitor/app";
 import { supabase } from "../utils/supabase";
-import { uid, today, isBillPayment } from "../utils/helpers";
+import { uid, today } from "../utils/helpers";
 import { logAudit } from "../utils/auditLog";
 import { sendEmailTrigger } from "../utils/emailTrigger";
-import { computeCapital } from "../lib/profitEngine";
+import { compute, computeCapital } from "../lib/profitEngine";
 import { notify, notifyBranchManager } from "../lib/notifyEngine";
 import { savePendingOp, getPendingCount, getPendingOps } from "../utils/offlineDb";
 import { syncPending } from "../utils/syncManager";
@@ -222,9 +222,13 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     }
 
     // Daily summary email — owner only, fires at most once per calendar day on first load.
-    // Sends yesterday's revenue + expense totals; includes costing coverage proxy so the
-    // admin email template knows whether to show a profit line (≥50%) or a "set cost prices" CTA.
-    // Also includes capital status line if the feature is set on the owner's profile.
+    // Sends yesterday's revenue/expense/profit using the SAME profitEngine.compute() as
+    // "Today's Profit" (Home) and the Finance page — previously this reimplemented its own
+    // crude approximation (revenue − expenses, no COGS at all) with a "coverage" proxy based
+    // on whether an item merely had a name, not whether it actually had a cost price. That
+    // could report a "profit" that never subtracted cost of goods, and silently dropped Ajo
+    // service-fee income entirely. Also includes capital status line if the feature is set
+    // on the owner's profile.
     if (!staffId && txRes.data) {
       const todayStr = new Date().toISOString().slice(0, 10);
       const summaryKey = `kt_daily_summary_${userId}_${todayStr}`;
@@ -243,13 +247,31 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
           return d >= ydStart && d <= ydEnd;
         });
         if (dayTxs.length > 0) {
-          const saleCats = new Set(["sale", "credit sale"]);
-          const saleTxs  = dayTxs.filter(t => t.type === "in" && saleCats.has(t.category));
-          const totalRev = saleTxs.reduce((s, t) => s + (t.amount || 0), 0);
-          const namedRev = saleTxs.filter(t => t.item_name?.trim()).reduce((s, t) => s + (t.amount || 0), 0);
-          const expenses = dayTxs.filter(t => t.type === "out" && t.category !== "stock" && !isBillPayment(t))
-            .reduce((s, t) => s + (t.amount || 0), 0);
-          const coverage  = totalRev > 0 ? namedRev / totalRev : 0;
+          const [{ data: prodData }, { data: ajoData }] = await Promise.all([
+            supabase.from("products").select("id, product_name, cost_price, needs_costing").eq("user_id", userId),
+            supabase.from("ajo_contributions").select("id, amount, type, created_at")
+              .eq("owner_id", userId)
+              .in("type", ["commission", "registration_fee", "withdrawal_fee"])
+              .eq("status", "completed")
+              .gte("created_at", ydStart.toISOString())
+              .lt("created_at", ydEnd.toISOString()),
+          ]);
+
+          const engine = compute({
+            transactions: txRes.data,
+            products:     prodData || [],
+            credits:      crRes.data || [],
+            debtPayments: dpRes.data || [],
+            ajoEntries:   (ajoData || []).map(e => ({ id: e.id, type: e.type, amount: parseFloat(e.amount) || 0, date: e.created_at })),
+          }, { from: ydStart, to: ydEnd });
+
+          const totalRev  = engine.profit.revenue.amount;
+          const expenses  = engine.profit.expenses.amount;
+          const netProfit = engine.profit.netProfit.amount;
+          // Coverage = share of yesterday's revenue that actually has a cost price behind
+          // it — real costing coverage, not a "does it have a name" proxy — so the email
+          // only shows a profit figure it can actually stand behind.
+          const coverage  = totalRev > 0 ? 1 - (engine.profit.unmeasured.revenue / totalRev) : 0;
           const hasProfit = coverage >= 0.5;
 
           // Capital status for daily summary email (null = feature not set → omit)
@@ -266,11 +288,12 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
           fireEmailTrigger("daily_summary", {
             owner_id:         userId,
             owner_email:      authEmailRef.current,
+            business_name:    profRes.data?.business_name || "",
             period_label:     ydDate,
             revenue:          totalRev,
             expenses,
             has_profit:       hasProfit,
-            net_approx:       hasProfit ? totalRev - expenses : null,
+            net_approx:       hasProfit ? netProfit : null,
             coverage_pct:     Math.round(coverage * 100),
             tx_count:         dayTxs.length,
             capital_status:   capitalResult?.status   || null,
