@@ -141,20 +141,24 @@ export function ActionButton({ icon, label, onClick, disabled, tone = "brand" })
 }
 
 // ── account details card ───────────────────────────────────────────────────
-// `displayName` overrides the raw bank-registered name (wallet.flw_account_name
-// — tied to BVN/KYC, sometimes a legal name rather than the trade name) with
-// the business name (or the client's own name) everywhere inside our own UI.
-// Falls back to the wallet's registered name only if no override is given.
+// Never render the raw bank-registered name (wallet.flw_account_name) —
+// it's tied to BVN/KYC and Flutterwave/NIBSS don't reliably echo back what
+// we submit at provisioning: some wallets come back as our own
+// "KudiAI Wallet - {name}" narration, others come back as Flutterwave's own
+// generated name (their "{merchant name}/{customer name}" convention),
+// which can surface someone else's real name in our own UI. Always build
+// the label ourselves from the current holder's own name instead, so every
+// wallet is consistently branded regardless of what the processor stored.
 export function AccountCard({ wallet, displayName }) {
   const [copied, setCopied] = useState(false);
   const acct = wallet?.flw_account_number || "";
   const bank = cleanBankName(wallet?.flw_account_bank);
-  const name = displayName || wallet?.flw_account_name;
+  const name = `KudiAI Wallet - ${displayName || "Account"}`;
   const copy = async () => {
     try { await navigator.clipboard.writeText(acct); setCopied(true); setTimeout(() => setCopied(false), 1600); } catch {}
   };
   const share = async () => {
-    const text = `${name || "KudiAI Wallet"}\n${acct}\n${bank}`;
+    const text = `${name}\n${acct}\n${bank}`;
     try { if (navigator.share) await navigator.share({ title: "My account details", text }); else copy(); } catch {}
   };
   return (
