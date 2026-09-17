@@ -44,6 +44,7 @@ jobs:
           deploy paystack-webhook     --no-verify-jwt
           deploy ajo-portal
           deploy ajo-write
+          deploy peer-esusu
           deploy coop-portal
           deploy manage-staff-account
           deploy manage-ajo-client-account
