@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "../utils/supabase";
 import AppLogo from "../components/AppLogo";
 import { fetchAndCachePlans, getActivePlans, normalizeSlug, ALL_FEATURE_LIST } from "../utils/plans";
@@ -74,16 +75,15 @@ function isFreePlanSlug(slug, plans = []) {
 }
 
 // Paid plans are charged instantly from the owner's KudiAI wallet — one RPC
-// call does the debit and the plan activation atomically, so there's no
-// redirect/verify/approve pipeline to manage here.
-function PaidButton({ plan, wallet, walletReady, disabled, yearly = false, appliedCoupon, onSuccess, buttonLabel }) {
+// call does the debit and the plan activation atomically. This button never
+// calls that RPC itself: it hands the intended change up to the parent via
+// onSelect, which shows a confirmation (or, when the balance is short, a
+// "fund your wallet" prompt) before anything is actually charged.
+function PaidButton({ plan, wallet, walletReady, disabled, yearly = false, appliedCoupon, onSelect, buttonLabel }) {
   const chargeAmount = yearly && plan.price_yearly > 0 ? plan.price_yearly : plan.price_monthly;
   const billingCycle = yearly ? "yearly" : "monthly";
   const { applies: couponApplies, final: finalAmount } =
     computeCouponDiscount(appliedCoupon, plan.slug, billingCycle, chargeAmount);
-
-  const [busy, setBusy] = useState(false);
-  const [err,  setErr]  = useState("");
 
   const color = planColor(plan.sort_order);
   const cls = color === "violet"
@@ -91,31 +91,18 @@ function PaidButton({ plan, wallet, walletReady, disabled, yearly = false, appli
     : "w-full py-2.5 rounded-xl font-semibold text-sm bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 transition-colors";
 
   const walletShort = walletReady && wallet.balanceKobo < Math.round(finalAmount * 100);
-  const blocked = finalAmount > 0 && (!walletReady || walletShort);
 
-  const handleClick = async () => {
-    if (blocked) return;
-    setBusy(true); setErr("");
-    try {
-      const { data, error: rpcErr } = await supabase.rpc("wallet_pay_subscription", {
-        p_plan_slug:     plan.slug,
-        p_billing_cycle: billingCycle,
-        p_coupon_code:   couponApplies && appliedCoupon ? appliedCoupon.code : null,
-      });
-      if (rpcErr) throw rpcErr;
-      onSuccess?.(data);
-    } catch (e) {
-      setErr(/insufficient/i.test(e.message || "")
-        ? "Insufficient wallet balance. Please top up your wallet and try again."
-        : (e.message || "Payment failed. Please try again."));
-      setBusy(false);
-    }
+  const defaultLabel = finalAmount === 0 && couponApplies
+    ? "Activate Free — Coupon Applied"
+    : `Subscribe — ₦${finalAmount.toLocaleString()}/${billingCycle === "yearly" ? "yr" : "mo"}`;
+
+  const handleClick = () => {
+    onSelect?.({
+      plan, billingCycle, finalAmount, couponApplies,
+      couponCode: couponApplies && appliedCoupon ? appliedCoupon.code : null,
+      insufficient: walletShort,
+    });
   };
-
-  const defaultLabel = busy ? "Activating…"
-    : finalAmount === 0 && couponApplies
-      ? "Activate Free — Coupon Applied"
-      : `Subscribe — ₦${finalAmount.toLocaleString()}/${billingCycle === "yearly" ? "yr" : "mo"}`;
 
   return (
     <div className="space-y-1.5">
@@ -136,10 +123,71 @@ function PaidButton({ plan, wallet, walletReady, disabled, yearly = false, appli
           Balance too low — ₦{wallet.balanceNaira.toLocaleString()} available, ₦{finalAmount.toLocaleString()} needed
         </p>
       )}
-      <button disabled={disabled || busy || blocked} onClick={handleClick} className={cls}>
-        {buttonLabel && !busy ? buttonLabel : defaultLabel}
+      <button disabled={disabled || (finalAmount > 0 && !walletReady)} onClick={handleClick} className={cls}>
+        {buttonLabel || defaultLabel}
       </button>
-      {err && <p className="text-[10px] text-red-500 text-center">{err}</p>}
+    </div>
+  );
+}
+
+// Shown before ANY plan change actually executes — either a plain confirm
+// (what's changing, what it costs) or, when the wallet balance is short, a
+// prompt to go fund it instead of a dead-end inline warning.
+function ConfirmChangeModal({ info, busy, error, onCancel, onConfirm, onFundWallet }) {
+  if (!info) return null;
+  const { fromPlanName, toPlanName, billingCycle, finalAmount, isFree, insufficient, walletBalanceNaira } = info;
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="w-full sm:max-w-sm bg-white dark:bg-slate-800 rounded-t-3xl sm:rounded-3xl p-6 space-y-4 shadow-2xl">
+        <h2 className="text-lg font-bold text-gray-800 dark:text-white text-center">
+          {insufficient ? "Insufficient wallet balance" : "Confirm plan change"}
+        </h2>
+
+        {insufficient ? (
+          <>
+            <p className="text-sm text-gray-500 dark:text-slate-400 text-center leading-relaxed">
+              Switching to <span className="font-bold text-gray-700 dark:text-slate-200">{toPlanName}</span> costs{" "}
+              <span className="font-bold">₦{finalAmount.toLocaleString()}</span>, but your wallet only has{" "}
+              <span className="font-bold text-red-500">₦{walletBalanceNaira.toLocaleString()}</span> available. Fund your wallet to continue.
+            </p>
+            <button onClick={onFundWallet}
+              className="w-full py-3 rounded-xl font-bold text-sm text-white bg-gradient-to-br from-blue-950 to-blue-800 active:scale-[0.98] transition-transform">
+              Fund Wallet
+            </button>
+            <button onClick={onCancel}
+              className="w-full py-2.5 rounded-xl font-semibold text-sm text-gray-500 dark:text-slate-400">
+              Cancel
+            </button>
+          </>
+        ) : (
+          <>
+            <p className="text-sm text-gray-500 dark:text-slate-400 text-center leading-relaxed">
+              You&apos;re switching from <span className="font-bold text-gray-700 dark:text-slate-200">{fromPlanName}</span> to{" "}
+              <span className="font-bold text-gray-700 dark:text-slate-200">{toPlanName}</span>
+              {billingCycle ? ` (${billingCycle})` : ""}.
+            </p>
+            <div className="bg-gray-50 dark:bg-slate-700/40 rounded-xl px-4 py-3 text-center">
+              {isFree ? (
+                <p className="text-sm font-bold text-gray-700 dark:text-slate-200">This plan is free — no charge</p>
+              ) : (
+                <p className="text-sm text-gray-600 dark:text-slate-300">
+                  <span className="font-extrabold text-gray-800 dark:text-white text-lg">₦{finalAmount.toLocaleString()}</span>{" "}
+                  will be charged instantly from your KudiAI Wallet
+                </p>
+              )}
+            </div>
+            {error && <p className="text-xs text-red-500 text-center">{error}</p>}
+            <button disabled={busy} onClick={onConfirm}
+              className="w-full py-3 rounded-xl font-bold text-sm text-white bg-gradient-to-br from-green-600 to-emerald-600 disabled:opacity-50 active:scale-[0.98] transition-transform">
+              {busy ? "Processing…" : "Confirm"}
+            </button>
+            <button disabled={busy} onClick={onCancel}
+              className="w-full py-2.5 rounded-xl font-semibold text-sm text-gray-500 dark:text-slate-400 disabled:opacity-50">
+              Cancel
+            </button>
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -147,9 +195,21 @@ function PaidButton({ plan, wallet, walletReady, disabled, yearly = false, appli
 export default function SubscriptionPlan({ session, onComplete, onClose, isUpgrade = false, currentPlan = "kobo" }) {
   const [plans, setPlans] = useState(() => getActivePlans());
   const [loadingPlans, setLoadingPlans] = useState(plans.length === 0);
-  const [saving,  setSaving]  = useState(false);
   const [error,   setError]   = useState("");
   const [yearly,  setYearly]  = useState(false);
+  const navigate = useNavigate();
+
+  // Nothing executes on click anymore — every plan change is staged here
+  // first, confirmed (or, if the wallet is short, redirected to funding) in
+  // the modal, and only then actually run.
+  const [pendingChange, setPendingChange] = useState(null);
+  const [confirmBusy,   setConfirmBusy]   = useState(false);
+  const [confirmError,  setConfirmError]  = useState("");
+  // Set once a change actually succeeds — replaces the whole screen with a
+  // plain "here's what happened, here's what to expect" summary; onComplete
+  // only fires when the user explicitly continues past it.
+  const [resultInfo, setResultInfo] = useState(null);
+  const busy = !!pendingChange || confirmBusy;
 
   const { walletEnabled } = usePlatformConfig();
   const wallet = useWallet(session?.user?.id || null, walletEnabled);
@@ -244,34 +304,8 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
     applyCoupon();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Genuinely-free plan slugs only — paid plans (including a coupon that
-  // brings one to ₦0) go through PaidButton → wallet_pay_subscription instead.
-  const saveSub = useCallback(async (planSlug) => {
-    setSaving(true); setError("");
-    try {
-      const { data: profile } = await supabase
-        .from("profiles").select("full_name, business_name").eq("id", session.user.id).maybeSingle();
-      const userName = profile?.full_name || session.user.email;
-      const bizName  = profile?.business_name || "";
-
-      const { error: freeErr } = await supabase.rpc("activate_free_subscription", { p_plan_slug: planSlug });
-      if (freeErr) throw freeErr;
-      sendEmailTrigger("business_welcome", { user_email: session.user.email, user_name: userName, business_name: bizName, current_plan: planSlug });
-
-      setAppliedCoupon(null); setCouponCode(""); setCouponMsg(null);
-      onComplete(planSlug);
-    } catch (e) {
-      setError(e.message || "Could not save plan. Please try again.");
-    } finally {
-      setSaving(false);
-    }
-  }, [session, onComplete]);
-
-  // Fires after wallet_pay_subscription succeeds — confirmation emails, then
-  // hand control back to the app the same way the free path does.
-  const handlePaidSuccess = useCallback(async (planSlug, cycle, rpcResult) => {
-    setAppliedCoupon(null); setCouponCode(""); setCouponMsg(null);
-    setError("");
+  // Best-effort confirmation emails — never blocks showing the result screen.
+  const sendChangeConfirmationEmails = useCallback(async (planSlug, cycle, rpcResult) => {
     try {
       const { data: profile } = await supabase
         .from("profiles").select("full_name, business_name").eq("id", session.user.id).maybeSingle();
@@ -279,6 +313,16 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
       const bizName   = profile?.business_name || "";
       const planData  = plans.find(p => p.slug === planSlug);
       const features  = planData ? getDisplayFeatures(planData) : [];
+
+      if (isFreePlanSlug(planSlug, plans)) {
+        // Only a genuine first-time signup gets the platform welcome email —
+        // an existing paid owner dropping back to free isn't "welcomed".
+        if (!isUpgrade) {
+          sendEmailTrigger("business_welcome", { user_email: session.user.email, user_name: userName, business_name: bizName, current_plan: planSlug });
+        }
+        return;
+      }
+
       const amount    = rpcResult?.amount_charged ?? 0;
       const reference = rpcResult?.wallet_ledger_id || "";
       sendEmailTrigger("subscription_welcome", {
@@ -292,8 +336,7 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
         reference, is_first_time: !isUpgrade,
       });
     } catch { /* confirmation emails are best-effort */ }
-    onComplete(planSlug);
-  }, [session, plans, onComplete, isUpgrade]);
+  }, [session, plans, isUpgrade]);
 
   // Already have a subscription payment awaiting admin confirmation (a
   // pre-cutover bank-transfer request)? Show the waiting screen, and react
@@ -338,33 +381,83 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
   const currentPlanData   = plans.find(p => p.slug === currentNormalized);
   const currentSortOrder  = currentPlanData?.sort_order ?? 0;
 
-  const handleFree = () => saveSub("kobo");
+  // Upgrades are allowed any time; a downgrade (to free or to a cheaper paid
+  // tier) has to wait until the currently-paid-for period actually ends —
+  // enforced again server-side (assert_downgrade_allowed) so this is a UX
+  // convenience, not the real gate.
+  const downgradeAllowed = !subExpiry || new Date(subExpiry) <= new Date();
 
-  const handleDowngrade = async (targetPlan) => {
-    setSaving(true);
-    setError("");
+  // Stage a free-plan change for confirmation.
+  const requestFreeChange = (targetPlan) => {
+    setConfirmError("");
+    setPendingChange({
+      kind: "free", plan: targetPlan, billingCycle: null, finalAmount: 0,
+      isFree: true, insufficient: false,
+      fromPlanName: currentPlanData?.name || currentPlan, toPlanName: targetPlan.name,
+    });
+  };
+
+  // Stage a paid-plan change for confirmation (or, if the wallet is short,
+  // for the "fund your wallet" prompt instead).
+  const requestPaidChange = ({ plan, billingCycle, finalAmount, couponCode, insufficient }) => {
+    setConfirmError("");
+    setPendingChange({
+      kind: "paid", plan, billingCycle, finalAmount, couponCode,
+      isFree: false, insufficient,
+      fromPlanName: currentPlanData?.name || currentPlan, toPlanName: plan.name,
+      walletBalanceNaira: wallet.balanceNaira,
+    });
+  };
+
+  const closeConfirm = () => {
+    if (confirmBusy) return;
+    setPendingChange(null); setConfirmError("");
+  };
+
+  const goFundWallet = () => {
+    setPendingChange(null);
+    onClose?.();
+    navigate("/wallet");
+  };
+
+  const confirmChange = async () => {
+    if (!pendingChange) return;
+    setConfirmBusy(true); setConfirmError("");
     try {
-      if (isFreePlanSlug(targetPlan.slug, plans)) {
-        // Downgrade to a free plan takes effect immediately.
-        const { error } = await supabase.rpc("activate_free_subscription", { p_plan_slug: targetPlan.slug });
-        if (error) throw error;
-        onComplete(targetPlan.slug);
-        return;
+      if (pendingChange.kind === "free") {
+        const { error: rpcErr } = await supabase.rpc("activate_free_subscription", { p_plan_slug: pendingChange.plan.slug });
+        if (rpcErr) throw rpcErr;
+        await sendChangeConfirmationEmails(pendingChange.plan.slug, null, null);
+        setAppliedCoupon(null); setCouponCode(""); setCouponMsg(null);
+        setPendingChange(null);
+        setResultInfo({
+          planSlug: pendingChange.plan.slug, planName: pendingChange.plan.name,
+          billingCycle: null, amountCharged: 0, isFree: true, expiresAt: null,
+          features: getDisplayFeatures(pendingChange.plan),
+        });
+      } else {
+        const { data, error: rpcErr } = await supabase.rpc("wallet_pay_subscription", {
+          p_plan_slug:     pendingChange.plan.slug,
+          p_billing_cycle: pendingChange.billingCycle,
+          p_coupon_code:   pendingChange.couponCode,
+        });
+        if (rpcErr) throw rpcErr;
+        await sendChangeConfirmationEmails(pendingChange.plan.slug, pendingChange.billingCycle, data);
+        setAppliedCoupon(null); setCouponCode(""); setCouponMsg(null);
+        setPendingChange(null);
+        setResultInfo({
+          planSlug: pendingChange.plan.slug, planName: data?.plan_name || pendingChange.plan.name,
+          billingCycle: pendingChange.billingCycle, amountCharged: data?.amount_charged ?? pendingChange.finalAmount,
+          isFree: false, expiresAt: data?.expires_at,
+          features: getDisplayFeatures(pendingChange.plan),
+        });
       }
-      // Moving between paid tiers — no payment, but still needs an admin to approve.
-      const { error } = await supabase.rpc("submit_subscription_upgrade_request", {
-        p_plan_slug:     targetPlan.slug,
-        p_billing_cycle: yearly ? "yearly" : "monthly",
-        p_amount:        0,
-        p_reference:     "",
-        p_coupon:        null,
-      });
-      if (error && !/awaiting approval|already been submitted/i.test(error.message || "")) throw error;
-      setSaving(false);
-      setPendingApproval({ plan: targetPlan.name || targetPlan.slug, cycle: yearly ? "yearly" : "monthly" });
     } catch (e) {
-      setError(e.message || "Could not change plan. Please try again.");
-      setSaving(false);
+      setConfirmError(/insufficient/i.test(e.message || "")
+        ? "Insufficient wallet balance."
+        : (e.message || "Could not complete this change. Please try again."));
+    } finally {
+      setConfirmBusy(false);
     }
   };
 
@@ -401,6 +494,48 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
             </button>
           )}
           {error && <p className="mt-3 text-xs text-red-500">{error}</p>}
+        </div>
+      </div>
+    );
+  }
+
+  // A change just completed — show plainly what happened and what to expect
+  // before handing control back, instead of silently swapping the plan.
+  if (resultInfo) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 dark:from-slate-900 dark:to-slate-800 flex items-center justify-center px-6">
+        <div className="max-w-sm w-full text-center bg-white dark:bg-slate-800 rounded-3xl shadow-xl border border-green-100 dark:border-slate-700 px-6 py-9">
+          <div className="w-16 h-16 mx-auto rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mb-4">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
+          </div>
+          <h1 className="text-xl font-black text-gray-800 dark:text-white">You&apos;re on {resultInfo.planName} now</h1>
+          <p className="text-sm text-gray-500 dark:text-slate-400 mt-2 leading-relaxed">
+            {resultInfo.isFree
+              ? "This plan is free — no charge was made."
+              : `₦${resultInfo.amountCharged.toLocaleString()} was charged from your KudiAI Wallet.`}
+          </p>
+          {resultInfo.expiresAt && (
+            <p className="text-xs text-gray-400 dark:text-slate-500 mt-1">
+              Renews {new Date(resultInfo.expiresAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+            </p>
+          )}
+          {resultInfo.features?.length > 0 && (
+            <div className="mt-5 text-left bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800 rounded-xl px-4 py-3">
+              <p className="text-xs font-bold text-emerald-700 dark:text-emerald-300 mb-1.5">What&apos;s included now:</p>
+              <ul className="space-y-1">
+                {resultInfo.features.slice(0, 6).map(f => (
+                  <li key={f} className="text-xs text-emerald-700 dark:text-emerald-400 flex items-start gap-1.5">
+                    <CheckIcon color="green" /> <span>{f}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <button
+            onClick={() => { const slug = resultInfo.planSlug; setResultInfo(null); onComplete(slug); }}
+            className="mt-6 w-full py-3 rounded-xl text-sm font-bold text-white bg-gradient-to-br from-blue-950 to-blue-800 active:scale-[0.98] transition-transform">
+            Continue
+          </button>
         </div>
       </div>
     );
@@ -646,10 +781,10 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
                         plan={plan}
                         wallet={wallet}
                         walletReady={walletReady}
-                        disabled={saving}
+                        disabled={busy}
                         yearly={true}
                         appliedCoupon={appliedCoupon}
-                        onSuccess={(data) => handlePaidSuccess(plan.slug, "yearly", data)}
+                        onSelect={requestPaidChange}
                         buttonLabel={`Switch to Yearly — Save ${savingsPercent(plan)}%`}
                       />
                     )}
@@ -666,17 +801,39 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
                   </div>
 
                 ) : isDowngrade ? (
-                  <button
-                    onClick={plan.price_monthly === 0 ? handleFree : () => handleDowngrade(plan)}
-                    disabled={saving}
-                    className="w-full py-2.5 rounded-xl font-semibold text-sm border-2 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 disabled:opacity-40 transition-colors">
-                    {saving ? "Changing…" : plan.price_monthly === 0 ? "Downgrade to Free" : `Downgrade to ${plan.name}`}
-                  </button>
+                  downgradeAllowed ? (
+                    plan.price_monthly === 0 ? (
+                      <button
+                        onClick={() => requestFreeChange(plan)}
+                        disabled={busy}
+                        className="w-full py-2.5 rounded-xl font-semibold text-sm border-2 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 disabled:opacity-40 transition-colors">
+                        Downgrade to Free
+                      </button>
+                    ) : (
+                      <PaidButton
+                        plan={plan}
+                        wallet={wallet}
+                        walletReady={walletReady}
+                        disabled={busy}
+                        yearly={yearly}
+                        appliedCoupon={appliedCoupon}
+                        onSelect={requestPaidChange}
+                        buttonLabel={`Downgrade to ${plan.name}`}
+                      />
+                    )
+                  ) : (
+                    <div className="text-center py-2.5 px-3 rounded-xl border-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+                      <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                        Downgrade available from{" "}
+                        {subExpiry ? new Date(subExpiry).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "your renewal date"}
+                      </p>
+                    </div>
+                  )
 
                 ) : plan.price_monthly === 0 ? (
-                  <button onClick={handleFree} disabled={saving}
+                  <button onClick={() => requestFreeChange(plan)} disabled={busy}
                     className="w-full py-2.5 rounded-xl font-semibold text-sm border-2 border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors">
-                    {saving ? "Activating…" : "Start for Free"}
+                    Start for Free
                   </button>
 
                 ) : (
@@ -684,10 +841,10 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
                     plan={plan}
                     wallet={wallet}
                     walletReady={walletReady}
-                    disabled={saving}
+                    disabled={busy}
                     yearly={yearly}
                     appliedCoupon={appliedCoupon}
-                    onSuccess={(data) => handlePaidSuccess(plan.slug, billingCycle, data)}
+                    onSelect={requestPaidChange}
                   />
                 )}
               </div>
@@ -699,6 +856,15 @@ export default function SubscriptionPlan({ session, onComplete, onClose, isUpgra
           Paid plans are charged instantly from your KudiAI Wallet balance · Cancel anytime
         </p>
       </div>
+
+      <ConfirmChangeModal
+        info={pendingChange}
+        busy={confirmBusy}
+        error={confirmError}
+        onCancel={closeConfirm}
+        onConfirm={confirmChange}
+        onFundWallet={goFundWallet}
+      />
     </div>
   );
 }
