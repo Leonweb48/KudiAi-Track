@@ -237,7 +237,7 @@ serve(async (req) => {
           body: JSON.stringify({
             action: "notify", userId: wallet.user_id, type: "wallet_sale",
             title: "Payment received", body: `₦${amountNaira.toLocaleString()} received — recorded as a sale`,
-            category: "finance", deepLink: { screen: "wallet" },
+            category: "money", priority: "high", deepLink: { screen: "wallet" },
           }),
         }).catch(() => {});
         await sendWalletEmail(sb, owner.email, `Payment received — ${fmtNgn(amountKobo)}`,
@@ -292,7 +292,7 @@ serve(async (req) => {
         body: JSON.stringify({
           action: "notify", userId: wallet.user_id, type: "wallet_topup",
           title: "Wallet funded", body: `₦${(creditedKobo / 100).toLocaleString()} added to your KudiAI wallet`,
-          category: "finance", deepLink: { screen: "wallet" },
+          category: "money", priority: "high", deepLink: { screen: "wallet" },
         }),
       }).catch(() => {});
       await sendSms(owner.phone, `₦${(creditedKobo / 100).toLocaleString("en-NG")} credited to your KudiAI wallet. — KudiAI`, {
