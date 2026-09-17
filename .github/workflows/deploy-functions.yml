@@ -51,7 +51,6 @@ jobs:
           deploy auth-email-hook      --no-verify-jwt
           deploy whisper
           deploy delete-ajo-client
-          deploy initialize-payment
           deploy paystack
           deploy peyflex
           deploy pin-manager
