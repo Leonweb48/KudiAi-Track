@@ -40,6 +40,7 @@ import { BottomSheet, ActionButton, AccountCard, FundWalletSheet, TransferSheet,
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import EsusuRotationDashboard from "../components/EsusuRotationDashboard";
 import LegalScreen from "./LegalScreen";
+import PeerEsusuScreen from "./PeerEsusuScreen";
 
 async function ajoFn(action, body = {}) {
   const { data, error } = await supabase.functions.invoke("ajo-portal", {
@@ -75,6 +76,7 @@ function makeNav(t) {
   return [
     { id: "home",    icon: "home",  label: t("nav.home")     },
     { id: "bills",   icon: "bills", label: t("nav.bills")    },
+    { id: "circles", icon: "aso",   label: "Circles"         },
     { id: "history", icon: "txn",   label: t("nav.history")  },
     { id: "me",      icon: "user",  label: t("settings.title") },
   ];
@@ -5557,7 +5559,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
   usePushNotifications(session?.user?.id ?? null, (dl) => {
     if (dl?.openWallet) setShowWallet(true);
     if (!dl?.tab) return;
-    setTab(["home","bills","history","me"].includes(dl.tab) ? dl.tab : "home");
+    setTab(["home","bills","circles","history","me"].includes(dl.tab) ? dl.tab : "home");
   });
 
   if (mustChange) return <AjoMemberFirstLogin ajoClient={ajoClient} />;
@@ -5591,7 +5593,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
               onNavigate={(dl) => {
                 if (dl?.openWallet) setShowWallet(true);
                 if (!dl?.tab) return;
-                setTab(["home","bills","history","me"].includes(dl.tab) ? dl.tab : "home");
+                setTab(["home","bills","circles","history","me"].includes(dl.tab) ? dl.tab : "home");
               }}
               toast={toast}
             />
@@ -5663,6 +5665,11 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
               rotationsData={rotationsData}
               wallet={wallet}
             />
+          )}
+          {tab === "circles" && (
+            <div className="h-full overflow-y-auto">
+              <PeerEsusuScreen session={session} />
+            </div>
           )}
           {tab === "me" && (
             <AjoMemberMe
