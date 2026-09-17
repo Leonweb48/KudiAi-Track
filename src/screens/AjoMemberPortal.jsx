@@ -807,9 +807,18 @@ function getGroupSaved(groupId, startedAt, contributions) {
 }
 
 // Full saved/withdrawn/available breakdown for one savings group or esusu
-// round — same shape as the server's ajo_entity_stats, computed client-side
-// from already-loaded contributions (no extra round trip; mirrors the RPC's
-// exact formula so the numbers stay consistent wherever they're shown).
+// round, computed client-side from already-loaded contributions.
+//
+// group_savings: available = total contributed - already withdrawn/disbursed.
+// esusu_rotation: deliberately NOT the same shape as the server's
+// ajo_entity_stats RPC — that formula computes saved(contribution) -
+// esusu_payout, which answers "how much of my own contribution hasn't come
+// back to me yet," not "how much can I withdraw." What a member can
+// actually withdraw from an esusu circle is what THEY'VE BEEN PAID (their
+// own esusu_payout rows) minus whatever they've already formally withdrawn
+// against it — contributions they made are someone else's pot, not theirs
+// to withdraw. (This isEsusu branch has no other caller today, so fixing
+// the formula here doesn't change any already-shipped behavior.)
 function getGroupStats(groupId, startedAt, contributions, isEsusu) {
   const rows = contributions.filter(c =>
     c.group_id === groupId &&
@@ -818,9 +827,11 @@ function getGroupStats(groupId, startedAt, contributions, isEsusu) {
     (!startedAt || new Date(c.created_at) >= new Date(startedAt))
   );
   const saved     = rows.filter(c => c.type === "contribution").reduce((s, c) => s + Number(c.amount || 0), 0);
-  const withdrawn = isEsusu
-    ? rows.filter(c => c.type === "esusu_payout").reduce((s, c) => s + Number(c.amount || 0), 0)
-    : rows.filter(c => c.type === "withdrawal" || c.type === "disbursement").reduce((s, c) => s + Number(c.amount || 0), 0);
+  const withdrawn = rows.filter(c => c.type === "withdrawal" || c.type === "disbursement").reduce((s, c) => s + Number(c.amount || 0), 0);
+  if (isEsusu) {
+    const received = rows.filter(c => c.type === "esusu_payout").reduce((s, c) => s + Number(c.amount || 0), 0);
+    return { saved, received, withdrawn, available: Math.max(0, received - withdrawn) };
+  }
   return { saved, withdrawn, available: Math.max(0, saved - withdrawn) };
 }
 
@@ -1664,29 +1675,40 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
   const totalPending     = getTotalPending(withdrawRequests);
   const trulyWithdrawable = Math.max(0, withdrawable - totalPending);
 
+  // No general/pooled withdrawal: each source (a personal card, a savings
+  // group, or an esusu circle) has its own ceiling — never the client's
+  // whole current_balance. A card that's still active/locked, a savings
+  // group whose round isn't closed, or an esusu turn that hasn't paid out
+  // yet all correctly ceiling at 0 here, with no separate "locked" gate
+  // needed — there's simply nothing recorded as available from that source.
   const activePending = (() => {
-    if (activeTab === "personal" && selectedCycleId) {
-      // Percentage cycles draw from overall balance — show total pending, not just per-cycle
-      if (selectedCycleObj && selectedCycleObj.commission_model !== "first_period") return totalPending;
-      return getPendingForCycle(selectedCycleId, withdrawRequests);
-    }
-    if (activeTab === "group" && selectedGrpId) return getPendingForGroup(selectedGrpId, withdrawRequests);
+    if (activeTab === "personal" && selectedCycleId) return getPendingForCycle(selectedCycleId, withdrawRequests);
+    if (activeTab === "group"    && selectedGrpId)   return getPendingForGroup(selectedGrpId, withdrawRequests);
+    if (activeTab === "esusu"    && selectedGrpId)   return getPendingForGroup(selectedGrpId, withdrawRequests);
     return 0;
   })();
 
   const activeCeiling = (() => {
     if (activeTab === "personal" && selectedCycleId && selectedCycleObj) {
-      // Percentage cycles are freely withdrawable at any time — cap at overall withdrawable balance
-      if (selectedCycleObj.commission_model !== "first_period") return trulyWithdrawable;
+      // Same per-card ceiling for every fee model — a percent-model card is
+      // never gated on "complete," but it's still THIS card's own net saved,
+      // not the client's whole balance.
       const stats = getCycleStats(selectedCycleObj, contributions);
       return Math.max(0, stats.net - activePending);
     }
     if (activeTab === "group" && selectedGrpId) {
       const g = savingsGroups.find(sg => sg.id === selectedGrpId);
-      if (!g) return trulyWithdrawable;
-      return Math.max(0, getGroupSaved(selectedGrpId, g.started_at, contributions) - activePending);
+      if (!g) return 0;
+      const stats = getGroupStats(selectedGrpId, g.started_at, contributions, false);
+      return Math.max(0, stats.available - activePending);
     }
-    return trulyWithdrawable;
+    if (activeTab === "esusu" && selectedGrpId) {
+      // No startedAt filter — a payout received in an earlier round that
+      // hasn't been withdrawn yet is still withdrawable now.
+      const stats = getGroupStats(selectedGrpId, null, contributions, true);
+      return Math.max(0, stats.available - activePending);
+    }
+    return 0;
   })();
 
   // ── handleSubmit — payout auto-routes to the client's own KudiAI Wallet, no
@@ -1696,13 +1718,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
     if (!amtNum || amtNum <= 0)   { setError(t("error.somethingWrong")); throw new Error(t("error.somethingWrong")); }
     if (amtNum > activeCeiling) {
       const pendMsg = activePending > 0 ? ` (${fmt(activePending)} already pending)` : "";
-      const lockParts = [];
-      if (groupLocked > 0) lockParts.push(`${fmt(groupLocked)} committed to group/esusu`);
-      if (esusuLocked > 0) lockParts.push(`${fmt(esusuLocked)} locked in active esusu round`);
-      if (cycleLocked > 0) lockParts.push(`${fmt(cycleLocked)} locked in first-period cycle`);
-      const msg = lockParts.length > 0
-        ? `Only ${fmt(activeCeiling)} is available${pendMsg} — ${lockParts.join(" and ")}`
-        : `Only ${fmt(activeCeiling)} is available${pendMsg}`;
+      const msg = `Only ${fmt(activeCeiling)} is available from this ${activeTab === "esusu" ? "circle" : activeTab === "group" ? "group" : "card"}${pendMsg}`;
       setError(msg);
       throw new Error(msg);
     }
@@ -1792,17 +1808,9 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
           if (!amtNum || amtNum <= 0) { setError(t("error.somethingWrong")); return; }
           if (amtNum > activeCeiling) {
             const pendMsg = activePending > 0 ? ` — ${fmt(activePending)} already pending review` : "";
-            let lockMsg = `Only ${fmt(activeCeiling)} available${pendMsg}`;
-            if (!pendMsg) {
-              if (esusuLocked > 0 && cycleLocked > 0) {
-                lockMsg = `Only ${fmt(activeCeiling)} available — ${fmt(esusuLocked)} locked in esusu and ${fmt(cycleLocked)} in your savings cycle`;
-              } else if (esusuLocked > 0) {
-                lockMsg = `Only ${fmt(activeCeiling)} available — ${fmt(esusuLocked)} is locked in your active esusu round`;
-              } else if (cycleLocked > 0) {
-                lockMsg = `Only ${fmt(activeCeiling)} available — ${fmt(cycleLocked)} is locked in your savings cycle`;
-              }
-            }
-            setError(lockMsg); return;
+            const source  = activeTab === "esusu" ? "this circle" : activeTab === "group" ? "this group" : "this card";
+            setError(`Only ${fmt(activeCeiling)} available from ${source}${pendMsg}`);
+            return;
           }
           if (netAmt <= 0) { setError(t("error.somethingWrong")); return; }
           setTxnPin({
