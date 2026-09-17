@@ -1156,6 +1156,45 @@ serve(async (req: Request) => {
     return json({ ok: true });
   }
 
+  // ── Retry a stuck/failed wallet payout ────────────────────────────────────
+  // ajo_wallet_payouts is settled by a weekday cron (ajo_settle_due_wallet_payouts)
+  // that only ever selects status='pending' rows — a 'failed' row (e.g. owner
+  // wallet balance was short that morning) or a 'pending' row whose
+  // scheduled_date has already passed is otherwise permanently stuck with no
+  // retry and no visibility. This re-arms it for the next cron run. Moves no
+  // new money itself — just reschedules an already-approved transfer — so no
+  // PIN required, matching reject_withdrawal_request's owner-only gate above.
+  if (action === "retry_wallet_payout") {
+    const { payout_id: payoutId } = params as { payout_id?: string };
+    if (!payoutId) return json({ ok: false, error: "payout_id required" }, 400);
+
+    const { data: payoutRow, error: payoutErr } = await sb
+      .from("ajo_wallet_payouts")
+      .select("owner_id, status")
+      .eq("id", payoutId)
+      .single();
+    if (payoutErr || !payoutRow) return json({ ok: false, error: "Payout not found" }, 404);
+
+    const rwpOwnerId = payoutRow.owner_id as string;
+    const rwpPerms = await resolveAjoPerms(sb, user.id, rwpOwnerId);
+    if (rwpPerms !== null) return json({ ok: false, error: "Unauthorized: owner-only action" }, 403);
+
+    if (payoutRow.status === "paid" || payoutRow.status === "cancelled") {
+      return json({ ok: false, error: `Payout is already ${payoutRow.status} — nothing to retry` }, 400);
+    }
+
+    const { data: nextDate, error: ndErr } = await sb.rpc("ajo_next_business_day");
+    if (ndErr) return json({ ok: false, error: ndErr.message }, 500);
+
+    const { error: rwpUpdErr } = await sb
+      .from("ajo_wallet_payouts")
+      .update({ status: "pending", scheduled_date: nextDate, failure_reason: null })
+      .eq("id", payoutId);
+    if (rwpUpdErr) return json({ ok: false, error: rwpUpdErr.message }, 500);
+
+    return json({ ok: true, scheduled_date: nextDate });
+  }
+
   if (action === "open_cycle") {
     const {
       client_id: ocClientId, start_date, length_periods, expected_amount_per_period,
@@ -1782,8 +1821,6 @@ serve(async (req: Request) => {
     const nextPayoutDate    = nextTurnsArr[0]?.expected_payout_date || "";
     const beneficiaryNames  = beneficiaries.map(b => b.name).filter(Boolean).join(", ");
 
-    const debtors = (epResult.debtors as Array<{ client_id: string; client_name: string; client_email: string; amount_owed: number }>) || [];
-
     const sharedContext = {
       group_name:          groupName,
       group_mode:          groupMode,
@@ -1810,7 +1847,6 @@ serve(async (req: Request) => {
           pot_amount:         b.amount,
           new_balance:        balanceMap[b.client_id] || 0,
           position:           b.position,
-          debtor_count:       epResult.debtor_count || 0,
         });
       }
       const winnerAuthId = clientAuthIdMap[b.client_id] || await resolveClientUserId(sb, b.client_id);
@@ -1833,18 +1869,7 @@ serve(async (req: Request) => {
       });
     }
 
-    // 3. Debt notices to members who owe contributions
-    for (const debtor of debtors) {
-      if (!debtor.client_email) continue;
-      await fireAjoEmail("ajo_esusu_debt_notice", {
-        ...sharedContext,
-        member_name:  debtor.client_name  || "",
-        member_email: debtor.client_email,
-        amount_owed:  debtor.amount_owed,
-      });
-    }
-
-    // 4. Full owner summary with all details. beneficiary_new_balance/position
+    // 3. Full owner summary with all details. beneficiary_new_balance/position
     //    are joined per-winner (like name/email above) rather than only the
     //    first beneficiary's — a payout can settle more than one winner in a
     //    round, and reporting just beneficiaries[0] silently misrepresented
@@ -1858,13 +1883,11 @@ serve(async (req: Request) => {
       pot_amount:              potAmount,
       position:                beneficiaries.map(b => b.position).join(", "),
       winner_count:            beneficiaries.length,
-      debtor_count:            epResult.debtor_count || 0,
-      debtors,
       executed_by:             executedBy,
       executed_by_email:       staffEmail || ownerEmail,
     });
 
-    // 5. Staff notification — only when a staff member (not owner) executed the payout
+    // 4. Staff notification — only when a staff member (not owner) executed the payout
     if (staffEmail) {
       await fireAjoEmail("ajo_esusu_payout_staff_notify", {
         ...sharedContext,
@@ -1873,7 +1896,6 @@ serve(async (req: Request) => {
         beneficiary_name:  beneficiaryNames,
         pot_amount:        potAmount,
         position:          beneficiaries.map(b => b.position).join(", "),
-        debtor_count:      epResult.debtor_count || 0,
       });
     }
 

@@ -1198,25 +1198,7 @@ serve(async (req) => {
         }
       }
 
-      // Pending Esusu debts for the active round (show to owner; member sees own only)
-      let pending_debts: unknown[] = [];
-      if (grRound) {
-        const { data: dbDebts } = await sb
-          .from("ajo_esusu_debts")
-          .select("id, debtor_client_id, amount, created_at")
-          .eq("round_id", grRound.id)
-          .eq("status", "pending");
-
-        if (isOwnerRequest) {
-          pending_debts = dbDebts || [];
-        } else if (grClientId) {
-          pending_debts = (dbDebts || []).filter(
-            (d: { debtor_client_id: string }) => d.debtor_client_id === grClientId
-          );
-        }
-      }
-
-      return json({ group: grGroup, round: grRound || null, turns, members: memberList, contribution_ticks, pot_size, pending_debts });
+      return json({ group: grGroup, round: grRound || null, turns, members: memberList, contribution_ticks, pot_size });
     }
 
     // ── Savings group dashboard details (pot + member strength) ──────────
