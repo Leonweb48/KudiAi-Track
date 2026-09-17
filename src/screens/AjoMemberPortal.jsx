@@ -1607,6 +1607,14 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
   const [cycleLocked,   setCycleLocked]   = useState(0);
   const [groupLocked,   setGroupLocked]   = useState(0);
   const [locksLoaded,   setLocksLoaded]   = useState(false);
+  // Authoritative per-entity ceiling for group/esusu — fetched live from the
+  // same ajo_entity_stats RPC the server enforces at submit time, instead of
+  // recomputed independently client-side. The two kept drifting apart (esusu
+  // formula fixes, a "committed to the next round" lock the client-side copy
+  // never accounted for) because they were two copies of the same math —
+  // this makes the server the single source of truth for what's enforced.
+  const [entityStats,        setEntityStats]        = useState(null);
+  const [entityStatsLoading, setEntityStatsLoading]  = useState(false);
 
   // ── Navigation state ──────────────────────────────────────────────────────
   const [activeTab,      setActiveTab]      = useState("personal");
@@ -1628,6 +1636,21 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
       setLocksLoaded(true);
     }).catch(() => setLocksLoaded(true));
   }, [client.id, client.current_balance, cycles]);
+
+  // ── Live per-entity stats — group/esusu only, re-fetched on selection ─────
+  useEffect(() => {
+    if ((activeTab !== "group" && activeTab !== "esusu") || !selectedGrpId) {
+      setEntityStats(null);
+      return;
+    }
+    let cancelled = false;
+    setEntityStatsLoading(true);
+    ajoFn("get-entity-stats", { client_id: client.id, group_id: selectedGrpId })
+      .then(res => { if (!cancelled) setEntityStats(res?.stats || null); })
+      .catch(() => { if (!cancelled) setEntityStats(null); })
+      .finally(() => { if (!cancelled) setEntityStatsLoading(false); });
+    return () => { cancelled = true; };
+  }, [activeTab, selectedGrpId, client.id]);
 
   // ── Derived data — re-derive from props each render (realtime-safe) ───────
   // A group that's never been started (savings) or has no active rotation
@@ -1685,8 +1708,11 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
   // needed — there's simply nothing recorded as available from that source.
   const activePending = (() => {
     if (activeTab === "personal" && selectedCycleId) return getPendingForCycle(selectedCycleId, withdrawRequests);
-    if (activeTab === "group"    && selectedGrpId)   return getPendingForGroup(selectedGrpId, withdrawRequests);
-    if (activeTab === "esusu"    && selectedGrpId)   return getPendingForGroup(selectedGrpId, withdrawRequests);
+    if ((activeTab === "group" || activeTab === "esusu") && selectedGrpId) {
+      // Prefer the live server figure once it's loaded — falls back to the
+      // local estimate only while that fetch is in flight.
+      return entityStats ? Number(entityStats.pending || 0) : getPendingForGroup(selectedGrpId, withdrawRequests);
+    }
     return 0;
   })();
 
@@ -1698,17 +1724,11 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
       const stats = getCycleStats(selectedCycleObj, contributions);
       return Math.max(0, stats.net - activePending);
     }
-    if (activeTab === "group" && selectedGrpId) {
-      const g = savingsGroups.find(sg => sg.id === selectedGrpId);
-      if (!g) return 0;
-      const stats = getGroupStats(selectedGrpId, g.started_at, contributions, false);
-      return Math.max(0, stats.available - activePending);
-    }
-    if (activeTab === "esusu" && selectedGrpId) {
-      // No startedAt filter — a payout received in an earlier round that
-      // hasn't been withdrawn yet is still withdrawable now.
-      const stats = getGroupStats(selectedGrpId, null, contributions, true);
-      return Math.max(0, stats.available - activePending);
+    if ((activeTab === "group" || activeTab === "esusu") && selectedGrpId) {
+      // Authoritative: same ajo_entity_stats RPC the server enforces at
+      // submit time, so what's shown here can never diverge from what's
+      // actually allowed. 0 (never over-permit) until it's loaded.
+      return entityStats ? Number(entityStats.available || 0) : 0;
     }
     return 0;
   })();
@@ -1765,10 +1785,18 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
             className="flex-1 bg-transparent text-2xl font-black text-slate-700 dark:text-slate-200 outline-none placeholder:text-slate-300 dark:placeholder:text-slate-600 tabular [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
           />
         </div>
+        {(activeTab === "group" || activeTab === "esusu") && entityStatsLoading && (
+          <p className="text-[11px] text-slate-400 mt-1">Checking what's available…</p>
+        )}
+        {(activeTab === "group" || activeTab === "esusu") && !entityStatsLoading && entityStats?.locked > 0 && (
+          <p className="text-[11px] text-amber-500 mt-1">
+            {fmt(entityStats.locked)} already committed to {activeTab === "esusu" ? "this circle's current round" : "this group's active round"} — not available to withdraw
+          </p>
+        )}
         {activePending > 0 && (
           <p className="text-[11px] text-amber-500 mt-1">{fmt(activePending)} pending review — {fmt(activeCeiling)} available now</p>
         )}
-        {amtNum > activeCeiling && (
+        {!((activeTab === "group" || activeTab === "esusu") && entityStatsLoading) && amtNum > activeCeiling && (
           <p className="text-[11px] text-red-500 mt-1">{t("ajoPt.exceeded")}</p>
         )}
         {amtNum > 0 && amtNum <= activeCeiling && amtNum <= withdrawable && (
@@ -1824,7 +1852,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
             onNeedPinSetup: () => onNeedPinSetup?.(),
           });
         }}
-        disabled={saving || !amtNum || amtNum <= 0}
+        disabled={saving || !amtNum || amtNum <= 0 || ((activeTab === "group" || activeTab === "esusu") && entityStatsLoading)}
         className="w-full py-3.5 bg-brand-500 hover:bg-brand-600 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] disabled:opacity-50 shadow-sm">
         {saving ? "Withdrawing…" : amtNum > 0 && netAmt > 0 ? `Withdraw ${fmt(netAmt)}` : "Withdraw"}
       </button>
