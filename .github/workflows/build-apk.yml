@@ -101,8 +101,24 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
+      # android-actions/setup-android@v3 unconditionally runs `sdkmanager tools`,
+      # a legacy package Google has removed from the SDK repository entirely —
+      # it now fails outright for everyone on every run, before installing
+      # anything else, regardless of what this project needs. GitHub's
+      # ubuntu-latest runner already ships a full Android SDK (the exact path
+      # the failing action was pointed at: /usr/local/lib/android/sdk) — just
+      # put its cmdline-tools on PATH ourselves instead of relying on the
+      # action, and let Gradle/AGP fetch any specific platform or build-tools
+      # version it still needs during the actual build step below.
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        run: |
+          SDK_ROOT="${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$SDK_ROOT"     >> "$GITHUB_ENV"
+          CMDLINE_BIN=$(find "$SDK_ROOT/cmdline-tools" -maxdepth 2 -type d -name bin | sort -V | tail -1)
+          if [ -z "$CMDLINE_BIN" ]; then echo "No cmdline-tools found under $SDK_ROOT"; exit 1; fi
+          echo "$CMDLINE_BIN" >> "$GITHUB_PATH"
+          echo "Using Android SDK at $SDK_ROOT (cmdline-tools: $CMDLINE_BIN)"
 
       - name: Accept Android SDK licenses
         run: yes | sdkmanager --licenses || true
