@@ -357,12 +357,21 @@ serve(async (req) => {
     // ── Contribution history ───────────────────────────────────────
     if (action === "get-contributions") {
       const { client_id } = body as { client_id: string };
+      // This isn't just a "recent activity" list — the client portal derives
+      // every card/cycle/circle's "available to withdraw" from a running sum
+      // over this same array (see getCycleStats/getGroupStats in
+      // AjoMemberPortal.jsx). A tight recency cap silently ages older rows
+      // out of that sum once a client has been active long enough — e.g. an
+      // esusu payout from months back would still be genuinely withdrawable
+      // but simply never reach the app to be counted. The cap here is a
+      // generous ceiling against a truly runaway account, not a "last N"
+      // display limit — don't lower it without re-checking that math.
       const { data } = await sb
         .from("ajo_contributions")
         .select("id, aso_client_id, owner_id, amount, type, status, created_at, payment_method, contribution_context, cycle_id, group_id, reverses_contribution_id, fee_for_contribution_id, notes, recorded_by, paystack_ref, paystack_status, paid_at, approved_at, approved_by, confirmed_at, confirmed_by, initiated_by, payment_channel, proof_url, contribution_source")
         .eq("aso_client_id", client_id)
         .order("created_at", { ascending: false })
-        .limit(100);
+        .limit(1000);
       return json({ contributions: data || [] });
     }
 
