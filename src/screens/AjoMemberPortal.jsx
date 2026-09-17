@@ -831,11 +831,15 @@ function getGroupStats(groupId, startedAt, contributions, isEsusu) {
   );
   const saved     = rows.filter(c => c.type === "contribution").reduce((s, c) => s + Number(c.amount || 0), 0);
   const withdrawn = rows.filter(c => c.type === "withdrawal" || c.type === "disbursement").reduce((s, c) => s + Number(c.amount || 0), 0);
+  // Commission is executed (deducted) the moment a withdrawal is made — once
+  // taken, it must stop counting as "available," or a fee already paid out
+  // of current_balance keeps showing as if it's still sitting in the circle.
+  const fees      = rows.filter(c => c.type === "commission" || c.type === "registration_fee" || c.type === "withdrawal_fee").reduce((s, c) => s + Number(c.amount || 0), 0);
   if (isEsusu) {
     const received = rows.filter(c => c.type === "esusu_payout").reduce((s, c) => s + Number(c.amount || 0), 0);
-    return { saved, received, withdrawn, available: Math.max(0, received - withdrawn) };
+    return { saved, received, withdrawn, available: Math.max(0, received - withdrawn - fees) };
   }
-  return { saved, withdrawn, available: Math.max(0, saved - withdrawn) };
+  return { saved, withdrawn, available: Math.max(0, saved - withdrawn - fees) };
 }
 
 // Pending-request helpers — subtract outstanding requests from entity ceilings.
