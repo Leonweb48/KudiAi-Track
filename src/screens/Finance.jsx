@@ -986,7 +986,11 @@ export default function Finance({
   // they never get mirrored into `transactions`, so without this the P&L engine
   // silently drops all Ajo income. Fetch enough history to cover both the
   // current period and the prior period used for the trend comparison below.
-  const [ajoIncomeEntries, setAjoIncomeEntries] = useState([]);
+  // esusu_payout is included too (remapped to "payout") so the "Released to
+  // clients" liability figure in CashCard is accurate — profitEngine only
+  // ever treats "payout"-type entries as a liability release, never as
+  // income/cash, so this can't leak into revenue or cash flow.
+  const [ajoEntries, setAjoEntries] = useState([]);
   useEffect(() => {
     if (!userId) return;
     const now        = new Date();
@@ -996,11 +1000,16 @@ export default function Finance({
       .from("ajo_contributions")
       .select("id, amount, type, created_at")
       .eq("owner_id", userId)
-      .in("type", ["commission", "registration_fee", "withdrawal_fee"])
+      .in("type", ["commission", "registration_fee", "withdrawal_fee", "esusu_payout"])
       .eq("status", "completed")
       .gte("created_at", priorStart.toISOString())
-      .then(({ data }) => setAjoIncomeEntries(
-        (data || []).map(e => ({ id: e.id, type: e.type, amount: parseFloat(e.amount) || 0, date: e.created_at }))
+      .then(({ data }) => setAjoEntries(
+        (data || []).map(e => ({
+          id:     e.id,
+          type:   e.type === "esusu_payout" ? "payout" : e.type,
+          amount: parseFloat(e.amount) || 0,
+          date:   e.created_at,
+        }))
       ))
       .catch(() => {});
   }, [userId, period]);
@@ -1028,7 +1037,7 @@ export default function Finance({
       asoClients:   store.asoClients        || [],
       debtPayments: store.debtPayments      || [],
       credits:      store.credits           || [],
-      ajoEntries:   ajoIncomeEntries,
+      ajoEntries,
     };
     const engine      = compute(ledger, { from: start,      to: now });
     const enginePrior = compute(ledger, { from: priorStart, to: priorEnd });
@@ -1070,7 +1079,7 @@ export default function Finance({
       engine,
       capitalResult,
     };
-  }, [store.transactions, store.asoClients, store.debtPayments, store.credits, store.profile, inventory?.products, invoiceHook?.invoices, period, ajoIncomeEntries]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [store.transactions, store.asoClients, store.debtPayments, store.credits, store.profile, inventory?.products, invoiceHook?.invoices, period, ajoEntries]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── Finance tools summary values ─────────────────────────────────────────── */
   const creditOutstanding = credits.reduce((s, c) => s + (c.outstanding || 0), 0);

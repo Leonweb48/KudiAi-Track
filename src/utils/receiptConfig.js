@@ -98,14 +98,16 @@ export function buildTransactionReceipt(txn, profile) {
 function buildDestinationLabel(contribution) {
   const ctx  = contribution.contribution_context || 'personal_savings';
   const type = contribution.type || '';
-  const grp  = contribution.group_name || '';
+  // group_name: flat field some callers pass directly; ajo_groups?.name: the
+  // shape a Supabase embedded select (`ajo_groups(name)`) actually returns.
+  const grp  = contribution.group_name || contribution.ajo_groups?.name || '';
   const cyc  = contribution.cycle_label || '';
   const rnd  = contribution.round_number ? ` (Round ${contribution.round_number})` : '';
 
   if (type === 'registration_fee')  return `Registration fee — one-time`;
   if (type === 'commission')         return `Collector's fee — Day 1${cyc ? ` of ${cyc}` : ''}`;
   if (type === 'withdrawal_fee')     return `Withdrawal fee${cyc ? ` — ${contribution.fee_percent ? contribution.fee_percent + '% of ' : ''}${cyc}` : ''}`;
-  if (type === 'disbursement' && grp) {
+  if ((type === 'disbursement' || type === 'esusu_payout') && grp) {
     if (ctx === 'esusu_rotation') return `Esusu payout — ${grp}${rnd}, your turn`;
     return `Savings group release — ${grp}`;
   }

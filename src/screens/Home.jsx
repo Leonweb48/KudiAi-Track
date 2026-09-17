@@ -27,6 +27,8 @@ import { usePlatformConfig } from "../hooks/usePlatformConfig";
 import { useWallet } from "../hooks/useWallet";
 import { FundWalletSheet, TransferSheet, ReceivePaymentSheet, WalletTxRow, cleanBankName, WalletMiniAction } from "../components/WalletPanel";
 
+const AJO_INCOME_TYPES = ["commission", "registration_fee", "withdrawal_fee"];
+
 function greetingKey() {
   const h = new Date().getHours();
   if (h < 12) return "greet.morning";
@@ -153,7 +155,11 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
   // Ajo commission/registration/withdrawal fees live only in ajo_contributions —
   // they never get mirrored into `transactions`, so profitEngine needs them fed
   // in directly (as ajoEntries) or "Today's Profit" silently drops all Ajo income.
-  const [ajoIncomeEntries, setAjoIncomeEntries] = useState([]);
+  // esusu_payout is included too (remapped to "payout") purely so the Finance
+  // "Released to clients" liability figure is accurate — it's NOT income and
+  // must never be added to cashIn/profit (see todayAjoFees below, which
+  // deliberately only sums the three income types).
+  const [ajoEntries, setAjoEntries] = useState([]);
   useEffect(() => {
     if (!profile?.id) return;
     const todayStart = new Date().toISOString().slice(0, 10) + "T00:00:00";
@@ -161,11 +167,16 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
       .from("ajo_contributions")
       .select("id, amount, type, created_at")
       .eq("owner_id", profile.id)
-      .in("type", ["commission", "registration_fee", "withdrawal_fee"])
+      .in("type", [...AJO_INCOME_TYPES, "esusu_payout"])
       .eq("status", "completed")
       .gte("created_at", todayStart)
-      .then(({ data }) => setAjoIncomeEntries(
-        (data || []).map(e => ({ id: e.id, type: e.type, amount: parseFloat(e.amount) || 0, date: e.created_at }))
+      .then(({ data }) => setAjoEntries(
+        (data || []).map(e => ({
+          id:     e.id,
+          type:   e.type === "esusu_payout" ? "payout" : e.type,
+          amount: parseFloat(e.amount) || 0,
+          date:   e.created_at,
+        }))
       ))
       .catch(() => {});
   }, [profile?.id]);
@@ -184,7 +195,7 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
   const tabCard = (slotMap.tab_card_quad || [])[0] ?? (slotMap.tab_card_duo || [])[0] ?? null;
 
   const todayTx      = transactions.filter(tx => tx.transaction_date === today());
-  const todayAjoFees = ajoIncomeEntries.reduce((s, e) => s + e.amount, 0);
+  const todayAjoFees = ajoEntries.filter(e => AJO_INCOME_TYPES.includes(e.type)).reduce((s, e) => s + e.amount, 0);
   const cashIn  = todayTx.filter(tx => tx.type === "in" ).reduce((s, tx) => s + tx.amount, 0) + todayAjoFees;
   const cashOut = todayTx.filter(tx => tx.type === "out" && !isBillPayment(tx)).reduce((s, tx) => s + tx.amount, 0);
 
@@ -199,9 +210,9 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
       asoClients,
       debtPayments: debtPayments           || [],
       credits,
-      ajoEntries:   ajoIncomeEntries,
+      ajoEntries,
     }, { from: s, to: e });
-  }, [transactions, invoiceHook?.invoices, inventory?.products, asoClients, debtPayments, credits, ajoIncomeEntries]);
+  }, [transactions, invoiceHook?.invoices, inventory?.products, asoClients, debtPayments, credits, ajoEntries]);
 
   const profit        = todayEngine.profit.netProfit.amount;
   const todayExpenses = todayEngine.profit.expenses.amount;
