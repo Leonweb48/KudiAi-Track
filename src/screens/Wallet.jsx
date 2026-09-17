@@ -228,7 +228,14 @@ export default function Wallet({ session, store }) {
 
             {/* transactions */}
             <div className="rounded-3xl bg-white dark:bg-slate-800 shadow-card border border-slate-100 dark:border-slate-700/60 p-4">
-              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400 mb-1">Transactions</p>
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Transactions</p>
+                {w.ledger.length > 0 && (
+                  <button onClick={() => navigate("/wallet/statement")} className="text-[11px] font-bold text-brand-600 dark:text-brand-400">
+                    Statement →
+                  </button>
+                )}
+              </div>
               {w.ledger.length === 0 ? (
                 <p className="text-[13px] text-slate-400 py-8 text-center">No wallet activity yet.</p>
               ) : (

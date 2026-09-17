@@ -56,6 +56,7 @@ const Transactions   = lazy(() => import("./screens/Transactions"));
 const Finance        = lazy(() => import("./screens/Finance"));
 const BillPayments   = lazy(() => import("./screens/BillPayments"));
 const Wallet         = lazy(() => import("./screens/Wallet"));
+const WalletStatement = lazy(() => import("./screens/WalletStatement"));
 const Inventory      = lazy(() => import("./screens/Inventory"));
 const Insights       = lazy(() => import("./screens/Insights"));
 const Settings       = lazy(() => import("./screens/Settings"));
@@ -617,6 +618,7 @@ export default function App() {
                     onReports={() => setShowReports(true)}
                     onAIOpen={q => { setAiQuery(q || ""); setShowAI(true); }} /></S>,
     wallet:       <S><Wallet session={session} store={store} plan={plan} /></S>,
+    walletStatement: <S><WalletStatement session={session} store={store} /></S>,
     loyalty:      <S><Loyalty
                     loyalty={loyalty}
                     plan={plan}
@@ -702,6 +704,7 @@ export default function App() {
               <Route path="/inventory"    element={SCREENS.inventory}     />
               <Route path="/bills"        element={SCREENS.bills}         />
               {walletEnabled && <Route path="/wallet" element={SCREENS.wallet} />}
+              {walletEnabled && <Route path="/wallet/statement" element={SCREENS.walletStatement} />}
               <Route path="/insights"     element={SCREENS.insights}      />
               <Route path="/loyalty"      element={SCREENS.loyalty}       />
               <Route path="/settings"     element={SCREENS.settings}      />

@@ -238,6 +238,35 @@ export function asoReportCSVFilename(from, to) {
   return `aso_report${f}${t}.csv`;
 }
 
+// ── Wallet statement ───────────────────────────────────────────────────────────
+// wallet_ledger has its own shape (direction/source/amount_kobo/balance_after_kobo)
+// distinct from the general `transactions` table the builders above key off —
+// a dedicated builder rather than force-fitting buildTransactionsCSV.
+
+export function buildWalletStatementCSV(rows) {
+  const header = csvRow(["date", "date_display", "type", "description", "amount_ngn", "direction", "status", "balance_after_ngn", "reference"]);
+  const csvRows = (rows || []).map(r =>
+    csvRow([
+      toISO(r.created_at),
+      r.created_at ? new Date(r.created_at).toLocaleString("en-NG") : "",
+      (r.source || "").replace(/_/g, " "),
+      r.narration || "",
+      r.amount_kobo != null ? Number(r.amount_kobo) / 100 : "",
+      r.direction || "",
+      r.status || "",
+      r.balance_after_kobo != null ? Number(r.balance_after_kobo) / 100 : "",
+      r.id || "",
+    ])
+  );
+  return BOM + [header, ...csvRows].join("\r\n");
+}
+
+export function walletStatementCSVFilename(from, to) {
+  const f = from ? `_${toISO(from)}` : "";
+  const t = to   ? `_${toISO(to)}`   : "";
+  return `wallet_statement${f}${t}.csv`;
+}
+
 // ── Share / download ──────────────────────────────────────────────────────────
 
 export async function shareCSV(csvString, filename) {
