@@ -8,6 +8,9 @@ import AnnouncementBarSlot     from "../components/slots/AnnouncementBarSlot";
 import TransactionDetailModal from "../components/shared/TransactionDetailModal";
 import { buildTransactionReceipt } from "../utils/receiptConfig";
 import { fmt, applyPeriodFilter, isBillPayment } from "../utils/helpers";
+import { usePlatformConfig } from "../hooks/usePlatformConfig";
+import { useWallet } from "../hooks/useWallet";
+import { walletLedgerToTxShape, isStandaloneWalletRow } from "../utils/walletTxAdapter";
 import PeriodFilter from "../components/shared/PeriodFilter";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
 import { TxRow } from "../components/shared/TxRow";
@@ -185,6 +188,12 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
 
   const { transactions, addTransaction, deleteTransaction, profile, staffMap = {}, asoClients = [] } = store;
 
+  // Wallet activity findable via search here too — kept OUT of filterBase/
+  // groupedSections/monthTotals (only merged into search results below), so
+  // it can never pollute the real in/out totals this screen reports.
+  const { walletEnabled } = usePlatformConfig();
+  const wallet = useWallet(profile?.id || null, walletEnabled);
+
   const asoClientMap = useMemo(() => {
     const m = {};
     asoClients.forEach(c => { m[c.id] = c; });
@@ -262,7 +271,7 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
   const searchedSections = useMemo(() => {
     if (!search) return groupedSections;
     const q = search.toLowerCase();
-    return groupedSections
+    const realSections = groupedSections
       .map(s => ({
         ...s,
         txns: s.txns.filter(tx =>
@@ -271,7 +280,19 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
         ),
       }))
       .filter(s => s.txns.length > 0);
-  }, [groupedSections, search]);
+
+    // Wallet matches — own section(s), grouped the same way, never merged
+    // into a real transaction section's totals.
+    if (!walletEnabled || !wallet.ledger?.length) return realSections;
+    const walletMatches = wallet.ledger
+      .filter(isStandaloneWalletRow)
+      .map(walletLedgerToTxShape)
+      .filter(tx => tx.item_name?.toLowerCase().includes(q) || tx.customer_name?.toLowerCase().includes(q));
+    if (walletMatches.length === 0) return realSections;
+    const walletSections = groupByDate(walletMatches).map(s => ({ ...s, key: `wallet-${s.key}`, isWallet: true }));
+
+    return [...realSections, ...walletSections].sort((a, b) => b.date - a.date);
+  }, [groupedSections, search, walletEnabled, wallet.ledger]);
 
   /* ── Paginated flat render list ── */
   const { visibleItems, totalRows } = useMemo(() => {
@@ -695,15 +716,21 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
               if (item.type === "header") {
                 return <SectionHeader key={item.key} label={item.label} net={item.net} />;
               }
+              const isWalletTx = item.tx.__source === "wallet";
+              const openReceipt = () => setReceipt(
+                isWalletTx
+                  ? wallet.receiptFor(item.tx.__raw, profile?.business_name, profile?.owner_name)
+                  : buildTransactionReceipt(item.tx, profile)
+              );
               return (
                 <TxRow
                   key={item.key}
                   tx={item.tx}
                   variant="transactions"
                   staffName={staffMap[item.tx.staff_id]}
-                  onClick={() => setReceipt(buildTransactionReceipt(item.tx, profile))}
-                  onSwipeReceipt={() => setReceipt(buildTransactionReceipt(item.tx, profile))}
-                  onSwipeDelete={setConfirmDeleteId}
+                  onClick={openReceipt}
+                  onSwipeReceipt={openReceipt}
+                  onSwipeDelete={isWalletTx ? undefined : setConfirmDeleteId}
                 />
               );
             })}

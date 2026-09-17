@@ -489,7 +489,7 @@ export function buildCoopLoanRepaymentReceipt(repayment, loan, memberName, orgNa
 export const cleanBankName = (n) =>
   String(n || '').replace(/\s*\((?:formerly|former|prev\.?|previously)[^)]*\)/i, '').trim();
 
-const WALLET_TITLES = {
+export const WALLET_TITLES = {
   topup:               'Wallet Funding',
   sale:                'Payment Received',
   bill_spend:          'Bill Payment',

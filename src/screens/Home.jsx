@@ -25,6 +25,7 @@ import TransactionDetailModal from "../components/shared/TransactionDetailModal"
 import { buildTransactionReceipt } from "../utils/receiptConfig";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
 import { useWallet } from "../hooks/useWallet";
+import { mergeWithWalletHistory } from "../utils/walletTxAdapter";
 import { FundWalletSheet, TransferSheet, ReceivePaymentSheet, WalletTxRow, cleanBankName, WalletMiniAction } from "../components/WalletPanel";
 
 const AJO_INCOME_TYPES = ["commission", "registration_fee", "withdrawal_fee"];
@@ -126,6 +127,19 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
   // ── Hero card: flip between Today's Sales and the wallet balance ──────────
   const { walletEnabled, walletTestMode, walletMaxWithdrawalKobo } = usePlatformConfig();
   const wallet = useWallet(profile?.id || null, walletEnabled);
+
+  // Wallet activity findable in the same "Recent Transactions" list/search —
+  // display-only merge, never touches `transactions` itself (profitEngine and
+  // everything else keep reading that array exactly as before).
+  const displayTransactions = useMemo(
+    () => walletEnabled ? mergeWithWalletHistory(transactions, wallet.ledger) : transactions,
+    [transactions, wallet.ledger, walletEnabled]
+  );
+  const openTxReceipt = (tx) => setReceipt(
+    tx.__source === "wallet"
+      ? wallet.receiptFor(tx.__raw, profile?.business_name, profile?.owner_name)
+      : buildTransactionReceipt(tx, profile)
+  );
   const [heroView, setHeroView] = useState(() =>
     localStorage.getItem("kt_home_hero") === "wallet" ? "wallet" : "sales");
   const [walletSheet, setWalletSheet] = useState(null);   // "fund" | "transfer" | "receive" | null
@@ -659,7 +673,7 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
           </div>
         ) : search ? (() => {
           const q = search.toLowerCase();
-          const results = transactions.filter(tx =>
+          const results = displayTransactions.filter(tx =>
             tx.item_name?.toLowerCase().includes(q) ||
             tx.customer_name?.toLowerCase().includes(q) ||
             tx.category?.toLowerCase().includes(q) ||
@@ -671,9 +685,9 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
               <p className="text-slate-300 dark:text-slate-600 text-xs mt-1">Try a different search term</p>
             </div>
           ) : (
-            <div className="space-y-2">{results.map(tx => <TxRow key={tx.id} tx={tx} onClick={() => setReceipt(buildTransactionReceipt(tx, profile))} hidden={balanceHidden} />)}</div>
+            <div className="space-y-2">{results.map(tx => <TxRow key={tx.id} tx={tx} onClick={() => openTxReceipt(tx)} hidden={balanceHidden} />)}</div>
           );
-        })() : transactions.length === 0 ? (
+        })() : displayTransactions.length === 0 ? (
           /* ── Warm new-business empty state ── */
           <div className="text-center py-12 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700/50">
             <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
@@ -693,10 +707,10 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
             </button>
           </div>
         ) : (() => {
-          const recent = transactions.slice(0, 5);
+          const recent = displayTransactions.slice(0, 5);
           const rows = [];
           recent.forEach((tx, i) => {
-            rows.push(<TxRow key={tx.id} tx={tx} onClick={() => setReceipt(buildTransactionReceipt(tx, profile))} hidden={balanceHidden} />);
+            rows.push(<TxRow key={tx.id} tx={tx} onClick={() => openTxReceipt(tx)} hidden={balanceHidden} />);
             if (i === 2 && feedCampaign) {
               rows.push(<FeedCardSlot key={`fc-${feedCampaign.id}`} campaign={feedCampaign} recordEvent={recordEvent} />);
             }
