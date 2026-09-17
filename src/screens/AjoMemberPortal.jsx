@@ -1025,6 +1025,7 @@ function MoneyEsusuCard({ rd, client, myContribution = 0, availableNow = 0, sele
   const t = useT();
   const myTurn = (rd.turns || []).find(turn => turn.client_id === client.id);
   const isCurrent = myTurn?.status === "current";
+  const myTurnPaid = myTurn?.status === "paid";
   const hasAvailable = availableNow > 0;
   const hasPaidContrib = !!rd.contribution_ticks?.[client.id];
   const statusLabel = hasAvailable ? t("ajoPt.payoutReceived") : isCurrent ? t("ajoPt.yourTurn") : t("ajoPt.waiting");
@@ -1055,7 +1056,11 @@ function MoneyEsusuCard({ rd, client, myContribution = 0, availableNow = 0, sele
           <span className="text-xs font-bold text-green-600 dark:text-green-400 tabular-nums block mt-1">{fmt(availableNow)} available</span>
         )}
         {mode === "withdraw" && !hasAvailable && myContribution > 0 && (
-          <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">{fmt(myContribution)} of your contributions locked in this circle — released on your payout turn</p>
+          <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">
+            {myTurnPaid
+              ? `${fmt(myContribution)} still committed to this round — your payout is already paid, this funds other members' turns`
+              : `${fmt(myContribution)} of your contributions locked in this circle — released on your payout turn`}
+          </p>
         )}
       </button>
       {selected && children && (
