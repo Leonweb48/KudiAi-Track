@@ -127,6 +127,10 @@ async function getFCMToken(sa: ServiceAccount): Promise<string | null> {
  * Returns the raw response body string so callers can log it for acceptance checks.
  * Prunes UNREGISTERED tokens from push_tokens automatically.
  */
+// Notification `type` values that should ring the branded wallet-credit
+// sound/channel instead of the generic "money_alerts" default sound.
+const WALLET_CREDIT_TYPES = new Set(["wallet_topup", "wallet_sale"]);
+
 async function sendFCMv1(
   sb:            ReturnType<typeof createClient>,
   token:         string,
@@ -135,6 +139,7 @@ async function sendFCMv1(
   deepLink:      Record<string, unknown> | null,
   priority:      string,
   unreadCount:   number,
+  type:          string,
 ): Promise<{ status: number; body: string }> {
   const saRaw = Deno.env.get("FIREBASE_SERVICE_ACCOUNT");
   if (!saRaw) return { status: 0, body: "FIREBASE_SERVICE_ACCOUNT not set" };
@@ -156,7 +161,9 @@ async function sendFCMv1(
   }
 
   // Channels move under android.notification in v1
-  const channelId = priority === "high" ? "money_alerts" : "updates";
+  const channelId = WALLET_CREDIT_TYPES.has(type)
+    ? "wallet_credit"
+    : priority === "high" ? "money_alerts" : "updates";
 
   const resp = await fetch(
     `https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`,
@@ -389,7 +396,7 @@ Deno.serve(async (req) => {
 
       if (tokens?.length) {
         const results = await Promise.all(
-          tokens.map(t => sendFCMv1(sb, t.token, title, bodyText ?? "", deepLink, priority, unreadCount))
+          tokens.map(t => sendFCMv1(sb, t.token, title, bodyText ?? "", deepLink, priority, unreadCount, type))
         );
         fcmResult = results[0] ?? null;
 

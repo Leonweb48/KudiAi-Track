@@ -51,6 +51,20 @@ async function createAndroidChannels(Push) {
       vibration:   true,
     });
   } catch (_e) {}
+  // Wallet credit alerts — distinct branded sound, separate channel because a
+  // channel's sound is fixed at creation and can't be changed on an existing
+  // one ("money_alerts" already shipped with "default").
+  try {
+    await Push.createChannel({
+      id:          "wallet_credit",
+      name:        "Wallet Credit Alerts",
+      description: "Money landing in your KudiAI wallet",
+      importance:  5,
+      visibility:  1,
+      sound:       "kudiai",
+      vibration:   true,
+    });
+  } catch (_e) {}
   try {
     await Push.createChannel({
       id:          "updates",
