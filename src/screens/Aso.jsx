@@ -3170,6 +3170,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                 <div className="grid grid-cols-2 gap-2">
                   {[
                     { label: "Total Saved",     value: targetStats.total_saved },
+                    ...(targetStats.total_received > 0 ? [{ label: "Payout Received", value: targetStats.total_received }] : []),
                     { label: "Total Withdrawn", value: targetStats.total_withdrawn },
                     { label: "Available",       value: targetStats.available, bold: true },
                     ...(targetStats.locked > 0 ? [{ label: "Locked", value: targetStats.locked, amber: true }] : []),
