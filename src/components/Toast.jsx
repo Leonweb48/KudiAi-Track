@@ -136,6 +136,17 @@ export function ToastProvider({ children, onDeepLink }) {
           </div>
         </div>
       )}
+      {/* Progress-bar shrink keyframe — owned here (not NotificationCenter,
+          which previously injected this by accident since it happens to
+          always be mounted wherever a toast could fire) since ToastProvider
+          is the one component guaranteed to be mounted whenever ToastTile
+          renders. */}
+      <style>{`
+        @keyframes kt-toast-shrink {
+          from { width: 100%; }
+          to   { width: 0%; }
+        }
+      `}</style>
     </ToastCtx.Provider>
   );
 }

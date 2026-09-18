@@ -653,7 +653,6 @@ export default function App() {
                   const target = (dl.tab === "credit" || dl.tab === "aso") ? "finance" : dl.tab;
                   navigate(target === "home" ? "/" : `/${target}`, (dl.id || dl.sub) ? { state: { id: dl.id, sub: dl.sub } } : undefined);
                 }}
-                toast={null}
               />
               <button onClick={() => navigate("/profile")} aria-label="Profile"
                 className="w-9 h-9 rounded-full border-2 border-slate-100 dark:border-slate-700 shadow-sm overflow-hidden active:scale-90 transition-transform">

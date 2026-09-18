@@ -35,12 +35,20 @@ export function useNotifications(userId, onNewNotification = null) {
   const [loading,       setLoading]       = useState(false);
   const [hasMore,       setHasMore]       = useState(false);
   const [page,          setPage]          = useState(0);
+  const [unreadCount,   setUnreadCount]   = useState(0);
 
-  // ── Derived ─────────────────────────────────────────────────────────────────
-  const unreadCount = useMemo(
-    () => notifications.filter(n => !n.read_at).length,
-    [notifications],
-  );
+  // ── Unread count: a real COUNT query, not derived from the paged rows ──────
+  // (the old approach undercounted once unread passed the current page size).
+  const refetchUnreadCount = useCallback(async () => {
+    if (!userId) { setUnreadCount(0); return; }
+    const { count } = await supabase
+      .from("notifications")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .is("read_at", null)
+      .is("dismissed_at", null);
+    setUnreadCount(count ?? 0);
+  }, [userId]);
 
   // Set of BottomNav tab IDs that have at least one unread high-priority notification
   const badgeTabs = useMemo(() => {
@@ -61,8 +69,9 @@ export function useNotifications(userId, onNewNotification = null) {
     const from = reset ? 0 : page * PAGE_SIZE;
     const { data, error } = await supabase
       .from("notifications")
-      .select("id,user_id,type,title,body,deep_link,priority,read_at,created_at")
+      .select("id,user_id,type,category,title,body,deep_link,priority,read_at,dismissed_at,created_at")
       .eq("user_id", userId)
+      .is("dismissed_at", null)
       .order("created_at", { ascending: false })
       .range(from, from + PAGE_SIZE - 1);
     setLoading(false);
@@ -76,9 +85,11 @@ export function useNotifications(userId, onNewNotification = null) {
   useEffect(() => {
     if (!userId) {
       setNotifications([]);
+      setUnreadCount(0);
       return;
     }
     fetchPage(true);
+    refetchUnreadCount();
   }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Realtime ─────────────────────────────────────────────────────────────────
@@ -86,10 +97,22 @@ export function useNotifications(userId, onNewNotification = null) {
     if (!userId) return;
     const channel = supabase.channel(`notifications_rt_${userId}_${instanceId.current}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` },
-        (p) => { setNotifications(prev => [p.new, ...prev]); onNewNotificationRef.current?.(p.new); },
+        (p) => {
+          if (p.new.dismissed_at) return;
+          setNotifications(prev => [p.new, ...prev]);
+          refetchUnreadCount();
+          onNewNotificationRef.current?.(p.new);
+        },
       )
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` },
-        (p) => setNotifications(prev => prev.map(n => n.id === p.new.id ? p.new : n)),
+        (p) => {
+          if (p.new.dismissed_at) {
+            setNotifications(prev => prev.filter(n => n.id !== p.new.id));
+          } else {
+            setNotifications(prev => prev.map(n => n.id === p.new.id ? p.new : n));
+          }
+          refetchUnreadCount();
+        },
       )
       .subscribe((status, err) => {
         if (err || status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
@@ -97,17 +120,36 @@ export function useNotifications(userId, onNewNotification = null) {
         }
       });
     return () => { supabase.removeChannel(channel); };
-  }, [userId]);
+  }, [userId, refetchUnreadCount]);
 
   // ── Actions ──────────────────────────────────────────────────────────────────
   const markRead = useCallback(async (id) => {
     const now = new Date().toISOString();
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read_at: now } : n));
+    setUnreadCount(c => Math.max(0, c - 1));
     await supabase.from("notifications").update({ read_at: now }).eq("id", id);
+  }, []);
+
+  // Swipe-left: soft dismiss (no DELETE policy exists on notifications by
+  // design — it's an audit trail). Also marks read so the badge stays
+  // accurate for an unread row the user swiped away without opening.
+  const dismiss = useCallback(async (id) => {
+    const now = new Date().toISOString();
+    let wasUnread = false;
+    setNotifications(prev => prev.filter(n => {
+      if (n.id === id && !n.read_at) wasUnread = true;
+      return n.id !== id;
+    }));
+    if (wasUnread) setUnreadCount(c => Math.max(0, c - 1));
+    await supabase.from("notifications")
+      .update({ dismissed_at: now, read_at: now })
+      .eq("id", id)
+      .is("dismissed_at", null);
   }, []);
 
   const markAllRead = useCallback(async () => {
     const now = new Date().toISOString();
+    setUnreadCount(0);
     setNotifications(prev => prev.map(n => ({ ...n, read_at: n.read_at || now })));
     await supabase.from("notifications")
       .update({ read_at: now })
@@ -117,5 +159,5 @@ export function useNotifications(userId, onNewNotification = null) {
 
   const loadMore = useCallback(() => { if (!loading && hasMore) fetchPage(false); }, [loading, hasMore, fetchPage]);
 
-  return { notifications, unreadCount, badgeTabs, loading, hasMore, loadMore, markRead, markAllRead };
+  return { notifications, unreadCount, badgeTabs, loading, hasMore, loadMore, markRead, markAllRead, dismiss };
 }

@@ -39,6 +39,7 @@
   --z-nav:         40;
   --z-floating:    55;
   --z-sheet:       60;
+  --z-drawer:      65;
   --z-sub-sheet:   70;
   --z-modal:       100;
   --z-lock:        200;
