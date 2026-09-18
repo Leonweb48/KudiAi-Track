@@ -168,6 +168,7 @@ async function sendFCMv1(
   priority:      string,
   unreadCount:   number,
   type:          string,
+  category:      string,
 ): Promise<{ status: number; body: string }> {
   const saRaw = Deno.env.get("FIREBASE_SERVICE_ACCOUNT");
   if (!saRaw) return { status: 0, body: "FIREBASE_SERVICE_ACCOUNT not set" };
@@ -188,10 +189,14 @@ async function sendFCMv1(
     data["groupSummaryDeepLink"] = JSON.stringify({ tab: "home", openNotifications: true });
   }
 
-  // Channels move under android.notification in v1
+  // Channels move under android.notification in v1. wallet_topup/wallet_sale
+  // keep the dedicated branded channel (money landing IN, distinct from every
+  // other money category event) — everything else routes by category.
+  const meta      = CATEGORY_META[category];
   const channelId = WALLET_CREDIT_TYPES.has(type)
     ? "wallet_credit"
-    : priority === "high" ? "money_alerts" : "updates";
+    : meta?.channelId ?? (priority === "high" ? "money_alerts" : "updates");
+  const color = meta?.color ?? "#3DA829";
 
   const resp = await fetch(
     `https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`,
@@ -210,7 +215,7 @@ async function sendFCMv1(
             priority: priority === "high" ? "HIGH" : "NORMAL",
             notification: {
               icon:               "ic_notification",
-              color:              "#3DA829",
+              color,
               channel_id:         channelId,
               // Badge / shade count — shows total unread when > 1
               notification_count: unreadCount > 1 ? unreadCount : undefined,
@@ -425,7 +430,7 @@ Deno.serve(async (req) => {
 
       if (tokens?.length) {
         const results = await Promise.all(
-          tokens.map(t => sendFCMv1(sb, t.token, title, bodyText ?? "", deepLink, priority, unreadCount, type))
+          tokens.map(t => sendFCMv1(sb, t.token, title, bodyText ?? "", deepLink, priority, unreadCount, type, category))
         );
         fcmResult = results[0] ?? null;
 

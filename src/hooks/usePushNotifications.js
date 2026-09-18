@@ -39,6 +39,17 @@ async function registerToken(userId, token) {
   }
 }
 
+// One channel per notification category (src/lib/notificationCategories.js /
+// notify-send's CATEGORY_META) so Android lets a user silence one category
+// (e.g. Stock) without silencing another (e.g. Money) — each is a distinct
+// channel id, never reusing "money_alerts" or "wallet_credit"'s ids, since a
+// channel's sound/importance is fixed at creation and silently won't update
+// for anyone who already has the app installed (documented below, was
+// already true before this changed — see the wallet_credit split).
+// Reuses the existing "kudiai" custom sound asset for every new channel
+// (a real, already-shipped audio file) rather than the harsh Android
+// default beep — there's no second bespoke chime per category, just this
+// one branded sound applied consistently.
 async function createAndroidChannels(Push) {
   try {
     await Push.createChannel({
@@ -60,6 +71,82 @@ async function createAndroidChannels(Push) {
       name:        "Wallet Credit Alerts",
       description: "Money landing in your KudiAI wallet",
       importance:  5,
+      visibility:  1,
+      sound:       "kudiai",
+      vibration:   true,
+    });
+  } catch (_e) {}
+  try {
+    await Push.createChannel({
+      id:          "savings_alerts",
+      name:        "Ajo & Savings",
+      description: "Contributions, withdrawals, and savings activity",
+      importance:  4,
+      visibility:  1,
+      sound:       "kudiai",
+      vibration:   true,
+    });
+  } catch (_e) {}
+  try {
+    await Push.createChannel({
+      id:          "credit_alerts",
+      name:        "Credit & Invoice",
+      description: "Credit sales, repayments, and invoices",
+      importance:  4,
+      visibility:  1,
+      sound:       "kudiai",
+      vibration:   true,
+    });
+  } catch (_e) {}
+  try {
+    await Push.createChannel({
+      id:          "alert_notifications",
+      name:        "Alerts & Warnings",
+      description: "Unusual transactions and account warnings",
+      importance:  5,
+      visibility:  1,
+      sound:       "kudiai",
+      vibration:   true,
+    });
+  } catch (_e) {}
+  try {
+    await Push.createChannel({
+      id:          "stock_alerts",
+      name:        "Stock",
+      description: "Low stock and restock alerts",
+      importance:  4,
+      visibility:  1,
+      sound:       "kudiai",
+      vibration:   true,
+    });
+  } catch (_e) {}
+  try {
+    await Push.createChannel({
+      id:          "bills_alerts",
+      name:        "Bills & Payments",
+      description: "Airtime, data, and bill payment confirmations",
+      importance:  4,
+      visibility:  1,
+      sound:       "kudiai",
+      vibration:   true,
+    });
+  } catch (_e) {}
+  try {
+    await Push.createChannel({
+      id:          "account_updates",
+      name:        "Account & System",
+      description: "Permission changes and account activity",
+      importance:  3,
+      visibility:  1,
+      sound:       "kudiai",
+    });
+  } catch (_e) {}
+  try {
+    await Push.createChannel({
+      id:          "milestones",
+      name:        "Milestones",
+      description: "Sales and savings milestones you've reached",
+      importance:  4,
       visibility:  1,
       sound:       "kudiai",
       vibration:   true,
