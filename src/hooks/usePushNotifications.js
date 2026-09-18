@@ -8,6 +8,7 @@
 
 import { useEffect, useRef } from "react";
 import { supabase } from "../utils/supabase";
+import { syncWebPushToken } from "../utils/webPush";
 
 const PROMPTED_KEY  = "kt_push_prompted";
 const PUSH_TOKEN_KEY = "kt_push_token";
@@ -169,6 +170,36 @@ export function usePushNotifications(userId, onDeepLink) {
   const onDeepLinkRef = useRef(onDeepLink);
   useEffect(() => { onDeepLinkRef.current = onDeepLink; }, [onDeepLink]);
 
+  // Browser sessions: a click on a web push notification either messages an
+  // already-open tab (kt-push-click) or cold-opens the site with ?kt_dl=…
+  // (see public/push-sw.js). Native sessions never hit either path.
+  useEffect(() => {
+    if (isNative() || typeof window === "undefined") return;
+
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const raw = params.get("kt_dl");
+      if (raw) {
+        params.delete("kt_dl");
+        const qs = params.toString();
+        window.history.replaceState({}, "", window.location.pathname + (qs ? "?" + qs : "") + window.location.hash);
+        const parsed = JSON.parse(raw);
+        setTimeout(() => onDeepLinkRef.current?.(parsed), 800); // let the portal mount first
+      }
+    } catch { /* malformed link — ignore */ }
+
+    if (!("serviceWorker" in navigator)) return;
+    const onMessage = (e) => {
+      if (e.data?.type !== "kt-push-click") return;
+      try {
+        const dl = typeof e.data.deepLink === "string" ? JSON.parse(e.data.deepLink) : e.data.deepLink;
+        onDeepLinkRef.current?.(dl);
+      } catch { /* malformed link — ignore */ }
+    };
+    navigator.serviceWorker.addEventListener("message", onMessage);
+    return () => navigator.serviceWorker.removeEventListener("message", onMessage);
+  }, []);
+
   useEffect(() => {
     if (!userId || registered.current) return;
     registered.current = true;
@@ -178,7 +209,12 @@ export function usePushNotifications(userId, onDeepLink) {
     (async () => {
       try {
         const Push = getPushPlugin();
-        if (!Push) return;
+        if (!Push) {
+          // Browser session: re-register the web push token if the user already
+          // allowed notifications (tokens rotate). Never prompts.
+          syncWebPushToken(userId);
+          return;
+        }
 
         await createAndroidChannels(Push);
 

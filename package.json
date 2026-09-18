@@ -20,6 +20,7 @@
     "@fontsource/noto-sans": "^5.2.10",
     "@supabase/supabase-js": "^2.107.0",
     "autoprefixer": "^10.4.0",
+    "firebase": "^12.19.0",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
     "nodemailer": "^8.0.10",

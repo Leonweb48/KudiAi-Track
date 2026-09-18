@@ -221,6 +221,13 @@ async function sendFCMv1(
               notification_count: unreadCount > 1 ? unreadCount : undefined,
             },
           },
+          // Browser (web) tokens — ignored for Android tokens. Click handling
+          // is done by public/push-sw.js from data.deepLink, so no
+          // fcm_options.link here (it would race that handler).
+          webpush: {
+            headers: { Urgency: priority === "high" ? "high" : "normal" },
+            notification: { icon: "https://kudiai.app/icon.png" },
+          },
         },
       }),
     },

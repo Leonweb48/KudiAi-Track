@@ -12,6 +12,8 @@ generateSW({
   navigateFallbackDenylist: [/^\/api\//],
   skipWaiting: true,
   clientsClaim: true,
+  // Browser push (public/push-sw.js): raw push + notificationclick handlers.
+  importScripts: ["push-sw.js"],
   runtimeCaching: [
     {
       urlPattern: /^https:\/\/.*\.supabase\.co\//,

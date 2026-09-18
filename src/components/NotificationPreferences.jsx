@@ -7,6 +7,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../utils/supabase";
 import Modal from "./shared/Modal";
+import { webPushSupported, webPushConfigured, webPushPermission, needsIosInstall, enableWebPush } from "../utils/webPush";
 
 // ── Native push helpers ────────────────────────────────────────────────────────
 function isNative() {
@@ -145,6 +146,20 @@ export default function NotificationPreferences({ userId, onClose, portal = "own
   const [enabling,     setEnabling]     = useState(false);
   const [enableResult, setEnableResult] = useState(null); // "ok"|"denied"|"timeout"|"error"
 
+  // Browser (web) push state — separate from the native Android flow above
+  const [webStatus,    setWebStatus]    = useState(() => webPushPermission()); // "default"|"granted"|"denied"|"unsupported"
+  const [webEnabling,  setWebEnabling]  = useState(false);
+  const [webResult,    setWebResult]    = useState(null); // "ok"|"denied"|"dismissed"|"error"
+
+  const handleEnableWeb = useCallback(async () => {
+    setWebEnabling(true);
+    setWebResult(null);
+    const result = await enableWebPush(userId);
+    setWebResult(result);
+    setWebStatus(webPushPermission());
+    setWebEnabling(false);
+  }, [userId]);
+
   // Load saved preferences
   useEffect(() => {
     if (!userId) return;
@@ -262,7 +277,7 @@ export default function NotificationPreferences({ userId, onClose, portal = "own
             />
             <PrefRow
               label="Push Notifications"
-              sub="Android alerts when the app is closed"
+              sub="Alerts when the app is closed (Android app and browser)"
               on={prefs.push_enabled}
               onChange={update("push_enabled")}
             />
@@ -324,6 +339,51 @@ export default function NotificationPreferences({ userId, onClose, portal = "own
                 <InfoMsg type="error">Something went wrong. Try restarting the app.</InfoMsg>
               )}
 
+            </div>
+          )}
+
+          {/* ── Browser push (web only) ── */}
+          {!isNative() && webPushConfigured() && webPushSupported() && (
+            <div className="mt-3 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 px-4 py-4 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[13px] font-semibold text-slate-700 dark:text-slate-200">Browser notifications</p>
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">Alerts on this device even when the tab is closed</p>
+                </div>
+                <StatusPill status={webStatus === "default" ? "prompt" : webStatus} />
+              </div>
+
+              {webStatus !== "granted" && webStatus !== "denied" && (
+                <button
+                  onClick={handleEnableWeb}
+                  disabled={webEnabling}
+                  className="w-full py-2.5 rounded-xl text-[13px] font-bold text-white bg-[#16255A] active:opacity-80 transition-opacity disabled:opacity-60"
+                >
+                  {webEnabling ? "Waiting for your browser…" : "Enable browser notifications"}
+                </button>
+              )}
+
+              {webStatus === "denied" && (
+                <InfoMsg type="warn">
+                  Notifications are blocked for this site. Click the padlock icon beside the address bar → Site settings → Notifications → Allow, then reload the page.
+                </InfoMsg>
+              )}
+              {webResult === "ok" && (
+                <InfoMsg type="success">Browser notifications are on for this device.</InfoMsg>
+              )}
+              {webResult === "dismissed" && (
+                <InfoMsg type="warn">You closed the permission prompt — tap the button again whenever you're ready.</InfoMsg>
+              )}
+              {webResult === "error" && (
+                <InfoMsg type="error">Couldn't turn on browser notifications. Try again, or reload the page first.</InfoMsg>
+              )}
+            </div>
+          )}
+          {!isNative() && webPushConfigured() && needsIosInstall() && (
+            <div className="mt-3 px-1">
+              <InfoMsg type="info">
+                On iPhone or iPad: tap Share → Add to Home Screen, then open KudiAI Track from your Home Screen to turn on notifications.
+              </InfoMsg>
             </div>
           )}
 
