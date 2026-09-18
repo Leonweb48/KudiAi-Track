@@ -3344,11 +3344,17 @@ export default function CoopMemberPortal({ member: initialMember, pinLock }) {
     setShowMore(false);
   }, []);
 
-  usePushNotifications(member?.user_id ?? null, (dl) => {
+  // One handler for both entry points (push tap + bell drawer). The server sends
+  // `savings` for balance/deduction alerts; a member's savings ledger lives on the
+  // Contributions tab, and there is no tab called "savings" (it used to fall to Home).
+  const openDeepLink = (dl) => {
     if (!dl?.tab) return;
     const COOP_MEMBER_TABS = ["home","contributions","loans","messages","bills","broadcast","support","officer"];
-    navigateTo(COOP_MEMBER_TABS.includes(dl.tab) ? dl.tab : "home");
-  });
+    const tabId = dl.tab === "savings" ? "contributions" : dl.tab;
+    navigateTo(COOP_MEMBER_TABS.includes(tabId) ? tabId : "home");
+  };
+
+  usePushNotifications(member?.user_id ?? null, openDeepLink);
 
   const openQuickService = useCallback((serviceId) => {
     setBillsAutoSvc(serviceId);
@@ -3399,11 +3405,7 @@ export default function CoopMemberPortal({ member: initialMember, pinLock }) {
           <div className="flex items-center gap-2 flex-shrink-0">
               <NotificationCenter
                 userId={member?.user_id ?? null}
-                onNavigate={(dl) => {
-                  if (!dl?.tab) return;
-                  const COOP_MEMBER_TABS = ["home","contributions","loans","messages","bills","broadcast","support","officer"];
-                  navigateTo(COOP_MEMBER_TABS.includes(dl.tab) ? dl.tab : "home");
-                }}
+                onNavigate={openDeepLink}
                 toast={toast}
               />
             <button onClick={() => setShowProfile(true)} className="active:scale-90 transition-transform">
