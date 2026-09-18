@@ -28,6 +28,7 @@ import { LANGUAGES, markLangChosen } from "../utils/i18n";
 import { createReportPdf, fmtCurrency as pdfFmt, fmtDate as pdfFmtDate } from "../utils/generateReportPdf";
 import { allocatePeriods } from "../utils/allocatePeriods.mjs";
 import NotificationCenter from "../components/NotificationCenter";
+import NotificationPreferences from "../components/NotificationPreferences";
 import { useToast } from "../components/Toast";
 import SyncBar from "../components/SyncBar";
 import { useOnlineStatus } from "../hooks/useOnlineStatus";
@@ -3597,6 +3598,7 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
   const { lang, changeLang } = useLanguage();
   const [view,           setView]           = useState("menu");
   const [showLang,       setShowLang]       = useState(false);
+  const [showNotifPrefs, setShowNotifPrefs] = useState(false);
 
   const briefUserId = session?.user?.id;
   const [briefEnabled, setBriefEnabled] = useState(() => {
@@ -4580,6 +4582,9 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
           <Row iconCls="bg-blue-50 dark:bg-blue-900/20" icon={<RowIcon d="M12 2a10 10 0 100 20A10 10 0 0012 2z|M2 12h20|M12 2c-5 0-8 4.5-8 10s3 10 8 10 8-4.5 8-10S17 2 12 2z" color="#3b82f6" />}
             label="Language" sub={LANGUAGES.find(l => l.code === lang)?.native || "English"}
             onClick={() => setShowLang(true)} />
+          <Row iconCls="bg-brand-50 dark:bg-brand-900/20" icon={<RowIcon d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9|M13.73 21a2 2 0 01-3.46 0" color="#3DA829" />}
+            label="Notification Preferences" sub="Push alerts and category toggles"
+            onClick={() => setShowNotifPrefs(true)} />
         </SettingsCard>
       </div>
 
@@ -4886,6 +4891,14 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
           await pinLock.setupAppPin(pin);
           await pinLock.registerBiometric();
         }} />
+      )}
+
+      {showNotifPrefs && (
+        <NotificationPreferences
+          userId={session?.user?.id}
+          portal="ajo"
+          onClose={() => setShowNotifPrefs(false)}
+        />
       )}
 
       {showLang && (

@@ -84,23 +84,36 @@ function InfoMsg({ children, type = "info" }) {
 }
 
 const DEFAULT_PREFS = {
-  push_enabled:     true,
-  pref_money:       true,
-  pref_savings:     true,
-  pref_stock:       true,
-  pref_permissions: true,
-  pref_approvals:   true,
+  push_enabled:                true,
+  pref_money:                  true,
+  pref_savings:                true,
+  pref_stock:                  true,
+  pref_permissions:            true,
+  pref_approvals:              true,
+  pref_credit:                 true,
+  pref_alert:                  true,
+  pref_bills:                  true,
+  pref_milestone:              true,
+  email_enabled:               true,
+  large_txn_threshold:         null,
 };
+
+const PREF_COLUMNS = "push_enabled, pref_money, pref_savings, pref_stock, pref_permissions, pref_approvals, pref_credit, pref_alert, pref_bills, pref_milestone, email_enabled, large_txn_threshold";
 
 // Category rows shown per portal
 const PORTAL_CATEGORIES = {
   owner: [
-    { field: "pref_money",   label: "Money & Approvals",   sub: "Collections, withdrawals, capital alerts, security holds" },
-    { field: "pref_savings", label: "Savings Activity",    sub: "Contribution approvals, payouts, group updates" },
-    { field: "pref_stock",   label: "Stock Alerts",        sub: "Low inventory warnings" },
+    { field: "pref_money",     label: "Money & Sales",      sub: "Sales, cash-ins, withdrawals, security holds" },
+    { field: "pref_savings",   label: "Ajo & Savings",      sub: "Contributions, payouts, collection reminders" },
+    { field: "pref_credit",    label: "Credit & Invoice",   sub: "Credit sales, repayments, due reminders, invoices" },
+    { field: "pref_alert",     label: "Alerts & Warnings",  sub: "Unusual transactions, capital alerts" },
+    { field: "pref_stock",     label: "Stock",              sub: "Low inventory warnings" },
+    { field: "pref_bills",     label: "Bills & Payments",   sub: "Airtime, data, and bill payment confirmations" },
+    { field: "pref_milestone", label: "Milestones",         sub: "Sales targets reached" },
   ],
   staff: [
     { field: "pref_money",       label: "Money Alerts",        sub: "Security holds, cash-in alerts" },
+    { field: "pref_credit",      label: "Credit Sales",        sub: "Credit extended and repayments" },
     { field: "pref_approvals",   label: "Collection Approvals", sub: "Approval and rejection of your recorded collections" },
     { field: "pref_permissions", label: "Permissions & Access", sub: "Permission changes, shift updates, invitations" },
   ],
@@ -112,6 +125,11 @@ const PORTAL_CATEGORIES = {
   ajo: [
     { field: "pref_savings", label: "Savings Activity",    sub: "Contribution approvals, payouts, group releases" },
     { field: "pref_money",   label: "Money Transactions",  sub: "Deposits confirmed/rejected, withdrawals approved/rejected" },
+  ],
+  coop: [
+    { field: "pref_savings", label: "Savings & Programs",  sub: "Savings activity, programs, announcements" },
+    { field: "pref_credit",  label: "Loans",               sub: "Loan requests, approvals, repayments" },
+    { field: "pref_money",   label: "Money Transactions",  sub: "Withdrawals and disbursements" },
   ],
 };
 
@@ -133,7 +151,7 @@ export default function NotificationPreferences({ userId, onClose, portal = "own
     (async () => {
       const { data } = await supabase
         .from("notification_preferences")
-        .select("push_enabled, pref_money, pref_savings, pref_stock, pref_permissions, pref_approvals")
+        .select(PREF_COLUMNS)
         .eq("user_id", userId)
         .maybeSingle();
       setPrefs({ ...DEFAULT_PREFS, ...(data ?? {}) });
@@ -159,14 +177,20 @@ export default function NotificationPreferences({ userId, onClose, portal = "own
   const save = async () => {
     setSaving(true);
     await supabase.from("notification_preferences").upsert({
-      user_id:          userId,
-      push_enabled:     prefs.push_enabled,
-      pref_money:       prefs.pref_money,
-      pref_savings:     prefs.pref_savings,
-      pref_stock:       prefs.pref_stock,
-      pref_permissions: prefs.pref_permissions,
-      pref_approvals:   prefs.pref_approvals,
-      updated_at:       new Date().toISOString(),
+      user_id:                     userId,
+      push_enabled:                prefs.push_enabled,
+      pref_money:                  prefs.pref_money,
+      pref_savings:                prefs.pref_savings,
+      pref_stock:                  prefs.pref_stock,
+      pref_permissions:            prefs.pref_permissions,
+      pref_approvals:              prefs.pref_approvals,
+      pref_credit:                 prefs.pref_credit,
+      pref_alert:                  prefs.pref_alert,
+      pref_bills:                  prefs.pref_bills,
+      pref_milestone:              prefs.pref_milestone,
+      email_enabled:               prefs.email_enabled,
+      large_txn_threshold:         prefs.large_txn_threshold || null,
+      updated_at:                  new Date().toISOString(),
     }, { onConflict: "user_id" });
     setSaving(false);
     setSaved(true);
@@ -242,6 +266,14 @@ export default function NotificationPreferences({ userId, onClose, portal = "own
               on={prefs.push_enabled}
               onChange={update("push_enabled")}
             />
+            {portal === "owner" && (
+              <PrefRow
+                label="Summary & Alert Emails"
+                sub="Daily summary, low-stock, and bill payment emails"
+                on={prefs.email_enabled}
+                onChange={update("email_enabled")}
+              />
+            )}
           </div>
 
           {/* ── Native push permission card (device only) ── */}
@@ -308,6 +340,27 @@ export default function NotificationPreferences({ userId, onClose, portal = "own
               />
             ))}
           </div>
+
+          {/* ── Thresholds (owner only) ── */}
+          {portal === "owner" && (
+            <>
+              <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider pt-5 pb-1">Thresholds</p>
+              <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-700 px-4">
+                <div className="py-3.5">
+                  <p className="text-[14px] font-semibold text-slate-800 dark:text-slate-100">Large transaction alert (₦)</p>
+                  <p className="text-[12px] text-slate-400 dark:text-slate-500 mt-0.5 mb-2">
+                    Flags a staff-recorded transaction at or above this amount. Default ₦50,000.
+                  </p>
+                  <input
+                    type="number" min="0" inputMode="numeric" placeholder="50000"
+                    value={prefs.large_txn_threshold ?? ""}
+                    onChange={e => update("large_txn_threshold")(e.target.value === "" ? null : parseFloat(e.target.value) || 0)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-[14px] text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-400"
+                  />
+                </div>
+              </div>
+            </>
+          )}
 
           <button
             onClick={save}

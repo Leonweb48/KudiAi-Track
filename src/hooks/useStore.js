@@ -7,6 +7,7 @@ import { logAudit } from "../utils/auditLog";
 import { sendEmailTrigger } from "../utils/emailTrigger";
 import { compute, computeCapital } from "../lib/profitEngine";
 import { notify, notifyBranchManager } from "../lib/notifyEngine";
+import { emailAllowed } from "../utils/emailPref";
 import { savePendingOp, getPendingCount, getPendingOps } from "../utils/offlineDb";
 import { syncPending } from "../utils/syncManager";
 
@@ -289,7 +290,8 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
               )
             : null;
 
-          fireEmailTrigger("daily_summary", {
+          const dailyEmailOk = await emailAllowed(userId);
+          if (dailyEmailOk) fireEmailTrigger("daily_summary", {
             owner_id:         userId,
             owner_email:      authEmailRef.current,
             business_name:    profRes.data?.business_name || "",
@@ -748,9 +750,15 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
         // existing "owner self-recordings are silent" convention above
         // (the owner doesn't need telling about their own action; a
         // staff-recorded outsized one is the actual anomaly worth flagging).
-        // LARGE_TXN_THRESHOLD is a fixed default for now — a later phase
-        // makes this a per-owner setting.
-        if ((parseFloat(t.amount) || 0) >= LARGE_TXN_THRESHOLD) {
+        // Owner-configurable threshold (Settings → Notifications), falling
+        // back to the fixed default when unset.
+        const { data: txnPrefs } = await supabase
+          .from("notification_preferences")
+          .select("large_txn_threshold")
+          .eq("user_id", userId)
+          .maybeSingle();
+        const largeTxnThreshold = txnPrefs?.large_txn_threshold || LARGE_TXN_THRESHOLD;
+        if ((parseFloat(t.amount) || 0) >= largeTxnThreshold) {
           notify({
             type:         "large_transaction_alert",
             userId,

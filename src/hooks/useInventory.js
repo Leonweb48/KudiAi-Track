@@ -3,6 +3,7 @@ import { supabase } from "../utils/supabase";
 import { uid } from "../utils/helpers";
 import { sendEmailTrigger } from "../utils/emailTrigger";
 import { notify, notifyBranchManager, notifyBranchStaff } from "../lib/notifyEngine";
+import { emailAllowed } from "../utils/emailPref";
 
 function invCacheKey(userId, staffId) {
   return `kt_inv_${userId}${staffId ? `_${staffId}` : ""}`;
@@ -358,14 +359,17 @@ export function useInventory(userId, staffId = null, branchId = null, staffName 
     if (newQty <= product.low_stock_threshold) {
       // Fire email + push once when crossing below threshold (not on every subsequent sale)
       if (product.quantity > product.low_stock_threshold) {
-        sendEmailTrigger("low_stock_alert", {
-          owner_id:      userId,
-          staff_id:      staffId || null,
-          product_name:  product.product_name,
-          current_stock: newQty,
-          reorder_level: product.low_stock_threshold,
-          category:      product.category || null,
-          sku:           product.sku || "",
+        emailAllowed(userId).then(ok => {
+          if (!ok) return;
+          sendEmailTrigger("low_stock_alert", {
+            owner_id:      userId,
+            staff_id:      staffId || null,
+            product_name:  product.product_name,
+            current_stock: newQty,
+            reorder_level: product.low_stock_threshold,
+            category:      product.category || null,
+            sku:           product.sku || "",
+          });
         });
         notify({
           type:         "low_stock",

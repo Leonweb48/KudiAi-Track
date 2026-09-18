@@ -29,6 +29,7 @@ import TabCardDuoSlot from "../components/slots/TabCardDuoSlot";
 import { createReportPdf, fmtCurrency as pdfFmt, fmtDate as pdfFmtDate } from "../utils/generateReportPdf";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
 import NotificationCenter from "../components/NotificationCenter";
+import NotificationPreferences from "../components/NotificationPreferences";
 import { usePushNotifications } from "../hooks/usePushNotifications";
 import { useToast } from "../components/Toast";
 import SyncBar from "../components/SyncBar";
@@ -3066,6 +3067,7 @@ export default function CoopMemberPortal({ member: initialMember, pinLock }) {
   const { isDark, toggle: toggleDark } = useTheme();
   const { lang, changeLang } = useLanguage();
   const [showLang,      setShowLang]      = useState(false);
+  const [showNotifPrefs, setShowNotifPrefs] = useState(false);
   const [member,        setMember]        = useState(initialMember);
   const [coopReloadKey, setCoopReloadKey] = useState(0);
 
@@ -3590,6 +3592,16 @@ export default function CoopMemberPortal({ member: initialMember, pinLock }) {
                   <span className="text-sm font-semibold flex-1 text-left">Language</span>
                   <span className="text-xs text-slate-400">{LANGUAGES.find(l => l.code === lang)?.native || "English"}</span>
                 </button>
+                {/* Notification preferences */}
+                <button onClick={() => { setShowNotifPrefs(true); setShowMore(false); }}
+                  className="w-full flex items-center gap-4 px-5 py-3.5 text-slate-700 dark:text-slate-200 transition-colors">
+                  <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 bg-brand-50 dark:bg-brand-900/20">
+                    <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" stroke="#3DA829">
+                      <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0"/>
+                    </svg>
+                  </div>
+                  <span className="text-sm font-semibold">Notification Preferences</span>
+                </button>
                 {/* Security */}
                 <button onClick={() => { setShowSecurity(true); setShowMore(false); }}
                   className="w-full flex items-center gap-4 px-5 py-3.5 text-slate-700 dark:text-slate-200 transition-colors">
@@ -3699,6 +3711,14 @@ export default function CoopMemberPortal({ member: initialMember, pinLock }) {
           </div>
         </div>
       )}
+      {showNotifPrefs && (
+        <NotificationPreferences
+          userId={member?.user_id ?? null}
+          portal="coop"
+          onClose={() => setShowNotifPrefs(false)}
+        />
+      )}
+
       {showLang && (
         <Modal title="Language" onClose={() => setShowLang(false)}>
           <div className="space-y-2 px-4 pb-4">

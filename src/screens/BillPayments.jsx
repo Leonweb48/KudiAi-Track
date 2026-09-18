@@ -17,6 +17,7 @@ import { ReceiptCard } from "../components/shared/ReceiptCard";
 import SupportTicketModal from "../components/shared/SupportTicketModal";
 import { supabase } from "../utils/supabase";
 import { notify } from "../lib/notifyEngine";
+import { emailAllowed } from "../utils/emailPref";
 import { lookupDataPrice } from "../data/billPrices";
 import LoanApplicationModal from "../components/LoanApplicationModal";
 import TransactionPinModal  from "../components/TransactionPinModal";
@@ -2773,9 +2774,12 @@ export default function BillPayments({ store, plan, session = null, staffName = 
             Promise.resolve(supabase.from("transactions").update(dbPatch).eq("id", _txnId)).catch(() => {});
             patchTransactionNote(_txnId, updatedNote);
           }
-          supabase.functions.invoke("clubkonnect", {
-            body: { action: "bill-success-email", user_email: _email, user_name: _name, service: "Electricity", amount: _amount, reference: _ref, detail: updatedNote },
-          }).catch(() => {});
+          emailAllowed(ownerId).then(ok => {
+            if (!ok) return;
+            supabase.functions.invoke("clubkonnect", {
+              body: { action: "bill-success-email", user_email: _email, user_name: _name, service: "Electricity", amount: _amount, reference: _ref, detail: updatedNote },
+            }).catch(() => {});
+          });
           notify({
             type: "bill_payment_delivered", userId: ownerId, originUserId: session?.user?.id,
             data: { service: "Electricity", amount: _amount, reference: _ref, detail: updatedNote },
@@ -2796,9 +2800,11 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         }
         // Send success confirmation emails immediately (best-effort)
         try {
-          await supabase.functions.invoke("clubkonnect", {
-            body: { action: "bill-success-email", user_email: profile?.email || null, user_name: profile?.owner_name || profile?.business_name || null, service: svcLabel, amount: totalAmount || amount, reference: ref, detail: cleanDetail, pins: emailPins || undefined },
-          });
+          if (await emailAllowed(ownerId)) {
+            await supabase.functions.invoke("clubkonnect", {
+              body: { action: "bill-success-email", user_email: profile?.email || null, user_name: profile?.owner_name || profile?.business_name || null, service: svcLabel, amount: totalAmount || amount, reference: ref, detail: cleanDetail, pins: emailPins || undefined },
+            });
+          }
         } catch (_) {}
         notify({
           type: "bill_payment_delivered", userId: ownerId, originUserId: session?.user?.id,
