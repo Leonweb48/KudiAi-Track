@@ -305,7 +305,7 @@ serve(async (req) => {
         body:     `${full_name.trim()} wants to register as your savings client — review and set their terms.`,
         priority: "high",
         deepLink: { tab: "aso" },
-        category: "ajo",
+        category: "savings",
       });
 
       // Owner email — best-effort, never blocks the registration itself.

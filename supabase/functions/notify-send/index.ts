@@ -26,12 +26,40 @@ const FLOOD_WINDOW_MS  = 3 * 60 * 1000; // 3 minutes — suppress repeat FCM wit
 const FLOOD_THRESHOLD  = 3;             // rollup body kicks in after this many collapsed events
 
 // ── Category → preference field map ─────────────────────────────────────────
+// "permissions"/"approvals" keep their own dedicated pref columns (finer-
+// grained than the 8-bucket visual taxonomy below) rather than collapsing
+// into a single "account" pref — an owner can still mute one without the
+// other. Both visually render as the same Account/System (slate) bucket —
+// see CATEGORY_META.
 const CAT_PREF: Record<string, string> = {
   money:       "pref_money",
   savings:     "pref_savings",
   stock:       "pref_stock",
   permissions: "pref_permissions",
   approvals:   "pref_approvals",
+  credit:      "pref_credit",
+  alert:       "pref_alert",
+  bills:       "pref_bills",
+  milestone:   "pref_milestone",
+};
+
+// ── Category → visual/channel metadata (hex + Android channel id) ──────────
+// Not yet consumed by sendFCMv1's payload construction — that wiring lands
+// in the push-notification redesign phase, which also bundles the matching
+// per-category Android drawables. Defined here now so `category` has a
+// single source of truth from the start. "permissions"/"approvals" share
+// the Account/System bucket visually despite having separate pref columns
+// above.
+const CATEGORY_META: Record<string, { color: string; channelId: string }> = {
+  money:       { color: "#3DA829", channelId: "money_alerts" },
+  savings:     { color: "#F59E0B", channelId: "savings_alerts" },
+  credit:      { color: "#3B82F6", channelId: "credit_alerts" },
+  alert:       { color: "#EF4444", channelId: "alert_notifications" },
+  stock:       { color: "#8B5CF6", channelId: "stock_alerts" },
+  bills:       { color: "#14B8A6", channelId: "bills_alerts" },
+  milestone:   { color: "#CA8A04", channelId: "milestones" },
+  permissions: { color: "#64748B", channelId: "account_updates" },
+  approvals:   { color: "#64748B", channelId: "account_updates" },
 };
 
 // ── FCM HTTP v1 via OAuth2 service-account JWT ───────────────────────────────
@@ -308,7 +336,7 @@ Deno.serve(async (req) => {
 
     // Preference check
     const { data: prefs } = await sb.from("notification_preferences")
-      .select("push_enabled, pref_money, pref_savings, pref_stock, pref_permissions, pref_approvals")
+      .select("push_enabled, pref_money, pref_savings, pref_stock, pref_permissions, pref_approvals, pref_credit, pref_alert, pref_bills, pref_milestone")
       .eq("user_id", userId).maybeSingle();
 
     const prefField = CAT_PREF[category];
@@ -366,6 +394,7 @@ Deno.serve(async (req) => {
     const { data: notif, error: insertErr } = await sb.from("notifications").insert({
       user_id:     userId,
       type,
+      category,
       title,
       body:        bodyText,
       deep_link:   deepLink,

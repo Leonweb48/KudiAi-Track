@@ -242,7 +242,7 @@ serve(async (req) => {
           body: JSON.stringify({
             action: "notify", userId: wallet.user_id, type: "wallet_sale",
             title: "Payment received", body: `₦${amountNaira.toLocaleString()} received — recorded as a sale`,
-            category: "money", priority: "high", deepLink: { screen: "wallet" },
+            category: "money", priority: "high", deepLink: { tab: "wallet", openWallet: true },
           }),
         }).catch(() => {});
         await sendWalletEmail(sb, owner.email, `Payment received — ${fmtNgn(amountKobo)}`,
@@ -297,7 +297,7 @@ serve(async (req) => {
         body: JSON.stringify({
           action: "notify", userId: wallet.user_id, type: "wallet_topup",
           title: "Wallet funded", body: `₦${(creditedKobo / 100).toLocaleString()} added to your KudiAI wallet`,
-          category: "money", priority: "high", deepLink: { screen: "wallet" },
+          category: "money", priority: "high", deepLink: { tab: "wallet", openWallet: true },
         }),
       }).catch(() => {});
       await sendSms(owner.phone, `₦${(creditedKobo / 100).toLocaleString("en-NG")} credited to your KudiAI wallet. — KudiAI`, {
@@ -363,7 +363,7 @@ serve(async (req) => {
               body: JSON.stringify({
                 action: "notify", userId: wd.user_id, type: "wallet_transfer_sent",
                 title: "Transfer sent", body: `₦${(wd.amount_kobo / 100).toLocaleString()} sent to ${wd.account_name || wd.account_number}`,
-                category: "money", priority: "high", deepLink: { screen: "wallet" },
+                category: "money", priority: "high", deepLink: { tab: "wallet", openWallet: true },
               }),
             }).catch(() => {});
             await sendWalletEmail(sb, o.email, `Transfer sent — ${fmtNgn(wd.amount_kobo)}`,
@@ -387,7 +387,7 @@ serve(async (req) => {
               body: JSON.stringify({
                 action: "notify", userId: wd.user_id, type: "wallet_transfer_failed",
                 title: "Transfer returned", body: `₦${(wd.amount_kobo / 100).toLocaleString()} to ${wd.account_name || wd.account_number} could not be completed — returned to your wallet`,
-                category: "money", priority: "high", deepLink: { screen: "wallet" },
+                category: "money", priority: "high", deepLink: { tab: "wallet", openWallet: true },
               }),
             }).catch(() => {});
             await sendWalletEmail(sb, o.email, `Transfer ${st} — ${fmtNgn(wd.amount_kobo)} returned`,

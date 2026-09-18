@@ -138,7 +138,7 @@ serve(async (req) => {
           body: bodyText,
           deepLink: actionTab ? { tab: actionTab } : null,
           priority,
-          category: category === "loan" || category === "finance" ? "money" : "savings",
+          category: category === "finance" ? "money" : category === "loan" ? "credit" : "savings",
         }),
       }).catch(() => null);
     }).catch(() => null);

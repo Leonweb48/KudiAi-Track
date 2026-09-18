@@ -971,7 +971,7 @@ serve(async (req: Request) => {
             priority: "high", deepLink: { tab: "contributions" }, category: "money",
           }),
           notifyUser(sb, rwFailStaffUid !== user.id ? rwFailStaffUid : null, {
-            type: "assigned_client_withdrawal", title: "Client Withdrawal Rejected",
+            type: "assigned_client_withdrawal_rejected", title: "Client Withdrawal Rejected",
             body: `${rCtx.clientName || "A client"}'s ₦${Number(gross_amount).toLocaleString("en-NG")} withdrawal was rejected — insufficient balance`,
             priority: "high", deepLink: { tab: "home" }, category: "money",
           }),
@@ -1009,7 +1009,7 @@ serve(async (req: Request) => {
               priority: "high", deepLink: { tab: "contributions" }, category: "money",
             }),
             notifyUser(sb, rwApprStaffUid !== user.id ? rwApprStaffUid : null, {
-              type: "assigned_client_withdrawal", title: "Client Withdrawal Approved",
+              type: "assigned_client_withdrawal_approved", title: "Client Withdrawal Approved",
               body: `${ctx.clientName || "A client"}'s ₦${Number(rpcWd?.net_amount ?? gross_amount).toLocaleString("en-NG")} withdrawal was approved`,
               priority: "high", deepLink: { tab: "home" }, category: "money",
             }),
@@ -1146,7 +1146,7 @@ serve(async (req: Request) => {
             priority: "high", deepLink: { tab: "contributions" }, category: "money",
           }),
           notifyUser(sb, rwrStaffUid !== user.id ? rwrStaffUid : null, {
-            type: "assigned_client_withdrawal", title: "Client Withdrawal Rejected",
+            type: "assigned_client_withdrawal_rejected", title: "Client Withdrawal Rejected",
             body: `${ctx.clientName || "A client"}'s ₦${Number((rwrRow as Record<string, unknown>).amount).toLocaleString("en-NG")} withdrawal was rejected${rwrReason ? ` — ${rwrReason}` : ""}`,
             priority: "high", deepLink: { tab: "home" }, category: "money",
           }),
