@@ -37,6 +37,7 @@ import { usePlatformConfig } from "../hooks/usePlatformConfig";
 import { useWallet } from "../hooks/useWallet";
 import { useBvnVerification } from "../hooks/useBvnVerification";
 import { BottomSheet, ActionButton, AccountCard, FundWalletSheet, TransferSheet, ReceivePaymentSheet, WalletMiniAction, WALLET_MINI_ICONS, cleanBankName, WalletTxRow, WALLET_SOURCE } from "../components/WalletPanel";
+import WalletStatement from "./WalletStatement";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import EsusuRotationDashboard from "../components/EsusuRotationDashboard";
 import LegalScreen from "./LegalScreen";
@@ -5309,10 +5310,61 @@ function MemberWalletSheet({ wallet, testMode, bvnVerificationEnabled, client, b
             <ActionButton icon="send" label="Transfer" tone="slate" onClick={onTransfer} />
           </div>
 
+          {/* Scheduled transfers — same standing-instruction management as the
+              owner's Wallet screen. */}
+          {wallet.scheduledTransfers.filter(s => s.status !== "cancelled").length > 0 && (
+            <div className="mt-4">
+              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400 mb-1">Repeat transfers</p>
+              <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                {wallet.scheduledTransfers.filter(s => s.status !== "cancelled").map((s) => (
+                  <div key={s.id} className="py-3 flex items-center gap-3">
+                    <span className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 flex items-center justify-center flex-shrink-0">
+                      <Icon name="clock" size={16} />
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[13px] font-bold text-slate-800 dark:text-slate-100 truncate">{s.account_name}</p>
+                      <p className="text-[11px] text-slate-400 capitalize">
+                        {fmt(s.amount_kobo / 100)} · {s.frequency}
+                        {s.status === "paused" && <span className="text-amber-500 font-bold"> · Paused</span>}
+                      </p>
+                      {s.status === "paused" && s.last_run_error && (
+                        <p className="text-[10px] text-red-500 mt-0.5 truncate">{s.last_run_error}</p>
+                      )}
+                      {s.status === "active" && (
+                        <p className="text-[10px] text-slate-400 mt-0.5">
+                          Next {new Date(s.next_run_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <button
+                        onClick={() => wallet.setScheduledTransferStatus(s.id, s.status === "active" ? "paused" : "active")}
+                        className="text-[11px] font-bold text-brand-600 dark:text-brand-400 px-2 py-1">
+                        {s.status === "active" ? "Pause" : "Resume"}
+                      </button>
+                      <button
+                        onClick={() => { if (window.confirm(`Cancel this repeat transfer to ${s.account_name}?`)) wallet.setScheduledTransferStatus(s.id, "cancelled"); }}
+                        className="text-[11px] font-bold text-red-500 px-2 py-1">
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Transactions — every fund/transfer/spend/contribution lands here with a
               tap-to-view receipt, same as the owner's Wallet screen. */}
           <div className="mt-4">
-            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400 mb-1">Transactions</p>
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Transactions</p>
+              {wallet.ledger.length > 0 && (
+                <button onClick={() => setShowStatement(true)} className="text-[11px] font-bold text-brand-600 dark:text-brand-400">
+                  Statement →
+                </button>
+              )}
+            </div>
             {wallet.ledger.length === 0 ? (
               <p className="text-[13px] text-slate-400 py-8 text-center">No wallet activity yet.</p>
             ) : (
@@ -5367,6 +5419,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
   const [showPwdModal,     setShowPwdModal]     = useState(false);
   const [showWallet,       setShowWallet]       = useState(false);
   const [walletSheet,      setWalletSheet]      = useState(null); // "fund" | "transfer" | "receive" | null
+  const [showStatement,    setShowStatement]    = useState(false);
   // Session-scoped, not permanent — the nudge reappears next visit so it stays
   // a reminder rather than a one-time dismiss (mirrors ajo_balance_hidden below).
   const [walletBannerDismissed, setWalletBannerDismissed] = useState(
@@ -5375,7 +5428,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
 
   // KudiAI Wallet — same wallet infra as the owner side. client_user_id IS a
   // real auth.users id, so this "just works" once the platform flag is on.
-  const { walletEnabled, walletTestMode, walletMaxWithdrawalKobo, bvnVerificationEnabled } = usePlatformConfig();
+  const { walletEnabled, walletTestMode, walletMaxWithdrawalKobo, walletDailyWithdrawalCapKobo, bvnVerificationEnabled } = usePlatformConfig();
   const walletUserId = client?.client_user_id || session?.user?.id || null;
   const wallet = useWallet(walletUserId, walletEnabled);
 
@@ -5861,11 +5914,18 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
           <FundWalletSheet open={walletSheet === "fund"} onClose={() => setWalletSheet(null)}
             wallet={wallet.wallet} testMode={walletTestMode} api={wallet} businessName={client?.full_name} />
           <TransferSheet open={walletSheet === "transfer"} onClose={() => setWalletSheet(null)}
-            balanceKobo={wallet.balanceKobo} maxKobo={walletMaxWithdrawalKobo} banks={wallet.banks} api={wallet}
+            balanceKobo={wallet.balanceKobo} maxKobo={walletMaxWithdrawalKobo}
+            dailyCapKobo={walletDailyWithdrawalCapKobo} dailyUsedKobo={wallet.dailyUsedKobo}
+            banks={wallet.banks} api={wallet} ownerId={walletUserId}
             businessName={client?.full_name} onDone={wallet.refresh} />
           <ReceivePaymentSheet open={walletSheet === "receive"} onClose={() => setWalletSheet(null)}
             wallet={wallet.wallet} payRequest={wallet.payRequest} testMode={walletTestMode} api={wallet}
             businessName={client?.full_name} ownerName={client?.full_name} />
+          {showStatement && (
+            <div className="fixed inset-0 z-50 bg-white dark:bg-slate-900 overflow-y-auto">
+              <WalletStatement userId={walletUserId} displayName={client?.full_name} onClose={() => setShowStatement(false)} />
+            </div>
+          )}
         </>
       )}
       {showWithdraw && client && (

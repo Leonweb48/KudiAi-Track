@@ -42,9 +42,16 @@ function classifySource(source) {
   return "other";
 }
 
-export default function WalletStatement({ session, store }) {
-  const userId = session?.user?.id || null;
+// Reachable two ways: as a routed screen (owner, /wallet/statement — back
+// button navigates(-1)) or as a local overlay rendered directly by a portal
+// that doesn't have this route in its router branch at all, e.g. the Ajo
+// client portal (pass userId/displayName/onClose to mount it inline instead).
+export default function WalletStatement({ session, store, userId: userIdOverride, displayName, onClose }) {
+  const userId = userIdOverride || session?.user?.id || null;
+  const bizName = displayName || store?.profile?.business_name || "";
+  const ownerName = displayName || store?.profile?.owner_name || "";
   const navigate = useNavigate();
+  const goBack = onClose || (() => navigate(-1));
   const { walletEnabled } = usePlatformConfig();
   // Reused only for receiptFor/banks/withdrawals — its own capped `ledger`
   // state is never rendered here.
@@ -106,7 +113,7 @@ export default function WalletStatement({ session, store }) {
     return { totalIn, totalOut, net: totalIn - totalOut, categories, maxAmount };
   }, [periodFiltered]);
 
-  const openReceipt = (row) => setReceipt(w.receiptFor(row, store?.profile?.business_name, store?.profile?.owner_name));
+  const openReceipt = (row) => setReceipt(w.receiptFor(row, bizName, ownerName));
 
   const handleExport = async () => {
     setExporting(true);
@@ -121,7 +128,7 @@ export default function WalletStatement({ session, store }) {
   return (
     <div className="pb-28">
       <div className="flex items-center gap-3 px-4 pt-3 pb-2">
-        <button onClick={() => navigate(-1)} className="w-9 h-9 -ml-1 flex items-center justify-center rounded-full active:bg-slate-100 dark:active:bg-slate-800">
+        <button onClick={goBack} className="w-9 h-9 -ml-1 flex items-center justify-center rounded-full active:bg-slate-100 dark:active:bg-slate-800">
           <Icon name="chevron-left" size={20} className="text-slate-600 dark:text-slate-300" />
         </button>
         <h1 className="text-[18px] font-extrabold text-slate-900 dark:text-slate-50">Statement</h1>

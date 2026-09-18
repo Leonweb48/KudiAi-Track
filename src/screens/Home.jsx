@@ -125,7 +125,7 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
   const [showCompleteFlow,   setShowCompleteFlow]   = useState(false);
 
   // ── Hero card: flip between Today's Sales and the wallet balance ──────────
-  const { walletEnabled, walletTestMode, walletMaxWithdrawalKobo } = usePlatformConfig();
+  const { walletEnabled, walletTestMode, walletMaxWithdrawalKobo, walletDailyWithdrawalCapKobo } = usePlatformConfig();
   const wallet = useWallet(profile?.id || null, walletEnabled);
 
   // Wallet activity findable in the same "Recent Transactions" list/search —
@@ -749,7 +749,9 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
             wallet={wallet.wallet} payRequest={wallet.payRequest} testMode={walletTestMode} api={wallet}
             businessName={profile?.business_name} ownerName={profile?.owner_name} />
           <TransferSheet open={walletSheet === "transfer"} onClose={() => setWalletSheet(null)}
-            balanceKobo={wallet.balanceKobo} maxKobo={walletMaxWithdrawalKobo} banks={wallet.banks} api={wallet} onDone={wallet.refresh}
+            balanceKobo={wallet.balanceKobo} maxKobo={walletMaxWithdrawalKobo}
+            dailyCapKobo={walletDailyWithdrawalCapKobo} dailyUsedKobo={wallet.dailyUsedKobo}
+            banks={wallet.banks} api={wallet} onDone={wallet.refresh} ownerId={profile?.id}
             businessName={profile?.business_name} ownerName={profile?.owner_name} />
         </>
       )}
