@@ -5104,7 +5104,7 @@ function WalletActivationBanner({ onActivate, onDismiss }) {
 }
 
 // ── KudiAI Wallet — activation (BVN) or balance/actions, for the client ────
-function MemberWalletSheet({ wallet, testMode, bvnVerificationEnabled, client, businessName, ownerName, onClose, onProfileUpdate, onFund, onTransfer }) {
+function MemberWalletSheet({ wallet, testMode, bvnVerificationEnabled, client, businessName, ownerName, onClose, onProfileUpdate, onFund, onTransfer, onStatement }) {
   const [bvn, setBvn] = useState("");
   const [nin, setNin] = useState("");
   const [address,  setAddress]  = useState(client?.address || "");
@@ -5360,7 +5360,7 @@ function MemberWalletSheet({ wallet, testMode, bvnVerificationEnabled, client, b
             <div className="flex items-center justify-between mb-1">
               <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Transactions</p>
               {wallet.ledger.length > 0 && (
-                <button onClick={() => setShowStatement(true)} className="text-[11px] font-bold text-brand-600 dark:text-brand-400">
+                <button onClick={onStatement} className="text-[11px] font-bold text-brand-600 dark:text-brand-400">
                   Statement →
                 </button>
               )}
@@ -5907,6 +5907,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
           onProfileUpdate={(fields) => setClient(prev => ({ ...prev, ...fields }))}
           onFund={() => { setShowWallet(false); setWalletSheet("fund"); }}
           onTransfer={() => { setShowWallet(false); setWalletSheet("transfer"); }}
+          onStatement={() => { setShowWallet(false); setShowStatement(true); }}
         />
       )}
       {walletEnabled && wallet.hasAccount && (
