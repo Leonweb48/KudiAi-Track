@@ -7,6 +7,7 @@ import { useCampaigns }        from "../hooks/useCampaigns";
 import AnnouncementBarSlot     from "../components/slots/AnnouncementBarSlot";
 import TransactionDetailModal from "../components/shared/TransactionDetailModal";
 import { buildTransactionReceipt } from "../utils/receiptConfig";
+import { useDeepLink } from "../utils/deepLinkBus";
 import { fmt, applyPeriodFilter, isBillPayment } from "../utils/helpers";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
 import { useWallet } from "../hooks/useWallet";
@@ -193,6 +194,24 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
   // it can never pollute the real in/out totals this screen reports.
   const { walletEnabled } = usePlatformConfig();
   const wallet = useWallet(profile?.id || null, walletEnabled);
+
+  // Notification deep link ({ tab:"transactions", id }) → open that transaction's
+  // receipt. The list may still be loading when the tap lands, so hold the id
+  // until the transaction is in the store (and give up after a few seconds
+  // rather than waiting forever on an id that isn't there).
+  const [pendingOpenTxId, setPendingOpenTxId] = useState(null);
+  useDeepLink(["transactions"], (dl) => { if (dl.id) setPendingOpenTxId(dl.id); });
+  useEffect(() => {
+    if (!pendingOpenTxId) return;
+    const tx = (transactions || []).find(x => x.id === pendingOpenTxId);
+    if (tx) {
+      setReceipt(buildTransactionReceipt(tx, profile));
+      setPendingOpenTxId(null);
+      return;
+    }
+    const giveUp = setTimeout(() => setPendingOpenTxId(null), 6000);
+    return () => clearTimeout(giveUp);
+  }, [pendingOpenTxId, transactions, profile]);
 
   const asoClientMap = useMemo(() => {
     const m = {};

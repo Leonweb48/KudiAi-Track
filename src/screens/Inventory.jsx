@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useDeepLink } from "../utils/deepLinkBus";
 import { fmt } from "../utils/helpers";
 import { TxRow } from "../components/shared/TxRow";
 import Field from "../components/shared/Field";
@@ -728,6 +729,19 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
           addProduct, updateProduct, deleteProduct, recordMovement,
           completeCosting, clearDbError } = inventory;
   const { lowStock, totalCost, totalRetail } = analytics;
+
+  // Notification deep link ({ tab:"inventory", id }) → open that product. Held
+  // until the product is in the list (it may still be loading), abandoned after
+  // a few seconds. Declared above the plan-gate early return below (hook order).
+  const [pendingOpenProdId, setPendingOpenProdId] = useState(null);
+  useDeepLink(["inventory"], (dl) => { if (dl.id) setPendingOpenProdId(dl.id); });
+  useEffect(() => {
+    if (!pendingOpenProdId) return;
+    const p = (products || []).find(x => x.id === pendingOpenProdId);
+    if (p) { setDetailProd(p); setPendingOpenProdId(null); return; }
+    const giveUp = setTimeout(() => setPendingOpenProdId(null), 6000);
+    return () => clearTimeout(giveUp);
+  }, [pendingOpenProdId, products]);
 
   if (!canDo(plan, "inventory")) {
     return (

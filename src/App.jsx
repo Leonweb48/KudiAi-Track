@@ -4,6 +4,7 @@ import { useStore }          from "./hooks/useStore";
 import { useAuth }           from "./hooks/useAuth";
 import { ToastProvider }     from "./components/Toast";
 import { usePushNotifications } from "./hooks/usePushNotifications";
+import { publishDeepLink } from "./utils/deepLinkBus";
 import { useInventory }      from "./hooks/useInventory";
 import { useInvoices }       from "./hooks/useInvoices";
 import { usePinLock }        from "./hooks/usePinLock";
@@ -184,12 +185,22 @@ export default function App() {
   // ghost realtime subscription when AjoMemberPortal's NotificationCenter is live.
   const notifHook = useNotifications(status === "ajo_client" ? null : userId);
 
+  // One entry point for every notification tap (drawer row, in-app toast, push):
+  // route to the tab AND hand { sub, id, action } to the destination screen via
+  // the deep-link bus. Previously { id, sub } were passed as router state that
+  // no screen ever read, so taps stopped at the tab instead of the record.
+  const openDeepLink = useCallback((dl, opts = {}) => {
+    if (!dl?.tab) return;
+    const target = (dl.tab === "credit" || dl.tab === "aso") ? "finance" : dl.tab;
+    publishDeepLink(dl);
+    navigate(target === "home" ? "/" : `/${target}`, opts.replace ? { replace: true } : undefined);
+  }, [navigate]);
+
   // Push notification deep-link handler — called by usePushNotifications on tap
   const handlePushDeepLink = useCallback((dl) => {
-    if (!dl?.tab || !userId) return;
-    const target = (dl.tab === "credit" || dl.tab === "aso") ? "finance" : dl.tab;
-    navigate(target === "home" ? "/" : `/${target}`, { replace: true, state: (dl.id || dl.sub) ? { id: dl.id, sub: dl.sub } : undefined });
-  }, [navigate, userId]);
+    if (!userId) return;
+    openDeepLink(dl, { replace: true });
+  }, [openDeepLink, userId]);
 
   // Register FCM token + handle push taps (no-op on web)
   usePushNotifications(userId, handlePushDeepLink);
@@ -414,11 +425,15 @@ export default function App() {
   // Lightweight, non-realtime lookup — deliberately not a full useWallet()
   // instance (that opens a realtime channel; App.jsx is always-mounted and
   // Home.jsx/Wallet.jsx already each run their own useWallet instance).
-  const [walletActive, setWalletActive] = useState(false);
+  const [walletActive,  setWalletActive]  = useState(false);
+  // walletActive starts false meaning "unknown", not "no wallet" — gate anything
+  // one-shot (the compliance intro modal) on this so it can't fire for an owner
+  // whose wallet simply hasn't been looked up yet.
+  const [walletChecked, setWalletChecked] = useState(false);
   useEffect(() => {
     if (!userId) return;
     supabase.from("wallets").select("flw_account_number").eq("user_id", userId).maybeSingle()
-      .then(({ data }) => setWalletActive(!!data?.flw_account_number))
+      .then(({ data }) => { setWalletActive(!!data?.flw_account_number); setWalletChecked(true); })
       .catch(() => {});
   }, [userId]);
 
@@ -427,7 +442,7 @@ export default function App() {
   // Show a one-time explanation modal for new and existing paid users who are
   // not yet compliant, so they know what changed and why.
   useEffect(() => {
-    if (!userId || store.loading) return;
+    if (!userId || store.loading || !walletChecked) return;
     if (!isPaidPlan(plan)) {
       // Plan dropped to free — reset so a future re-upgrade gets a fresh grace period.
       clearPaidSince(userId);
@@ -439,7 +454,7 @@ export default function App() {
       markComplianceIntroShown(userId);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, plan, store.loading, walletActive]);
+  }, [userId, plan, store.loading, walletActive, walletChecked]);
 
   // Compliance state — recomputed from live profile on every render.
   const paidPlan       = isPaidPlan(plan);
@@ -648,11 +663,7 @@ export default function App() {
             <div className="flex-none flex items-center gap-2">
               <NotificationCenter
                 userId={userId}
-                onNavigate={(dl) => {
-                  if (!dl?.tab) return;
-                  const target = (dl.tab === "credit" || dl.tab === "aso") ? "finance" : dl.tab;
-                  navigate(target === "home" ? "/" : `/${target}`, (dl.id || dl.sub) ? { state: { id: dl.id, sub: dl.sub } } : undefined);
-                }}
+                onNavigate={openDeepLink}
               />
               <button onClick={() => navigate("/profile")} aria-label="Profile"
                 className="w-9 h-9 rounded-full border-2 border-slate-100 dark:border-slate-700 shadow-sm overflow-hidden active:scale-90 transition-transform">

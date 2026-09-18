@@ -594,7 +594,7 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
   );
 }
 
-export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, onUpgrade, staffId = null, embedded }) {
+export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, onUpgrade, staffId = null, embedded, deepLink = null, onDeepLinkHandled = null }) {
   const t = useT();
   const toast = useToast();
   const { walletEnabled } = usePlatformConfig();
@@ -674,6 +674,41 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [processingStaffContribId, setProcessingStaffContribId] = useState(null);
   const [staffContribFeedback,     setStaffContribFeedback]     = useState(null);
 
+
+  // Notification deep link ({ sub?, id? }, handed down by Finance):
+  //   id (a client)      → open that client's profile
+  //   sub withdrawals / deposits / collections / payouts → scroll to that queue
+  //   no sub, no id      → jump to stuck payouts if there are any (that's what the
+  //                        payout-failed / balance-shortfall alerts point at)
+  // The queues load asynchronously, so retry as they arrive and give up after a
+  // few seconds instead of waiting forever on something that isn't there.
+  useEffect(() => {
+    if (!deepLink) return;
+    let done = false;
+    const anchors = { withdrawals: "aso-withdrawals", deposits: "aso-deposits", collections: "aso-collections", payouts: "aso-payouts" };
+
+    if (deepLink.id) {
+      const cl = (asoClients || []).find(c => c.id === deepLink.id);
+      if (cl) { setClientProf(cl); done = true; }
+    } else {
+      const target = anchors[deepLink.sub] || (!deepLink.sub && stuckPayouts.length > 0 ? "aso-payouts" : null);
+      if (!target) {
+        done = true; // e.g. {tab:"aso", sub:"clients"} — the client list is already the page
+      } else {
+        const el = document.getElementById(target);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "start" });
+          el.classList.add("ring-2", "ring-brand-400");
+          setTimeout(() => el.classList.remove("ring-2", "ring-brand-400"), 2200);
+          done = true;
+        }
+      }
+    }
+
+    if (done) { onDeepLinkHandled?.(); return; }
+    const giveUp = setTimeout(() => onDeepLinkHandled?.(), 6000);
+    return () => clearTimeout(giveUp);
+  }, [deepLink, asoClients, stuckPayouts, withdrawalRequests, pendingDeposits, pendingStaffContribs]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Ajo Groups management
   const [showGroups,           setShowGroups]           = useState(false);
@@ -1885,7 +1920,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
       {/* Stuck wallet payouts — approved withdrawals whose wallet transfer never landed */}
       {stuckPayouts.length > 0 && (
-        <div className="mb-3 rounded-2xl border border-red-200 dark:border-red-800/50 bg-red-50 dark:bg-red-900/20 px-4 py-3.5">
+        <div id="aso-payouts" className="mb-3 rounded-2xl border border-red-200 dark:border-red-800/50 bg-red-50 dark:bg-red-900/20 px-4 py-3.5">
           <p className="text-xs font-bold text-red-700 dark:text-red-400 mb-2">
             {stuckPayouts.length} payout{stuckPayouts.length !== 1 ? "s" : ""} approved but not yet paid
           </p>
@@ -2019,7 +2054,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           );
         };
         return (
-          <div className="mb-4 space-y-4">
+          <div id="aso-withdrawals" className="mb-4 space-y-4">
             {heldReqs.length > 0 && (
               <div>
                 <p className="text-[11px] font-bold text-orange-600 dark:text-orange-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
@@ -2198,7 +2233,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
       {/* ── Staff Collections Queue (owner-only) ──────────────────────────── */}
       {isOwner && pendingStaffContribs.length > 0 && (
-        <div className="mb-4">
+        <div id="aso-collections" className="mb-4">
           <div className="flex items-center justify-between mb-2">
             <p className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-2">
               Staff Collections
@@ -2329,7 +2364,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       )}
 
       {pendingDeposits.length > 0 && (
-        <div className="mb-4">
+        <div id="aso-deposits" className="mb-4">
           <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2">
             Pending Deposits
             <span className="ml-2 bg-brand-600 text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded-full">{pendingDeposits.length}</span>

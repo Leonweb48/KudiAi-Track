@@ -32,6 +32,13 @@ export function useWallet(userId, enabled = true) {
   const [scheduledTransfers, setScheduledTransfers] = useState([]); // standing instructions — separate from ledger/wallet, fetched on demand
   const [bvnVerified, setBvnVerified] = useState(false);
   const [loading, setLoading]   = useState(true);
+  // True only once a real wallet load has SUCCEEDED for an enabled feature.
+  // `loading` can't answer "do we actually know whether this user has a
+  // wallet yet?": it starts true, but flips false while the platform flag is
+  // still unknown (enabled=false → "settle empty"), and is briefly false again
+  // right when the flag turns on, before the query starts. Anything that acts
+  // on `hasAccount === false` (e.g. the compliance banner) must wait for this.
+  const [resolved, setResolved] = useState(false);
   const [busy, setBusy]         = useState(false);
   const loadRef = useRef(() => {});
   const loadedOnceRef = useRef(false);
@@ -75,6 +82,7 @@ export function useWallet(userId, enabled = true) {
       const pr = (rq || []).find((r) => r.status === "pending" && new Date(r.expires_at) > new Date());
       setPayReq(pr || null);
       loadedOnceRef.current = true;
+      setResolved(true);
     } catch {
       /* leave prior state */
     } finally {
@@ -253,7 +261,7 @@ export function useWallet(userId, enabled = true) {
   // Stable object identity — only changes when real data does, so screens/modals
   // that read the hook don't re-render (and re-run effects) on every tick.
   return useMemo(() => ({
-    wallet, ledger, withdrawals, requests, banks, payRequest, loading, busy,
+    wallet, ledger, withdrawals, requests, banks, payRequest, loading, resolved, busy,
     hasAccount, bvnVerified, balanceKobo, balanceNaira: balanceKobo / 100, dailyUsedKobo,
     scheduledTransfers, refreshScheduled, scheduleTransfer, setScheduledTransferStatus,
     refresh: load, receiptFor,
@@ -261,7 +269,7 @@ export function useWallet(userId, enabled = true) {
     startBvnVerification, checkBvnVerification,
     createPaymentRequest, cancelPaymentRequest,
   }), [
-    wallet, ledger, withdrawals, requests, banks, payRequest, loading, busy, hasAccount, bvnVerified, balanceKobo, dailyUsedKobo,
+    wallet, ledger, withdrawals, requests, banks, payRequest, loading, resolved, busy, hasAccount, bvnVerified, balanceKobo, dailyUsedKobo,
     scheduledTransfers, refreshScheduled, scheduleTransfer, setScheduledTransferStatus,
     load, receiptFor, provisionAccount, simulateTopup, listBanks, resolveAccount, transfer,
     startBvnVerification, checkBvnVerification,

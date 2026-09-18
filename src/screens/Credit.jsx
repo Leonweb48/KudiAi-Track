@@ -59,7 +59,7 @@ function buildReminderMessage(c, businessName) {
   return `Dear ${c.customer_name},\n\nThis is a friendly reminder that you have an outstanding balance with us.${overdueLine}\n\nDue Date: ${c.due_date || "N/A"}\nTotal Debt: ${fmt(c.total_amount)}\nAmount Paid: ${fmt(c.amount_paid || 0)}\nBalance Remaining: ${fmt(c.outstanding)}${biz}\n\nKindly make payment at your earliest convenience. Thank you.`;
 }
 
-export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened, onUpgrade, embedded, inventory = null }) {
+export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened, onUpgrade, embedded, inventory = null, deepLink = null, onDeepLinkHandled = null }) {
   const t = useT();
   const toast = useToast();
   const [showAdd,      setShowAdd]      = useState(false);
@@ -115,6 +115,25 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
   useEffect(() => {
     if (autoOpen) { setShowAdd(true); onAutoOpened?.(); }
   }, [autoOpen, onAutoOpened]);
+
+  // Notification deep link ({ id, action? }, handed down by Finance): a due /
+  // overdue reminder opens the payment-reminder sheet (that's the action the
+  // notification is nudging); any other credit event opens that debtor's
+  // payment history. The credit may not be in the store yet on a fresh open —
+  // wait for it, give up after a few seconds.
+  useEffect(() => {
+    if (!deepLink) return;
+    if (!deepLink.id) { onDeepLinkHandled?.(); return; }
+    const c = (credits || []).find(x => x.id === deepLink.id);
+    if (c) {
+      if (deepLink.action === "remind") { setReminderFor(c); setCopied(false); }
+      else                              { setHistoryFor(c); }
+      onDeepLinkHandled?.();
+      return;
+    }
+    const giveUp = setTimeout(() => onDeepLinkHandled?.(), 6000);
+    return () => clearTimeout(giveUp);
+  }, [deepLink, credits]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load pending credit-void approval requests for this owner
   const loadCreditApprovals = async () => {

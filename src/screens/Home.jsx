@@ -125,8 +125,11 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
   const [showCompleteFlow,   setShowCompleteFlow]   = useState(false);
 
   // ── Hero card: flip between Today's Sales and the wallet balance ──────────
-  const { walletEnabled, walletTestMode, walletMaxWithdrawalKobo, walletDailyWithdrawalCapKobo } = usePlatformConfig();
+  const { walletEnabled, walletTestMode, walletMaxWithdrawalKobo, walletDailyWithdrawalCapKobo, configLoading } = usePlatformConfig();
   const wallet = useWallet(profile?.id || null, walletEnabled);
+  // Do we actually know yet whether this owner has a wallet? Needs the platform
+  // flag loaded AND, when the wallet feature is on, a real wallet load finished.
+  const walletSettled = !configLoading && (!walletEnabled || wallet.resolved);
 
   // Wallet activity findable in the same "Recent Transactions" list/search —
   // display-only merge, never touches `transactions` itself (profitEngine and
@@ -258,6 +261,7 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
         ? <PaidProfileBanner
             profile={profile}
             walletActive={wallet.hasAccount}
+            walletSettled={walletSettled}
             onOpen={() => setShowCompleteFlow(true)}
             onGoVerification={onGoVerification}
             onGoSettings={onGoSettings}

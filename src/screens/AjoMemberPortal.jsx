@@ -5719,7 +5719,10 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
               onNavigate={(dl) => {
                 if (dl?.openWallet) setShowWallet(true);
                 if (!dl?.tab) return;
-                setTab(["home","bills","circles","history","me"].includes(dl.tab) ? dl.tab : "home");
+                // Server-side notifications say "contributions"; in this portal
+                // that content is the History tab (it isn't a tab of its own).
+                const target = dl.tab === "contributions" ? "history" : dl.tab;
+                setTab(["home","bills","circles","history","me"].includes(target) ? target : "home");
               }}
               toast={toast}
             />

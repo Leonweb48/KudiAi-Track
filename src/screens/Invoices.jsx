@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useToast } from "../components/Toast";
 import TransactionPinModal from "../components/TransactionPinModal";
 import { Capacitor }             from "@capacitor/core";
@@ -607,7 +607,7 @@ function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCance
 }
 
 // ── Main Invoices screen ───────────────────────────────────────────────────
-export default function Invoices({ invoiceHook, plan, onUpgrade, profile, inventory, addTransaction, userId }) {
+export default function Invoices({ invoiceHook, plan, onUpgrade, profile, inventory, addTransaction, userId, deepLink = null, onDeepLinkHandled = null }) {
   const { invoices, customers, loading, reload, createDraft, updateDraft, markSent, cancelInvoice, deleteInvoice, recordInvoicePayment } = invoiceHook;
   const [filter,       setFilter]      = useState("all");
   const [period,       setPeriod]      = useState("all");
@@ -618,6 +618,18 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
   const [detailInv,    setDetailInv]   = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const [txnPin,       setTxnPin]      = useState(null);
+
+  // Notification deep link ({ id }, handed down by Finance) → open that invoice.
+  // Waits for the invoice to be in the list; gives up after a few seconds.
+  useEffect(() => {
+    if (!deepLink) return;
+    if (!deepLink.id) { onDeepLinkHandled?.(); return; }
+    const inv = (invoices || []).find(x => x.id === deepLink.id);
+    if (inv) { setDetailInv(inv); onDeepLinkHandled?.(); return; }
+    const giveUp = setTimeout(() => onDeepLinkHandled?.(), 6000);
+    return () => clearTimeout(giveUp);
+  }, [deepLink, invoices]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const { settings: invoiceSettings, save: saveInvoiceSettings } = useInvoiceSettings(userId, profile);
   const [invHintDismissed, setInvHintDismissed] = useState(() => {
     try { return !!localStorage.getItem(`kt_inv_hint_${userId}`); } catch { return false; }

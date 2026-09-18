@@ -33,34 +33,34 @@ const EVENTS = {
   },
 
   credit_created: {
-    priority: "high", category: "money",
+    priority: "high", category: "credit",
     title: () => "Credit Extended",
     body:  (d) => `${d.staffName || "Staff"} extended ₦${fmt(d.amount)} credit to ${d.customerName || "a customer"}${d.dueDate ? ` · due ${d.dueDate}` : ""}`,
-    deepLink:  (d) => ({ tab: "finance", id: d.creditId }),
+    deepLink:  (d) => ({ tab: "finance", sub: "credit", id: d.creditId }),
     dedupeKey: (d) => `credit_new_${d.creditId}`,
   },
 
   credit_extended: {
-    priority: "high", category: "money",
+    priority: "high", category: "credit",
     title: () => "Credit Extended",
     body:  (d) => `${d.staffName || "Staff"} added ₦${fmt(d.amount)} to ${d.customerName || "a customer"}'s credit — outstanding now ₦${fmt(d.outstanding)}`,
-    deepLink:  (d) => ({ tab: "finance", id: d.creditId }),
+    deepLink:  (d) => ({ tab: "finance", sub: "credit", id: d.creditId }),
     dedupeKey: null,
   },
 
   credit_repayment: {
-    priority: "high", category: "money",
+    priority: "high", category: "credit",
     title: () => "Credit Repayment",
     body:  (d) => `${d.customerName || "Customer"} paid ₦${fmt(d.amount)} — ₦${fmt(d.outstanding)} outstanding`,
-    deepLink:  (d) => ({ tab: "finance", id: d.creditId }),
+    deepLink:  (d) => ({ tab: "finance", sub: "credit", id: d.creditId }),
     dedupeKey: (d) => `credit_repay_${d.creditId}`,
   },
 
   credit_completed: {
-    priority: "high", category: "money",
+    priority: "high", category: "credit",
     title: () => "Credit Fully Paid",
     body:  (d) => `${d.customerName || "Customer"} settled their ₦${fmt(d.total)} credit in full`,
-    deepLink:  (d) => ({ tab: "finance", id: d.creditId }),
+    deepLink:  (d) => ({ tab: "finance", sub: "credit", id: d.creditId }),
     dedupeKey: (d) => `credit_done_${d.creditId}`,
   },
 
@@ -73,26 +73,26 @@ const EVENTS = {
   },
 
   invoice_created: {
-    priority: "high", category: "money",
+    priority: "high", category: "credit",
     title: () => "Invoice Created",
     body:  (d) => `${d.staffName || "Staff"} created invoice${d.invoiceNumber ? ` #${d.invoiceNumber}` : ""} for ${d.customerName || "a customer"} — ₦${fmt(d.amount)}`,
-    deepLink:  (d) => ({ tab: "finance", id: d.invoiceId }),
+    deepLink:  (d) => ({ tab: "finance", sub: "invoices", id: d.invoiceId }),
     dedupeKey: (d) => `inv_create_${d.invoiceId}`,
   },
 
   invoice_sent: {
-    priority: "high", category: "money",
+    priority: "high", category: "credit",
     title: () => "Invoice Sent",
     body:  (d) => `${d.staffName || "Staff"} sent invoice${d.invoiceNumber ? ` #${d.invoiceNumber}` : ""} (₦${fmt(d.amount)}) to ${d.customerName || "a customer"}`,
-    deepLink:  (d) => ({ tab: "finance", id: d.invoiceId }),
+    deepLink:  (d) => ({ tab: "finance", sub: "invoices", id: d.invoiceId }),
     dedupeKey: (d) => `inv_sent_${d.invoiceId}`,
   },
 
   invoice_paid: {
-    priority: "high", category: "money",
+    priority: "high", category: "credit",
     title: () => "Invoice Paid",
     body:  (d) => `₦${fmt(d.amount)} received${d.invoiceNumber ? ` for invoice #${d.invoiceNumber}` : ""}${d.customerName ? ` — ${d.customerName}` : ""}`,
-    deepLink:  (d) => ({ tab: "finance", id: d.invoiceId }),
+    deepLink:  (d) => ({ tab: "finance", sub: "invoices", id: d.invoiceId }),
     dedupeKey: (d) => `inv_paid_${d.invoiceId}`,
   },
 
@@ -151,7 +151,7 @@ const EVENTS = {
     priority: "high", category: "credit",
     title: (d) => `Credit Overdue — ${d.customerName}`,
     body:  (d) => `₦${fmt(d.outstanding)} overdue since ${d.dueDate}`,
-    deepLink: (d) => ({ tab: "finance", sub: "credit", id: d.creditId }),
+    deepLink: (d) => ({ tab: "finance", sub: "credit", id: d.creditId, action: "remind" }),
     dedupeKey: (d) => `credit_overdue_${d.creditId}`,
   },
 

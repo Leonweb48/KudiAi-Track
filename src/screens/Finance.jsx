@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
+import { useDeepLink }      from "../utils/deepLinkBus";
 import Credit               from "./Credit";
 import Aso                  from "./Aso";
 import { useCampaigns }     from "../hooks/useCampaigns";
@@ -982,6 +983,34 @@ export default function Finance({
 
   const openSection = (id) => { setSection(id); onAutoOpened?.(); };
 
+  // ── Notification deep links ─────────────────────────────────────────────────
+  // { tab:"finance"|"credit"|"aso", sub?, id?, action? } → open the right section
+  // and hand { sub, id, action } to it so it can open the specific record. New
+  // credit/invoice templates say which via `sub`; older stored notifications only
+  // carry an id, so fall back to looking it up (waiting for the data to load).
+  const [pendingLink, setPendingLink] = useState(null); // claimed, section not decided yet
+  const [sectionLink, setSectionLink] = useState(null); // handed to the open section
+  // (The store's own arrays, not the `|| []` copy above — that one is a new array
+  // every render, which would re-run this effect and reset its give-up timer.)
+  const storeCredits = store.credits;
+  const invoiceList  = invoiceHook?.invoices;
+  useDeepLink(["finance", "credit", "aso"], (dl) => setPendingLink(dl));
+  useEffect(() => {
+    if (!pendingLink) return;
+    let sec = null;
+    if (pendingLink.tab === "credit" || pendingLink.sub === "credit") sec = "credit";
+    else if (pendingLink.tab === "aso")                                sec = "ajo";
+    else if (pendingLink.sub === "invoices")                           sec = "invoices";
+    else if (pendingLink.id) {
+      if ((storeCredits || []).some(c => c.id === pendingLink.id))     sec = "credit";
+      else if ((invoiceList || []).some(i => i.id === pendingLink.id)) sec = "invoices";
+    }
+    if (sec) { setSection(sec); setSectionLink(pendingLink); setPendingLink(null); return; }
+    if (!pendingLink.id) { setPendingLink(null); return; } // plain overview link — nothing more to open
+    const giveUp = setTimeout(() => setPendingLink(null), 6000);
+    return () => clearTimeout(giveUp);
+  }, [pendingLink, storeCredits, invoiceList]);
+
   // Ajo commission/registration/withdrawal fees live only in ajo_contributions —
   // they never get mirrored into `transactions`, so without this the P&L engine
   // silently drops all Ajo income. Fetch enough history to cover both the
@@ -1091,10 +1120,10 @@ export default function Finance({
   if (section) {
     return (
       <div className="flex flex-col min-h-full">
-        <SectionHeader title={SECTION_LABELS[section]} onBack={() => setSection(null)} />
+        <SectionHeader title={SECTION_LABELS[section]} onBack={() => { setSection(null); setSectionLink(null); }} />
 
-        {section === "credit"  && <Credit store={store} plan={plan} autoOpen={false} onAutoOpened={null} onUpgrade={onUpgrade} embedded inventory={inventory} />}
-        {section === "ajo"     && <Aso    store={store} plan={plan} autoOpen={false} onAutoOpened={null} onUpgrade={onUpgrade} embedded />}
+        {section === "credit"  && <Credit store={store} plan={plan} autoOpen={false} onAutoOpened={null} onUpgrade={onUpgrade} embedded inventory={inventory} deepLink={sectionLink} onDeepLinkHandled={() => setSectionLink(null)} />}
+        {section === "ajo"     && <Aso    store={store} plan={plan} autoOpen={false} onAutoOpened={null} onUpgrade={onUpgrade} embedded deepLink={sectionLink} onDeepLinkHandled={() => setSectionLink(null)} />}
         {section === "loan"    && (
           <LoanTab isEnterprise={isEnterprise} accountCreatedAt={session?.user?.created_at}
             onUpgrade={onUpgrade} onApply={() => setShowLoan(true)} store={store} />
@@ -1103,7 +1132,8 @@ export default function Finance({
         {section === "invoices" && (
           <Invoices invoiceHook={invoiceHook} plan={plan} onUpgrade={onUpgrade}
             profile={store.profile} inventory={inventory}
-            addTransaction={store.addTransaction} userId={userId} />
+            addTransaction={store.addTransaction} userId={userId}
+            deepLink={sectionLink} onDeepLinkHandled={() => setSectionLink(null)} />
         )}
 
         {showLoan && (

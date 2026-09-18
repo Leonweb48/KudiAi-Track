@@ -4,8 +4,13 @@ import { getMissingPaidFields, getPaidGraceInfo } from "../utils/paidCompliance"
 // Non-dismissible compliance banner for paid-plan owners.
 // Unlike the free-plan nudge (ProfileCompletionBanner), this banner cannot be
 // dismissed — it stays until every required item is satisfied.
-export default function PaidProfileBanner({ profile, walletActive = false, onOpen, onGoVerification, onGoSettings }) {
+// walletSettled: false while we don't yet know whether the owner has a wallet
+// (platform flag / wallet query still loading). Until then `walletActive` is
+// just "false because unknown", and rendering would flash a "wallet missing"
+// banner on every open/refresh that vanishes a moment later — so render nothing.
+export default function PaidProfileBanner({ profile, walletActive = false, walletSettled = true, onOpen, onGoVerification, onGoSettings }) {
   if (!profile?.id) return null;
+  if (!walletSettled) return null;
 
   const missing = getMissingPaidFields(profile, walletActive);
   if (missing.length === 0) return null;

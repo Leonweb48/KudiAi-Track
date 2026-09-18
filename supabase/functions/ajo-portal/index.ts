@@ -304,7 +304,7 @@ serve(async (req) => {
         title:    "New client registration",
         body:     `${full_name.trim()} wants to register as your savings client — review and set their terms.`,
         priority: "high",
-        deepLink: { tab: "aso" },
+        deepLink: { tab: "aso", sub: "clients" },
         category: "savings",
       });
 
