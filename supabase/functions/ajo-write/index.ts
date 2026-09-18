@@ -1161,9 +1161,17 @@ serve(async (req: Request) => {
   // that only ever selects status='pending' rows — a 'failed' row (e.g. owner
   // wallet balance was short that morning) or a 'pending' row whose
   // scheduled_date has already passed is otherwise permanently stuck with no
-  // retry and no visibility. This re-arms it for the next cron run. Moves no
-  // new money itself — just reschedules an already-approved transfer — so no
-  // PIN required, matching reject_withdrawal_request's owner-only gate above.
+  // retry and no visibility. This re-arms it AND attempts settlement right
+  // now (scoped to this one owner, business-day gate bypassed — an owner who
+  // deliberately clicks Retry, presumably right after topping up, expects an
+  // immediate answer, not "queued for tomorrow"). Previously this only reset
+  // the row to pending and reported ok:true unconditionally — the row simply
+  // dropped off the owner's "Failed" list once rescheduled, which read as
+  // success even when no money had actually moved yet. Now the real
+  // post-attempt status is read back and reported. No PIN required — this
+  // still moves no new money on its own beyond what ajo_settle_due_wallet_
+  // payouts's own balance/status checks already gate, matching
+  // reject_withdrawal_request's owner-only gate above.
   if (action === "retry_wallet_payout") {
     const { payout_id: payoutId } = params as { payout_id?: string };
     if (!payoutId) return json({ ok: false, error: "payout_id required" }, 400);
@@ -1183,16 +1191,32 @@ serve(async (req: Request) => {
       return json({ ok: false, error: `Payout is already ${payoutRow.status} — nothing to retry` }, 400);
     }
 
-    const { data: nextDate, error: ndErr } = await sb.rpc("ajo_next_business_day");
-    if (ndErr) return json({ ok: false, error: ndErr.message }, 500);
-
+    const todayStr = new Date().toISOString().slice(0, 10);
     const { error: rwpUpdErr } = await sb
       .from("ajo_wallet_payouts")
-      .update({ status: "pending", scheduled_date: nextDate, failure_reason: null })
+      .update({ status: "pending", scheduled_date: todayStr, failure_reason: null })
       .eq("id", payoutId);
     if (rwpUpdErr) return json({ ok: false, error: rwpUpdErr.message }, 500);
 
-    return json({ ok: true, scheduled_date: nextDate });
+    const { error: rwpSettleErr } = await sb.rpc("ajo_settle_due_wallet_payouts", {
+      p_owner_id: rwpOwnerId,
+      p_skip_business_day_check: true,
+    });
+    if (rwpSettleErr) return json({ ok: false, error: rwpSettleErr.message }, 500);
+
+    const { data: rwpAfter } = await sb
+      .from("ajo_wallet_payouts")
+      .select("status, failure_reason")
+      .eq("id", payoutId)
+      .single();
+
+    if (rwpAfter?.status === "paid") {
+      return json({ ok: true, settled: true });
+    }
+    return json({
+      ok: false, settled: false, status: rwpAfter?.status ?? "pending",
+      error: rwpAfter?.failure_reason || "Still couldn't pay out — check your wallet balance and try again",
+    });
   }
 
   if (action === "open_cycle") {
