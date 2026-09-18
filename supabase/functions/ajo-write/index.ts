@@ -1063,9 +1063,13 @@ serve(async (req: Request) => {
 
   // ── Owner manually funds a client's KudiAI Wallet directly (PIN-gated) ────
   //    Distinct from record_contribution (which only touches aso_clients /
-  //    ajo_contributions bookkeeping) — this is a real wallet_ledger credit,
-  //    via the same wallet_credit RPC topups use, sourced 'adjustment' since
-  //    no real bank transfer is involved.
+  //    ajo_contributions bookkeeping) — this is a real wallet_ledger credit.
+  //    wallet_fund_client() does the real double-entry: debits the OWNER's
+  //    own wallet for the amount (rejecting if they don't actually have it)
+  //    before crediting the client — previously this credited the client
+  //    with brand-new money via wallet_credit(source:='adjustment') without
+  //    touching the owner's balance at all, as if the client had paid cash
+  //    in themselves.
   if (action === "fund_client_wallet") {
     const { client_id: fcwClientId, amount: fcwAmount } = params as { client_id: string; amount: number };
     if (!fcwClientId || !fcwAmount || fcwAmount <= 0) return json({ ok: false, error: "client_id and amount required" });
@@ -1080,13 +1084,11 @@ serve(async (req: Request) => {
       return json({ ok: false, error: "This client doesn't have a KudiAI Wallet yet — they need a portal login first" });
     }
 
-    const { data: fcwLedger, error: fcwErr } = await sb.rpc("wallet_credit", {
-      p_user_id:      (fcwCl as { client_user_id: string }).client_user_id,
-      p_amount_kobo:  Math.round(fcwAmount * 100),
-      p_source:       "adjustment",
-      p_flw_reference: null,
-      p_narration:    `Manual wallet funding by business owner`,
-      p_meta:         {},
+    const { data: fcwLedger, error: fcwErr } = await sb.rpc("wallet_fund_client", {
+      p_owner_id:       fcwOwnerId,
+      p_client_user_id: (fcwCl as { client_user_id: string }).client_user_id,
+      p_amount_kobo:    Math.round(fcwAmount * 100),
+      p_narration:      `Manual wallet funding by business owner`,
     });
     if (fcwErr) return json({ ok: false, error: fcwErr.message });
     return json({ ok: true, ledger: fcwLedger });
