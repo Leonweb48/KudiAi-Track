@@ -39,6 +39,7 @@ const PATHS = {
   "chevron-up":    "M18 15l-6-6-6 6",
   "chevron-right": "M9 18l6-6-6-6",
   "chevron-left":  "M15 18l-6-6 6-6",
+  card: "M4 5h16a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V7a2 2 0 012-2z M2 10h20",
 };
 
 export default function Icon({ name, size = 22, className = "" }) {

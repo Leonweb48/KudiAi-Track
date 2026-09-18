@@ -131,13 +131,18 @@ export function WalletMiniAction({ onClick, d, label }) {
 }
 
 // ── quick-action circle ────────────────────────────────────────────────────
-export function ActionButton({ icon, label, onClick, disabled, tone = "brand" }) {
+export function ActionButton({ icon, label, onClick, disabled, tone = "brand", badge }) {
   const ring = tone === "brand"
     ? "bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400"
     : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300";
   return (
     <button type="button" onClick={onClick} disabled={disabled}
-      className="flex flex-col items-center gap-1.5 flex-1 min-w-0 disabled:opacity-40 active:scale-95 transition-transform">
+      className="relative flex flex-col items-center gap-1.5 flex-1 min-w-0 disabled:opacity-60 active:scale-95 transition-transform">
+      {badge && (
+        <span className="absolute -top-1 right-1.5 text-[8px] font-extrabold uppercase tracking-wide px-1.5 py-[1px] rounded-full bg-slate-700 dark:bg-slate-600 text-white">
+          {badge}
+        </span>
+      )}
       <span className={`w-[52px] h-[52px] rounded-2xl flex items-center justify-center ${ring}`}>
         <Icon name={icon} size={21} />
       </span>

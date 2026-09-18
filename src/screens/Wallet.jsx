@@ -212,6 +212,7 @@ export default function Wallet({ session, store }) {
                 <ActionButton icon="send"       label="Transfer"    onClick={() => setSheet("transfer")} />
                 <ActionButton icon="arrow-down" label="Receive"     onClick={() => setSheet("receive")} />
                 <ActionButton icon="bills"      label="Pay bills"   onClick={() => navigate("/bills")} tone="slate" />
+                <ActionButton icon="card"       label="Cards"       tone="slate" disabled badge="Soon" />
               </div>
             </div>
 
