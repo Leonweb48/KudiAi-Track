@@ -16,6 +16,7 @@ import { buildBillReceipt } from "../utils/receiptConfig";
 import { ReceiptCard } from "../components/shared/ReceiptCard";
 import SupportTicketModal from "../components/shared/SupportTicketModal";
 import { supabase } from "../utils/supabase";
+import { notify } from "../lib/notifyEngine";
 import { lookupDataPrice } from "../data/billPrices";
 import LoanApplicationModal from "../components/LoanApplicationModal";
 import TransactionPinModal  from "../components/TransactionPinModal";
@@ -2775,6 +2776,10 @@ export default function BillPayments({ store, plan, session = null, staffName = 
           supabase.functions.invoke("clubkonnect", {
             body: { action: "bill-success-email", user_email: _email, user_name: _name, service: "Electricity", amount: _amount, reference: _ref, detail: updatedNote },
           }).catch(() => {});
+          notify({
+            type: "bill_payment_delivered", userId: ownerId, originUserId: session?.user?.id,
+            data: { service: "Electricity", amount: _amount, reference: _ref, detail: updatedNote },
+          }).catch(() => {});
           if (staffEmail && staffEmail !== _email) {
             supabase.functions.invoke("clubkonnect", {
               body: { action: "bill-staff-email", staff_email: staffEmail, staff_name: staffName, business_name: businessName || profile?.business_name, service: "Electricity", amount: _amount, reference: _ref, detail: updatedNote, outcome: "success" },
@@ -2795,6 +2800,10 @@ export default function BillPayments({ store, plan, session = null, staffName = 
             body: { action: "bill-success-email", user_email: profile?.email || null, user_name: profile?.owner_name || profile?.business_name || null, service: svcLabel, amount: totalAmount || amount, reference: ref, detail: cleanDetail, pins: emailPins || undefined },
           });
         } catch (_) {}
+        notify({
+          type: "bill_payment_delivered", userId: ownerId, originUserId: session?.user?.id,
+          data: { service: svcLabel, amount: totalAmount || amount, reference: ref, detail: cleanDetail },
+        }).catch(() => {});
         if (staffEmail && staffEmail !== profile?.email) {
           try {
             supabase.functions.invoke("clubkonnect", { body: { action: "bill-staff-email", staff_email: staffEmail, staff_name: staffName, business_name: businessName || profile?.business_name, service: svcLabel, amount: totalAmount || amount, reference: ref, detail: cleanDetail, pins: emailPins || undefined, outcome: "success" } });

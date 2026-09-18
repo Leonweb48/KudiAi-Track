@@ -12,6 +12,10 @@ import { syncPending } from "../utils/syncManager";
 
 const fireEmailTrigger = sendEmailTrigger;
 
+// Large-transaction alert threshold (kobo-free naira) — fixed default until
+// a later phase makes this a per-owner setting.
+const LARGE_TXN_THRESHOLD = 50000;
+
 // ── localStorage cache ─────────────────────────────────────────────
 function saveCacheLS(key, data) {
   try { localStorage.setItem(key, JSON.stringify(data)); } catch { /**/ }
@@ -740,6 +744,26 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
             txId:      data.id,
           },
         });
+        // Large-transaction alert — staff-recorded only, matching the
+        // existing "owner self-recordings are silent" convention above
+        // (the owner doesn't need telling about their own action; a
+        // staff-recorded outsized one is the actual anomaly worth flagging).
+        // LARGE_TXN_THRESHOLD is a fixed default for now — a later phase
+        // makes this a per-owner setting.
+        if ((parseFloat(t.amount) || 0) >= LARGE_TXN_THRESHOLD) {
+          notify({
+            type:         "large_transaction_alert",
+            userId,
+            originUserId: staffId,
+            data: {
+              staffName: staffName || "Staff",
+              amount:    parseFloat(t.amount) || 0,
+              item:      t.item_name || t.category || "",
+              txType:    t.type,
+              txId:      data.id,
+            },
+          });
+        }
         if (branchId) {
           notifyBranchManager(userId, branchId, {
             type:         t.type === "in" ? "staff_cash_in" : "staff_cash_out",

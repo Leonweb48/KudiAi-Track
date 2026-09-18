@@ -148,7 +148,7 @@ const EVENTS = {
   },
 
   credit_overdue: {
-    priority: "high", category: "money",
+    priority: "high", category: "credit",
     title: (d) => `Credit Overdue — ${d.customerName}`,
     body:  (d) => `₦${fmt(d.outstanding)} overdue since ${d.dueDate}`,
     deepLink: (d) => ({ tab: "finance", sub: "credit", id: d.creditId }),
@@ -161,6 +161,22 @@ const EVENTS = {
     body:  (d) => `₦${fmt(d.amount)} transaction is in 24h security review`,
     deepLink:  { tab: "finance" },
     dedupeKey: (d) => `held24h_${d.transactionId}`,
+  },
+
+  large_transaction_alert: {
+    priority: "high", category: "alert",
+    title: () => "Unusual Transaction",
+    body:  (d) => `${d.staffName || "Staff"} recorded a ₦${fmt(d.amount)} ${d.txType === "out" ? "expense" : "cash-in"}${d.item ? ` — ${d.item}` : ""}`,
+    deepLink:  (d) => ({ tab: "transactions", id: d.txId }),
+    dedupeKey: (d) => `large_txn_${d.txId}`,
+  },
+
+  bill_payment_delivered: {
+    priority: "high", category: "bills",
+    title: (d) => `${d.service || "Bill"} payment delivered`,
+    body:  (d) => `₦${fmt(d.amount)}${d.detail ? ` · ${d.detail}` : ""}`,
+    deepLink: () => ({ tab: "bills" }),
+    dedupeKey: (d) => `bill_delivered_${d.reference}`,
   },
 
   // ── Staff / manager-received ─────────────────────────────────────────────
