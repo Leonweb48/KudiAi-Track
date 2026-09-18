@@ -227,6 +227,49 @@ export default function Wallet({ session, store }) {
               </button>
             )}
 
+            {/* scheduled transfers */}
+            {w.scheduledTransfers.length > 0 && (
+              <div className="rounded-3xl bg-white dark:bg-slate-800 shadow-card border border-slate-100 dark:border-slate-700/60 p-4">
+                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400 mb-2">Repeat transfers</p>
+                <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {w.scheduledTransfers.filter(s => s.status !== "cancelled").map((s) => (
+                    <div key={s.id} className="py-3 flex items-center gap-3">
+                      <span className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 flex items-center justify-center flex-shrink-0">
+                        <Icon name="clock" size={16} />
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[13px] font-bold text-slate-800 dark:text-slate-100 truncate">{s.account_name}</p>
+                        <p className="text-[11px] text-slate-400 capitalize">
+                          {fmt(s.amount_kobo / 100)} · {s.frequency}
+                          {s.status === "paused" && <span className="text-amber-500 font-bold"> · Paused</span>}
+                        </p>
+                        {s.status === "paused" && s.last_run_error && (
+                          <p className="text-[10px] text-red-500 mt-0.5 truncate">{s.last_run_error}</p>
+                        )}
+                        {s.status === "active" && (
+                          <p className="text-[10px] text-slate-400 mt-0.5">
+                            Next {new Date(s.next_run_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <button
+                          onClick={() => w.setScheduledTransferStatus(s.id, s.status === "active" ? "paused" : "active")}
+                          className="text-[11px] font-bold text-brand-600 dark:text-brand-400 px-2 py-1">
+                          {s.status === "active" ? "Pause" : "Resume"}
+                        </button>
+                        <button
+                          onClick={() => { if (window.confirm(`Cancel this repeat transfer to ${s.account_name}?`)) w.setScheduledTransferStatus(s.id, "cancelled"); }}
+                          className="text-[11px] font-bold text-red-500 px-2 py-1">
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* transactions */}
             <div className="rounded-3xl bg-white dark:bg-slate-800 shadow-card border border-slate-100 dark:border-slate-700/60 p-4">
               <div className="flex items-center justify-between mb-1">

@@ -29,6 +29,7 @@ export function useWallet(userId, enabled = true) {
   const [banks, setBanks]       = useState([]);      // bank code → name (for receipts)
   const [payRequest, setPayReq] = useState(null);   // active pending "receive payment" request
   const [dailyUsedKobo, setDailyUsedKobo] = useState(0); // today's withdrawals so far — mirrors wallet_hold_transfer's own check
+  const [scheduledTransfers, setScheduledTransfers] = useState([]); // standing instructions — separate from ledger/wallet, fetched on demand
   const [bvnVerified, setBvnVerified] = useState(false);
   const [loading, setLoading]   = useState(true);
   const [busy, setBusy]         = useState(false);
@@ -169,6 +170,34 @@ export function useWallet(userId, enabled = true) {
   const transfer = useCallback((amount_kobo, bank_code, account_number, pin, narration = "", book_expense = false, confirmed_name = "") =>
     invoke("transfer", { amount_kobo, bank_code, account_number, pin, narration, book_expense, confirmed_name }), [invoke]);
 
+  // Standing instruction — PIN confirms it ONCE at creation; every future run
+  // is unattended and re-checks balance/caps fresh server-side (see the edge
+  // function's own comment). Doesn't move money immediately, so it doesn't
+  // use invoke()'s post-action wallet reload — only refreshes its own list.
+  const refreshScheduled = useCallback(async () => {
+    if (!active) return;
+    const d = await fwRead("list-scheduled-transfers").catch(() => null);
+    if (d?.scheduled) setScheduledTransfers(d.scheduled);
+  }, [active]);
+
+  useEffect(() => { refreshScheduled(); }, [refreshScheduled]);
+
+  const scheduleTransfer = useCallback(async (amount_kobo, bank_code, account_number, pin, frequency, narration = "", book_expense = false, confirmed_name = "", start_at = null) => {
+    setBusy(true);
+    try {
+      const d = await fwRead("schedule-transfer", { amount_kobo, bank_code, account_number, pin, frequency, narration, book_expense, confirmed_name, start_at });
+      await refreshScheduled();
+      return d;
+    } finally {
+      setBusy(false);
+    }
+  }, [refreshScheduled]);
+
+  const setScheduledTransferStatus = useCallback(async (scheduled_transfer_id, status) => {
+    await fwRead("set-scheduled-transfer-status", { scheduled_transfer_id, status });
+    await refreshScheduled();
+  }, [refreshScheduled]);
+
   // Real BVN identity verification (Flutterwave v3 consent/OTP flow). Only
   // enforced server-side (and only offered in the UI) while platform_config's
   // bvn_verification_enabled is 'true' — currently off, since Flutterwave has
@@ -226,12 +255,14 @@ export function useWallet(userId, enabled = true) {
   return useMemo(() => ({
     wallet, ledger, withdrawals, requests, banks, payRequest, loading, busy,
     hasAccount, bvnVerified, balanceKobo, balanceNaira: balanceKobo / 100, dailyUsedKobo,
+    scheduledTransfers, refreshScheduled, scheduleTransfer, setScheduledTransferStatus,
     refresh: load, receiptFor,
     provisionAccount, simulateTopup, listBanks, resolveAccount, transfer,
     startBvnVerification, checkBvnVerification,
     createPaymentRequest, cancelPaymentRequest,
   }), [
     wallet, ledger, withdrawals, requests, banks, payRequest, loading, busy, hasAccount, bvnVerified, balanceKobo, dailyUsedKobo,
+    scheduledTransfers, refreshScheduled, scheduleTransfer, setScheduledTransferStatus,
     load, receiptFor, provisionAccount, simulateTopup, listBanks, resolveAccount, transfer,
     startBvnVerification, checkBvnVerification,
     createPaymentRequest, cancelPaymentRequest,

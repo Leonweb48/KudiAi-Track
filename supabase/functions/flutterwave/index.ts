@@ -254,6 +254,65 @@ serve(async (req) => {
       return json({ ok: true, transfer_id: r.transfer_id, status: r.status, fee_kobo: r.fee_kobo });
     }
 
+    // ═══ process-scheduled-transfer — cron-triggered only, never user-callable
+    //    (wallet_run_scheduled_transfers, pg_net → here, with a shared secret
+    //    distinct from the general internal secret above — scoped to exactly
+    //    this one purpose). Mirrors the interactive "transfer" action's hold →
+    //    disburse sequence, but resolves whose wallet from the scheduled row
+    //    (service-role, no user session exists at 3am) instead of auth.uid(),
+    //    and re-checks balance + both caps fresh via wallet_hold_scheduled_
+    //    transfer exactly as a manual transfer would — the PIN taken at
+    //    schedule-creation authorizes the STANDING INSTRUCTION, not a blanket
+    //    bypass of these checks on every run. ══════════════════════════════
+    if (action === "process-scheduled-transfer") {
+      const cronSecret = req.headers.get("x-cron-secret") ?? "";
+      const CRON_SECRET = Deno.env.get("CRON_SECRET") ?? "";
+      if (!CRON_SECRET || cronSecret !== CRON_SECRET) return json({ error: "Unauthorized" }, 401);
+
+      const { scheduled_transfer_id } = body as { scheduled_transfer_id: string };
+      if (!scheduled_transfer_id) return json({ error: "Missing scheduled_transfer_id" }, 400);
+
+      const { data: row } = await sb.from("wallet_scheduled_transfers").select("*").eq("id", scheduled_transfer_id).maybeSingle();
+      if (!row) return json({ error: "Scheduled transfer not found" }, 404);
+
+      const { data: wdId, error: holdErr } = await sb.rpc("wallet_hold_scheduled_transfer", {
+        p_owner_id: row.owner_id,
+        p_scheduled_id: row.id,
+        p_amount_kobo: row.amount_kobo,
+        p_bank_code: row.bank_code,
+        p_account_number: row.account_number,
+        p_account_name: row.account_name,
+        p_narration: row.narration,
+        p_book_expense: row.book_expense,
+      });
+
+      if (holdErr) {
+        const reason = holdErr.message.replace(/^.*:\s*/, "");
+        await sb.rpc("wallet_record_scheduled_run", { p_id: row.id, p_success: false, p_error: reason });
+        return json({ ok: true, held: false, reason });
+      }
+
+      const d = await flwDisburse({
+        reference: String(wdId), amount_kobo: row.amount_kobo,
+        bank_code: row.bank_code, account_number: row.account_number, account_name: row.account_name,
+        narration: String(row.narration || ""),
+      });
+
+      if (!d.ok) {
+        await sb.rpc("wallet_transfer_failed", { p_withdrawal_id: wdId, p_reason: `Transfer declined: ${d.error}` });
+        await sb.rpc("wallet_record_scheduled_run", { p_id: row.id, p_success: false, p_error: d.error });
+        return json({ ok: true, held: true, disbursed: false, reason: d.error });
+      }
+
+      // Settlement (completed/failed) + the debit notification both happen via
+      // the same flutterwave-webhook transfer.disburse handler that already
+      // processes every withdrawal, scheduled or manual — this row was created
+      // with the exact same shape, so nothing new is needed there.
+      await sb.rpc("wallet_transfer_sent", { p_withdrawal_id: wdId, p_flw_transfer_id: d.transfer_id, p_fee_kobo: d.fee_kobo });
+      await sb.rpc("wallet_record_scheduled_run", { p_id: row.id, p_success: true });
+      return json({ ok: true, held: true, disbursed: true, withdrawal_id: wdId });
+    }
+
     // ═══ verify-bvn-init — start Flutterwave v3 BVN consent verification ════
     // v4 (everything else in this file) has no BVN verification product at
     // all — /virtual-accounts only ever recorded a BVN, never confirmed it
@@ -721,6 +780,85 @@ serve(async (req) => {
       }
       await sb.rpc("wallet_transfer_sent", { p_withdrawal_id: wdId, p_flw_transfer_id: d.transfer_id, p_fee_kobo: d.fee_kobo });
       return json({ ok: true, account_name: accountName, status: d.status, fee_kobo: d.fee_kobo, withdrawal_id: wdId });
+    }
+
+    // ── schedule-transfer — PIN-confirmed ONCE, sets up a standing instruction
+    //    (wallet_run_scheduled_transfers + process-scheduled-transfer run every
+    //    future cycle unattended, re-checking balance/caps fresh each time —
+    //    see that action's own comment for why) ─────────────────────────────
+    if (action === "schedule-transfer") {
+      const { amount_kobo, bank_code, account_number, narration, book_expense, pin, confirmed_name, frequency, start_at } = body as {
+        amount_kobo: number; bank_code: string; account_number: string;
+        narration?: string; book_expense?: boolean; pin?: string; confirmed_name?: string;
+        frequency?: string; start_at?: string;
+      };
+      if (!amount_kobo || amount_kobo <= 0) return json({ error: "Enter an amount" }, 400);
+      if (!bank_code || !account_number) return json({ error: "Bank and account number required" }, 400);
+      if (!pin || !/^\d{4,6}$/.test(String(pin))) return json({ error: "Enter your transaction PIN", code: "pin_required" }, 400);
+      if (!["daily", "weekly", "monthly"].includes(String(frequency))) return json({ error: "Choose how often this should repeat" }, 400);
+
+      // 1. verify the transaction PIN server-side — this ONE verification
+      //    authorizes the whole standing instruction; there is no PIN to check
+      //    on any future unattended run.
+      const pv = await fetch(`${SUPABASE_URL}/functions/v1/pin-manager`, {
+        method: "POST",
+        headers: { Authorization: authHeader, apikey: ANON_KEY, "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "verify_txn_pin", pin: String(pin) }),
+      });
+      const pj = await pv.json().catch(() => ({}));
+      if (!pj?.success) {
+        return json({
+          error: pj?.locked ? "Too many PIN attempts — try again later."
+               : pj?.error === "Transaction PIN not set" ? "Set a transaction PIN first (Settings → Security)."
+               : "Incorrect PIN.",
+          code: pj?.locked ? "pin_locked" : "pin_bad",
+        }, 403);
+      }
+
+      // 2. resolve the recipient name — same as an instant transfer, verified
+      //    once now rather than trusted blindly on every future run.
+      const rr = await flwResolve(bank_code, account_number);
+      if (!rr.ok && /INVALID_ACCOUNT|UNKNOWN_BANK_CODE|not recognized|is invalid/i.test(rr.type + " " + rr.msg)) {
+        return json({ error: "That account or bank isn't valid. Please check and try again." }, 422);
+      }
+      const accountName = rr.ok ? rr.name : String(confirmed_name || "").trim();
+      if (!accountName) return json({ error: "Could not verify that account. Try again in a moment." }, 422);
+
+      const startAt = start_at && !isNaN(Date.parse(start_at)) ? new Date(start_at).toISOString() : null;
+
+      // 3. create the standing instruction — no funds move yet; the first run
+      //    happens on wallet_run_scheduled_transfers' next tick once due.
+      const { data: scheduleId, error: schedErr } = await asUser.rpc("wallet_create_scheduled_transfer", {
+        p_bank_code: bank_code,
+        p_account_number: account_number,
+        p_account_name: accountName,
+        p_amount_kobo: Math.round(amount_kobo),
+        p_narration: String(narration || "").slice(0, 100),
+        p_book_expense: !!book_expense,
+        p_frequency: frequency,
+        p_start_at: startAt,
+      });
+      if (schedErr) return json({ error: schedErr.message.replace(/^.*:\s*/, "") }, 400);
+
+      return json({ ok: true, account_name: accountName, scheduled_transfer_id: scheduleId });
+    }
+
+    // ── list-scheduled-transfers / cancel-scheduled-transfer — thin wrappers so
+    //    the client never needs the service-role-only bookkeeping RPCs directly ──
+    if (action === "list-scheduled-transfers") {
+      const { data, error } = await asUser.from("wallet_scheduled_transfers").select("*").order("created_at", { ascending: false });
+      if (error) return json({ error: error.message }, 400);
+      return json({ ok: true, scheduled: data || [] });
+    }
+
+    if (action === "set-scheduled-transfer-status") {
+      const { scheduled_transfer_id, status } = body as { scheduled_transfer_id: string; status: string };
+      if (!scheduled_transfer_id || !["active", "paused", "cancelled"].includes(String(status))) {
+        return json({ error: "Invalid request" }, 400);
+      }
+      const { error } = await asUser.rpc("wallet_set_scheduled_transfer_status", { p_id: scheduled_transfer_id, p_status: status });
+      if (error) return json({ error: error.message.replace(/^.*:\s*/, "") }, 400);
+      return json({ ok: true });
     }
 
     return json({ error: `Unknown action: ${action}` }, 400);

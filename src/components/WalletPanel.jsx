@@ -304,6 +304,8 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
   const [amount, setAmount] = useState("");
   const [narration, setNarration] = useState("");
   const [bookExpense, setBookExpense] = useState(false);
+  const [repeat, setRepeat] = useState(false);
+  const [frequency, setFrequency] = useState("monthly");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [fee, setFee] = useState(0);
@@ -317,7 +319,7 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
   useEffect(() => {
     if (open) return;
     setStep("to"); setAcctNo(""); setBank(null); setName(""); setAmount(""); setManual(false); setManualName("");
-    setNarration(""); setBookExpense(false); setErr(""); setFee(0); setResolving(false);
+    setNarration(""); setBookExpense(false); setRepeat(false); setFrequency("monthly"); setErr(""); setFee(0); setResolving(false);
     setWdId(""); setReceipt(null); setReceiptLoading(false);
     doneKeyRef.current = "";
   }, [open]);
@@ -414,9 +416,13 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
   const doTransfer = async (pin) => {
     setBusy(true); setErr("");
     try {
-      const r = await api.transfer(kobo, bank.code, acctNo.trim(), pin, narration.trim(), bookExpense, recipientName);
-      setFee(Number(r?.fee_kobo || 0));
-      setWdId(r?.withdrawal_id || "");
+      if (repeat) {
+        await api.scheduleTransfer(kobo, bank.code, acctNo.trim(), pin, frequency, narration.trim(), bookExpense, recipientName);
+      } else {
+        const r = await api.transfer(kobo, bank.code, acctNo.trim(), pin, narration.trim(), bookExpense, recipientName);
+        setFee(Number(r?.fee_kobo || 0));
+        setWdId(r?.withdrawal_id || "");
+      }
       setStep("done");
       hapticSuccess();
       const benForm = { accountNo: acctNo.trim(), bankCode: bank.code, bankName: bank.name };
@@ -424,7 +430,7 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
       if (ownerId) upsertRemote(supabase, ownerId, "bank_transfer", benForm, recipientName);
       onDone?.();
     } catch (e) {
-      setErr(e.message || "Transfer failed");
+      setErr(e.message || (repeat ? "Could not set up the repeat transfer" : "Transfer failed"));
       setStep("review");
     } finally { setBusy(false); }
   };
@@ -438,30 +444,45 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
         {step === "done" ? (
           <div className="text-center py-3">
             <div className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center mx-auto mb-4">
-              <Icon name="check" size={30} className="text-emerald-600 dark:text-emerald-400" />
+              <Icon name={repeat ? "clock" : "check"} size={30} className="text-emerald-600 dark:text-emerald-400" />
             </div>
-            <p className="text-[17px] font-extrabold text-slate-900 dark:text-slate-50">{fmt(kobo / 100)} sent</p>
-            <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-1">
-              to <b>{recipientName}</b> · {bank?.name}
-              {fee > 0 ? <><br />Fee {fmt(fee / 100)}</> : null}
-            </p>
+            {repeat ? (
+              <>
+                <p className="text-[17px] font-extrabold text-slate-900 dark:text-slate-50">Repeat transfer set up</p>
+                <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-1">
+                  {fmt(kobo / 100)} to <b>{recipientName}</b> · {bank?.name}, {frequency}
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-[17px] font-extrabold text-slate-900 dark:text-slate-50">{fmt(kobo / 100)} sent</p>
+                <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-1">
+                  to <b>{recipientName}</b> · {bank?.name}
+                  {fee > 0 ? <><br />Fee {fmt(fee / 100)}</> : null}
+                </p>
+              </>
+            )}
             {err && <p className="text-[12px] text-amber-600 dark:text-amber-400 mt-3">{err}</p>}
-            <button onClick={viewReceipt} disabled={receiptLoading}
-              className="w-full mt-5 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold py-3.5 text-[14px] disabled:opacity-50">
-              {receiptLoading ? "Preparing receipt…" : "View receipt"}
-            </button>
-            <button onClick={onClose} className={primaryBtn + " mt-2.5"}>Done</button>
+            {!repeat && (
+              <button onClick={viewReceipt} disabled={receiptLoading}
+                className="w-full mt-5 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold py-3.5 text-[14px] disabled:opacity-50">
+                {receiptLoading ? "Preparing receipt…" : "View receipt"}
+              </button>
+            )}
+            <button onClick={onClose} className={primaryBtn + (repeat ? " mt-5" : " mt-2.5")}>Done</button>
           </div>
         ) : step === "review" ? (
           <div>
             <div className="rounded-3xl bg-navy-500 text-white p-5 text-center"
               style={{ background: "linear-gradient(145deg,var(--navy) 0%,var(--navy-dark) 100%)" }}>
-              <p className="text-[11px] uppercase tracking-widest text-white/50">You're sending</p>
+              <p className="text-[11px] uppercase tracking-widest text-white/50">{repeat ? "You're setting up" : "You're sending"}</p>
               <p className="text-[34px] font-extrabold mt-1 tabular-nums">{fmt(kobo / 100)}</p>
+              {repeat && <p className="text-[12px] text-white/60 mt-1 capitalize">{frequency}</p>}
             </div>
             <div className="mt-4 rounded-2xl border border-slate-100 dark:border-slate-700/60 divide-y divide-slate-100 dark:divide-slate-800">
               {[["Recipient", recipientName], ["Account", acctNo], ["Bank", bank?.name],
-                ["Narration", narration || "—"]].map(([k, v]) => (
+                ["Narration", narration || "—"],
+                ...(repeat ? [["Repeats", frequency[0].toUpperCase() + frequency.slice(1)]] : [])].map(([k, v]) => (
                 <div key={k} className="flex items-center justify-between px-4 py-3">
                   <span className="text-[12px] text-slate-400">{k}</span>
                   <span className="text-[13px] font-semibold text-slate-800 dark:text-slate-100 text-right max-w-[62%] truncate">{v}</span>
@@ -470,7 +491,7 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
             </div>
             {err && <p className="text-[12px] text-red-500 mt-3">{err}</p>}
             <button onClick={() => setStep("pin")} disabled={busy} className={primaryBtn + " mt-4"}>
-              Transfer {fmt(kobo / 100)}
+              {repeat ? `Confirm — ${fmt(kobo / 100)} ${frequency}` : `Transfer ${fmt(kobo / 100)}`}
             </button>
           </div>
         ) : step === "amount" ? (
@@ -501,6 +522,28 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
               <input type="checkbox" checked={bookExpense} onChange={(e) => setBookExpense(e.target.checked)} className="w-[18px] h-[18px] rounded-md accent-brand-600" />
               Record as a business expense
             </label>
+            <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/60 p-3.5">
+              <label className="flex items-center gap-2.5 text-[13px] font-bold text-slate-700 dark:text-slate-200">
+                <input type="checkbox" checked={repeat} onChange={(e) => setRepeat(e.target.checked)} className="w-[18px] h-[18px] rounded-md accent-brand-600" />
+                Repeat this transfer
+              </label>
+              {repeat && (
+                <>
+                  <p className="text-[11px] text-slate-400 mt-1.5 mb-2">
+                    Confirmed once now with your PIN — every future transfer runs automatically, and we'll alert you each time money moves.
+                  </p>
+                  <div className="flex gap-1.5">
+                    {[["daily", "Daily"], ["weekly", "Weekly"], ["monthly", "Monthly"]].map(([id, label]) => (
+                      <button key={id} type="button" onClick={() => setFrequency(id)}
+                        className={`flex-1 py-2 rounded-xl text-[12px] font-bold transition-colors ${
+                          frequency === id ? "bg-brand-600 text-white" : "bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600"}`}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
             {err && <p className="text-[12px] text-red-500">{err}</p>}
             <button disabled={kobo < 10000 || kobo > cap}
               onClick={() => { setErr(""); setStep("review"); }} className={primaryBtn}>
