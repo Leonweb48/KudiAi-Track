@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import nodemailer from "nodemailer";
+import { escapeHtml, escapeDeep, decodeEntities, cleanSubject } from "./_lib/escapeHtml.js";
 
 const SUPABASE_URL = process.env.REACT_APP_SUPABASE_URL || process.env.SUPABASE_URL;
 const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -236,6 +237,25 @@ function detailRows(pairs) {
   return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 14px;">${rows}</table>`;
 }
 
+// ─── One-time-code emails ─────────────────────────────────────────────────────
+// Shared by every code email so the wording and the anti-phishing notice are
+// identical. Values passed in come from the escaped payload.
+
+function securityNotice() {
+  return `<div style="background:#fef3c7;border-left:3px solid #f59e0b;border-radius:0 8px 8px 0;padding:12px 16px;margin:0 0 20px;">
+    <p style="margin:0;font-size:12px;color:#92400e;line-height:1.6;"><strong>Security notice:</strong> KudiAI Track will never ask for your PIN, password or one-time code by phone, SMS, chat or email.</p>
+  </div>`;
+}
+
+function otpBox(otp, expires) {
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 24px;"><tr>
+    <td style="background:#f5f3ff;border:2px dashed #c4b5fd;border-radius:14px;padding:28px 20px;text-align:center;">
+      <p style="margin:0 0 10px;font-size:11px;font-weight:700;letter-spacing:4px;text-transform:uppercase;color:#7c3aed;">One-Time Verification Code</p>
+      <p style="margin:0;font-size:44px;font-weight:900;letter-spacing:12px;color:#4f46e5;font-family:'Courier New',Courier,monospace;line-height:1;">${str(otp)}</p>
+      <p style="margin:12px 0 0;font-size:12px;color:#94a3b8;">Expires in <strong>${str(expires)}</strong> &bull; Do not share this code</p>
+    </td></tr></table>`;
+}
+
 // ─── SMTP helpers ─────────────────────────────────────────────────────────────
 
 async function getSmtpConfig(sb) {
@@ -260,14 +280,18 @@ async function logDelivery(sb, to, subject, status, error_msg = null) {
 }
 
 async function send(transport, from, sb, to, subject, html, attachments = []) {
+  // `to` and `subject` arrive HTML-escaped (they were built from the escaped
+  // payload) but they are not HTML — decode them for the SMTP envelope/headers.
+  const toAddr = decodeEntities(to).trim();
+  const subj   = cleanSubject(subject);
   try {
-    const mail = { from, to, subject, html };
+    const mail = { from, to: toAddr, subject: subj, html };
     if (attachments.length) mail.attachments = attachments;
     await transport.sendMail(mail);
-    await logDelivery(sb, to, subject, "sent");
+    await logDelivery(sb, toAddr, subj, "sent");
     return true;
   } catch (e) {
-    await logDelivery(sb, to, subject, "failed", e.message);
+    await logDelivery(sb, toAddr, subj, "failed", e.message);
     return false;
   }
 }
@@ -310,8 +334,10 @@ export default async function handler(req, res) {
   const { event, data: rawData } = req.body || {};
   if (!event) return res.status(400).json({ error: "event required" });
 
-  // Enrich with authenticated user email
-  const d = { owner_email: user.email || "", user_email: user.email || "", ...(rawData || {}) };
+  // Enrich with authenticated user email, then HTML-escape EVERY string in the
+  // payload once, here. Nothing a user typed (names, notes, descriptions,
+  // reasons…) can reach an email's HTML unescaped after this line.
+  const d = escapeDeep({ owner_email: user.email || "", user_email: user.email || "", ...(rawData || {}) });
 
   // Get SMTP
   const smtp = await getSmtpConfig(sb);
@@ -569,11 +595,12 @@ export default async function handler(req, res) {
     let resolvedStaffName = str(d.staff_name);
     if (d.owner_id && (!resolvedOwnerEmail || !resolvedBusinessName)) {
       const { data: op } = await sb.from("profiles").select("email, business_name, phone").eq("id", d.owner_id).maybeSingle();
-      if (op) { resolvedOwnerEmail = resolvedOwnerEmail || op.email || ""; resolvedBusinessName = resolvedBusinessName || op.business_name || ""; }
+      // Values read from the database are escaped here — they did not pass through escapeDeep().
+      if (op) { resolvedOwnerEmail = resolvedOwnerEmail || op.email || ""; resolvedBusinessName = resolvedBusinessName || escapeHtml(op.business_name || ""); }
     }
     if (d.staff_id && !resolvedStaffName) {
       const { data: sp } = await sb.from("staff").select("name, email").eq("id", d.staff_id).maybeSingle();
-      if (sp) resolvedStaffName = sp.name || "";
+      if (sp) resolvedStaffName = escapeHtml(sp.name || "");
     }
     const entryTypeLabel = (d.entry_type || "restock") === "new_product" ? "New Product Added" : "Stock Restocked";
     if (resolvedOwnerEmail) {
@@ -602,7 +629,7 @@ export default async function handler(req, res) {
     let resolvedBizName2 = str(d.business_name);
     if (d.owner_id && (!resolvedOwnerEmail2 || !resolvedBizName2)) {
       const { data: op2 } = await sb.from("profiles").select("email, business_name").eq("id", d.owner_id).maybeSingle();
-      if (op2) { resolvedOwnerEmail2 = resolvedOwnerEmail2 || op2.email || ""; resolvedBizName2 = resolvedBizName2 || op2.business_name || ""; }
+      if (op2) { resolvedOwnerEmail2 = resolvedOwnerEmail2 || op2.email || ""; resolvedBizName2 = resolvedBizName2 || escapeHtml(op2.business_name || ""); }
     }
     const curStock = d.current_stock !== undefined ? d.current_stock : (d.current_qty !== undefined ? d.current_qty : "?");
     const reorderLvl = d.reorder_level !== undefined ? d.reorder_level : (d.threshold !== undefined ? d.threshold : "?");
@@ -645,7 +672,7 @@ export default async function handler(req, res) {
   // ── Invoice sent ────────────────────────────────────────────────────────────
   else if (event === "invoice_sent") {
     const pdfAttachments = d.pdf_base64
-      ? [{ filename: str(d.pdf_filename) || "invoice.pdf", content: Buffer.from(str(d.pdf_base64), "base64"), contentType: "application/pdf" }]
+      ? [{ filename: decodeEntities(str(d.pdf_filename)) || "invoice.pdf", content: Buffer.from(str(d.pdf_base64), "base64"), contentType: "application/pdf" }]
       : [];
 
     const itemsHtml = renderEmailItems(d.items);
@@ -688,7 +715,7 @@ export default async function handler(req, res) {
   // ── Invoice paid ────────────────────────────────────────────────────────────
   else if (event === "invoice_paid") {
     const pdfAttachments = d.pdf_base64
-      ? [{ filename: str(d.pdf_filename) || "invoice.pdf", content: Buffer.from(str(d.pdf_base64), "base64"), contentType: "application/pdf" }]
+      ? [{ filename: decodeEntities(str(d.pdf_filename)) || "invoice.pdf", content: Buffer.from(str(d.pdf_base64), "base64"), contentType: "application/pdf" }]
       : [];
 
     const amtPaid    = fmt(d.amount_paid || d.total);
@@ -931,6 +958,88 @@ export default async function handler(req, res) {
   }
 
   // ── Fallback: unknown event — still log it ───────────────────────────────────
+  // ── Coop member: portal PIN reset code ──────────────────────────────────────
+  else if (event === "org_member_pin_reset_otp") {
+    q(d.member_email || d.email, "Your KudiAI portal PIN reset code",
+      emailHtml("Reset Your Portal PIN", `
+        <p style="font-size:15px;font-weight:700;color:#0f172a;margin:0 0 6px;">Hi ${str(d.member_name) || "there"},</p>
+        <p style="font-size:14px;color:#64748b;line-height:1.7;margin:0 0 22px;">We received a request to reset the PIN for your member portal${str(d.org_name) ? ` at <strong>${str(d.org_name)}</strong>` : ""}. Enter this code to continue.</p>
+        ${otpBox(d.otp, `${str(d.expires_minutes) || "15"} minutes`)}
+        ${securityNotice()}
+        <p style="font-size:12px;color:#94a3b8;line-height:1.6;margin:0;">If you didn't ask to reset your PIN, ignore this email — your PIN will not change.</p>
+      `, "#4f46e5"));
+  }
+
+  // ── Ajo client: transaction-PIN verification code ───────────────────────────
+  else if (event === "ajo_txn_pin_otp") {
+    q(d.email || d.client_email, "Your transaction PIN verification code",
+      emailHtml("Verify Your Transaction PIN", `
+        <p style="font-size:15px;font-weight:700;color:#0f172a;margin:0 0 6px;">Hi ${str(d.name) || "there"},</p>
+        <p style="font-size:14px;color:#64748b;line-height:1.7;margin:0 0 22px;">Use this code to set or change the PIN that protects your withdrawals and transfers.</p>
+        ${otpBox(d.otp, str(d.expires_in) || "10 minutes")}
+        ${securityNotice()}
+        <p style="font-size:12px;color:#94a3b8;line-height:1.6;margin:0;">If you didn't ask to change your transaction PIN, ignore this email and contact your savings agent — someone may be trying to use your account.</p>
+      `, "#4f46e5"));
+  }
+
+  // ── Staff: confirm a new email address ──────────────────────────────────────
+  else if (event === "staff_email_change_otp") {
+    q(d.staff_email || d.email, "Confirm your new email address",
+      emailHtml("Confirm Your New Email", `
+        <p style="font-size:15px;font-weight:700;color:#0f172a;margin:0 0 6px;">Hi ${str(d.staff_name) || "there"},</p>
+        <p style="font-size:14px;color:#64748b;line-height:1.7;margin:0 0 22px;">A request was made to use this address for your KudiAI Track staff account. Enter this code in the app to confirm it.</p>
+        ${otpBox(d.otp_code || d.otp, "30 minutes")}
+        ${securityNotice()}
+        <p style="font-size:12px;color:#94a3b8;line-height:1.6;margin:0;">If you didn't request this change, ignore this email — your account keeps its current address.</p>
+      `, "#4f46e5"));
+  }
+
+  // ── Subscription payment failed ─────────────────────────────────────────────
+  else if (event === "payment_failed") {
+    q(d.user_email, `Payment failed — ${str(d.plan_name) || "your subscription"}`,
+      emailHtml("Payment Unsuccessful", `
+        <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 16px;">Your payment for the <strong>${str(d.plan_name) || "subscription"}</strong> plan could not be completed.</p>
+        <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:20px;text-align:center;margin:0 0 20px;">
+          <p style="margin:0 0 4px;font-size:11px;color:#991b1b;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Payment not completed</p>
+          <p style="margin:0;font-size:32px;font-weight:900;color:#dc2626;">${fmt(d.amount)}</p>
+        </div>
+        ${detailRows([["Plan", d.plan_name], ["Reference", d.reference], ["Date", now]])}
+        <p style="font-size:13px;color:#374151;line-height:1.7;margin:0 0 20px;">If your bank shows a debit for this attempt, it is returned to you automatically. If it is not, contact support and quote the reference above.</p>
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"><tr><td align="center">
+          <a href="https://kudiai.app" style="display:inline-block;background:#4f46e5;color:#fff;font-size:14px;font-weight:600;text-decoration:none;padding:12px 32px;border-radius:10px;">Try again →</a>
+        </td></tr></table>
+      `, "#dc2626"));
+  }
+
+  // ── Credit extended (more credit added to an existing debtor) ───────────────
+  // Owner always gets the email; the customer only if an address is on file.
+  else if (event === "credit_extended") {
+    const added = fmt(d.amount);
+    const outstanding = fmt(d.outstanding);
+    const box = `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:18px;margin:0 0 14px;">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+        <tr><td style="font-size:12px;color:#3b82f6;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Extra credit added</td><td align="right" style="font-size:20px;font-weight:900;color:#1d4ed8;">${added}</td></tr>
+        <tr><td colspan="2" style="padding:8px 0;"><div style="height:1px;background:#bfdbfe;"></div></td></tr>
+        <tr><td style="font-size:12px;color:#6b7280;">New total outstanding</td><td align="right" style="font-size:15px;font-weight:700;color:#dc2626;">${outstanding}</td></tr>
+      </table></div>`;
+
+    q(d.owner_email || d.user_email, `Credit Extended: ${added} — ${str(d.customer_name) || "Customer"}`,
+      emailHtml("Credit Extended", `
+        <p style="font-size:14px;color:#374151;margin:0 0 16px;">Additional credit has been extended to <strong>${str(d.customer_name) || "a customer"}</strong>${str(d.business_name) ? ` on <strong>${str(d.business_name)}</strong>` : ""}.</p>
+        ${box}
+        ${str(d.staff_name) ? `<p style="font-size:12px;color:#64748b;margin:8px 0 0;">Recorded by: <strong>${str(d.staff_name)}</strong></p>` : ""}
+      `, "#2563eb"));
+
+    if (d.customer_email) {
+      q(d.customer_email, `Credit Update — ${added} added, new outstanding ${outstanding}`,
+        emailHtml("Credit Updated", `
+          <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 16px;">Hi <strong>${str(d.customer_name) || "Valued Customer"}</strong>, your credit has been updated${str(d.business_name) ? ` at <strong>${str(d.business_name)}</strong>` : ""}.</p>
+          ${box}
+          <p style="font-size:13px;color:#374151;margin:0 0 4px;">Please settle your outstanding balance as agreed. Contact us if you have any questions.</p>
+        `, "#2563eb"));
+    }
+  }
+
   else {
     await logDelivery(sb, str(d.user_email || d.owner_email), `[${event}] no handler`, "failed", `No email handler for event: ${event}`);
     return res.status(200).json({ ok: true, event, queued: 0, note: "no handler for this event" });

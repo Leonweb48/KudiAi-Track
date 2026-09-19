@@ -1,12 +1,14 @@
 // Checks all three email pipelines and surfaces the last delivery time for each.
 // GET https://kudiai.app/api/pipeline-health
 // Shows immediately if any pipeline has gone silent.
+import { requireTriggerSecret } from "./_lib/requireTriggerSecret.js";
 import { createClient } from "@supabase/supabase-js";
 
-const CORS = { "Access-Control-Allow-Origin": "*", "Content-Type": "application/json" };
+const CORS = { "Content-Type": "application/json" };
 
 export default async function handler(req, res) {
   Object.entries(CORS).forEach(([k, v]) => res.setHeader(k, v));
+  if (!requireTriggerSecret(req, res)) return;   // operator-only: never public
   if (req.method === "OPTIONS") return res.status(204).end();
 
   const SUPABASE_URL = process.env.REACT_APP_SUPABASE_URL || process.env.SUPABASE_URL;

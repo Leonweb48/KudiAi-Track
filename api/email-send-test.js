@@ -1,13 +1,15 @@
 // Live SMTP delivery test — sends a real email through the SAME pipeline as api/email-trigger.js
 // Usage: GET https://kudiai.app/api/email-send-test?to=your@email.com
 // Also tests admin portal pipeline when ?admin=1 is added
+import { requireTriggerSecret } from "./_lib/requireTriggerSecret.js";
 import { createClient } from "@supabase/supabase-js";
 import nodemailer from "nodemailer";
 
-const CORS = { "Access-Control-Allow-Origin": "*", "Content-Type": "application/json" };
+const CORS = { "Content-Type": "application/json" };
 
 export default async function handler(req, res) {
   Object.entries(CORS).forEach(([k, v]) => res.setHeader(k, v));
+  if (!requireTriggerSecret(req, res)) return;   // operator-only: never public
 
   const toEmail  = req.query?.to || "solomonleonjohnson01@gmail.com";
   const testAdmin = req.query?.admin === "1";

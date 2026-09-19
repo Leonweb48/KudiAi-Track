@@ -1,9 +1,12 @@
 // Diagnostic: tests whether the main app can reach admin.kudiai.app/api/public/email-trigger
 // Access: GET https://kudiai.app/api/admin-trigger-test
 // This uses the same SUPABASE_SERVICE_ROLE_KEY that Supabase edge functions use as x-trigger-secret
+import { requireTriggerSecret } from "./_lib/requireTriggerSecret.js";
+
 export default async function handler(req, res) {
-  const CORS = { "Access-Control-Allow-Origin": "*", "Content-Type": "application/json" };
+  const CORS = { "Content-Type": "application/json" };
   Object.entries(CORS).forEach(([k, v]) => res.setHeader(k, v));
+  if (!requireTriggerSecret(req, res)) return;   // operator-only: never public
 
   const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!SERVICE_KEY) {

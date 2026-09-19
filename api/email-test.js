@@ -1,9 +1,11 @@
+import { requireTriggerSecret } from "./_lib/requireTriggerSecret.js";
 import { createClient } from "@supabase/supabase-js";
 
-const CORS = { "Access-Control-Allow-Origin": "*", "Content-Type": "application/json" };
+const CORS = { "Content-Type": "application/json" };
 
 export default async function handler(req, res) {
   Object.entries(CORS).forEach(([k, v]) => res.setHeader(k, v));
+  if (!requireTriggerSecret(req, res)) return;   // operator-only: never public
 
   const SUPABASE_URL = process.env.REACT_APP_SUPABASE_URL || process.env.SUPABASE_URL;
   const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY;
