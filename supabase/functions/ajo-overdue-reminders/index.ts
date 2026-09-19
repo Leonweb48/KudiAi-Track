@@ -50,6 +50,17 @@ Deno.serve(async (req) => {
     next_contribution_date: string; current_balance: number | null; business_name: string | null;
   }>;
 
+  // Test mode with nobody overdue: still exercise the full chain using a clearly
+  // labelled sample client (never marked, sent only to the override address).
+  if (override && candidates.length === 0) {
+    candidates.push({
+      client_id: "00000000-0000-0000-0000-000000000000", client_name: "Sample Client (test)", client_email: override,
+      contribution_amount: 5000, contribution_frequency: "weekly",
+      next_contribution_date: new Date(Date.now() - 86400000).toISOString().slice(0, 10),
+      current_balance: 20000, business_name: "Sample Business",
+    });
+  }
+
   const emailed: string[] = [];
   let failed = 0;
   for (const c of candidates) {
