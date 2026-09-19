@@ -23,8 +23,17 @@ const fmtDate = (d: string) =>
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 Deno.serve(async (req) => {
+  const sb = createClient(SUPABASE_URL, SERVICE_KEY);
+
+  // The callers (pg_cron → pg_net) hold the secret in the Vault, so that is what
+  // it is checked against; a matching CRON_SECRET env var is accepted too.
   const provided = req.headers.get("x-cron-secret") ?? "";
-  if (!CRON_SECRET || provided !== CRON_SECRET) return json({ error: "Unauthorized" }, 401);
+  let authorised = !!provided && !!CRON_SECRET && provided === CRON_SECRET;
+  if (!authorised && provided) {
+    const { data } = await sb.rpc("verify_cron_secret", { p_secret: provided });
+    authorised = data === true;
+  }
+  if (!authorised) return json({ error: "Unauthorized" }, 401);
 
   let limit = 25;
   // override_email: send the reminder to THIS address instead of the client's and
@@ -40,7 +49,6 @@ Deno.serve(async (req) => {
     }
   } catch { /* default */ }
 
-  const sb = createClient(SUPABASE_URL, SERVICE_KEY);
   const { data: rows, error } = await sb.rpc("ajo_get_overdue_email_candidates", { p_limit: limit });
   if (error) return json({ error: error.message }, 500);
 

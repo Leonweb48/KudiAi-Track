@@ -383,7 +383,14 @@ Deno.serve(async (req) => {
   if (action === "push-existing") {
     const cronSecret = req.headers.get("x-cron-secret") ?? "";
     const CRON_SECRET = Deno.env.get("CRON_SECRET") ?? "";
-    if (!isServiceRole && (!CRON_SECRET || cronSecret !== CRON_SECRET)) return json({ error: "Unauthorized" }, 401);
+    // The database trigger holds the secret in the Vault, so check it there (a
+    // matching CRON_SECRET env var is accepted too).
+    let authorised = isServiceRole || (!!cronSecret && !!CRON_SECRET && cronSecret === CRON_SECRET);
+    if (!authorised && cronSecret) {
+      const { data: vaultOk } = await sb.rpc("verify_cron_secret", { p_secret: cronSecret });
+      authorised = vaultOk === true;
+    }
+    if (!authorised) return json({ error: "Unauthorized" }, 401);
 
     const notificationId = String(body.notification_id ?? "");
     if (!notificationId) return json({ error: "notification_id required" }, 400);
