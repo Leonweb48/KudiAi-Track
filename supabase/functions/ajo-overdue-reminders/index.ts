@@ -27,9 +27,17 @@ Deno.serve(async (req) => {
   if (!CRON_SECRET || provided !== CRON_SECRET) return json({ error: "Unauthorized" }, 401);
 
   let limit = 25;
+  // override_email: send the reminder to THIS address instead of the client's and
+  // do not mark anyone as emailed. Lets the whole chain be proven end to end
+  // (function → admin pipeline → SMTP) without emailing a real customer.
+  let override = "";
   try {
     const b = await req.json();
     if (Number(b?.limit) > 0) limit = Math.min(Number(b.limit), 50);
+    if (typeof b?.override_email === "string" && /^[^\s@]+@[^\s@]+[.][^\s@]+$/.test(b.override_email)) {
+      override = b.override_email;
+      limit = 1;
+    }
   } catch { /* default */ }
 
   const sb = createClient(SUPABASE_URL, SERVICE_KEY);
@@ -52,7 +60,7 @@ Deno.serve(async (req) => {
         body: JSON.stringify({
           event: "ajo_contribution_overdue",
           data: {
-            client_email: c.client_email,
+            client_email: override || c.client_email,
             client_name: c.client_name ?? "",
             contribution_frequency: c.contribution_frequency ?? "",
             next_contribution_date: fmtDate(c.next_contribution_date),
@@ -68,6 +76,6 @@ Deno.serve(async (req) => {
     await sleep(2200);   // the email route allows 30 requests / minute / IP
   }
 
-  if (emailed.length) await sb.rpc("ajo_mark_overdue_emailed", { p_client_ids: emailed });
-  return json({ ok: true, candidates: candidates.length, emailed: emailed.length, failed });
+  if (emailed.length && !override) await sb.rpc("ajo_mark_overdue_emailed", { p_client_ids: emailed });
+  return json({ ok: true, candidates: candidates.length, emailed: emailed.length, failed, test_override: !!override });
 });
