@@ -29,6 +29,7 @@ import { createReportPdf, fmtCurrency as pdfFmt, fmtDate as pdfFmtDate } from ".
 import { allocatePeriods } from "../utils/allocatePeriods.mjs";
 import NotificationCenter from "../components/NotificationCenter";
 import NotificationPreferences from "../components/NotificationPreferences";
+import EnableNotificationsBanner from "../components/EnableNotificationsBanner";
 import { useToast } from "../components/Toast";
 import SyncBar from "../components/SyncBar";
 import { useOnlineStatus } from "../hooks/useOnlineStatus";
@@ -5753,6 +5754,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
         {/* Content */}
         <main className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
           <AnnouncementBarSlot campaigns={annBars} loading={camLoading} recordEvent={recordCamEvent} />
+          {tab === "home" && <EnableNotificationsBanner userId={session?.user?.id} />}
           {tab === "home" && client && (
             <OverviewTab
               client={client}

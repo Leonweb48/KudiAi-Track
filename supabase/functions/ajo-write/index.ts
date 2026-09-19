@@ -638,7 +638,7 @@ serve(async (req: Request) => {
           }),
           notifyUser(sb, acClientUserId, {
             type: "contribution_approved", title: "Contribution Approved",
-            body: `Your ₦${acAmt} contribution has been approved`, priority: "normal",
+            body: `Your ₦${acAmt} contribution has been approved`, priority: "high",
             deepLink: { tab: "contributions" }, category: "savings",
           }),
           sendSms(acCtx.clientPhone, `₦${acAmt} contribution confirmed. New balance: ₦${Number(acResult.new_balance || 0).toLocaleString("en-NG")}. — KudiAI`, {
@@ -876,7 +876,7 @@ serve(async (req: Request) => {
     await notifyUser(sb, collClientUserId, {
       type: "contribution_approved", title: "Contribution Recorded",
       body: `Your ₦${Number(amount).toLocaleString("en-NG")} contribution has been recorded and credited`,
-      priority: "normal", deepLink: { tab: "contributions" }, category: "savings",
+      priority: "high", deepLink: { tab: "contributions" }, category: "savings",
     });
 
     if (app.cycle_just_matured) {

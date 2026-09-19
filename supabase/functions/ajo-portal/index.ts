@@ -13,9 +13,13 @@ const _NOTIFY_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 function notifyUser(userId: string | null | undefined, opts: {
   type: string; title: string; body: string;
   priority?: string; deepLink?: Record<string, unknown> | null; category?: string;
-}): void {
-  if (!userId) return;
-  fetch(_NOTIFY_URL, {
+}): Promise<unknown> {
+  if (!userId) return Promise.resolve();
+  // Returns the request so a caller that must not lose the notification (the
+  // edge runtime can tear the isolate down right after the response is sent,
+  // dropping an un-awaited fetch) can await it. Existing fire-and-forget
+  // callers just ignore the return value.
+  return fetch(_NOTIFY_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${_NOTIFY_KEY}` },
     body: JSON.stringify({ action: "notify", userId, type: opts.type, title: opts.title, body: opts.body, priority: opts.priority ?? "normal", deepLink: opts.deepLink ?? null, category: opts.category ?? "money" }),
@@ -1019,14 +1023,27 @@ serve(async (req) => {
       if (!rpcResult?.ok) return json({ error: rpcResult?.error || "Payment could not be completed" }, 422);
 
       try {
-        notifyUser(cl.client_user_id, {
-          type:     "deposit_confirmed",
-          title:    "Contribution Paid",
-          body:     `₦${amount.toLocaleString("en-NG")} was paid from your KudiAI Wallet and credited to your savings`,
-          priority: "high",
-          deepLink: { tab: "contributions" },
-          category: "money",
-        });
+        // Awaited: the owner used to hear nothing at all when a client paid a
+        // contribution, and un-awaited fetches can be cut off when this
+        // invocation returns.
+        await Promise.allSettled([
+          notifyUser(cl.client_user_id, {
+            type:     "deposit_confirmed",
+            title:    "Contribution Paid",
+            body:     `₦${amount.toLocaleString("en-NG")} was paid from your KudiAI Wallet and credited to your savings`,
+            priority: "high",
+            deepLink: { tab: "contributions" },
+            category: "money",
+          }),
+          notifyUser((cl as Record<string, unknown>).user_id as string | null, {
+            type:     "client_contribution_received",
+            title:    "Contribution received",
+            body:     `${(cl as Record<string, unknown>).full_name || "A client"} paid ₦${amount.toLocaleString("en-NG")} from their wallet into savings`,
+            priority: "high",
+            deepLink: { tab: "aso", sub: "clients", id: client_id },
+            category: "savings",
+          }),
+        ]);
         sendSms(cl.phone, `₦${amount.toLocaleString("en-NG")} contribution paid from your KudiAI Wallet. — KudiAI`, { category: "money", user_id: cl.client_user_id, related_type: "ajo_contributions", related_id: rpcResult.contribution_id });
       } catch { /* non-fatal */ }
 

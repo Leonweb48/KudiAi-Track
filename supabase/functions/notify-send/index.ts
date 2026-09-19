@@ -169,16 +169,16 @@ async function sendFCMv1(
   unreadCount:   number,
   type:          string,
   category:      string,
-): Promise<{ status: number; body: string }> {
+): Promise<{ status: number; body: string; errCode?: string; errMsg?: string }> {
   const saRaw = Deno.env.get("FIREBASE_SERVICE_ACCOUNT");
-  if (!saRaw) return { status: 0, body: "FIREBASE_SERVICE_ACCOUNT not set" };
+  if (!saRaw) return { status: 0, body: "FIREBASE_SERVICE_ACCOUNT not set", errCode: "NO_SERVICE_ACCOUNT", errMsg: "FIREBASE_SERVICE_ACCOUNT not set" };
 
   let sa: ServiceAccount;
   try { sa = JSON.parse(saRaw) as ServiceAccount; }
-  catch { return { status: 0, body: "FIREBASE_SERVICE_ACCOUNT is not valid JSON" }; }
+  catch { return { status: 0, body: "FIREBASE_SERVICE_ACCOUNT is not valid JSON", errCode: "BAD_SERVICE_ACCOUNT", errMsg: "FIREBASE_SERVICE_ACCOUNT is not valid JSON" }; }
 
   const accessToken = await getFCMToken(sa);
-  if (!accessToken) return { status: 0, body: "Could not obtain FCM access token" };
+  if (!accessToken) return { status: 0, body: "Could not obtain FCM access token", errCode: "NO_ACCESS_TOKEN", errMsg: "Could not obtain FCM access token" };
 
   // v1 requires ALL data values to be strings
   const data: Record<string, string> = { group: "kuditrack" };
@@ -234,32 +234,74 @@ async function sendFCMv1(
   );
 
   const respText = await resp.text();
+  let errCode = "";
+  let errMsg  = "";
 
   if (!resp.ok) {
-    // Parse errorCode to decide whether to prune the token
-    let errCode = "";
     try {
       const errJson = JSON.parse(respText) as {
-        error?: { status?: string; details?: Array<{ errorCode?: string }> }
+        error?: { message?: string; status?: string; details?: Array<{ errorCode?: string }> }
       };
       errCode = errJson?.error?.details?.[0]?.errorCode
              ?? errJson?.error?.status
              ?? "";
+      errMsg  = String(errJson?.error?.message ?? "").slice(0, 160);
     } catch { /* ignore parse failure */ }
 
-    const stale = resp.status === 404
-               || errCode === "UNREGISTERED"
-               || errCode === "INVALID_ARGUMENT";
+    // Only delete a device's token when FCM says THAT TOKEN is dead. A blanket
+    // "INVALID_ARGUMENT" (or any 404) also comes back for a malformed MESSAGE
+    // or a wrong project id — deleting on those would wipe every healthy
+    // device for a bug that has nothing to do with the tokens.
+    const tokenIsDead = errCode === "UNREGISTERED"
+      || (errCode === "INVALID_ARGUMENT" && /registration token|not a valid fcm/i.test(errMsg));
 
-    if (stale) {
+    if (tokenIsDead) {
       await sb.from("push_tokens").delete().eq("token", token);
-      console.log("[FCM] Pruned stale token:", token.slice(0, 20) + "…");
+      console.log("[FCM] Pruned dead token:", token.slice(0, 20) + "…", errCode);
     } else {
-      console.error("[FCM] Send failed:", respText);
+      console.error("[FCM] Send failed:", resp.status, errCode, errMsg);
     }
   }
 
-  return { status: resp.status, body: respText };
+  return { status: resp.status, body: respText, errCode, errMsg };
+}
+
+// ── Per-device fan-out ───────────────────────────────────────────────────────
+// One result per registered device so a browser failure is never hidden behind
+// an Android success (the old code kept only the first token's outcome).
+interface DeviceResult { platform: string; status: number; ok: boolean; errCode: string; errMsg: string }
+
+async function pushToUser(
+  // deno-lint-ignore no-explicit-any
+  sb:      any,
+  userId:  string,
+  msg:     { title: string; body: string; deepLink: Record<string, unknown> | null; priority: string; type: string; category: string },
+): Promise<DeviceResult[]> {
+  const [tokensResult, unreadResult] = await Promise.all([
+    sb.from("push_tokens")
+      .select("token, platform")
+      .eq("user_id", userId)
+      .gte("last_seen", new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString()),
+    sb.from("notifications")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .is("read_at", null),
+  ]);
+
+  const tokens      = tokensResult.data ?? [];
+  const unreadCount = unreadResult.count ?? 1;
+  if (!tokens.length) return [];
+
+  return await Promise.all(tokens.map(async (t: { token: string; platform: string }) => {
+    const r = await sendFCMv1(sb, t.token, msg.title, msg.body, msg.deepLink, msg.priority, unreadCount, msg.type, msg.category);
+    return {
+      platform: String(t.platform ?? "?"),
+      status:   r.status,
+      ok:       r.status >= 200 && r.status < 300,
+      errCode:  r.errCode ?? "",
+      errMsg:   r.errMsg  ?? "",
+    };
+  }));
 }
 
 // ── Main handler ─────────────────────────────────────────────────────────────
@@ -294,13 +336,94 @@ Deno.serve(async (req) => {
     if (!userId) return json({ error: "userId required" }, 400);
     const { token, platform = "android" } = body as { token: string; platform?: string };
     if (!token) return json({ error: "token required" }, 400);
-    await sb.from("push_tokens").upsert(
+    const { error: upErr } = await sb.from("push_tokens").upsert(
       { user_id: userId, token, platform, last_seen: new Date().toISOString() },
       { onConflict: "user_id,token" },
     );
+    // Never report success for a write that failed — the app turns a green
+    // "notifications are on" state from this response.
+    if (upErr) {
+      console.error("[register-token] upsert failed:", upErr.message);
+      return json({ error: upErr.message }, 500);
+    }
     // Remove this token from any other user's rows — device must map to exactly one user
     await sb.from("push_tokens").delete().eq("token", token).neq("user_id", userId);
     return json({ ok: true });
+  }
+
+  // ── send-test ───────────────────────────────────────────────────────────────
+  // A signed-in user pushes a test message to THEIR OWN registered devices and
+  // gets back what FCM said for each one — so "did it work?" has a real answer.
+  // Optional delay_seconds lets a browser user switch tabs first (the browser
+  // suppresses the OS popup while a KudiAI tab is visible).
+  if (action === "send-test") {
+    if (!callerId) return json({ error: "auth required" }, 401);
+    const delay = Math.min(Math.max(Number(body.delay_seconds) || 0, 0), 20);
+    if (delay > 0) await new Promise((r) => setTimeout(r, delay * 1000));
+    const devices = await pushToUser(sb, callerId, {
+      title:    "Test notification",
+      body:     "If you can see this, notifications are working on this device.",
+      deepLink: { tab: "home" },
+      priority: "high",
+      type:     "test_notification",
+      category: "permissions",
+    });
+    return json({
+      ok: true,
+      registered_devices: devices.length,
+      devices: devices.map(({ platform, status, ok, errCode, errMsg }) => ({ platform, status, ok, errCode, errMsg })),
+    });
+  }
+
+  // ── push-existing ───────────────────────────────────────────────────────────
+  // Notifications created by SQL (cron jobs, triggers) land in the table
+  // without ever touching FCM. A database trigger calls this — authenticated by
+  // the same Vault cron secret the other pg_net callers use — so those rows
+  // push to phones and browsers exactly like the ones sent through "notify".
+  if (action === "push-existing") {
+    const cronSecret = req.headers.get("x-cron-secret") ?? "";
+    const CRON_SECRET = Deno.env.get("CRON_SECRET") ?? "";
+    if (!isServiceRole && (!CRON_SECRET || cronSecret !== CRON_SECRET)) return json({ error: "Unauthorized" }, 401);
+
+    const notificationId = String(body.notification_id ?? "");
+    if (!notificationId) return json({ error: "notification_id required" }, 400);
+
+    const { data: n } = await sb.from("notifications")
+      .select("id, user_id, type, category, title, body, deep_link, priority, last_push_at, read_at")
+      .eq("id", notificationId).maybeSingle();
+    if (!n) return json({ ok: false, error: "notification not found" }, 404);
+    if (n.last_push_at || n.read_at || n.priority !== "high") return json({ ok: true, skipped: "not eligible" });
+
+    const { data: prefs } = await sb.from("notification_preferences")
+      .select("push_enabled, pref_money, pref_savings, pref_stock, pref_permissions, pref_approvals, pref_credit, pref_alert, pref_bills, pref_milestone")
+      .eq("user_id", n.user_id).maybeSingle();
+    const prefField = CAT_PREF[String(n.category ?? "")];
+    if (prefs && ((prefs as Record<string, boolean>).push_enabled === false
+      || (prefField && (prefs as Record<string, boolean>)[prefField] === false))) {
+      return json({ ok: true, skipped: "preference" });
+    }
+
+    // Flood guard: a sweep that creates many alerts for one owner (e.g. a daily
+    // low-stock scan) must not become a burst of pushes. After 3 pushes in 5
+    // minutes the rest stay in the bell only.
+    const { count: recentPushes } = await sb.from("notifications")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", n.user_id)
+      .gte("last_push_at", new Date(Date.now() - 5 * 60 * 1000).toISOString());
+    if ((recentPushes ?? 0) >= 3) return json({ ok: true, skipped: "flood" });
+
+    const devices = await pushToUser(sb, n.user_id as string, {
+      title:    String(n.title ?? ""),
+      body:     String(n.body ?? ""),
+      deepLink: (n.deep_link as Record<string, unknown> | null) ?? null,
+      priority: "high",
+      type:     String(n.type ?? ""),
+      category: String(n.category ?? "money"),
+    });
+    if (devices.some((d) => d.ok)) {
+      await sb.from("notifications").update({ last_push_at: new Date().toISOString() }).eq("id", n.id);
+    }
+    return json({ ok: true, devices: devices.map(({ platform, status, ok, errCode }) => ({ platform, status, ok, errCode })) });
   }
 
   // ── deregister-token ────────────────────────────────────────────────────────
@@ -402,8 +525,11 @@ Deno.serve(async (req) => {
       if (recentPush) suppressFCM = true;
     }
 
-    // INSERT new notification
-    const { data: notif, error: insertErr } = await sb.from("notifications").insert({
+    // INSERT new notification. `origin: 'edge'` tells the database push trigger
+    // that this row is pushed right here, so it must not push it a second time.
+    // If the column doesn't exist yet (function deployed before the migration),
+    // retry without it — the trigger doesn't exist yet either, so no double push.
+    const notifRow = {
       user_id:     userId,
       type,
       category,
@@ -414,43 +540,34 @@ Deno.serve(async (req) => {
       dedupe_key:  dedupeKey,
       notif_count: 1,
       notif_total: rollupAmount ?? 0,
-    }).select("id").single();
+    };
+    let ins = await sb.from("notifications").insert({ ...notifRow, origin: "edge" }).select("id").single();
+    if (ins.error && /origin/i.test(ins.error.message)) {
+      ins = await sb.from("notifications").insert(notifRow).select("id").single();
+    }
+    const { data: notif, error: insertErr } = ins;
 
     if (insertErr) return json({ error: insertErr.message }, 500);
 
     // FCM v1 push for high-priority (unless suppressed by flood window)
-    let fcmResult: { status: number; body: string } | null = null;
+    let devices: DeviceResult[] = [];
     if (priority === "high" && !suppressFCM && (prefs?.push_enabled ?? true)) {
-      const [tokensResult, unreadResult] = await Promise.all([
-        sb.from("push_tokens")
-          .select("token, platform")
-          .eq("user_id", userId)
-          .gte("last_seen", new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString()),
-        sb.from("notifications")
-          .select("id", { count: "exact", head: true })
-          .eq("user_id", userId)
-          .is("read_at", null),
-      ]);
+      devices = await pushToUser(sb, userId, { title, body: bodyText ?? "", deepLink, priority, type, category });
 
-      const tokens      = tokensResult.data;
-      const unreadCount = (unreadResult.count ?? 1);
-
-      if (tokens?.length) {
-        const results = await Promise.all(
-          tokens.map(t => sendFCMv1(sb, t.token, title, bodyText ?? "", deepLink, priority, unreadCount, type, category))
-        );
-        fcmResult = results[0] ?? null;
-
-        // Record when FCM was fired so the flood window check works across reads
-        if (fcmResult && fcmResult.status >= 200 && fcmResult.status < 300 && notif?.id) {
-          await sb.from("notifications")
-            .update({ last_push_at: new Date().toISOString() })
-            .eq("id", notif.id);
-        }
+      // Record when FCM was fired so the flood window check works across reads.
+      // Any device accepting the push counts — not just whichever token was first.
+      if (devices.some((d) => d.ok) && notif?.id) {
+        await sb.from("notifications")
+          .update({ last_push_at: new Date().toISOString() })
+          .eq("id", notif.id);
       }
     }
 
-    return json({ ok: true, action: "inserted", id: notif?.id, fcm: fcmResult });
+    return json({
+      ok: true, action: "inserted", id: notif?.id,
+      fcm: devices[0] ? { status: devices[0].status } : null,   // legacy shape
+      devices: devices.map(({ platform, status, ok, errCode }) => ({ platform, status, ok, errCode })),
+    });
   }
 
   return json({ error: "Unknown action" }, 400);

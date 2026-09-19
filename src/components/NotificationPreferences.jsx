@@ -84,6 +84,88 @@ function InfoMsg({ children, type = "info" }) {
   return <p className={`text-[12px] font-semibold text-center ${styles[type]}`}>{children}</p>;
 }
 
+// ── Test notification ─────────────────────────────────────────────────────────
+// Sends a real push to THIS account's registered devices (server: notify-send
+// "send-test") and shows what Google's push service answered for each one, so
+// "did it work?" has a real answer instead of a green tick that only proves a
+// token was stored. A short delay gives the user time to leave the tab/app —
+// browsers hide the OS popup while a KudiAI tab is visible.
+const DEVICE_LABEL = { web: "Browser", android: "Android app", ios: "iPhone app" };
+
+function TestNotificationCard({ native, enabled }) {
+  const [phase,     setPhase]     = useState("idle"); // idle | waiting | done
+  const [countdown, setCountdown] = useState(0);
+  const [result,    setResult]    = useState(null);
+
+  const run = useCallback(async () => {
+    const delay = native ? 4 : 8;
+    setResult(null);
+    setPhase("waiting");
+    setCountdown(delay);
+    const timer = setInterval(() => setCountdown((c) => (c > 0 ? c - 1 : 0)), 1000);
+    try {
+      const { data, error } = await supabase.functions.invoke("notify-send", {
+        body: { action: "send-test", delay_seconds: delay },
+      });
+      if (error) throw new Error(error.message);
+      setResult(data || {});
+    } catch (e) {
+      setResult({ error: String(e?.message || e) });
+    } finally {
+      clearInterval(timer);
+      setPhase("done");
+    }
+  }, [native]);
+
+  if (!enabled) return null;
+
+  const devices = result?.devices || [];
+  return (
+    <div className="mt-3 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 px-4 py-4 space-y-3">
+      <div>
+        <p className="text-[13px] font-semibold text-slate-700 dark:text-slate-200">Test notifications</p>
+        <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">Sends a test alert to your devices and shows what each one answered</p>
+      </div>
+
+      <button
+        onClick={run}
+        disabled={phase === "waiting"}
+        className="w-full py-2.5 rounded-xl text-[13px] font-bold text-[#16255A] dark:text-slate-100 border border-slate-200 dark:border-slate-600 active:opacity-80 transition-opacity disabled:opacity-60"
+      >
+        {phase === "waiting" ? "Sending…" : "Send test notification"}
+      </button>
+
+      {phase === "waiting" && (
+        <InfoMsg type="warn">
+          {native
+            ? `Leave the app now (press Home) — the test arrives in ${countdown}s`
+            : `Switch to another tab or minimise this window now — the test arrives in ${countdown}s`}
+        </InfoMsg>
+      )}
+
+      {phase === "done" && result?.error && (
+        <InfoMsg type="error">Couldn't send the test: {result.error}</InfoMsg>
+      )}
+      {phase === "done" && !result?.error && result?.registered_devices === 0 && (
+        <InfoMsg type="warn">No device is registered for this account yet. Turn notifications on above, then try again.</InfoMsg>
+      )}
+      {phase === "done" && !result?.error && devices.length > 0 && (
+        <div className="space-y-1.5">
+          {devices.map((d, i) => (
+            <p key={i} className={`text-[12px] font-semibold text-center ${d.ok ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}>
+              {DEVICE_LABEL[d.platform] || d.platform}:{" "}
+              {d.ok ? "accepted by Google's push service ✓" : `failed — ${d.errCode || `status ${d.status}`}${d.errMsg ? ` (${d.errMsg})` : ""}`}
+            </p>
+          ))}
+          <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center leading-snug">
+            "Accepted" means it reached the device. If nothing appeared, check that this browser or app isn't blocked in your system notification settings and that Do Not Disturb is off.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const DEFAULT_PREFS = {
   push_enabled:                true,
   pref_money:                  true,
@@ -379,6 +461,10 @@ export default function NotificationPreferences({ userId, onClose, portal = "own
               )}
             </div>
           )}
+          <TestNotificationCard
+            native={!!isNative()}
+            enabled={isNative() ? pushStatus === "granted" : (webPushConfigured() && webStatus === "granted")}
+          />
           {!isNative() && webPushConfigured() && needsIosInstall() && (
             <div className="mt-3 px-1">
               <InfoMsg type="info">

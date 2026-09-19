@@ -18,6 +18,7 @@ import TransactionDetailModal from "../components/shared/TransactionDetailModal"
 import { buildCoopSavingsReceipt, buildCoopWithdrawalRequestReceipt, buildCoopLoanRepaymentReceipt } from "../utils/receiptConfig";
 import { sendEmailTrigger } from "../utils/emailTrigger";
 import AppLogo from "../components/AppLogo";
+import EnableNotificationsBanner from "../components/EnableNotificationsBanner";
 import TransactionPinModal from "../components/TransactionPinModal";
 import { useCampaigns } from "../hooks/useCampaigns";
 import { usePartnerOffers } from "../hooks/usePartnerOffers";
@@ -246,6 +247,8 @@ function HomeTab({ member, org, announcements, polls = [], events = [], loans = 
 
   return (
     <div className="pb-8 space-y-6">
+
+      <EnableNotificationsBanner userId={member?.user_id} />
 
       {/* ── Hero Balance Card ── */}
       <div className="mx-4 mt-5 rounded-3xl px-6 py-6 text-white relative overflow-hidden shadow-hero bg-[linear-gradient(145deg,#3DA829_0%,#2E8020_55%,#1E5514_100%)]">
