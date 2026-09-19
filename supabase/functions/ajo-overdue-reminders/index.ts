@@ -90,11 +90,15 @@ Deno.serve(async (req) => {
         }),
       });
       const out = resp.ok ? (await resp.json().catch(() => null)) as { sent?: number } | null : null;
-      if (out && Number(out.sent) >= 1) emailed.push(c.client_id); else failed++;
+      if (out && Number(out.sent) >= 1) {
+        emailed.push(c.client_id);
+        // Mark IMMEDIATELY: if this invocation is cut short, a client already
+        // emailed must not be emailed again tomorrow.
+        if (!override) await sb.rpc("ajo_mark_overdue_emailed", { p_client_ids: [c.client_id] });
+      } else failed++;
     } catch { failed++; }
     await sleep(2200);   // the email route allows 30 requests / minute / IP
   }
 
-  if (emailed.length && !override) await sb.rpc("ajo_mark_overdue_emailed", { p_client_ids: emailed });
   return json({ ok: true, candidates: candidates.length, emailed: emailed.length, failed, test_override: !!override });
 });
