@@ -27,7 +27,8 @@ BEGIN
              regexp_replace(to_email, '^(.{2}).*(@.*)$', '\1***\2') AS to_masked, left(coalesce(error_msg, ''), 60) AS err
       FROM public.email_delivery_log ORDER BY created_at DESC LIMIT 40
     LOOP
-      RAISE NOTICE '% | % | % | %%', to_char(r.created_at AT TIME ZONE 'Africa/Lagos', 'DD Mon HH24:MI:SS'), r.status, r.to_masked, left(coalesce(r.subject, ''), 90), CASE WHEN r.err <> '' THEN ' | ' || r.err ELSE '' END;
+      RAISE NOTICE '% | % | % | %', to_char(r.created_at AT TIME ZONE 'Africa/Lagos', 'DD Mon HH24:MI:SS'), r.status, r.to_masked,
+        left(coalesce(r.subject, ''), 90) || CASE WHEN r.err <> '' THEN ' | ' || r.err ELSE '' END;
     END LOOP;
   EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'R2 failed: %', SQLERRM; END;
 
