@@ -17,7 +17,7 @@
 // and have KudiAI's real sender deliver a convincing phishing message.
 //
 // ENFORCEMENT SWITCH
-// `platform_config.auth_hook_enforce`:
+// `internal_flags.auth_hook_enforce` (a private table — platform_config is publicly readable):
 //   'true'              → unverified request => return {} immediately, send nothing.
 //   anything else / unset → SHADOW mode: verify and log the verdict, but still
 //                        process the request. Exists only so the very first
@@ -134,13 +134,13 @@ async function verify(req: Request, rawBody: string, secret: string): Promise<Ve
   return "fail_no_signature";
 }
 
-// ── Enforcement switch (platform_config.auth_hook_enforce) ───────────────────
+// ── Enforcement switch (internal_flags.auth_hook_enforce) ───────────────────
 let _enforce = false;
 let _enforceAt = 0;
 async function enforcing(): Promise<boolean> {
   if (Date.now() - _enforceAt < 30_000) return _enforce;
   try {
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/platform_config?key=eq.auth_hook_enforce&select=value`, {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/internal_flags?key=eq.auth_hook_enforce&select=value`, {
       headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` },
     });
     if (r.ok) {

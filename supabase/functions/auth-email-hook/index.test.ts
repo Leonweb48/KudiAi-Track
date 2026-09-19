@@ -41,7 +41,7 @@ async function run(opts: {
     const url = String(input);
     const body = init?.body ? JSON.parse(init.body) : null;
     calls.push({ url, method: init?.method ?? "GET", body });
-    if (url.includes("/rest/v1/platform_config")) return new Response(JSON.stringify([{ value: opts.enforce }]), { status: 200 });
+    if (url.includes("/rest/v1/internal_flags")) return new Response(JSON.stringify([{ value: opts.enforce }]), { status: 200 });
     return new Response("{}", { status: 200 });
   }) as typeof fetch;
   try {
