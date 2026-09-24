@@ -5,6 +5,7 @@ import { Capacitor }             from "@capacitor/core";
 import { canDo, planAvailableText } from "../utils/plans";
 import { sendEmailTrigger }          from "../utils/emailTrigger";
 import { fmt, today, applyPeriodFilter } from "../utils/helpers";
+import { formatWATDate }             from "../utils/wat";
 import PeriodFilter from "../components/shared/PeriodFilter";
 import { AmountDisplay }         from "../components/shared/AmountDisplay";
 import { exportInvoicePdf }      from "../utils/generateInvoicePdf";
@@ -870,8 +871,9 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
                   owner_id:            userId,
                   owner_email:         profile?.email || "",
                   business_name:       profile?.business_name || "",
+                  business_phone:      profile?.business_phone || profile?.phone || "",
                   invoice_number:      _inv.invoice_number,
-                  issue_date:          _inv.created_at ? new Date(_inv.created_at).toLocaleDateString("en-NG") : "",
+                  issue_date:          _inv.created_at ? formatWATDate(_inv.created_at) : "",
                   due_date:            _inv.due_date || "",
                   customer_name:       _inv.customer_name,
                   customer_email:      _inv.customer_email || "",
@@ -922,6 +924,7 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
                 owner_id:       userId,
                 owner_email:    profile?.email || "",
                 business_name:  profile?.business_name || "",
+                business_phone: profile?.business_phone || profile?.phone || "",
                 invoice_number: detailInv.invoice_number,
                 customer_name:  detailInv.customer_name,
                 customer_email: detailInv.customer_email || "",
@@ -942,8 +945,9 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
                 owner_id:            userId,
                 owner_email:         profile?.email || "",
                 business_name:       profile?.business_name || "",
+                business_phone:      profile?.business_phone || profile?.phone || "",
                 invoice_number:      inv.invoice_number,
-                issue_date:          inv.created_at ? new Date(inv.created_at).toLocaleDateString("en-NG") : "",
+                issue_date:          inv.created_at ? formatWATDate(inv.created_at) : "",
                 due_date:            inv.due_date || "",
                 customer_name:       inv.customer_name,
                 customer_email:      inv.customer_email || "",

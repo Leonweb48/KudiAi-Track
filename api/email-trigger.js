@@ -10,33 +10,6 @@ const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const str = (v) => String(v || "");
 const fmt = (n) => "₦" + Number(n || 0).toLocaleString("en-NG");
 
-function renderEmailItems(items) {
-  if (!Array.isArray(items) || !items.length) return "";
-  const rows = items.flatMap(item => {
-    const parentRow = `<tr>
-      <td style="font-size:12px;color:#374151;padding:7px 0;border-bottom:1px solid #f1f5f9;">${str(item.description)}</td>
-      <td style="font-size:12px;color:#64748b;text-align:center;padding:7px 0;border-bottom:1px solid #f1f5f9;">${str(item.quantity)}</td>
-      <td style="font-size:12px;font-weight:700;color:#0f172a;text-align:right;padding:7px 0;border-bottom:1px solid #f1f5f9;">${fmt(item.line_total)}</td>
-    </tr>`;
-    const subRows = (item.sub_items || []).map(sub => `<tr>
-      <td style="font-size:11px;color:#64748b;padding:4px 0 4px 14px;border-bottom:1px solid #f8fafc;">
-        <span style="color:#6d28d9;margin-right:4px;">•</span>${str(sub.description)}
-      </td>
-      <td style="font-size:11px;color:#94a3b8;text-align:center;padding:4px 0;border-bottom:1px solid #f8fafc;">${str(sub.quantity)}</td>
-      <td style="font-size:11px;color:#94a3b8;text-align:right;padding:4px 0;border-bottom:1px solid #f8fafc;">${sub.line_total ? fmt(sub.line_total) : ""}</td>
-    </tr>`);
-    return [parentRow, ...subRows];
-  });
-  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 12px;border-collapse:collapse;">
-    <thead><tr>
-      <th style="text-align:left;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;padding:0 0 6px;border-bottom:1px solid #e4e8f0;">Item</th>
-      <th style="text-align:center;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;padding:0 0 6px;border-bottom:1px solid #e4e8f0;">Qty</th>
-      <th style="text-align:right;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;padding:0 0 6px;border-bottom:1px solid #e4e8f0;">Total</th>
-    </tr></thead>
-    <tbody>${rows.join("")}</tbody>
-  </table>`;
-}
-
 function emailHtml(title, body, headerColor = "#4f46e5") {
   return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
@@ -369,7 +342,7 @@ export default async function handler(req, res) {
   const qa = (to, subject, html, attachments) => { if (to) sends.push(send(transport, from, sb, str(to), subject, html, attachments || [])); };
 
   // ── Cash in / Cash out ──────────────────────────────────────────────────────
-  if (await handleMoneyEmail(event, { d, q, sb, user, fmt })) {
+  if (await handleMoneyEmail(event, { d, q, qa, sb, user, fmt })) {
     // handled by the bank-grade templates in api/_lib/moneyEmails.js
   }
 
@@ -584,106 +557,7 @@ export default async function handler(req, res) {
       `, "linear-gradient(135deg,#4f46e5 0%,#7c3aed 100%)"));
   }
 
-  // ── Invoice sent ────────────────────────────────────────────────────────────
-  else if (event === "invoice_sent") {
-    const pdfAttachments = d.pdf_base64
-      ? [{ filename: decodeEntities(str(d.pdf_filename)) || "invoice.pdf", content: Buffer.from(str(d.pdf_base64), "base64"), contentType: "application/pdf" }]
-      : [];
-
-    const itemsHtml = renderEmailItems(d.items);
-
-    const totalsHtml = `
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 20px;">
-        ${d.subtotal ? `<tr><td style="font-size:12px;color:#64748b;padding:3px 0;">Subtotal</td><td style="font-size:12px;color:#374151;text-align:right;padding:3px 0;">${fmt(d.subtotal)}</td></tr>` : ""}
-        ${d.discount ? `<tr><td style="font-size:12px;color:#ef4444;padding:3px 0;">Discount</td><td style="font-size:12px;color:#ef4444;text-align:right;padding:3px 0;">−${fmt(d.discount)}</td></tr>` : ""}
-        ${d.vat ? `<tr><td style="font-size:12px;color:#64748b;padding:3px 0;">VAT (7.5%)</td><td style="font-size:12px;color:#374151;text-align:right;padding:3px 0;">${fmt(d.vat)}</td></tr>` : ""}
-        ${d.other_charges ? `<tr><td style="font-size:12px;color:#64748b;padding:3px 0;">${str(d.other_charges_label) || "Other Charges"}</td><td style="font-size:12px;color:#374151;text-align:right;padding:3px 0;">${fmt(d.other_charges)}</td></tr>` : ""}
-        <tr><td colspan="2" style="padding:4px 0;"><div style="height:1px;background:#e4e8f0;"></div></td></tr>
-        <tr><td style="font-size:14px;font-weight:800;color:#0f172a;padding:4px 0;">TOTAL DUE</td><td style="font-size:14px;font-weight:800;color:#4f46e5;text-align:right;padding:4px 0;">${fmt(d.total)}</td></tr>
-      </table>`;
-
-    qa(d.customer_email, `Invoice ${str(d.invoice_number)} from ${str(d.business_name) || "KudiAI Track"}`,
-      emailHtml("Invoice Received", `
-        <p style="font-size:14px;color:#374151;margin:0 0 16px;">Hi <strong>${str(d.customer_name)}</strong>, you have received an invoice from <strong>${str(d.business_name)}</strong>.</p>
-        <div style="background:#f8fafc;border:1px solid #e4e8f0;border-radius:12px;padding:16px 20px;margin:0 0 20px;">
-          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-            <tr><td style="font-size:12px;color:#64748b;padding:2px 0;">Invoice No.</td><td style="font-size:12px;font-weight:700;color:#0f172a;text-align:right;padding:2px 0;">${str(d.invoice_number)}</td></tr>
-            ${d.issue_date ? `<tr><td style="font-size:12px;color:#64748b;padding:2px 0;">Issue Date</td><td style="font-size:12px;color:#374151;text-align:right;padding:2px 0;">${str(d.issue_date)}</td></tr>` : ""}
-            ${d.due_date ? `<tr><td style="font-size:12px;color:#64748b;padding:2px 0;">Due Date</td><td style="font-size:12px;font-weight:700;color:#dc2626;text-align:right;padding:2px 0;">${str(d.due_date)}</td></tr>` : ""}
-          </table>
-        </div>
-        ${itemsHtml}
-        ${totalsHtml}
-        <p style="font-size:12px;color:#64748b;margin:0;">Please arrange payment before the due date. Contact <strong>${str(d.business_name)}</strong> if you have any questions.</p>
-      `, "#4f46e5"), pdfAttachments);
-
-    q(d.owner_email || d.user_email, `Invoice ${str(d.invoice_number)} Sent — ${str(d.customer_name)}`,
-      emailHtml("Invoice Sent", `
-        <p style="font-size:14px;color:#374151;margin:0 0 16px;">Invoice <strong>${str(d.invoice_number)}</strong> for <strong>${fmt(d.total)}</strong> has been sent to <strong>${str(d.customer_name)}</strong>.</p>
-        <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:12px 16px;margin:0 0 12px;font-size:13px;color:#1e40af;">
-          ${d.customer_email ? `📧 ${str(d.customer_email)}` : ""}${d.customer_phone ? ` &nbsp;·&nbsp; 📞 ${str(d.customer_phone)}` : ""}
-        </div>
-        ${totalsHtml}
-      `, "#4f46e5"));
-  }
-
-  // ── Invoice paid ────────────────────────────────────────────────────────────
-  else if (event === "invoice_paid") {
-    const pdfAttachments = d.pdf_base64
-      ? [{ filename: decodeEntities(str(d.pdf_filename)) || "invoice.pdf", content: Buffer.from(str(d.pdf_base64), "base64"), contentType: "application/pdf" }]
-      : [];
-
-    const amtPaid    = fmt(d.amount_paid || d.total);
-    const balanceDue = Number(d.balance_due || 0);
-
-    const itemsHtml2 = renderEmailItems(d.items);
-
-    qa(d.customer_email, `Payment Confirmed — Invoice ${str(d.invoice_number)}`,
-      emailHtml("Payment Received", `
-        <p style="font-size:14px;color:#374151;margin:0 0 16px;">Hi <strong>${str(d.customer_name)}</strong>, your payment for Invoice <strong>${str(d.invoice_number)}</strong> has been received.</p>
-        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:20px;text-align:center;margin:0 0 20px;">
-          <p style="margin:0 0 4px;font-size:11px;color:#15803d;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Amount Paid</p>
-          <p style="margin:0;font-size:32px;font-weight:900;color:#15803d;">${amtPaid}</p>
-          ${str(d.payment_method) ? `<p style="margin:6px 0 0;font-size:12px;color:#166534;text-transform:capitalize;">${str(d.payment_method).replace(/_/g," ")}</p>` : ""}
-        </div>
-        ${balanceDue > 0
-          ? `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px 16px;margin:0 0 16px;font-size:13px;color:#92400e;font-weight:700;">Balance still due: ${fmt(balanceDue)}</div>`
-          : `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:12px 16px;margin:0 0 16px;font-size:13px;color:#15803d;font-weight:700;">✓ Invoice fully paid — thank you!</div>`
-        }
-        ${itemsHtml2}
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 12px;">
-          ${d.subtotal ? `<tr><td style="font-size:12px;color:#64748b;padding:3px 0;">Subtotal</td><td style="font-size:12px;color:#374151;text-align:right;padding:3px 0;">${fmt(d.subtotal)}</td></tr>` : ""}
-          ${d.discount ? `<tr><td style="font-size:12px;color:#ef4444;padding:3px 0;">Discount</td><td style="font-size:12px;color:#ef4444;text-align:right;padding:3px 0;">−${fmt(d.discount)}</td></tr>` : ""}
-          ${d.vat ? `<tr><td style="font-size:12px;color:#64748b;padding:3px 0;">VAT (7.5%)</td><td style="font-size:12px;color:#374151;text-align:right;padding:3px 0;">${fmt(d.vat)}</td></tr>` : ""}
-          ${d.other_charges ? `<tr><td style="font-size:12px;color:#64748b;padding:3px 0;">${str(d.other_charges_label) || "Other Charges"}</td><td style="font-size:12px;color:#374151;text-align:right;padding:3px 0;">${fmt(d.other_charges)}</td></tr>` : ""}
-          <tr><td colspan="2" style="padding:4px 0;"><div style="height:1px;background:#e4e8f0;"></div></td></tr>
-          <tr><td style="font-size:13px;font-weight:700;color:#0f172a;padding:4px 0;">Invoice Total</td><td style="font-size:13px;font-weight:700;color:#0f172a;text-align:right;padding:4px 0;">${fmt(d.total)}</td></tr>
-        </table>
-      `, "#059669"), pdfAttachments);
-
-    q(d.owner_email || d.user_email, `Invoice Paid — ${str(d.customer_name)} · ${amtPaid}`,
-      emailHtml("Invoice Paid", `
-        <p style="font-size:14px;color:#374151;margin:0 0 16px;"><strong>${str(d.customer_name)}</strong> has paid Invoice <strong>${str(d.invoice_number)}</strong>.</p>
-        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:16px 20px;margin:0 0 16px;">
-          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-            <tr><td style="font-size:12px;color:#64748b;padding:2px 0;">Amount Paid</td><td style="font-size:13px;font-weight:800;color:#15803d;text-align:right;padding:2px 0;">${amtPaid}</td></tr>
-            ${str(d.payment_method) ? `<tr><td style="font-size:12px;color:#64748b;padding:2px 0;">Method</td><td style="font-size:12px;color:#374151;text-align:right;padding:2px 0;text-transform:capitalize;">${str(d.payment_method).replace(/_/g," ")}</td></tr>` : ""}
-            <tr><td style="font-size:12px;color:#64748b;padding:2px 0;">Invoice Total</td><td style="font-size:12px;color:#374151;text-align:right;padding:2px 0;">${fmt(d.total)}</td></tr>
-            ${balanceDue > 0 ? `<tr><td style="font-size:12px;color:#92400e;font-weight:700;padding:2px 0;">Balance Due</td><td style="font-size:12px;color:#92400e;font-weight:700;text-align:right;padding:2px 0;">${fmt(balanceDue)}</td></tr>` : ""}
-          </table>
-        </div>
-        ${balanceDue <= 0 ? `<p style="font-size:13px;color:#15803d;font-weight:700;margin:0;">✓ Fully paid</p>` : `<p style="font-size:13px;color:#92400e;margin:0;">Balance of <strong>${fmt(balanceDue)}</strong> is still outstanding.</p>`}
-      `, "#059669"));
-  }
-
-  // ── Invoice cancelled ───────────────────────────────────────────────────────
-  else if (event === "invoice_cancelled") {
-    q(d.customer_email, `Invoice ${str(d.invoice_number)} Cancelled`,
-      emailHtml("Invoice Cancelled", `
-        <p style="font-size:14px;color:#374151;margin:0 0 20px;">Hi <strong>${str(d.customer_name)}</strong>, Invoice <strong>${str(d.invoice_number)}</strong>${str(d.business_name) ? ` from <strong>${str(d.business_name)}</strong>` : ""} has been cancelled. No payment is required.</p>
-        <p style="font-size:13px;color:#374151;margin:0;">If you believe this is an error, please contact ${str(d.business_name) || "your supplier"} directly.</p>
-      `, "#64748b"));
-  }
+  // (invoice_sent / invoice_paid / invoice_cancelled now live in api/_lib/moneyEmails.js)
 
   // ── Business registered (new sign-up) ───────────────────────────────────────
   else if (event === "business_registered") {

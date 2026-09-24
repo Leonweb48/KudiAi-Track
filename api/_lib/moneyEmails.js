@@ -8,7 +8,7 @@
 // The reference, timestamp and balance-after in these emails come from the DATABASE
 // (looked up by transaction_id / payment_id after checking the caller is allowed to
 // see that row), never from values the client sent.
-import { escapeHtml } from "./escapeHtml.js";
+import { escapeHtml, decodeEntities } from "./escapeHtml.js";
 import { bankEmail, naira, transactionLink } from "./bankEmail.js";
 import { formatWAT } from "./wat.js";
 
@@ -16,7 +16,35 @@ const str = (v) => String(v ?? "");
 const pmLabel = (v) => str(v || "cash").replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 const UUIDISH = /^[0-9a-f-]{20,40}$/i;
 
-export async function handleMoneyEmail(event, { d, q, sb, user, fmt }) {
+// Invoice line items (with their sub-items) as a compact table, for the note area of an invoice email.
+// `items` comes from the ESCAPED payload, so every string in it is already HTML-safe.
+function renderInvoiceItems(items, fmt) {
+  if (!Array.isArray(items) || !items.length) return "";
+  const th = "text-align:%;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;padding:0 0 6px;border-bottom:1px solid #e4e8f0;";
+  const rows = items.flatMap((item) => {
+    const parent = `<tr>
+      <td style="font-size:12px;color:#374151;padding:7px 0;border-bottom:1px solid #f1f5f9;">${str(item.description)}</td>
+      <td style="font-size:12px;color:#64748b;text-align:center;padding:7px 0;border-bottom:1px solid #f1f5f9;">${str(item.quantity)}</td>
+      <td style="font-size:12px;font-weight:700;color:#0f172a;text-align:right;padding:7px 0;border-bottom:1px solid #f1f5f9;">${fmt(item.line_total)}</td>
+    </tr>`;
+    const subs = (item.sub_items || []).map((sub) => `<tr>
+      <td style="font-size:11px;color:#64748b;padding:4px 0 4px 14px;border-bottom:1px solid #f8fafc;"><span style="color:#6d28d9;margin-right:4px;">•</span>${str(sub.description)}</td>
+      <td style="font-size:11px;color:#94a3b8;text-align:center;padding:4px 0;border-bottom:1px solid #f8fafc;">${str(sub.quantity)}</td>
+      <td style="font-size:11px;color:#94a3b8;text-align:right;padding:4px 0;border-bottom:1px solid #f8fafc;">${sub.line_total ? fmt(sub.line_total) : ""}</td>
+    </tr>`);
+    return [parent, ...subs];
+  });
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 6px;border-collapse:collapse;">
+    <thead><tr>
+      <th style="${th.replace("%", "left")}">Item</th>
+      <th style="${th.replace("%", "center")}">Qty</th>
+      <th style="${th.replace("%", "right")}">Total</th>
+    </tr></thead>
+    <tbody>${rows.join("")}</tbody>
+  </table>`;
+}
+
+export async function handleMoneyEmail(event, { d, q, qa, sb, user, fmt }) {
   // Server-side facts for one ledger row; null when missing or the caller may not see it.
   async function ledgerFacts(table, id, ownerCol) {
     const rowId = str(id);
@@ -243,6 +271,116 @@ export async function handleMoneyEmail(event, { d, q, sb, user, fmt }) {
         amount: Number(d.plan_price) > 0 ? naira(d.plan_price) : undefined, amountLabel: "Amount Paid",
         rows: [["Plan", str(d.plan_name)], ["Billing", Number(d.plan_price) > 0 ? "Monthly" : ""], ["Reference", str(d.reference), { mono: true }]],
         button: { label: "Open Dashboard →", url: "https://kudiai.app" },
+      }));
+    return true;
+  }
+
+  // ── Invoices ─────────────────────────────────────────────────────────────────
+  // An invoice is a request for payment, not a ledger row, so its "reference" is the
+  // invoice number and there is no balance-after — the amount due / balance due stand in.
+  if (event === "invoice_sent" || event === "invoice_paid" || event === "invoice_cancelled") {
+    const no = str(d.invoice_number);
+    const customer = str(d.customer_name) || "there";
+    const phone = str(d.business_phone);
+    const callButton = phone ? { label: `Call ${biz}`, url: `tel:${phone.replace(/[^0-9+]/g, "")}` } : undefined;
+    const pdfAttachments = d.pdf_base64
+      ? [{ filename: decodeEntities(str(d.pdf_filename)) || "invoice.pdf", content: Buffer.from(str(d.pdf_base64), "base64"), contentType: "application/pdf" }]
+      : [];
+    const money = (v) => (v != null && v !== "" && Number(v) !== 0 ? naira(v) : "");
+    // subtotal / discount / VAT / other charges, as rows
+    const totalsRows = [
+      ["Subtotal", money(d.subtotal)],
+      ["Discount", Number(d.discount) ? `−${naira(d.discount)}` : ""],
+      ["VAT (7.5%)", money(d.vat)],
+      [str(d.other_charges_label) || "Other Charges", money(d.other_charges)],
+    ];
+    const items = renderInvoiceItems(d.items, fmt);
+    const when = d.occurred_at || new Date();
+
+    if (event === "invoice_sent") {
+      qa(d.customer_email, `Invoice ${no} from ${str(d.business_name) || "KudiAI Track"}`,
+        bankEmail({
+          title: "Invoice Received", tone: "warning", timestamp: when,
+          preheader: `Invoice ${no} from ${biz} — ${naira(d.total)} due`,
+          intro: `Hi <strong>${customer}</strong>, you have received an invoice from <strong>${biz}</strong>.`,
+          amount: naira(d.total), amountLabel: "Total Due",
+          rows: [
+            ["Invoice Number", no, { mono: true }],
+            ["Issue Date", str(d.issue_date)],
+            ["Due Date", str(d.due_date)],
+            ...totalsRows,
+            ["From", str(d.business_name)],
+            ["Business Phone", phone],
+          ],
+          note: `${items}<p style="margin:10px 0 0;font-size:12px;color:#64748b;">Please arrange payment before the due date. Contact <strong>${biz}</strong> if you have any questions. The invoice is attached as a PDF.</p>`,
+          button: callButton,
+        }), pdfAttachments);
+      q(d.owner_email || d.user_email, `Invoice ${no} Sent — ${str(d.customer_name)}`,
+        bankEmail({
+          title: "Invoice Sent", tone: "neutral", timestamp: when,
+          intro: `Invoice <strong>${no}</strong> has been sent to <strong>${str(d.customer_name) || "your customer"}</strong>.`,
+          amount: naira(d.total), amountLabel: "Invoice Total",
+          rows: [
+            ["Invoice Number", no, { mono: true }],
+            ["Customer", str(d.customer_name)],
+            ["Customer Email", str(d.customer_email)],
+            ["Customer Phone", str(d.customer_phone)],
+            ["Due Date", str(d.due_date)],
+          ],
+          button: { label: "View Invoices →", url: "https://kudiai.app" },
+          security: false,
+        }));
+      return true;
+    }
+
+    if (event === "invoice_paid") {
+      const paid = d.amount_paid || d.total;
+      const balanceDue = Number(d.balance_due || 0);
+      const balanceText = balanceDue > 0 ? naira(balanceDue) : "₦0.00 — fully paid";
+      qa(d.customer_email, `Payment Confirmed — Invoice ${no}`,
+        bankEmail({
+          title: "Payment Received", tone: "success", timestamp: when,
+          preheader: `We received ${naira(paid)} for invoice ${no}. Balance due: ${balanceDue > 0 ? naira(balanceDue) : "₦0.00"}`,
+          intro: `Hi <strong>${customer}</strong>, your payment for Invoice <strong>${no}</strong> has been received.${balanceDue > 0 ? "" : " Thank you — the invoice is fully paid."}`,
+          amount: naira(paid), amountLabel: "Amount Paid",
+          rows: [
+            ["Invoice Number", no, { mono: true }],
+            ["Payment Date", formatWAT(when)],
+            ["Payment Method", d.payment_method ? pmLabel(d.payment_method) : ""],
+            ...totalsRows,
+            ["Invoice Total", money(d.total)],
+            ["Balance Due", balanceText],
+            ["Business", str(d.business_name)],
+            ["Business Phone", phone],
+          ],
+          note: items || undefined,
+          button: callButton,
+        }), pdfAttachments);
+      q(d.owner_email || d.user_email, `Invoice Paid — ${str(d.customer_name)} · ${fmt(paid)}`,
+        bankEmail({
+          title: "Invoice Paid", tone: "success", timestamp: when,
+          intro: `<strong>${str(d.customer_name) || "A customer"}</strong> has paid Invoice <strong>${no}</strong>.`,
+          amount: naira(paid), amountLabel: "Amount Paid",
+          rows: [
+            ["Invoice Number", no, { mono: true }],
+            ["Customer", str(d.customer_name)],
+            ["Payment Method", d.payment_method ? pmLabel(d.payment_method) : ""],
+            ["Invoice Total", money(d.total)],
+            ["Balance Due", balanceText],
+          ],
+          button: { label: "View Invoices →", url: "https://kudiai.app" },
+        }));
+      return true;
+    }
+
+    // invoice_cancelled — nothing is owed any more
+    q(d.customer_email, `Invoice ${no} Cancelled`,
+      bankEmail({
+        title: "Invoice Cancelled", tone: "neutral", timestamp: when,
+        intro: `Hi <strong>${customer}</strong>, Invoice <strong>${no}</strong>${str(d.business_name) ? ` from <strong>${str(d.business_name)}</strong>` : ""} has been cancelled. You do not need to make any payment for it.`,
+        rows: [["Invoice Number", no, { mono: true }], ["From", str(d.business_name)], ["Business Phone", phone]],
+        note: `If you believe this is an error, please contact ${biz === "your business" ? "your supplier" : biz} directly.`,
+        button: callButton,
       }));
     return true;
   }
