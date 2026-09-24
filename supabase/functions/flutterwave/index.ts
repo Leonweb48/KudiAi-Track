@@ -67,6 +67,54 @@ async function sendWalletEmail(sb: any, to: string, subject: string, build: () =
 
 const fmtNgn = (kobo: number) => `₦${(kobo / 100).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
 
+const fmtLongDate = (ms: number) =>
+  new Date(ms).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Africa/Lagos" });
+
+// Emails a wallet holder their NEW account details — sent right after they move to the business account, and once for
+// wallets that had already moved. Idempotent per wallet: wallets.account_details_emailed_at is set after a successful send
+// and checked before, so nobody is emailed twice. Only ever for a wallet that really is on the business account.
+// deno-lint-ignore no-explicit-any
+async function sendAccountDetailsEmail(sb: any, uid: string, graceUntilIso: string): Promise<"sent" | "no_email" | "failed" | "skipped"> {
+  const { data: w } = await sb.from("wallets")
+    .select("flw_account, flw_account_number, flw_account_bank, flw_account_name, legacy_flw_account_number, account_details_emailed_at")
+    .eq("user_id", uid).maybeSingle();
+  if (!w?.flw_account_number || w.flw_account !== "business" || w.account_details_emailed_at) return "skipped";
+
+  const who = await resolveIdentity(sb, uid);
+  if (!who.email) return "no_email";
+
+  const g = graceStatus("business", graceUntilIso);
+  const until = g.until ? fmtLongDate(g.until) : "";
+  const label = String(w.flw_account_name || "").trim() || `KudiAI Wallet - ${who.fullName || "Account"}`.slice(0, 60);
+  const bank = String(w.flw_account_bank || "").replace(/\s*\(.*\)\s*$/, "").trim() || "Flutterwave MFB";
+  const oldTail = w.legacy_flw_account_number ? String(w.legacy_flw_account_number).slice(-4) : "";
+
+  const delivered = await sendWalletEmail(sb, who.email, "Your new KudiAI wallet account details", () => bankEmail({
+    title: "Your New Wallet Account Details", tone: "success", timestamp: new Date(),
+    preheader: `Your new KudiAI wallet account number is ${esc(w.flw_account_number)}`,
+    intro: "Your KudiAI wallet is now on our new banking account. Use the details below to fund your wallet or get paid from now on. "
+      + "Your balance and transaction history haven't changed.",
+    rows: [
+      ["Account Number", esc(w.flw_account_number), { mono: true }],
+      ["Bank", esc(bank)],
+      ["Account Name", esc(label)],
+      ["Your old number", oldTail ? `ending ${esc(oldTail)}` : ""],
+      ["Old number works until", oldTail ? (until ? esc(until) : "For a short while") : ""],
+    ],
+    note: (oldTail
+        ? `Transfers to your old number keep crediting your wallet until ${until ? esc(until) : "the deadline we announced"}; after that only the new number works, so please share the new one with anyone who pays you. `
+        : "")
+      + "Your bank app may show the account name a little differently — the account number is what matters. "
+      + "KudiAI Track will never ask for your PIN, password or OTP by email.",
+    button: { label: "Open Wallet →", url: appLink({ tab: "wallet" }) },
+    security: false,
+  }));
+  if (!delivered) return "failed";
+  const { error } = await sb.rpc("flw_mark_account_details_emailed", { p_user_id: uid });
+  if (error) console.error("[flutterwave] flw_mark_account_details_emailed:", error.message);
+  return "sent";
+}
+
 // ── OAuth token cache, one per account (survives across invocations in the same isolate) ──
 const _toks: Partial<Record<AccountKey, { value: string; exp: number }>> = {};
 async function flwToken(acct: FlwAccount = ACTIVE): Promise<string> {
@@ -390,7 +438,7 @@ serve(async (req) => {
             rows: [
               ["Your current number", esc(t.flw_account_number), { mono: true }],
               ["Keeps working until", until ? esc(until) : "For a short while"],
-              ["What to do", "Open Wallet in the app and tap “Get my new number”"],
+              ["What to do", "Log in to KudiAI Track and follow the prompt to get your new number"],
               ["You will need", "Your BVN or NIN"],
             ],
             note: "After the date above, transfers to your current number will not reach your wallet automatically. "
@@ -402,6 +450,30 @@ serve(async (req) => {
           const { error: mErr } = await sb.rpc("flw_mark_migration_emailed", { p_user_id: t.user_id });
           if (mErr) { failed++; console.error("[flutterwave] flw_mark_migration_emailed:", mErr.message); } else sent++;
         } catch (e) { failed++; console.warn("[flutterwave] announce-migration email failed:", (e as Error).message); }
+      }
+      return json({ ok: true, sent, skipped_no_email: noEmail, failed, more_may_remain: (targets ?? []).length >= 200 });
+    }
+
+    // ═══ send-account-details — service only. Emails the NEW account details to every wallet that is already on the business
+    //    account and has not been sent them yet (wallets that update from now on get theirs automatically, straight after
+    //    the move — see provision-account). Idempotent via wallets.account_details_emailed_at; `dry_run: true` only counts. ═══
+    if (action === "send-account-details") {
+      if (!(await isServiceCall(req, token))) return json({ error: "Unauthorized" }, 401);
+      const dryRun = (body as Record<string, unknown>).dry_run === true;
+      const { data: targets, error: tErr } = await sb.from("wallets")
+        .select("user_id")
+        .eq("flw_account", "business").not("flw_account_number", "is", null).is("account_details_emailed_at", null)
+        .limit(200);
+      if (tErr) return json({ error: "Could not list wallets" }, 500);
+      if (dryRun) return json({ ok: true, dry_run: true, would_email: (targets ?? []).length });
+
+      const graceUntil = await cfg("flw_legacy_grace_until", "");
+      let sent = 0, noEmail = 0, failed = 0;
+      for (const t of targets ?? []) {
+        try {
+          const r = await sendAccountDetailsEmail(sb, t.user_id as string, graceUntil);
+          if (r === "sent") sent++; else if (r === "no_email") noEmail++; else if (r === "failed") failed++;
+        } catch (e) { failed++; console.warn("[flutterwave] send-account-details failed:", (e as Error).message); }
       }
       return json({ ok: true, sent, skipped_no_email: noEmail, failed, more_may_remain: (targets ?? []).length >= 200 });
     }
@@ -821,6 +893,17 @@ serve(async (req) => {
       } else {
         const { error: pErr } = await sb.rpc("wallet_persist_account", { ...persistArgs, p_account: target.key });
         if (pErr) { console.error("[flutterwave] wallet_persist_account:", pErr.message); return json({ error: "Could not save your wallet account. Please try again." }, 500); }
+      }
+
+      // Straight after a wallet MOVES to the new account, email the new details. Best-effort and capped at 8 s: a mail
+      // problem must never fail or noticeably delay a move that has already been saved.
+      if (migrated) {
+        try {
+          await Promise.race([
+            sendAccountDetailsEmail(sb, targetUid, await cfg("flw_legacy_grace_until", "")),
+            new Promise((resolve) => setTimeout(resolve, 8000)),
+          ]);
+        } catch (e) { console.warn("[flutterwave] account-details email failed:", (e as Error).message); }
       }
 
       return json({
