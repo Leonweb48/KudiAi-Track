@@ -542,6 +542,7 @@ serve(async (req: Request) => {
     // Notify client that a contribution was recorded and is awaiting approval
     const ctx = await fetchEmailContext(sb, client_id, ownerId, user.id);
     await fireAjoEmail("ajo_contribution_pending", {
+      contribution_id: (data as Record<string, unknown> | null)?.contribution_id,
       client_email:  ctx.clientEmail,
       client_name:   ctx.clientName,
       owner_email:   ctx.ownerEmail,
@@ -625,6 +626,7 @@ serve(async (req: Request) => {
         ]);
         const effects: Promise<unknown>[] = [
           fireAjoEmail("ajo_contribution_approved", {
+            contribution_id: acId,
             client_email:  acCtx.clientEmail,
             client_name:   acCtx.clientName,
             owner_email:   acCtx.ownerEmail,
@@ -861,6 +863,7 @@ serve(async (req: Request) => {
     const app = appData as Record<string, unknown>;
     const ctx = await fetchEmailContext(sb, client_id, ownerId, user.id);
     await fireAjoEmail("ajo_contribution_collected", {
+      contribution_id: contribId,
       client_email:  ctx.clientEmail,
       client_name:   ctx.clientName,
       owner_email:   ctx.ownerEmail,
@@ -991,6 +994,7 @@ serve(async (req: Request) => {
           const rwApprStaffUid = await resolveAssignedStaffUserId(sb, client_id);
           await Promise.allSettled([
             fireAjoEmail("ajo_withdrawal_approved", {
+              contribution_id: rpcWd?.net_id,
               client_email:  ctx.clientEmail,
               client_name:   ctx.clientName,
               user_email:    ctx.ownerEmail,
@@ -1022,6 +1026,7 @@ serve(async (req: Request) => {
           // notify them now that the payment is done)
           await Promise.allSettled([
             fireAjoEmail("ajo_withdrawal", {
+              contribution_id: rpcWd?.net_id,
               client_email:  ctx.clientEmail,
               client_name:   ctx.clientName,
               user_email:    ctx.ownerEmail,
@@ -1345,6 +1350,7 @@ serve(async (req: Request) => {
     if (clientId) {
       const ctx    = await fetchEmailContext(sb, clientId, ownerId, user.id);
       await fireAjoEmail("ajo_reversal", {
+        contribution_id: Array.isArray(rpcRev?.reversal_ids) ? rpcRev.reversal_ids[0] : undefined,
         client_email:  ctx.clientEmail,
         client_name:   ctx.clientName,
         user_email:    ctx.ownerEmail,
