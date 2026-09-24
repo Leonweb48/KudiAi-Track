@@ -295,7 +295,8 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
         ...s,
         txns: s.txns.filter(tx =>
           tx.item_name?.toLowerCase().includes(q) ||
-          tx.customer_name?.toLowerCase().includes(q)
+          tx.customer_name?.toLowerCase().includes(q) ||
+          tx.receipt_ref?.toLowerCase().includes(q)      // the KDT- reference on the receipt / email
         ),
       }))
       .filter(s => s.txns.length > 0);
@@ -306,7 +307,7 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
     const walletMatches = wallet.ledger
       .filter(isStandaloneWalletRow)
       .map(walletLedgerToTxShape)
-      .filter(tx => tx.item_name?.toLowerCase().includes(q) || tx.customer_name?.toLowerCase().includes(q));
+      .filter(tx => tx.item_name?.toLowerCase().includes(q) || tx.customer_name?.toLowerCase().includes(q) || tx.__raw?.receipt_ref?.toLowerCase().includes(q));
     if (walletMatches.length === 0) return realSections;
     const walletSections = groupByDate(walletMatches).map(s => ({ ...s, key: `wallet-${s.key}`, isWallet: true }));
 
@@ -575,7 +576,7 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
                 </svg>
                 <input
                   ref={searchRef}
-                  type="search" autoFocus placeholder="Search item or customer…" value={search}
+                  type="search" autoFocus placeholder="Search item, customer or reference…" value={search}
                   onChange={e => setSearch(e.target.value)}
                   className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-700 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-green-500/40"
                 />
