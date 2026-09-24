@@ -4,6 +4,8 @@ import { supabase } from "../utils/supabase";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import { maxDobDate, isAtLeast18, AGE_ERROR } from "../utils/ageValidation";
 import { compressImage } from "../utils/compressImage";
+import WalletTierCard from "../components/WalletTierCard";
+import { usePlatformConfig } from "../hooks/usePlatformConfig";
 
 // ── Icons ────────────────────────────────────────────────────────────────────
 const ArrowLeft  = () => <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>;
@@ -210,6 +212,7 @@ function EmailChangeBanner({ newEmail, onClose }) {
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function Profile({ store, session, plan }) {
   const navigate = useNavigate();
+  const { walletEnabled } = usePlatformConfig();
   const profile  = store?.profile || {};
   const userId   = session?.user?.id;
   const email    = session?.user?.email || "";
@@ -467,6 +470,13 @@ export default function Profile({ store, session, plan }) {
         </div>
 
         <div className="px-4">
+          {/* Wallet tier — everyone starts at Tier 1; shows the limits and how to reach the next tier */}
+          {walletEnabled && (
+            <WalletTierCard userId={userId} enabled className="mb-4"
+              prefill={{ fullName: profile.full_name || "", address: profile.address || "", state: profile.state || "", lga: profile.lga || "" }}
+              onOpenWallet={() => navigate("/wallet")} />
+          )}
+
           {/* Personal Information */}
           <SectionCard title="Personal Information">
             <ProfileRow label="Full Name"     value={profile.full_name} />

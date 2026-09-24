@@ -992,6 +992,81 @@ serve(async (req) => {
       return json({ error: "Wallet is not enabled" }, 403);
     }
 
+    // ── upgrade-tier — Tier 1 → 2, self-service ────────────────────────────────────────────────────────────────────
+    // Tier 2 = full name + residential address + BOTH a BVN and a NIN. The two ID numbers are never stored in the clear:
+    // they are kept as keyed hashes (wallet_kyc) so the same number turning up on several wallets can be spotted. Nothing
+    // here verifies them with the bank partner (that needs its BVN/NIN verification product), so this is self-declared —
+    // Tier 3, the one with the biggest limits, is reviewed by a person (request-tier).
+    if (action === "upgrade-tier") {
+      const b = body as Record<string, unknown>;
+      if (Number(b.target_tier) !== 2) {
+        return json({ error: "Tier 3 is reviewed by our team — use “Request Tier 3”.", code: "tier_review_required" }, 400);
+      }
+      const digitsOf = (v: unknown) => String(v ?? "").replace(/\D/g, "");
+      const fullName = String(b.full_name ?? "").trim().replace(/\s+/g, " ");
+      const address  = String(b.address ?? "").trim();
+      const state    = String(b.state ?? "").trim();
+      const lga      = String(b.lga ?? "").trim();
+      const bvn = digitsOf(b.bvn), nin = digitsOf(b.nin);
+      if (fullName.split(" ").length < 2 || !/[A-Za-z]{2}/.test(fullName) || fullName.length > 100) {
+        return json({ error: "Enter your full name (first and last name)", code: "name_invalid" }, 400);
+      }
+      if (address.length < 8 || address.length > 200) return json({ error: "Enter your full residential address", code: "address_invalid" }, 400);
+      if (!state) return json({ error: "Choose your state", code: "state_required" }, 400);
+      if (!/^\d{11}$/.test(bvn)) return json({ error: "Your BVN must be exactly 11 digits", code: "bvn_format" }, 400);
+      if (!/^\d{11}$/.test(nin)) return json({ error: "Your NIN must be exactly 11 digits", code: "nin_format" }, 400);
+      if (bvn === nin) return json({ error: "Your BVN and NIN are different numbers — check both", code: "id_same" }, 400);
+
+      const { data: tw } = await sb.from("wallets").select("tier, flw_account_number").eq("user_id", uid).maybeSingle();
+      if (!tw?.flw_account_number) return json({ error: "Open your wallet first, then upgrade", code: "no_wallet" }, 400);
+      if (Number(tw.tier ?? 1) >= 2) return json({ ok: true, tier: Number(tw.tier), changed: false });
+
+      const keyBytes = new TextEncoder().encode(INTERNAL_SECRET || SERVICE_KEY);
+      const hk = await crypto.subtle.importKey("raw", keyBytes, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+      const mac = async (label: string, v: string) =>
+        Array.from(new Uint8Array(await crypto.subtle.sign("HMAC", hk, new TextEncoder().encode(`${label}:${v}`)))).map((x) => x.toString(16).padStart(2, "0")).join("");
+      const { data: applied, error: aErr } = await sb.rpc("wallet_apply_tier2", {
+        p_user_id: uid, p_full_name: fullName, p_address: address, p_state: state, p_lga: lga,
+        p_bvn_hmac: await mac("bvn", bvn), p_nin_hmac: await mac("nin", nin),
+      });
+      if (aErr) { console.error("[flutterwave] wallet_apply_tier2:", aErr.message); return json({ error: "Could not upgrade your account. Please try again." }, 500); }
+
+      // a note of the new limits — best effort, never affects the upgrade
+      if ((applied as { changed?: boolean } | null)?.changed) {
+        try {
+          const who = await resolveIdentity(sb, uid);
+          const lim = async (m: string) => Number((await sb.rpc("wallet_tier_cfg", { p_user_id: uid, p_metric: m })).data ?? 0);
+          const [mb, dl] = [await lim("max_balance"), await lim("daily_limit")];
+          await sendWalletEmail(sb, who.email, "You're now on Tier 2 — higher wallet limits", () => bankEmail({
+            title: "You're Now on Tier 2", tone: "success", timestamp: new Date(),
+            preheader: "Your wallet limits have gone up",
+            intro: "Thanks for verifying your details. Your KudiAI wallet limits have been raised.",
+            rows: [
+              ["Your tier", "Tier 2 — Verified"],
+              ["Maximum balance", mb > 0 ? nairaFromKobo(mb) : "Unlimited"],
+              ["Daily transfer limit", nairaFromKobo(dl)],
+            ],
+            note: "Want the highest limits? Tier 3 needs a valid ID, a utility bill and a passport photograph — you can request it from your profile.",
+            button: { label: "Open Profile →", url: appLink({ tab: "profile" }) },
+            security: false,
+          }));
+        } catch (e) { console.warn("[flutterwave] tier-2 email failed:", (e as Error).message); }
+      }
+      return json({ ok: true, tier: 2, changed: !!(applied as { changed?: boolean } | null)?.changed });
+    }
+
+    // ── request-tier — Tier 3 needs a person to review it ──────────────────────────────────────────────────────────
+    if (action === "request-tier") {
+      const b = body as Record<string, unknown>;
+      if (Number(b.target_tier) !== 3) return json({ error: "Only Tier 3 is requested this way", code: "bad_tier" }, 400);
+      const { data: tw } = await sb.from("wallets").select("tier, flw_account_number").eq("user_id", uid).maybeSingle();
+      if (!tw?.flw_account_number) return json({ error: "Open your wallet first", code: "no_wallet" }, 400);
+      if (Number(tw.tier ?? 1) < 2) return json({ error: "Complete Tier 2 first, then request Tier 3", code: "tier2_first" }, 400);
+      const { data: rq, error: rErr } = await sb.rpc("wallet_request_tier", { p_user_id: uid, p_target: 3, p_note: String(b.note ?? "") });
+      if (rErr) { console.error("[flutterwave] wallet_request_tier:", rErr.message); return json({ error: "Could not send your request. Please try again." }, 500); }
+      return json({ ok: true, ...(rq as Record<string, unknown>) });
+    }
+
     // ── list-banks ────────────────────────────────────────────────────────
     if (action === "list-banks") {
       if (_banks.list.length && Date.now() < _banks.exp) return json({ ok: true, banks: _banks.list });

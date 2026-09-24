@@ -125,7 +125,7 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
   const [showCompleteFlow,   setShowCompleteFlow]   = useState(false);
 
   // ── Hero card: flip between Today's Sales and the wallet balance ──────────
-  const { walletEnabled, walletTestMode, walletMaxWithdrawalKobo, walletDailyWithdrawalCapKobo, configLoading } = usePlatformConfig();
+  const { walletEnabled, walletTestMode, configLoading } = usePlatformConfig();
   const wallet = useWallet(profile?.id || null, walletEnabled);
   // Do we actually know yet whether this owner has a wallet? Needs the platform
   // flag loaded AND, when the wallet feature is on, a real wallet load finished.
@@ -772,8 +772,8 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
             wallet={wallet.wallet} payRequest={wallet.payRequest} testMode={walletTestMode} api={wallet}
             businessName={profile?.business_name} ownerName={profile?.owner_name} />
           <TransferSheet open={walletSheet === "transfer"} onClose={() => setWalletSheet(null)}
-            balanceKobo={wallet.balanceKobo} maxKobo={walletMaxWithdrawalKobo}
-            dailyCapKobo={walletDailyWithdrawalCapKobo} dailyUsedKobo={wallet.dailyUsedKobo}
+            balanceKobo={wallet.balanceKobo} maxKobo={wallet.limits.perTransferKobo}
+            dailyCapKobo={wallet.limits.dailyKobo} dailyUsedKobo={wallet.dailyUsedKobo}
             banks={wallet.banks} api={wallet} onDone={wallet.refresh} ownerId={profile?.id}
             businessName={profile?.business_name} ownerName={profile?.owner_name} />
         </>

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { supabase } from "../utils/supabase";
 import { buildWalletReceipt } from "../utils/receiptConfig";
 import { walletAccountState } from "../utils/walletAccount";
+import { TIER_CFG_KEYS, tierLimits, clampTier } from "../utils/walletTier";
 
 // Lightweight read-only edge call — no busy toggle, no post-refresh (used for
 // bank list + account name lookup, which must not churn the consuming screen).
@@ -36,6 +37,8 @@ export function useWallet(userId, enabled = true) {
   // wallet load (NOT via usePlatformConfig, which caches for the whole session): the moment these change decides
   // whether a holder is told to move to a new account number.
   const [flwCfg, setFlwCfg]     = useState({ active: "", graceUntil: "" });
+  // The per-tier limits (platform_config wallet_tier*_kobo), read fresh with every load like the account config above.
+  const [tierCfg, setTierCfg]   = useState({});
   const [loading, setLoading]   = useState(true);
   // True only once a real wallet load has SUCCEEDED for an enabled feature.
   // `loading` can't answer "do we actually know whether this user has a
@@ -68,7 +71,7 @@ export function useWallet(userId, enabled = true) {
         supabase.from("aso_clients").select("bvn_verified").eq("client_user_id", userId).maybeSingle(),
         supabase.from("staff").select("bvn_verified").eq("user_id", userId).maybeSingle(),
         supabase.rpc("wallet_daily_transfer_used", { p_user_id: userId }),
-        supabase.from("platform_config").select("key, value").in("key", ["flw_active_account", "flw_legacy_grace_until"]),
+        supabase.from("platform_config").select("key, value").in("key", ["flw_active_account", "flw_legacy_grace_until", ...TIER_CFG_KEYS]),
       ]);
       // A failed read (pc === null) keeps what we knew rather than silently flipping everyone to "active".
       if (Array.isArray(pc)) {
@@ -76,6 +79,11 @@ export function useWallet(userId, enabled = true) {
         setFlwCfg((prev) => {
           const next = { active: pcv("flw_active_account"), graceUntil: pcv("flw_legacy_grace_until") };
           return prev.active === next.active && prev.graceUntil === next.graceUntil ? prev : next;
+        });
+        setTierCfg((prev) => {
+          const next = {};
+          TIER_CFG_KEYS.forEach((k) => { const v = pc.find((r) => r.key === k)?.value; if (v !== undefined && v !== null) next[k] = v; });
+          return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
         });
       }
       setWallet(w || null);
@@ -261,6 +269,11 @@ export function useWallet(userId, enabled = true) {
   // receive sheets) can tell a dead number from a live one without their own hook.
   const walletView = useMemo(() => (wallet ? { ...wallet, account_state: acct.state } : wallet), [wallet, acct.state]);
 
+  // The holder's tier (1 for everyone until they upgrade) and what it allows — the server enforces these; this is for display
+  // and for the transfer sheet's own pre-checks.
+  const tier = clampTier(wallet?.tier);
+  const limits = useMemo(() => tierLimits(tier, tierCfg), [tier, tierCfg]);
+
   // Full receipt data for a ledger row — joins the matching withdrawal / payment
   // request and resolves the recipient bank name, ready for <TransactionDetailModal>.
   const receiptFor = useCallback((row, businessName = "", ownerName = "", biz = null) => {
@@ -292,6 +305,7 @@ export function useWallet(userId, enabled = true) {
     wallet: walletView, ledger, withdrawals, requests, banks, payRequest, loading, resolved, busy,
     hasAccount, bvnVerified, balanceKobo, balanceNaira: balanceKobo / 100, dailyUsedKobo,
     accountState: acct.state, graceUntilMs: acct.graceUntilMs, graceDaysLeft: acct.daysLeft,
+    tier, limits,
     scheduledTransfers, refreshScheduled, scheduleTransfer, setScheduledTransferStatus,
     refresh: load, receiptFor,
     provisionAccount, migrateAccount, simulateTopup, listBanks, resolveAccount, transfer,
@@ -299,7 +313,7 @@ export function useWallet(userId, enabled = true) {
     createPaymentRequest, cancelPaymentRequest,
   }), [
     walletView, ledger, withdrawals, requests, banks, payRequest, loading, resolved, busy, hasAccount, bvnVerified, balanceKobo, dailyUsedKobo,
-    acct.state, acct.graceUntilMs, acct.daysLeft,
+    acct.state, acct.graceUntilMs, acct.daysLeft, tier, limits,
     scheduledTransfers, refreshScheduled, scheduleTransfer, setScheduledTransferStatus,
     load, receiptFor, provisionAccount, migrateAccount, simulateTopup, listBanks, resolveAccount, transfer,
     startBvnVerification, checkBvnVerification,

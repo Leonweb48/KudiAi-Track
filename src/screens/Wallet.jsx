@@ -19,7 +19,7 @@ import { bizFromProfile } from "../utils/receiptConfig";
 export default function Wallet({ session, store }) {
   const userId = session?.user?.id || null;
   const navigate = useNavigate();
-  const { walletEnabled, walletTestMode, walletMaxWithdrawalKobo, walletDailyWithdrawalCapKobo, configLoading, bvnVerificationEnabled } = usePlatformConfig();
+  const { walletEnabled, walletTestMode, configLoading, bvnVerificationEnabled } = usePlatformConfig();
   const w = useWallet(userId, walletEnabled);
   const bvnVerify = useBvnVerification(w);
   const [hidden, setHidden] = useState(() => sessionStorage.getItem("kt_balance_hidden") === "1");
@@ -293,8 +293,8 @@ export default function Wallet({ session, store }) {
         wallet={w.wallet} testMode={walletTestMode} api={w}
         businessName={store?.profile?.business_name} ownerName={store?.profile?.owner_name} />
       <TransferSheet open={sheet === "transfer"} onClose={() => setSheet(null)}
-        balanceKobo={w.balanceKobo} maxKobo={walletMaxWithdrawalKobo}
-        dailyCapKobo={walletDailyWithdrawalCapKobo} dailyUsedKobo={w.dailyUsedKobo}
+        balanceKobo={w.balanceKobo} maxKobo={w.limits.perTransferKobo}
+        dailyCapKobo={w.limits.dailyKobo} dailyUsedKobo={w.dailyUsedKobo}
         banks={w.banks} api={w} onDone={w.refresh} ownerId={userId}
         businessName={store?.profile?.business_name} ownerName={store?.profile?.owner_name} />
       <ReceivePaymentSheet open={sheet === "receive"} onClose={() => setSheet(null)}

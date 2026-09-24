@@ -312,15 +312,34 @@ serve(async (req) => {
         return ok("sale recorded");
       }
 
-      const { data: cfg } = await sb.from("platform_config").select("value").eq("key", "wallet_max_balance_kobo").maybeSingle();
-      const maxBal = Number(cfg?.value || "20000000");
-      if (Number(wallet.balance_kobo || 0) + netAmountKobo > maxBal) {
+      // The wallet's TIER sets the ceiling (wallet_tier{n}_max_balance_kobo; 0 = unlimited). If the tier lookup is ever
+      // unavailable we fall back to the old global cap, so a slip can never remove the limit.
+      let maxBal = -1;
+      const { data: tierCap, error: tierCapErr } = await sb.rpc("wallet_tier_cfg", { p_user_id: wallet.user_id, p_metric: "max_balance" });
+      if (!tierCapErr && tierCap !== null && tierCap !== undefined) maxBal = Number(tierCap);
+      if (!Number.isFinite(maxBal) || maxBal < 0) {
+        const { data: cfg } = await sb.from("platform_config").select("value").eq("key", "wallet_max_balance_kobo").maybeSingle();
+        maxBal = Number(cfg?.value || "20000000");
+      }
+      const tierNo = Number(wallet.tier || 1);
+      if (maxBal > 0 && Number(wallet.balance_kobo || 0) + netAmountKobo > maxBal) {
         await sb.from("admin_notifications").insert({
           type: "warning", category: "finance", target_roles: ["finance_admin", "super_admin"],
           title: "Wallet top-up over cap — not credited",
-          message: `A ₦${amountNaira} top-up for wallet ${wallet.id} would exceed the ₦${maxBal / 100} cap. Held — not credited.`,
-          metadata: { charge_id: chargeId, wallet_id: wallet.id },
+          message: `A ₦${amountNaira} top-up for wallet ${wallet.id} would exceed its Tier ${tierNo} maximum balance of ₦${maxBal / 100}. Held — not credited.`,
+          metadata: { charge_id: chargeId, wallet_id: wallet.id, tier: tierNo },
         });
+        // tell the holder — otherwise money has arrived at the bank and nothing in the app says why it isn't in the wallet
+        await fetch(`${SUPABASE_URL}/functions/v1/notify-send`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}` },
+          body: JSON.stringify({
+            action: "notify", userId: wallet.user_id, type: "wallet_deposit_held",
+            title: "Deposit on hold",
+            body: `₦${amountNaira.toLocaleString()} could not be added — it would take your wallet above the Tier ${tierNo} maximum balance of ₦${(maxBal / 100).toLocaleString()}. Upgrade your tier or contact support.`,
+            category: "money", priority: "high", deepLink: { tab: "wallet", openWallet: true },
+          }),
+        }).catch(() => {});
         return ok("over cap");
       }
 

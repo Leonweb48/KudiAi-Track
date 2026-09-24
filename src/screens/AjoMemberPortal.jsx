@@ -39,6 +39,7 @@ import { usePlatformConfig } from "../hooks/usePlatformConfig";
 import { useWallet } from "../hooks/useWallet";
 import WalletMigrationCard from "../components/WalletMigrationCard";
 import WalletIdFields from "../components/WalletIdFields";
+import WalletTierCard from "../components/WalletTierCard";
 import { walletIdError } from "../utils/walletId";
 import { useBvnVerification } from "../hooks/useBvnVerification";
 import { BottomSheet, ActionButton, AccountCard, FundWalletSheet, TransferSheet, ReceivePaymentSheet, WalletMiniAction, WALLET_MINI_ICONS, cleanBankName, WalletTxRow, WALLET_SOURCE } from "../components/WalletPanel";
@@ -3599,6 +3600,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
 // ── Me tab (Staff Portal structure) ───────────────────────────────────────
 function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onProfileUpdate, contributions = [], cycles = [] }) {
   const t = useT();
+  const { walletEnabled: tierWalletEnabled } = usePlatformConfig();
   const { lang, changeLang } = useLanguage();
   const [view,           setView]           = useState("menu");
   const [showLang,       setShowLang]       = useState(false);
@@ -4481,6 +4483,15 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
           </button>
         </SettingsCard>
       </div>
+
+      {/* Wallet tier — everyone starts at Tier 1; shows the limits and how to reach the next tier */}
+      {tierWalletEnabled && (
+        <div className="px-4 mb-5">
+          <SectionLabel>Wallet tier</SectionLabel>
+          <WalletTierCard userId={client?.client_user_id || session?.user?.id} enabled
+            prefill={{ fullName: client?.full_name || "", address: client?.address || "", state: client?.state || "", lga: client?.lga || "" }} />
+        </div>
+      )}
 
       {/* Preferences */}
       <div className="px-4 mb-5">
@@ -5456,7 +5467,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
 
   // KudiAI Wallet — same wallet infra as the owner side. client_user_id IS a
   // real auth.users id, so this "just works" once the platform flag is on.
-  const { walletEnabled, walletTestMode, walletMaxWithdrawalKobo, walletDailyWithdrawalCapKobo, bvnVerificationEnabled } = usePlatformConfig();
+  const { walletEnabled, walletTestMode, bvnVerificationEnabled } = usePlatformConfig();
   const walletUserId = client?.client_user_id || session?.user?.id || null;
   const wallet = useWallet(walletUserId, walletEnabled);
 
@@ -5950,8 +5961,8 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
           <FundWalletSheet open={walletSheet === "fund"} onClose={() => setWalletSheet(null)}
             wallet={wallet.wallet} testMode={walletTestMode} api={wallet} businessName={client?.full_name} />
           <TransferSheet open={walletSheet === "transfer"} onClose={() => setWalletSheet(null)}
-            balanceKobo={wallet.balanceKobo} maxKobo={walletMaxWithdrawalKobo}
-            dailyCapKobo={walletDailyWithdrawalCapKobo} dailyUsedKobo={wallet.dailyUsedKobo}
+            balanceKobo={wallet.balanceKobo} maxKobo={wallet.limits.perTransferKobo}
+            dailyCapKobo={wallet.limits.dailyKobo} dailyUsedKobo={wallet.dailyUsedKobo}
             banks={wallet.banks} api={wallet} ownerId={walletUserId}
             businessName={client?.full_name} onDone={wallet.refresh} />
           <ReceivePaymentSheet open={walletSheet === "receive"} onClose={() => setWalletSheet(null)}

@@ -20,7 +20,7 @@ import { usePlatformConfig } from "../hooks/usePlatformConfig";
 // MemberWalletSheet) — no internal `open` prop, since a wallet realtime
 // subscription should only exist while the sheet is actually up.
 export default function StaffWalletPanel({ onClose, session, staffName }) {
-  const { walletEnabled, walletTestMode, walletMaxWithdrawalKobo } = usePlatformConfig();
+  const { walletEnabled, walletTestMode } = usePlatformConfig();
   const wallet = useWallet(session?.user?.id || null, walletEnabled);
 
   const [bvn, setBvn] = useState("");
@@ -105,7 +105,7 @@ export default function StaffWalletPanel({ onClose, session, staffName }) {
           <FundWalletSheet open={walletSheet === "fund"} onClose={() => setWalletSheet(null)}
             wallet={wallet.wallet} testMode={walletTestMode} api={wallet} businessName={staffName} />
           <TransferSheet open={walletSheet === "transfer"} onClose={() => setWalletSheet(null)}
-            balanceKobo={wallet.balanceKobo} maxKobo={walletMaxWithdrawalKobo} banks={wallet.banks} api={wallet}
+            balanceKobo={wallet.balanceKobo} maxKobo={wallet.limits.perTransferKobo} dailyCapKobo={wallet.limits.dailyKobo} dailyUsedKobo={wallet.dailyUsedKobo} banks={wallet.banks} api={wallet}
             businessName={staffName} onDone={wallet.refresh} />
         </>
       )}

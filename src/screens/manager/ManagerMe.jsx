@@ -16,6 +16,8 @@ import ForgotPinFlow from "../../components/ForgotPinFlow";
 import ProfileEdit from "../../components/shared/ProfileEdit";
 import NotificationPreferences from "../../components/NotificationPreferences";
 import StaffWalletPanel from "../../components/StaffWalletPanel";
+import WalletTierCard from "../../components/WalletTierCard";
+import { usePlatformConfig } from "../../hooks/usePlatformConfig";
 import { useLanguage } from "../../contexts/LanguageContext";
 import { LANGUAGES, markLangChosen } from "../../utils/i18n";
 
@@ -46,6 +48,7 @@ export default function ManagerMe({
   staff, session, store, inventory, livePerms, pinLock,
   plan, staffId, ownerId, onBranchRoster, onStaffManagement, initialView, onStaffUpdate,
 }) {
+  const { walletEnabled } = usePlatformConfig();
   const [view,             setView]             = useState(initialView || "menu");
   const [isDark,           setIsDark]           = useState(() => localStorage.getItem("kuditrack_dark") === "1");
 
@@ -473,6 +476,14 @@ export default function ManagerMe({
           View
         </button>
       </div>
+
+      {/* Wallet tier — everyone starts at Tier 1; shows the limits and how to reach the next tier */}
+      {walletEnabled && (
+        <div className="px-4 mb-5">
+          <SectionLabel>Wallet tier</SectionLabel>
+          <WalletTierCard userId={session?.user?.id} enabled prefill={{ fullName: staff?.full_name || "", address: staff?.address || "", state: staff?.state || "", lga: staff?.lga || "" }} />
+        </div>
+      )}
 
       {/* Account */}
       <div className="px-4 mb-5">
