@@ -49,18 +49,19 @@ const INTERNAL_SECRET = Deno.env.get("EMAIL_TRIGGER_SECRET") ?? "";
 // email is BUILT inside the try: a template problem must never get in the way of a
 // payout that has already moved money.
 // deno-lint-ignore no-explicit-any
-async function sendWalletEmail(sb: any, to: string, subject: string, build: () => string) {
-  if (!to) return;
+async function sendWalletEmail(sb: any, to: string, subject: string, build: () => string): Promise<boolean> {
+  if (!to) return false;
   try {
     const html = build();
     const { data: smtp } = await sb.from("smtp_config").select("*").limit(1).maybeSingle();
-    if (!smtp) return;
+    if (!smtp) return false;
     const transport = nodemailer.createTransport({
       host: smtp.host, port: smtp.port, secure: smtp.encryption === "ssl",
       auth: { user: smtp.username, pass: smtp.password },
     });
     await transport.sendMail({ from: `"${smtp.from_name || "KudiAI Track"}" <${smtp.from_email}>`, to, subject: cleanSubject(subject), html, text: htmlToText(html) });
-  } catch (e) { console.warn("[flutterwave] email failed:", (e as Error).message); }
+    return true;
+  } catch (e) { console.warn("[flutterwave] email failed:", (e as Error).message); return false; }
 }
 
 const fmtNgn = (kobo: number) => `₦${(kobo / 100).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
@@ -286,6 +287,49 @@ serve(async (req) => {
 
   // Which Flutterwave account is active right now (legacy until the switch).
   ACTIVE = resolveActive(ACCOUNTS, await cfg("flw_active_account", "legacy"), (m) => console.warn("[flutterwave]", m));
+
+  // ═══ check-accounts — service only. Proves each Flutterwave account's credentials work BEFORE the switch, so it
+  //    is never made blind. Returns yes/no facts only — never a secret, token or hash. Runs ahead of the
+  //    "configured" guard below because diagnosing that is its job. ═══
+  if (action === "check-accounts") {
+    if (!(await isServiceCall(req, token))) return json({ error: "Unauthorized" }, 401);
+    const report: Record<string, Record<string, unknown>> = {};
+    for (const key of ["legacy", "business"] as AccountKey[]) {
+      const a = ACCOUNTS[key];
+      const r: Record<string, unknown> = {
+        configured: isConfigured(a),
+        mode: /sandbox/i.test(a.base) ? "sandbox" : "live",
+        webhook_hash_set: !!a.webhookHash,
+        v3_key_set: !!a.v3Key,
+      };
+      if (isConfigured(a)) {
+        try {
+          await flwToken(a);
+          r.auth = "ok";
+          const b = await flwFetch("/banks?country=NG", { account: a });
+          r.banks = b.ok ? "ok" : `failed (${b.status})`;
+        } catch (e) { r.auth = `failed: ${(e as Error).message}`; }
+      }
+      report[key] = r;
+    }
+    // The payout relay must egress from an IP whitelisted on EVERY account that sends transfers.
+    let relayIp: string | null = null;
+    if (FLW_RELAY_URL && FLW_RELAY_KEY) {
+      try {
+        const w = await fetch(`${FLW_RELAY_URL}/whoami`, { headers: { "x-relay-key": FLW_RELAY_KEY } });
+        relayIp = w.ok ? String(((await w.json()) as { ip?: string }).ip || "") || null : null;
+      } catch { /* reported as null */ }
+    }
+    const warnings: string[] = [];
+    if (ACCOUNTS.legacy.webhookHash && ACCOUNTS.legacy.webhookHash === ACCOUNTS.business.webhookHash) {
+      warnings.push("the two webhook secret hashes are identical — they must differ, or events cannot be attributed to an account");
+    }
+    if (ACCOUNTS.business.base !== ACCOUNTS.legacy.base) {
+      warnings.push("the accounts use different API base URLs — the payout relay talks to ONE base (its FLW_BASE_URL)");
+    }
+    return json({ ok: true, active: ACTIVE.key, relay_egress_ip: relayIp, accounts: report, warnings });
+  }
+
   if (!isConfigured(ACTIVE)) return json({ error: "Flutterwave not configured" }, 503);
 
   try {
@@ -300,6 +344,55 @@ serve(async (req) => {
       const r = await flwDisburse({ reference, amount_kobo, bank_code, account_number, account_name, narration });
       if (!r.ok) return json({ error: r.error, detail: r.detail }, 502);
       return json({ ok: true, transfer_id: r.transfer_id, status: r.status, fee_kobo: r.fee_kobo });
+    }
+
+    // ═══ announce-migration — service only. Emails every holder of an old (legacy) account number that a new one is
+    //    available, and until when the old one keeps working. Idempotent: wallets.migration_emailed_at is set per
+    //    person after their email goes out, so running it twice never emails anyone twice. `dry_run: true` only
+    //    counts. Only meaningful after the switch (flw_switch_to_business). ═══
+    if (action === "announce-migration") {
+      if (!(await isServiceCall(req, token))) return json({ error: "Unauthorized" }, 401);
+      if (ACTIVE.key !== "business") return json({ error: "The business account is not active yet — switch first" }, 409);
+      const dryRun = (body as Record<string, unknown>).dry_run === true;
+      const g = graceStatus(ACTIVE.key, await cfg("flw_legacy_grace_until", ""));
+      const until = g.until
+        ? new Date(g.until).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Africa/Lagos" })
+        : "";
+
+      const { data: targets, error: tErr } = await sb.from("wallets")
+        .select("user_id, flw_account_number")
+        .eq("flw_account", "legacy").not("flw_account_number", "is", null).is("migration_emailed_at", null)
+        .limit(200);
+      if (tErr) return json({ error: "Could not list wallets" }, 500);
+      if (dryRun) return json({ ok: true, dry_run: true, would_email: (targets ?? []).length });
+
+      let sent = 0, noEmail = 0, failed = 0;
+      for (const t of targets ?? []) {
+        const who = await resolveIdentity(sb, t.user_id as string);
+        if (!who.email) { noEmail++; continue; }        // left unmarked — picked up if an email is added later
+        try {
+          const delivered = await sendWalletEmail(sb, who.email, "Your KudiAI wallet has a new account number", () => bankEmail({
+            title: "Your wallet has a new account number", tone: "warning", timestamp: new Date(),
+            preheader: "Get your new number in the app — your current one keeps working for a short while",
+            intro: `We've upgraded the bank that powers your KudiAI wallet, so your wallet now has a new account number. `
+              + `Your money and history are safe and unchanged.`,
+            rows: [
+              ["Your current number", esc(t.flw_account_number), { mono: true }],
+              ["Keeps working until", until ? esc(until) : "For a short while"],
+              ["What to do", "Open Wallet in the app and tap “Get my new number”"],
+              ["You will need", "Your BVN"],
+            ],
+            note: "After the date above, transfers to your current number will not reach your wallet automatically. "
+              + "Enter your BVN <b>only inside the KudiAI Track app</b> — never send it to anyone by email, chat or phone, and never share your PIN or OTP.",
+            button: { label: "Open Wallet →", url: appLink({ tab: "wallet" }) },
+            security: false,
+          }));
+          if (!delivered) { failed++; continue; }        // SMTP refused / not configured — left unmarked, retried next run
+          const { error: mErr } = await sb.rpc("flw_mark_migration_emailed", { p_user_id: t.user_id });
+          if (mErr) { failed++; console.error("[flutterwave] flw_mark_migration_emailed:", mErr.message); } else sent++;
+        } catch (e) { failed++; console.warn("[flutterwave] announce-migration email failed:", (e as Error).message); }
+      }
+      return json({ ok: true, sent, skipped_no_email: noEmail, failed, more_may_remain: (targets ?? []).length >= 200 });
     }
 
     // ═══ process-scheduled-transfer — cron-triggered only, never user-callable

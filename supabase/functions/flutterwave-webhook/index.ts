@@ -14,6 +14,7 @@ import { createClient }  from "https://esm.sh/@supabase/supabase-js@2";
 import { createHmac }    from "https://deno.land/std@0.168.0/node/crypto.ts";
 import nodemailer        from "npm:nodemailer@6";
 import { bankEmail, esc, cleanSubject, nairaFromKobo, appLink, htmlToText } from "../_shared/bankEmail.ts";
+import { loadAccounts, identifySigner, resolveActive, graceStatus, type FlwAccount, type AccountKey } from "../_shared/flwAccounts.ts";
 
 const CORS = { "Access-Control-Allow-Origin": "*" };
 
@@ -96,24 +97,52 @@ const bad = (m: string, s = 400) =>
   new Response(JSON.stringify({ error: m }), { status: s, headers: { ...CORS, "Content-Type": "application/json" } });
 
 const FLW_TOKEN_URL = "https://idp.flutterwave.com/realms/flutterwave/protocol/openid-connect/token";
-const FLW_BASE      = Deno.env.get("FLW_BASE_URL") || "https://developersandbox-api.flutterwave.com";
 
-let _tok = { value: "", exp: 0 };
-async function flwToken(): Promise<string> {
-  if (_tok.value && Date.now() < _tok.exp - 60_000) return _tok.value;
+// Two Flutterwave accounts can send us webhooks (see _shared/flwAccounts.ts): the original "legacy" account and
+// the business account the platform is moving to. Which one signed an event decides which credentials verify it
+// and which wallets it can credit.
+const ACCOUNTS = loadAccounts((k) => Deno.env.get(k));
+
+const _toks: Partial<Record<AccountKey, { value: string; exp: number }>> = {};
+async function flwToken(acct: FlwAccount): Promise<string> {
+  const cached = _toks[acct.key];
+  if (cached && cached.value && Date.now() < cached.exp - 60_000) return cached.value;
   const res = await fetch(FLW_TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       grant_type: "client_credentials",
-      client_id: Deno.env.get("FLW_CLIENT_ID") ?? "",
-      client_secret: Deno.env.get("FLW_CLIENT_SECRET") ?? "",
+      client_id: acct.clientId,
+      client_secret: acct.clientSecret,
     }),
   });
   const j = await res.json().catch(() => ({}));
-  if (!res.ok || !j.access_token) throw new Error(`FLW auth ${res.status}`);
-  _tok = { value: j.access_token, exp: Date.now() + Number(j.expires_in || 600) * 1000 };
-  return _tok.value;
+  if (!res.ok || !j.access_token) throw new Error(`FLW auth (${acct.key}) ${res.status}`);
+  _toks[acct.key] = { value: j.access_token, exp: Date.now() + Number(j.expires_in || 600) * 1000 };
+  return j.access_token as string;
+}
+
+// Find the wallet an event is for, given the customer id / virtual account number on it.
+//  • the wallet's CURRENT number counts only when the wallet lives on the account that signed the event;
+//  • a legacy event also matches the PREVIOUS number of a wallet that has since moved to the business account
+//    (deposits made to the old number during the grace period must still credit the right wallet).
+// Values come from a signed webhook, but are still reduced to id-safe characters before going into a filter.
+// deno-lint-ignore no-explicit-any
+async function findWallet(sb: any, source: AccountKey, custId: string, vaNo: string): Promise<Record<string, unknown> | null> {
+  const safe = (s: string) => String(s || "").replace(/[^A-Za-z0-9_-]/g, "");
+  const c = safe(custId), v = safe(vaNo);
+  const parts: string[] = [];
+  if (c) parts.push(`and(flw_account.eq.${source},flw_customer_id.eq.${c})`);
+  if (v) parts.push(`and(flw_account.eq.${source},flw_account_number.eq.${v})`);
+  if (source === "legacy") {
+    if (c) parts.push(`legacy_flw_customer_id.eq.${c}`);
+    if (v) parts.push(`legacy_flw_account_number.eq.${v}`);
+  }
+  if (!parts.length) return null;
+  const { data } = await sb.from("wallets").select("*").or(parts.join(",")).limit(2);
+  if (!data || !data.length) return null;
+  if (data.length > 1) console.warn(`[flw-webhook] ${data.length} wallets match cust=${c} va=${v} on ${source} — using the first`);
+  return data[0] as Record<string, unknown>;
 }
 
 serve(async (req) => {
@@ -122,18 +151,19 @@ serve(async (req) => {
 
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
   const SERVICE_KEY  = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-  const SECRET_HASH  = Deno.env.get("FLW_WEBHOOK_SECRET_HASH") ?? "";
-  if (!SECRET_HASH) return bad("Webhook not configured", 503);
+  if (!ACCOUNTS.legacy.webhookHash && !ACCOUNTS.business.webhookHash) return bad("Webhook not configured", 503);
 
   const rawBody = await req.text();
 
-  // ── verify signature ──────────────────────────────────────────────────────
+  // ── verify signature — against each configured account's secret hash. The one that matches tells us which
+  //    Flutterwave account this event came from. ─────────────────────────────────────────────────────────────
   const sig = req.headers.get("flutterwave-signature") ?? req.headers.get("verif-hash") ?? "";
-  const hmac = createHmac("sha256", SECRET_HASH).update(rawBody).digest("base64");
-  if (sig !== hmac && sig !== SECRET_HASH) {
+  const source = identifySigner(sig, rawBody, ACCOUNTS, (secret, body) => createHmac("sha256", secret).update(body).digest("base64"));
+  if (!source) {
     console.warn(`[flw-webhook] bad signature got=${sig.slice(0, 12)}…`);
     return bad("Invalid signature", 401);
   }
+  const srcAcct = ACCOUNTS[source];
 
   let payload: Record<string, unknown>;
   try { payload = JSON.parse(rawBody); } catch { return bad("Invalid JSON", 400); }
@@ -164,8 +194,9 @@ serve(async (req) => {
       let amountNaira = Number(data.amount || 0);
       let status = String(data.status || "");
       try {
-        const token = await flwToken();
-        const vr = await fetch(`${FLW_BASE}/charges/${chargeId}`, { headers: { Authorization: `Bearer ${token}` } });
+        // verify with the credentials of the account that SIGNED the event — a charge id only exists on its own account
+        const token = await flwToken(srcAcct);
+        const vr = await fetch(`${srcAcct.base}/charges/${chargeId}`, { headers: { Authorization: `Bearer ${token}` } });
         const vj = await vr.json().catch(() => ({}));
         if (vr.ok && vj?.data) {
           amountNaira = Number(vj.data.amount || amountNaira);
@@ -196,16 +227,31 @@ serve(async (req) => {
       // resolve the wallet
       const custId = String((data.customer as Record<string, unknown>)?.id || "");
       const vaNo   = String((pm.bank_transfer as Record<string, unknown>)?.virtual_account_number || "");
-      let wallet: Record<string, unknown> | null = null;
-      if (custId) {
-        const { data: w } = await sb.from("wallets").select("*").eq("flw_customer_id", custId).maybeSingle();
-        wallet = w;
+      const wallet = await findWallet(sb, source, custId, vaNo);
+      if (!wallet) { console.warn(`[flw-webhook] no wallet for cust=${custId} va=${vaNo} (${source})`); return ok("no wallet"); }
+
+      // ── Legacy account past its grace deadline: money still arrives on a number we told the customer to stop
+      //    using. Don't credit it automatically (the funds are sitting on the OLD account and the wallet float is
+      //    backed by the new one) — park it for a person. The full event is already in wallet_webhook_log, and
+      //    extending platform_config.flw_legacy_grace_until re-opens the window if this needs to be honoured. ──
+      if (source === "legacy") {
+        const { data: cfgRows } = await sb.from("platform_config").select("key,value")
+          .in("key", ["flw_active_account", "flw_legacy_grace_until"]);
+        const cv = (k: string) => (cfgRows ?? []).find((r: { key: string }) => r.key === k)?.value as string | undefined;
+        const active = resolveActive(ACCOUNTS, cv("flw_active_account"), (m) => console.warn(`[flw-webhook] ${m}`));
+        if (graceStatus(active.key, cv("flw_legacy_grace_until")).retired) {
+          console.warn(`[flw-webhook] legacy deposit after the grace deadline — held. charge=${chargeId} wallet=${wallet.id}`);
+          await sb.from("admin_notifications").insert({
+            type: "warning", category: "finance", target_roles: ["finance_admin", "super_admin"],
+            title: "Deposit on the old Flutterwave account — NOT credited",
+            message: `₦${amountNaira.toLocaleString("en-NG")} arrived on retired virtual account ${vaNo || "(unknown)"} for wallet ${wallet.id}. `
+              + `The money is on the old Flutterwave account. It was not credited automatically — move the funds to the business account `
+              + `and credit the wallet by hand, or extend flw_legacy_grace_until to accept it.`,
+            metadata: { charge_id: chargeId, wallet_id: wallet.id, virtual_account: vaNo, amount_kobo: amountKobo, account: "legacy" },
+          });
+          return ok("legacy account retired — held for review");
+        }
       }
-      if (!wallet && vaNo) {
-        const { data: w } = await sb.from("wallets").select("*").eq("flw_account_number", vaNo).maybeSingle();
-        wallet = w;
-      }
-      if (!wallet) { console.warn(`[flw-webhook] no wallet for cust=${custId} va=${vaNo}`); return ok("no wallet"); }
 
       // ── Is this a customer paying for a sale? Match a pending payment request
       //    for this wallet with the exact amount, still within its 30-min window.
@@ -255,7 +301,7 @@ serve(async (req) => {
               ["Transaction Reference", saleFacts?.receipt_ref ? esc(saleFacts.receipt_ref) : "", { mono: true }],
               ["Payment Method", "Bank transfer"],
               ["From", esc(originator)],
-              ["Into", `${esc(wallet.flw_account_number)} · KudiAI Wallet`],
+              ["Into", `${esc(vaNo || wallet.flw_account_number)} · KudiAI Wallet`],
               ["Recorded as", "A sale in your books"],
               ["Transaction No.", esc(chargeId), { mono: true }],
               ["Business", owner.name ? esc(owner.name) : ""],
