@@ -13,48 +13,46 @@ import { serve }        from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient }  from "https://esm.sh/@supabase/supabase-js@2";
 import { createHmac }    from "https://deno.land/std@0.168.0/node/crypto.ts";
 import nodemailer        from "npm:nodemailer@6";
+import { bankEmail, esc, cleanSubject, nairaFromKobo, appLink, htmlToText } from "../_shared/bankEmail.ts";
 
 const CORS = { "Access-Control-Allow-Origin": "*" };
 
-// Branded wallet receipt — sent by KudiAI, not Flutterwave, so the owner has a
-// record that shows "KudiAI Track · a product of Amaya & Co. Technologies".
-const walletEmailHtml = (opts: { icon: string; accent: string; title: string; rows: [string, string][]; foot?: string }) => `
-<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:560px;margin:0 auto;background:#f8fafc;padding:16px;">
-  <div style="background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.08);">
-    <div style="background:linear-gradient(135deg,#0F1D42 0%,#1B2A5E 100%);padding:22px;text-align:center;">
-      <img src="https://kudiai.app/logo.png" width="46" style="display:block;margin:0 auto 10px;border-radius:9px;"/>
-      <div style="color:#fff;font-size:18px;font-weight:900;">KudiAI Track</div>
-      <div style="color:rgba(255,255,255,.45);font-size:9px;letter-spacing:2px;text-transform:uppercase;">Business Wallet</div>
-    </div>
-    <div style="background:${opts.accent};padding:16px;text-align:center;">
-      <div style="font-size:24px;">${opts.icon}</div>
-      <div style="color:#fff;font-size:17px;font-weight:800;margin-top:2px;">${opts.title}</div>
-    </div>
-    <div style="padding:22px 24px;background:#fff;">
-      <table style="width:100%;border-collapse:collapse;font-size:13px;">
-        ${opts.rows.map(([k, v]) => `<tr><td style="padding:7px 0;color:#64748b;">${k}</td><td style="padding:7px 0;text-align:right;font-weight:700;color:#1e293b;">${v}</td></tr>`).join("")}
-      </table>
-      ${opts.foot ? `<p style="margin:14px 0 0;color:#94a3b8;font-size:12px;">${opts.foot}</p>` : ""}
-    </div>
-    <div style="background:#f8fafc;padding:16px;text-align:center;border-top:1px solid #e2e8f0;">
-      <p style="margin:0 0 3px;color:#94a3b8;font-size:11px;">A product of AMAYA &amp; Co. Technologies — &copy; ${new Date().getFullYear()}</p>
-      <p style="margin:0;color:#cbd5e1;font-size:10px;">Automated message — please do not reply.</p>
-    </div>
-  </div>
-</div>`;
+// Wallet emails use the shared bank-grade layout (see _shared/bankEmail.ts): stored
+// transaction reference, WAT timestamp, balance after, View Transaction button and
+// the security notice. Sent by KudiAI, not Flutterwave, so the owner has a record
+// that shows "KudiAI Track · a product of Amaya & Co. Technologies".
+//
+// Every value that came from a user, a bank or a database row is passed through
+// esc() before it reaches the layout — the payer's name on a bank transfer is
+// chosen by the payer.
 
+// The email is BUILT inside the try as well: a template problem must never get in
+// the way of crediting a wallet or finalising a transfer.
 // deno-lint-ignore no-explicit-any
-async function sendWalletEmail(sb: any, to: string, subject: string, html: string) {
+async function sendWalletEmail(sb: any, to: string, subject: string, build: () => string) {
   if (!to) return;
   try {
+    const html = build();
     const { data: smtp } = await sb.from("smtp_config").select("*").limit(1).maybeSingle();
     if (!smtp) return;
     const transport = nodemailer.createTransport({
       host: smtp.host, port: smtp.port, secure: smtp.encryption === "ssl",
       auth: { user: smtp.username, pass: smtp.password },
     });
-    await transport.sendMail({ from: `"${smtp.from_name || "KudiAI Track"}" <${smtp.from_email}>`, to, subject, html });
+    await transport.sendMail({ from: `"${smtp.from_name || "KudiAI Track"}" <${smtp.from_email}>`, to, subject: cleanSubject(subject), html, text: htmlToText(html) });
   } catch (e) { console.warn("[flw-webhook] email failed:", (e as Error).message); }
+}
+
+// The stored facts about a ledger row — its database-issued reference, running
+// balance and server timestamp — so the email matches the receipt in the app.
+type LedgerFacts = { receipt_ref: string | null; balance_after_kobo: number | null; created_at: string | null };
+// deno-lint-ignore no-explicit-any
+async function ledgerFacts(sb: any, ledgerId?: string | null): Promise<LedgerFacts | null> {
+  if (!ledgerId) return null;
+  try {
+    const { data } = await sb.from("wallet_ledger").select("receipt_ref, balance_after_kobo, created_at").eq("id", ledgerId).maybeSingle();
+    return (data as LedgerFacts | null) ?? null;
+  } catch { return null; }
 }
 
 async function sendSms(phone: string | null | undefined, message: string, opts: {
@@ -83,13 +81,13 @@ async function sendSms(phone: string | null | undefined, message: string, opts: 
 // withdrawal emails to client and staff wallets, since sendWalletEmail()
 // no-ops on an empty `to`.
 // deno-lint-ignore no-explicit-any
-async function resolveContact(sb: any, userId: string): Promise<{ email: string; phone: string }> {
-  const { data: profile } = await sb.from("profiles").select("email, phone").eq("id", userId).maybeSingle();
-  if (profile?.email || profile?.phone) return { email: profile?.email || "", phone: profile?.phone || "" };
-  const { data: client } = await sb.from("aso_clients").select("email, phone").eq("client_user_id", userId).maybeSingle();
-  if (client?.email || client?.phone) return { email: client?.email || "", phone: client?.phone || "" };
-  const { data: staff } = await sb.from("staff").select("email, phone").eq("user_id", userId).maybeSingle();
-  return { email: staff?.email || "", phone: staff?.phone || "" };
+async function resolveContact(sb: any, userId: string): Promise<{ email: string; phone: string; name: string }> {
+  const { data: profile } = await sb.from("profiles").select("email, phone, business_name, owner_name").eq("id", userId).maybeSingle();
+  if (profile?.email || profile?.phone) return { email: profile?.email || "", phone: profile?.phone || "", name: profile?.business_name || profile?.owner_name || "" };
+  const { data: client } = await sb.from("aso_clients").select("email, phone, full_name").eq("client_user_id", userId).maybeSingle();
+  if (client?.email || client?.phone) return { email: client?.email || "", phone: client?.phone || "", name: client?.full_name || "" };
+  const { data: staff } = await sb.from("staff").select("email, phone, full_name").eq("user_id", userId).maybeSingle();
+  return { email: staff?.email || "", phone: staff?.phone || "", name: staff?.full_name || "" };
 }
 
 const fmtNgn = (kobo: number) => `₦${(kobo / 100).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
@@ -225,12 +223,13 @@ serve(async (req) => {
       const originator = String((pm.bank_transfer as Record<string, unknown>)?.originator_name || "a customer");
 
       if (pr) {
-        const { error: sErr } = await sb.rpc("wallet_record_sale", {
+        const { data: saleRes, error: sErr } = await sb.rpc("wallet_record_sale", {
           p_request_id: pr.id,
           p_flw_charge_id: chargeId,
           p_amount_kobo: amountKobo,
         });
         if (sErr) { console.error("[flw-webhook] wallet_record_sale:", sErr.message); return bad("sale record failed", 500); }
+        const saleFacts = await ledgerFacts(sb, (saleRes as { ledger_id?: string } | null)?.ledger_id);
         // Awaited — same reason as the topup path below: the function returns
         // (and the Deno isolate can be torn down) right after sendWalletEmail
         // resolves, which was silently dropping this un-awaited fetch before
@@ -245,12 +244,24 @@ serve(async (req) => {
             category: "money", priority: "high", deepLink: { tab: "wallet", openWallet: true },
           }),
         }).catch(() => {});
-        await sendWalletEmail(sb, owner.email, `Payment received — ${fmtNgn(amountKobo)}`,
-          walletEmailHtml({
-            icon: "💰", accent: "#16a34a", title: "Payment received",
-            rows: [["Amount", fmtNgn(amountKobo)], ["From", originator], ["Into", `${wallet.flw_account_number} · KudiAI wallet`],
-                   ["Recorded as", "a sale in your books"], ["Reference", `KDT-${chargeId}`], ["Time", new Date().toLocaleString("en-NG")]],
-            foot: "This payment was received through KudiAI Track and booked to your sales ledger.",
+        await sendWalletEmail(sb, owner.email, `Payment received — ${fmtNgn(amountKobo)}`, () =>
+          bankEmail({
+            title: "Payment Received", tone: "success",
+            timestamp: saleFacts?.created_at,
+            amount: nairaFromKobo(amountKobo), amountLabel: "Amount Received",
+            preheader: `${nairaFromKobo(amountKobo)} received from ${esc(originator)}`,
+            intro: "This payment was received through KudiAI Track and booked to your sales ledger.",
+            rows: [
+              ["Transaction Reference", saleFacts?.receipt_ref ? esc(saleFacts.receipt_ref) : "", { mono: true }],
+              ["Payment Method", "Bank transfer"],
+              ["From", esc(originator)],
+              ["Into", `${esc(wallet.flw_account_number)} · KudiAI Wallet`],
+              ["Recorded as", "A sale in your books"],
+              ["Transaction No.", esc(chargeId), { mono: true }],
+              ["Business", owner.name ? esc(owner.name) : ""],
+              ["Balance After", saleFacts?.balance_after_kobo != null ? nairaFromKobo(saleFacts.balance_after_kobo) : ""],
+            ],
+            button: { label: "View Transaction →", url: appLink({ tab: "wallet" }) },
           }));
         return ok("sale recorded");
       }
@@ -303,14 +314,29 @@ serve(async (req) => {
       await sendSms(owner.phone, `₦${(creditedKobo / 100).toLocaleString("en-NG")} credited to your KudiAI wallet. — KudiAI`, {
         category: "money", user_id: wallet.user_id as string, related_type: "wallet_ledger", related_id: chargeId,
       });
-      await sendWalletEmail(sb, owner.email, `Wallet funded — ${fmtNgn(creditedKobo)}`,
-        walletEmailHtml({
-          icon: "⬆️", accent: "#2E8020", title: "Wallet funded",
-          rows: [["Amount received", fmtNgn(amountKobo)], ["From", originator],
-                 ...(actualFeeKobo > 0 ? [["CBN electronic transfer levy", fmtNgn(actualFeeKobo)] as [string, string], ["Credited", fmtNgn(creditedKobo)] as [string, string]] : []),
-                 ["Wallet balance", fmtNgn(Number(wallet.balance_kobo || 0) + creditedKobo)],
-                 ["Reference", `KDT-${chargeId}`], ["Time", new Date().toLocaleString("en-NG")]],
-          foot: "Your KudiAI wallet is ready to use for bills and transfers.",
+      // wallet_credit returns the ledger row it wrote — its stored reference, running
+      // balance and server timestamp are what the receipt in the app shows too.
+      const fundedRow = (creditRow ?? {}) as Record<string, unknown>;
+      await sendWalletEmail(sb, owner.email, `Wallet funded — ${fmtNgn(creditedKobo)}`, () =>
+        bankEmail({
+          title: "Wallet Funded", tone: "success",
+          timestamp: (fundedRow.created_at as string | undefined) ?? undefined,
+          amount: nairaFromKobo(creditedKobo), amountLabel: "Credited to Your Wallet",
+          preheader: `${nairaFromKobo(creditedKobo)} added to your KudiAI wallet`,
+          intro: "Your KudiAI wallet is ready to use for bills and transfers.",
+          rows: [
+            ["Transaction Reference", fundedRow.receipt_ref ? esc(fundedRow.receipt_ref) : "", { mono: true }],
+            ["Payment Method", "Bank transfer"],
+            ["From", esc(originator)],
+            ...(actualFeeKobo > 0 ? [
+              ["Amount Received", nairaFromKobo(amountKobo)] as [string, string],
+              ["CBN electronic transfer levy", nairaFromKobo(actualFeeKobo)] as [string, string],
+            ] : []),
+            ["Transaction No.", esc(chargeId), { mono: true }],
+            ["Business", owner.name ? esc(owner.name) : ""],
+            ["Balance After", nairaFromKobo(fundedRow.balance_after_kobo != null ? fundedRow.balance_after_kobo : Number(wallet.balance_kobo || 0) + creditedKobo)],
+          ],
+          button: { label: "View Transaction →", url: appLink({ tab: "wallet" }) },
         }));
 
       return ok("credited");
@@ -349,11 +375,14 @@ serve(async (req) => {
       // branded receipt to the sender (the wallet owner)
       try {
         const { data: wd } = await sb.from("wallet_withdrawals")
-          .select("user_id, amount_kobo, fee_kobo, account_name, account_number, bank_code")
+          .select("user_id, amount_kobo, fee_kobo, account_name, account_number, bank_code, ledger_id")
           .or(`flw_transfer_id.eq.${transferId}${ref ? `,id.eq.${ref}` : ""}`).limit(1).maybeSingle();
         if (wd) {
           const o = await resolveContact(sb, wd.user_id);
           const bankName = bankNm || wd.bank_code;
+          // the debit row written when the transfer was initiated: it carries the
+          // stored reference the app's receipt shows, and the balance after it.
+          const wdFacts = await ledgerFacts(sb, wd.ledger_id);
           if (st === "successful") {
             // In-app bell + push — on the default channel, never wallet_credit
             // (that sound/channel is reserved for money coming IN, not out).
@@ -366,16 +395,25 @@ serve(async (req) => {
                 category: "money", priority: "high", deepLink: { tab: "wallet", openWallet: true },
               }),
             }).catch(() => {});
-            await sendWalletEmail(sb, o.email, `Transfer sent — ${fmtNgn(wd.amount_kobo)}`,
-              walletEmailHtml({
-                icon: "✅", accent: "#0F1D42", title: "Transfer completed",
-                rows: [["Amount", fmtNgn(wd.amount_kobo)], ["To", wd.account_name || wd.account_number],
-                       ["Account", `${wd.account_number} · ${bankName}`],
-                       ...(wd.fee_kobo ? [["Fee", fmtNgn(wd.fee_kobo)] as [string, string]] : []),
-                       ...(sessionId ? [["Session ID", sessionId] as [string, string]] : []),
-                       ["Transaction No.", transferId],
-                       ["Reference", `KDT-${transferId}`], ["Time", new Date().toLocaleString("en-NG")]],
-                foot: "Sent from your KudiAI Track wallet. The recipient's bank will show \"KudiAI Track\" and this reference.",
+            await sendWalletEmail(sb, o.email, `Transfer sent — ${fmtNgn(wd.amount_kobo)}`, () =>
+              bankEmail({
+                title: "Transfer Successful", tone: "warning",
+                timestamp: wdFacts?.created_at,
+                amount: nairaFromKobo(wd.amount_kobo), amountLabel: "Amount Sent",
+                preheader: `${nairaFromKobo(wd.amount_kobo)} sent to ${esc(wd.account_name || wd.account_number)}`,
+                intro: "Sent from your KudiAI Track wallet.",
+                rows: [
+                  ["Transaction Reference", wdFacts?.receipt_ref ? esc(wdFacts.receipt_ref) : "", { mono: true }],
+                  ["Payment Method", "KudiAI Wallet"],
+                  ["To", esc(wd.account_name || wd.account_number)],
+                  ["Account", `${esc(wd.account_number)} · ${esc(bankName)}`],
+                  ["Fee", wd.fee_kobo ? nairaFromKobo(wd.fee_kobo) : ""],
+                  ["Session ID", sessionId ? esc(sessionId) : "", { mono: true }],
+                  ["Transaction No.", esc(transferId), { mono: true }],
+                  ["Business", o.name ? esc(o.name) : ""],
+                  ["Balance After", wdFacts?.balance_after_kobo != null ? nairaFromKobo(wdFacts.balance_after_kobo) : ""],
+                ],
+                button: { label: "View Transaction →", url: appLink({ tab: "wallet" }) },
               }));
             await sendSms(o.phone, `${fmtNgn(wd.amount_kobo)} transfer to ${wd.account_name || wd.account_number} completed. — KudiAI`, {
               category: "money", user_id: wd.user_id as string, related_type: "wallet_withdrawals", related_id: transferId,
@@ -390,12 +428,25 @@ serve(async (req) => {
                 category: "money", priority: "high", deepLink: { tab: "wallet", openWallet: true },
               }),
             }).catch(() => {});
-            await sendWalletEmail(sb, o.email, `Transfer ${st} — ${fmtNgn(wd.amount_kobo)} returned`,
-              walletEmailHtml({
-                icon: "↩️", accent: "#b91c1c", title: `Transfer ${st}`,
-                rows: [["Amount", fmtNgn(wd.amount_kobo)], ["To", wd.account_name || wd.account_number],
-                       ["Status", "returned to your wallet"], ["Reference", `KDT-${transferId}`]],
-                foot: "The bank could not complete this transfer, so the full amount is back in your wallet.",
+            // the wallet's balance now that the amount has been returned
+            const { data: wNow } = await sb.from("wallets").select("balance_kobo").eq("user_id", wd.user_id).maybeSingle();
+            await sendWalletEmail(sb, o.email, `Transfer ${st} — ${fmtNgn(wd.amount_kobo)} returned`, () =>
+              bankEmail({
+                title: st === "reversed" ? "Transfer Reversed" : "Transfer Unsuccessful", tone: "danger",
+                timestamp: new Date(),
+                amount: nairaFromKobo(wd.amount_kobo), amountLabel: "Returned to Your Wallet",
+                preheader: `Your ${nairaFromKobo(wd.amount_kobo)} transfer could not be completed — it is back in your wallet`,
+                intro: "The bank could not complete this transfer, so the full amount is back in your wallet.",
+                rows: [
+                  ["Transaction Reference", wdFacts?.receipt_ref ? esc(wdFacts.receipt_ref) : "", { mono: true }],
+                  ["Payment Method", "KudiAI Wallet"],
+                  ["To", esc(wd.account_name || wd.account_number)],
+                  ["Status", "Returned to your wallet"],
+                  ["Transaction No.", esc(transferId), { mono: true }],
+                  ["Business", o.name ? esc(o.name) : ""],
+                  ["Balance After", wNow?.balance_kobo != null ? nairaFromKobo(wNow.balance_kobo) : ""],
+                ],
+                button: { label: "View Transaction →", url: appLink({ tab: "wallet" }) },
               }));
             await sendSms(o.phone, `${fmtNgn(wd.amount_kobo)} transfer ${st} — returned to your KudiAI wallet. — KudiAI`, {
               category: "money", user_id: wd.user_id as string, related_type: "wallet_withdrawals", related_id: transferId,

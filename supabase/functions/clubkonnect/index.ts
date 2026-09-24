@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import nodemailer from "npm:nodemailer@6";
+import { bankEmail, esc, cleanSubject, naira, appLink, htmlToText, type EmailRow } from "../_shared/bankEmail.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -817,8 +818,9 @@ serve(async (req) => {
       await transport.sendMail({
         from: `"${smtp.from_name}" <${smtp.from_email}>`,
         to:   opts.to,
-        subject: opts.subject,
+        subject: cleanSubject(opts.subject),
         html: opts.html,
+        text: htmlToText(opts.html),
       });
     };
 
@@ -913,11 +915,11 @@ serve(async (req) => {
           subtitle: "Action Required — Paystack paid, delivery failed",
           body: `<p style="margin:0 0 16px;color:#374151;font-size:14px;">A customer paid successfully via Paystack but <strong>the provider failed to deliver</strong> the service. Immediate action is required.</p>
             <table style="width:100%;border-collapse:collapse;font-size:14px;margin:0 0 16px;">
-              <tr><td style="padding:7px 0;color:#6b7280;width:140px;font-weight:600;">User</td><td style="padding:7px 0;font-weight:700;color:#111827;">${user_name || "Unknown"} (${user_email || "N/A"})</td></tr>
-              <tr style="background:#fef2f2;"><td style="padding:7px 8px;color:#6b7280;font-weight:600;">Service</td><td style="padding:7px 8px;font-weight:700;color:#111827;">${service}</td></tr>
-              <tr><td style="padding:7px 0;color:#6b7280;font-weight:600;">Amount Paid</td><td style="padding:7px 0;font-weight:700;color:#111827;">₦${amount?.toLocaleString() || "?"}</td></tr>
-              <tr style="background:#fef2f2;"><td style="padding:7px 8px;color:#6b7280;font-weight:600;">Paystack Ref</td><td style="padding:7px 8px;font-family:monospace;color:#111827;">${ps_ref}</td></tr>
-              <tr><td style="padding:7px 0;color:#6b7280;font-weight:600;">Error</td><td style="padding:7px 0;font-weight:700;color:#dc2626;">${ck_error}</td></tr>
+              <tr><td style="padding:7px 0;color:#6b7280;width:140px;font-weight:600;">User</td><td style="padding:7px 0;font-weight:700;color:#111827;">${esc(user_name || "Unknown")} (${esc(user_email || "N/A")})</td></tr>
+              <tr style="background:#fef2f2;"><td style="padding:7px 8px;color:#6b7280;font-weight:600;">Service</td><td style="padding:7px 8px;font-weight:700;color:#111827;">${esc(service)}</td></tr>
+              <tr><td style="padding:7px 0;color:#6b7280;font-weight:600;">Amount Paid</td><td style="padding:7px 0;font-weight:700;color:#111827;">₦${esc(amount?.toLocaleString() || "?")}</td></tr>
+              <tr style="background:#fef2f2;"><td style="padding:7px 8px;color:#6b7280;font-weight:600;">Paystack Ref</td><td style="padding:7px 8px;font-family:monospace;color:#111827;">${esc(ps_ref)}</td></tr>
+              <tr><td style="padding:7px 0;color:#6b7280;font-weight:600;">Error</td><td style="padding:7px 0;font-weight:700;color:#dc2626;">${esc(ck_error)}</td></tr>
             </table>
             <div style="padding:14px 16px;background:#fef9c3;border:1px solid #fde68a;border-radius:8px;">
               <p style="margin:0;font-weight:700;color:#92400e;font-size:14px;">ACTION REQUIRED</p>
@@ -938,17 +940,17 @@ serve(async (req) => {
             accentColor: "linear-gradient(135deg,#dc2626,#b91c1c)",
             icon: "⚠",
             title: "Bill Payment Update",
-            subtitle: `${service} — Delivery Issue`,
-            body: `<p style="margin:0 0 14px;color:#374151;font-size:14px;">Dear <strong>${user_name || "Valued Customer"}</strong>,</p>
-              <p style="margin:0 0 18px;color:#374151;font-size:14px;line-height:1.6;">Your Paystack payment of <strong>₦${amount?.toLocaleString() || "?"}</strong> for <strong>${service}</strong> was received successfully. However, we encountered a temporary issue delivering the service.</p>
+            subtitle: `${esc(service)} — Delivery Issue`,
+            body: `<p style="margin:0 0 14px;color:#374151;font-size:14px;">Dear <strong>${esc(user_name || "Valued Customer")}</strong>,</p>
+              <p style="margin:0 0 18px;color:#374151;font-size:14px;line-height:1.6;">Your Paystack payment of <strong>₦${esc(amount?.toLocaleString() || "?")}</strong> for <strong>${esc(service)}</strong> was received successfully. However, we encountered a temporary issue delivering the service.</p>
               <div style="padding:14px 16px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;margin-bottom:14px;">
                 <p style="margin:0;font-weight:700;color:#dc2626;font-size:14px;">Delivery issue detected</p>
-                <p style="margin:8px 0 0;color:#dc2626;font-size:13px;">${ck_error}</p>
+                <p style="margin:8px 0 0;color:#dc2626;font-size:13px;">${esc(ck_error)}</p>
               </div>
               <div style="padding:14px 16px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;margin-bottom:14px;">
                 <p style="margin:0;font-weight:700;color:#92400e;font-size:14px;">Your money is safe</p>
                 <p style="margin:8px 0 0;color:#92400e;font-size:13px;line-height:1.6;">Our team has been automatically alerted and will resolve this immediately. Keep your payment reference for follow-up:</p>
-                <p style="margin:10px 0 0;font-family:monospace;font-size:15px;font-weight:800;color:#1e293b;">${ps_ref}</p>
+                <p style="margin:10px 0 0;font-family:monospace;font-size:15px;font-weight:800;color:#1e293b;">${esc(ps_ref)}</p>
               </div>
               <p style="margin:0;color:#6b7280;font-size:13px;line-height:1.5;">If you do not receive your service within 2 hours, please contact our support team with the reference above.</p>`,
           });
@@ -1023,11 +1025,11 @@ serve(async (req) => {
         return `<div style="background:${bg};border:1px solid ${border};border-radius:8px;padding:10px 12px;margin-bottom:8px;">
           <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
             <span style="font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">
-              PIN ${i + 1}${network ? " · " + network : ""}
+              PIN ${i + 1}${network ? " · " + esc(network) : ""}
             </span>
-            ${serial ? `<span style="font-size:10px;color:#9ca3af;font-family:monospace;">S/N: ${serial}</span>` : ""}
+            ${serial ? `<span style="font-size:10px;color:#9ca3af;font-family:monospace;">S/N: ${esc(serial)}</span>` : ""}
           </div>
-          <p style="font-family:monospace;font-size:17px;font-weight:900;color:#15803d;margin:0;letter-spacing:2px;word-break:break-all;">${code}</p>
+          <p style="font-family:monospace;font-size:17px;font-weight:900;color:#15803d;margin:0;letter-spacing:2px;word-break:break-all;">${esc(code)}</p>
         </div>`;
       }).join("");
       return `<div style="margin:0 0 16px;">
@@ -1040,34 +1042,47 @@ serve(async (req) => {
     };
 
     // ── Bill success email — notify business user their bill was delivered ────────
+    // Bank-grade layout (_shared/bankEmail.ts): the transaction's stored reference,
+    // WAT time, who actually took the payment, balance after, and a View Transaction
+    // button. The app sends receipt_ref / occurred_at / balance_after / paid_via /
+    // txn_id from the saved transaction row; any that are missing are simply left off.
     if (action === "bill-success-email") {
-      const { user_email, user_name, service, amount, reference, detail, pins } = body as {
+      const { user_email, user_name, service, amount, reference, detail, pins, receipt_ref, occurred_at, balance_after, paid_via, txn_id } = body as {
         user_email?: string; user_name?: string; service?: string;
         amount?: number; reference?: string; detail?: string; pins?: unknown[];
+        receipt_ref?: string; occurred_at?: string; balance_after?: number; paid_via?: string; txn_id?: string;
       };
       if (!user_email) return json({ ok: false, error: "user_email required" });
       try {
         const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
-        const detailRows = (detail || "").split(" | ").filter(Boolean).map(d => {
+        const PAID_VIA: Record<string, string> = {
+          wallet: "KudiAI Wallet", paystack: "Paystack", flutterwave: "Flutterwave", cashback: "KudiAI cashback", cash: "Cash",
+        };
+        const via = paid_via ? PAID_VIA[String(paid_via).toLowerCase()] : undefined;
+        const amt = Number(amount);
+        const detailRows: EmailRow[] = (detail || "").split(" | ").filter(Boolean).map((d): EmailRow => {
           const [k, ...rest] = d.split(": ");
-          return rest.length
-            ? `<tr><td style="padding:6px 0;color:#6b7280;width:120px;font-size:13px;">${k}</td><td style="padding:6px 0;font-weight:600;color:#111827;font-size:13px;">${rest.join(": ")}</td></tr>`
-            : `<tr><td colspan="2" style="padding:6px 0;color:#374151;font-size:13px;">${d}</td></tr>`;
-        }).join("");
-        const pinCards = pins?.length ? renderPinCards(pins) : "";
-        const html = billEmailHtml({
-          accentColor: "linear-gradient(135deg,#059669,#047857)",
-          icon: "✓",
-          title: "Bill Payment Successful",
-          subtitle: service || "Payment Confirmed",
-          body: `<p style="margin:0 0 14px;color:#374151;font-size:14px;">Dear <strong>${user_name || "Valued Customer"}</strong>,</p>
-            <p style="margin:0 0 18px;color:#374151;font-size:14px;line-height:1.6;">Your <strong>${service}</strong> payment of <strong>₦${amount?.toLocaleString() || "?"}</strong> was processed successfully.</p>
-            ${detailRows ? `<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">${detailRows}</table>` : ""}
-            ${pinCards}
-            <div style="padding:12px 16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;margin-bottom:14px;">
-              <p style="margin:0;font-size:13px;color:#166534;">Payment Ref: <strong style="font-family:monospace;">${reference}</strong></p>
-            </div>
-            <p style="margin:0;color:#6b7280;font-size:13px;">Thank you for using KudiAI Track. Keep this email as proof of your transaction.</p>`,
+          return rest.length ? [esc(k), esc(rest.join(": "))] : ["Detail", esc(d)];
+        });
+        const link: Record<string, string> = { tab: "transactions" };
+        if (txn_id && /^[0-9a-f-]{36}$/i.test(String(txn_id))) link.id = String(txn_id);
+        const html = bankEmail({
+          title: "Bill Payment Successful", tone: "success",
+          timestamp: occurred_at,
+          amount: Number.isFinite(amt) && amt > 0 ? naira(amt) : undefined,
+          amountLabel: service ? esc(service) : "Payment Confirmed",
+          preheader: `Your ${esc(service || "bill")} payment was processed successfully`,
+          intro: `Dear ${esc(user_name || "Valued Customer")}, your ${esc(service || "bill")} payment was processed successfully.`,
+          rows: [
+            ["Transaction Reference", receipt_ref ? esc(receipt_ref) : "", { mono: true }],
+            ["Service", service ? esc(service) : ""],
+            ["Payment Method", via ? esc(via) : ""],
+            ...detailRows,
+            ["Payment Ref.", reference ? esc(reference) : "", { mono: true }],
+            ["Balance After", balance_after != null && Number.isFinite(Number(balance_after)) ? naira(Number(balance_after)) : ""],
+          ],
+          note: pins?.length ? renderPinCards(pins) : undefined,
+          button: { label: "View Transaction →", url: appLink(link) },
         });
         await sendEmail(sb, { to: user_email, subject: `KudiAI Track: ${service} payment confirmed ✓`, html });
         return json({ ok: true });
@@ -1090,14 +1105,14 @@ serve(async (req) => {
           accentColor: "linear-gradient(135deg,#d97706,#b45309)",
           icon: "⚠",
           title: "Payment Not Completed",
-          subtitle: service || "Bill Payment",
-          body: `<p style="margin:0 0 14px;color:#374151;font-size:14px;">Dear <strong>${user_name || "Valued Customer"}</strong>,</p>
-            <p style="margin:0 0 18px;color:#374151;font-size:14px;line-height:1.6;">Your <strong>${service || "bill"}</strong> payment was <strong>not completed</strong>. ${reason ? reason : "The payment session ended before it was confirmed."}</p>
+          subtitle: esc(service || "Bill Payment"),
+          body: `<p style="margin:0 0 14px;color:#374151;font-size:14px;">Dear <strong>${esc(user_name || "Valued Customer")}</strong>,</p>
+            <p style="margin:0 0 18px;color:#374151;font-size:14px;line-height:1.6;">Your <strong>${esc(service || "bill")}</strong> payment was <strong>not completed</strong>. ${reason ? esc(reason) : "The payment session ended before it was confirmed."}</p>
             <div style="padding:14px 16px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;margin-bottom:14px;">
               <p style="margin:0;font-weight:700;color:#92400e;font-size:14px;">You were not charged</p>
               <p style="margin:6px 0 0;color:#92400e;font-size:13px;">No money was deducted from your account. You can safely retry your payment.</p>
             </div>
-            ${reference ? `<div style="padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;margin-bottom:14px;"><p style="margin:0;font-size:12px;color:#64748b;">Reference: <strong style="font-family:monospace;">${reference}</strong></p></div>` : ""}
+            ${reference ? `<div style="padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;margin-bottom:14px;"><p style="margin:0;font-size:12px;color:#64748b;">Reference: <strong style="font-family:monospace;">${esc(reference)}</strong></p></div>` : ""}
             <p style="margin:0;color:#6b7280;font-size:13px;">If you believe this is an error or need assistance, please contact our support team.</p>`,
         });
         await sendEmail(sb, { to: user_email, subject: `KudiAI Track: ${service || "Bill"} payment not completed`, html });
@@ -1127,26 +1142,26 @@ serve(async (req) => {
         const detailRows = (detail || "").split(" | ").filter(Boolean).map(d => {
           const [k, ...rest] = d.split(": ");
           return rest.length
-            ? `<tr><td style="padding:5px 0;color:#6b7280;width:120px;font-size:13px;">${k}</td><td style="padding:5px 0;font-weight:600;color:#111827;font-size:13px;">${rest.join(": ")}</td></tr>`
-            : `<tr><td colspan="2" style="padding:5px 0;color:#374151;font-size:13px;">${d}</td></tr>`;
+            ? `<tr><td style="padding:5px 0;color:#6b7280;width:120px;font-size:13px;">${esc(k)}</td><td style="padding:5px 0;font-weight:600;color:#111827;font-size:13px;">${esc(rest.join(": "))}</td></tr>`
+            : `<tr><td colspan="2" style="padding:5px 0;color:#374151;font-size:13px;">${esc(d)}</td></tr>`;
         }).join("");
         const html = billEmailHtml({
           accentColor: headerBg,
           icon,
           title,
-          subtitle: `${service || ""} — Staff Notification`,
-          body: `<p style="margin:0 0 12px;color:#374151;font-size:14px;">Hi <strong>${staff_name || "Staff"}</strong>,</p>
+          subtitle: `${esc(service || "")} — Staff Notification`,
+          body: `<p style="margin:0 0 12px;color:#374151;font-size:14px;">Hi <strong>${esc(staff_name || "Staff")}</strong>,</p>
             <p style="margin:0 0 16px;color:#374151;font-size:14px;line-height:1.6;">
               ${isSuccess
-                ? `You successfully processed a <strong>${service}</strong> bill payment of <strong>₦${amount?.toLocaleString() || "?"}</strong> for <strong>${business_name || "the business"}</strong>.`
+                ? `You successfully processed a <strong>${esc(service)}</strong> bill payment of <strong>₦${esc(amount?.toLocaleString() || "?")}</strong> for <strong>${esc(business_name || "the business")}</strong>.`
                 : isFailed
-                  ? `A <strong>${service}</strong> bill payment of <strong>₦${amount?.toLocaleString() || "?"}</strong> you initiated for <strong>${business_name || "the business"}</strong> could not be delivered.`
-                  : `A <strong>${service}</strong> bill payment you initiated for <strong>${business_name || "the business"}</strong> was not completed. No charge was made.`
+                  ? `A <strong>${esc(service)}</strong> bill payment of <strong>₦${esc(amount?.toLocaleString() || "?")}</strong> you initiated for <strong>${esc(business_name || "the business")}</strong> could not be delivered.`
+                  : `A <strong>${esc(service)}</strong> bill payment you initiated for <strong>${esc(business_name || "the business")}</strong> was not completed. No charge was made.`
               }
             </p>
             ${detailRows ? `<table style="width:100%;border-collapse:collapse;margin-bottom:14px;">${detailRows}</table>` : ""}
             ${isSuccess && pins?.length ? renderPinCards(pins) : ""}
-            ${reference ? `<div style="padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;"><p style="margin:0;font-size:12px;color:#64748b;">Payment Ref: <strong style="font-family:monospace;">${reference}</strong></p></div>` : ""}`,
+            ${reference ? `<div style="padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;"><p style="margin:0;font-size:12px;color:#64748b;">Payment Ref: <strong style="font-family:monospace;">${esc(reference)}</strong></p></div>` : ""}`,
         });
         await sendEmail(sb, { to: staff_email, subject: `KudiAI Track: ${service} bill ${outcome === "success" ? "delivered ✓" : outcome === "failed" ? "failed ✕" : "not completed"}`, html });
         return json({ ok: true });
@@ -1265,7 +1280,7 @@ serve(async (req) => {
           accentColor: "linear-gradient(135deg,#dc2626,#b91c1c)", icon: "⚠",
           title: "Provider Wallet Too Low — Load It Now",
           subtitle: "Customers are being blocked from paying",
-          body: `<p style="margin:0 0 14px;color:#374151;font-size:14px;">A customer just tried to buy <strong>${ctx}</strong> but the Clubkonnect wallet does not have enough balance to fulfil it. The payment was <strong>not taken</strong> — the customer was asked to try again later.</p>
+          body: `<p style="margin:0 0 14px;color:#374151;font-size:14px;">A customer just tried to buy <strong>${esc(ctx)}</strong> but the Clubkonnect wallet does not have enough balance to fulfil it. The payment was <strong>not taken</strong> — the customer was asked to try again later.</p>
             <table style="width:100%;border-collapse:collapse;font-size:14px;margin:0 0 16px;">
               <tr><td style="padding:7px 0;color:#6b7280;width:170px;font-weight:600;">Current wallet balance</td><td style="padding:7px 0;font-weight:800;color:#dc2626;">₦${(balance ?? 0).toLocaleString()}</td></tr>
               <tr style="background:#fef9c3;"><td style="padding:7px 8px;color:#6b7280;font-weight:600;">Needed for this order</td><td style="padding:7px 8px;font-weight:700;color:#92400e;">₦${Math.ceil(needed).toLocaleString()}</td></tr>

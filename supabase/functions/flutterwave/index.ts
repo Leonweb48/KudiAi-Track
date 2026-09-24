@@ -14,6 +14,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import nodemailer from "npm:nodemailer@6";
+import { bankEmail, esc, cleanSubject, nairaFromKobo, appLink, htmlToText } from "../_shared/bankEmail.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin":  "*",
@@ -42,45 +43,21 @@ const ANON_KEY      = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 // the one injected here, so server-to-server calls authenticate with this.
 const INTERNAL_SECRET = Deno.env.get("EMAIL_TRIGGER_SECRET") ?? "";
 
-// Branded wallet receipt — same shape flutterwave-webhook already uses for
-// topup/sale receipts (walletEmailHtml/sendWalletEmail duplicated here per
-// this project's no-shared-module convention for edge functions).
-const walletEmailHtml = (opts: { icon: string; accent: string; title: string; rows: [string, string][]; foot?: string }) => `
-<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:560px;margin:0 auto;background:#f8fafc;padding:16px;">
-  <div style="background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.08);">
-    <div style="background:linear-gradient(135deg,#0F1D42 0%,#1B2A5E 100%);padding:22px;text-align:center;">
-      <img src="https://kudiai.app/logo.png" width="46" style="display:block;margin:0 auto 10px;border-radius:9px;"/>
-      <div style="color:#fff;font-size:18px;font-weight:900;">KudiAI Track</div>
-      <div style="color:rgba(255,255,255,.45);font-size:9px;letter-spacing:2px;text-transform:uppercase;">Business Wallet</div>
-    </div>
-    <div style="background:${opts.accent};padding:16px;text-align:center;">
-      <div style="font-size:24px;">${opts.icon}</div>
-      <div style="color:#fff;font-size:17px;font-weight:800;margin-top:2px;">${opts.title}</div>
-    </div>
-    <div style="padding:22px 24px;background:#fff;">
-      <table style="width:100%;border-collapse:collapse;font-size:13px;">
-        ${opts.rows.map(([k, v]) => `<tr><td style="padding:7px 0;color:#64748b;">${k}</td><td style="padding:7px 0;text-align:right;font-weight:700;color:#1e293b;">${v}</td></tr>`).join("")}
-      </table>
-      ${opts.foot ? `<p style="margin:14px 0 0;color:#94a3b8;font-size:12px;">${opts.foot}</p>` : ""}
-    </div>
-    <div style="background:#f8fafc;padding:16px;text-align:center;border-top:1px solid #e2e8f0;">
-      <p style="margin:0 0 3px;color:#94a3b8;font-size:11px;">A product of AMAYA &amp; Co. Technologies — &copy; ${new Date().getFullYear()}</p>
-      <p style="margin:0;color:#cbd5e1;font-size:10px;">Automated message — please do not reply.</p>
-    </div>
-  </div>
-</div>`;
-
+// The payout email uses the shared bank-grade layout (_shared/bankEmail.ts). The
+// email is BUILT inside the try: a template problem must never get in the way of a
+// payout that has already moved money.
 // deno-lint-ignore no-explicit-any
-async function sendWalletEmail(sb: any, to: string, subject: string, html: string) {
+async function sendWalletEmail(sb: any, to: string, subject: string, build: () => string) {
   if (!to) return;
   try {
+    const html = build();
     const { data: smtp } = await sb.from("smtp_config").select("*").limit(1).maybeSingle();
     if (!smtp) return;
     const transport = nodemailer.createTransport({
       host: smtp.host, port: smtp.port, secure: smtp.encryption === "ssl",
       auth: { user: smtp.username, pass: smtp.password },
     });
-    await transport.sendMail({ from: `"${smtp.from_name || "KudiAI Track"}" <${smtp.from_email}>`, to, subject, html });
+    await transport.sendMail({ from: `"${smtp.from_name || "KudiAI Track"}" <${smtp.from_email}>`, to, subject: cleanSubject(subject), html, text: htmlToText(html) });
   } catch (e) { console.warn("[flutterwave] email failed:", (e as Error).message); }
 }
 
@@ -380,16 +357,28 @@ serve(async (req) => {
       const identity = await resolveIdentity(sb, client_user_id);
       if (!identity.email) return json({ ok: true, sent: false, reason: "no email on file" });
 
-      const rows: [string, string][] = [["Amount", fmtNgn(amount_kobo)]];
-      if (balance_after_kobo != null) rows.push(["New Balance", fmtNgn(balance_after_kobo)]);
-      rows.push(["Source", "Ajo/Esusu withdrawal"]);
-      if (payout_id) rows.push(["Reference", `KDT-${String(payout_id).slice(0, 8).toUpperCase()}`]);
-      rows.push(["Time", new Date().toLocaleString("en-NG")]);
+      // The payout's own row carries the stored reference and server timestamp.
+      let payoutRow: { receipt_ref?: string | null; created_at?: string | null } | null = null;
+      if (payout_id) {
+        try {
+          const { data } = await sb.from("ajo_contributions").select("receipt_ref, created_at").eq("id", payout_id).maybeSingle();
+          payoutRow = data;
+        } catch { /* the email still goes out without a reference */ }
+      }
 
-      await sendWalletEmail(sb, identity.email, `Payout Received — ${fmtNgn(amount_kobo)}`,
-        walletEmailHtml({
-          icon: "💰", accent: "#16a34a", title: "Payout Received", rows,
-          foot: "This payout was credited to your KudiAI wallet.",
+      await sendWalletEmail(sb, identity.email, `Payout Received — ${fmtNgn(amount_kobo)}`, () =>
+        bankEmail({
+          title: "Payout Received", tone: "success",
+          timestamp: payoutRow?.created_at,
+          amount: nairaFromKobo(amount_kobo), amountLabel: "Credited to Your Wallet",
+          intro: "This payout was credited to your KudiAI wallet.",
+          rows: [
+            ["Transaction Reference", payoutRow?.receipt_ref ? esc(payoutRow.receipt_ref) : "", { mono: true }],
+            ["Payment Method", "KudiAI Wallet"],
+            ["Source", "Ajo/Esusu withdrawal"],
+            ["Balance After", balance_after_kobo != null ? nairaFromKobo(balance_after_kobo) : ""],
+          ],
+          button: { label: "View Transaction →", url: appLink({ tab: "wallet" }) },
         }));
 
       return json({ ok: true, sent: true });
