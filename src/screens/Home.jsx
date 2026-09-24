@@ -22,7 +22,7 @@ import PaidProfileBanner from "../components/PaidProfileBanner";
 import ProfileCompleteFlow from "../components/ProfileCompleteFlow";
 import { isPaidPlan } from "../utils/paidCompliance";
 import TransactionDetailModal from "../components/shared/TransactionDetailModal";
-import { buildTransactionReceipt } from "../utils/receiptConfig";
+import { buildTransactionReceipt, bizFromProfile } from "../utils/receiptConfig";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
 import { useWallet } from "../hooks/useWallet";
 import { mergeWithWalletHistory } from "../utils/walletTxAdapter";
@@ -140,7 +140,7 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
   );
   const openTxReceipt = (tx) => setReceipt(
     tx.__source === "wallet"
-      ? wallet.receiptFor(tx.__raw, profile?.business_name, profile?.owner_name)
+      ? wallet.receiptFor(tx.__raw, profile?.business_name, profile?.owner_name, bizFromProfile(profile))
       : buildTransactionReceipt(tx, profile)
   );
   const [heroView, setHeroView] = useState(() =>
@@ -414,7 +414,7 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
             <div className="divide-y divide-slate-100 dark:divide-slate-800">
               {wallet.ledger.slice(0, 4).map(row => (
                 <WalletTxRow key={row.id} row={row} hidden={balanceHidden}
-                  onOpen={(r) => setReceipt(wallet.receiptFor(r, profile?.business_name, profile?.owner_name))} />
+                  onOpen={(r) => setReceipt(wallet.receiptFor(r, profile?.business_name, profile?.owner_name, bizFromProfile(profile)))} />
               ))}
             </div>
           )}

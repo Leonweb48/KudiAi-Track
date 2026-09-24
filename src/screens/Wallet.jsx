@@ -11,6 +11,7 @@ import {
 } from "../components/WalletPanel";
 import TransactionDetailModal from "../components/shared/TransactionDetailModal";
 import { fmt } from "../utils/helpers";
+import { bizFromProfile } from "../utils/receiptConfig";
 
 export default function Wallet({ session, store }) {
   const userId = session?.user?.id || null;
@@ -30,7 +31,7 @@ export default function Wallet({ session, store }) {
   const [reverifyBusy, setReverifyBusy] = useState(false);
   const [reverifyErr, setReverifyErr] = useState("");
 
-  const openReceipt = (row) => setReceipt(w.receiptFor(row, store?.profile?.business_name, store?.profile?.owner_name));
+  const openReceipt = (row) => setReceipt(w.receiptFor(row, store?.profile?.business_name, store?.profile?.owner_name, bizFromProfile(store?.profile)));
 
   const toggleHidden = () => {
     const n = !hidden; sessionStorage.setItem("kt_balance_hidden", n ? "1" : "0"); setHidden(n);

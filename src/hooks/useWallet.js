@@ -237,7 +237,7 @@ export function useWallet(userId, enabled = true) {
 
   // Full receipt data for a ledger row — joins the matching withdrawal / payment
   // request and resolves the recipient bank name, ready for <TransactionDetailModal>.
-  const receiptFor = useCallback((row, businessName = "", ownerName = "") => {
+  const receiptFor = useCallback((row, businessName = "", ownerName = "", biz = null) => {
     if (!row) return null;
     const isTransfer = row.source === "withdrawal" || row.source === "withdrawal_reversal";
     const wd = isTransfer ? withdrawals.find((x) => x.ledger_id === row.id) || null : null;
@@ -255,6 +255,8 @@ export function useWallet(userId, enabled = true) {
       request:             rq,
       originator:          row.meta?.originator || "",
       recipientBankName,
+      businessAddress:     biz?.address || "",
+      businessPhone:       biz?.phone || "",
     });
   }, [withdrawals, requests, banks, wallet]);
 

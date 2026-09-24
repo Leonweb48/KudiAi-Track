@@ -8,7 +8,7 @@ import { canDo, upgradeLabel, planAvailableText } from "../utils/plans";
 import Field  from "../components/shared/Field";
 import Badge  from "../components/shared/Badge";
 import TransactionDetailModal from "../components/shared/TransactionDetailModal";
-import { buildCreditPaymentReceipt, buildCreditStatementReceipt } from "../utils/receiptConfig";
+import { buildCreditPaymentReceipt, buildCreditStatementReceipt, bizFromProfile } from "../utils/receiptConfig";
 import { ClientProfile }  from "../components/shared/ClientProfile";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import { supabase } from "../utils/supabase";
@@ -1369,7 +1369,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
 
       {receipt && (
         <TransactionDetailModal
-          data={buildCreditStatementReceipt(receipt, profile?.business_name || profile?.owner_name || "My Business")}
+          data={buildCreditStatementReceipt(receipt, profile?.business_name || profile?.owner_name || "My Business", bizFromProfile(profile))}
           onClose={() => setReceipt(null)}
         />
       )}
@@ -1377,7 +1377,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
       {/* Payment receipt overlay */}
       {payReceipt && (
         <TransactionDetailModal
-          data={buildCreditPaymentReceipt(payReceipt.payment, payReceipt.credit, profile?.business_name || profile?.owner_name || "My Business")}
+          data={buildCreditPaymentReceipt(payReceipt.payment, payReceipt.credit, profile?.business_name || profile?.owner_name || "My Business", bizFromProfile(profile))}
           onClose={() => setPayReceipt(null)}
         />
       )}
@@ -1434,7 +1434,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
           <div className="fixed inset-0 z-[60] bg-black/60 flex flex-col">
             {payReceipt && (
               <TransactionDetailModal
-                data={buildCreditPaymentReceipt(payReceipt.payment, payReceipt.credit, bizName)}
+                data={buildCreditPaymentReceipt(payReceipt.payment, payReceipt.credit, bizName, bizFromProfile(profile))}
                 onClose={() => setPayReceipt(null)}
               />
             )}

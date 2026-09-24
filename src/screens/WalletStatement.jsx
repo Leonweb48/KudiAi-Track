@@ -8,7 +8,9 @@ import { usePlatformConfig } from "../hooks/usePlatformConfig";
 import { useWallet } from "../hooks/useWallet";
 import { supabase } from "../utils/supabase";
 import { applyPeriodFilter, fmt } from "../utils/helpers";
+import { bizFromProfile } from "../utils/receiptConfig";
 import { buildWalletStatementCSV, walletStatementCSVFilename, shareCSV } from "../utils/exportCSV";
+import { saveWalletStatementPdf } from "../utils/generateWalletStatementPdf";
 
 // A dedicated, independent query — useWallet's own `ledger` is deliberately
 // capped at the last 50 rows for its realtime hot-path; a statement needs the
@@ -65,7 +67,7 @@ export default function WalletStatement({ session, store, userId: userIdOverride
   const [dateTo, setDateTo] = useState("");
   const [q, setQ] = useState("");
   const [receipt, setReceipt] = useState(null);
-  const [exporting, setExporting] = useState(false);
+  const [exporting, setExporting] = useState("");   // "" | "csv" | "pdf"
 
   useEffect(() => {
     if (!userId) return;
@@ -113,15 +115,34 @@ export default function WalletStatement({ session, store, userId: userIdOverride
     return { totalIn, totalOut, net: totalIn - totalOut, categories, maxAmount };
   }, [periodFiltered]);
 
-  const openReceipt = (row) => setReceipt(w.receiptFor(row, bizName, ownerName));
+  const openReceipt = (row) => setReceipt(w.receiptFor(row, bizName, ownerName, bizFromProfile(store?.profile)));
 
-  const handleExport = async () => {
-    setExporting(true);
+  const handleExportCsv = async () => {
+    setExporting("csv");
     try {
       const csv = buildWalletStatementCSV(filtered);
       await shareCSV(csv, walletStatementCSVFilename(dateFrom, dateTo));
     } finally {
-      setExporting(false);
+      setExporting("");
+    }
+  };
+
+  // The PDF covers the whole selected period (one page per month), not the
+  // search box — a statement with rows filtered out would not add up.
+  const handleExportPdf = async () => {
+    setExporting("pdf");
+    try {
+      const biz = bizFromProfile(store?.profile);
+      await saveWalletStatementPdf(periodFiltered, {
+        name:    bizName,
+        address: biz.address,
+        phone:   biz.phone,
+        account: w.wallet?.flw_account_number || "",
+      });
+    } catch (e) {
+      console.warn("[statement] PDF export failed:", e?.message);
+    } finally {
+      setExporting("");
     }
   };
 
@@ -132,9 +153,13 @@ export default function WalletStatement({ session, store, userId: userIdOverride
           <Icon name="chevron-left" size={20} className="text-slate-600 dark:text-slate-300" />
         </button>
         <h1 className="text-[18px] font-extrabold text-slate-900 dark:text-slate-50">Statement</h1>
-        <button onClick={handleExport} disabled={exporting || filtered.length === 0}
+        <button onClick={handleExportPdf} disabled={!!exporting || periodFiltered.length === 0}
           className="ml-auto text-[12px] font-bold text-brand-600 dark:text-brand-400 disabled:opacity-40 flex items-center gap-1">
-          <Icon name="download" size={14} /> {exporting ? "Exporting…" : "Export"}
+          <Icon name="download" size={14} /> {exporting === "pdf" ? "Preparing…" : "PDF"}
+        </button>
+        <button onClick={handleExportCsv} disabled={!!exporting || filtered.length === 0}
+          className="text-[12px] font-bold text-brand-600 dark:text-brand-400 disabled:opacity-40 flex items-center gap-1">
+          <Icon name="download" size={14} /> {exporting === "csv" ? "Exporting…" : "CSV"}
         </button>
       </div>
 

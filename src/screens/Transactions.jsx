@@ -6,7 +6,7 @@ import { AddTxnModal } from "../components/shared/AddTxnModal";
 import { useCampaigns }        from "../hooks/useCampaigns";
 import AnnouncementBarSlot     from "../components/slots/AnnouncementBarSlot";
 import TransactionDetailModal from "../components/shared/TransactionDetailModal";
-import { buildTransactionReceipt } from "../utils/receiptConfig";
+import { buildTransactionReceipt, bizFromProfile } from "../utils/receiptConfig";
 import { useDeepLink } from "../utils/deepLinkBus";
 import { fmt, applyPeriodFilter, isBillPayment } from "../utils/helpers";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
@@ -225,7 +225,7 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
     if (asoClients.length === 0) { setAjoContribs([]); return; }
     supabase
       .from("ajo_contributions")
-      .select("id, aso_client_id, type, amount, payment_method, created_at, status")
+      .select("id, aso_client_id, type, amount, payment_method, created_at, status, receipt_ref, balance_after")
       .in("aso_client_id", asoClients.map(c => c.id))
       .order("created_at", { ascending: false })
       .limit(200)
@@ -738,7 +738,7 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
               const isWalletTx = item.tx.__source === "wallet";
               const openReceipt = () => setReceipt(
                 isWalletTx
-                  ? wallet.receiptFor(item.tx.__raw, profile?.business_name, profile?.owner_name)
+                  ? wallet.receiptFor(item.tx.__raw, profile?.business_name, profile?.owner_name, bizFromProfile(profile))
                   : buildTransactionReceipt(item.tx, profile)
               );
               return (

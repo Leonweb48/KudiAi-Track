@@ -1,5 +1,6 @@
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
+import { formatWAT } from "./wat";
 
 const BOM = "﻿";
 
@@ -248,14 +249,14 @@ export function buildWalletStatementCSV(rows) {
   const csvRows = (rows || []).map(r =>
     csvRow([
       toISO(r.created_at),
-      r.created_at ? new Date(r.created_at).toLocaleString("en-NG") : "",
+      r.created_at ? formatWAT(r.created_at) : "",
       (r.source || "").replace(/_/g, " "),
       r.narration || "",
       r.amount_kobo != null ? Number(r.amount_kobo) / 100 : "",
       r.direction || "",
       r.status || "",
       r.balance_after_kobo != null ? Number(r.balance_after_kobo) / 100 : "",
-      r.id || "",
+      r.receipt_ref || r.id || "",
     ])
   );
   return BOM + [header, ...csvRows].join("\r\n");

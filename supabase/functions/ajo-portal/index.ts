@@ -372,7 +372,7 @@ serve(async (req) => {
       // display limit — don't lower it without re-checking that math.
       const { data } = await sb
         .from("ajo_contributions")
-        .select("id, aso_client_id, owner_id, amount, type, status, created_at, payment_method, contribution_context, cycle_id, group_id, reverses_contribution_id, fee_for_contribution_id, notes, recorded_by, paystack_ref, paystack_status, paid_at, approved_at, approved_by, confirmed_at, confirmed_by, initiated_by, payment_channel, proof_url, contribution_source")
+        .select("id, aso_client_id, owner_id, amount, type, status, created_at, payment_method, contribution_context, cycle_id, group_id, reverses_contribution_id, fee_for_contribution_id, notes, recorded_by, paystack_ref, paystack_status, paid_at, approved_at, approved_by, confirmed_at, confirmed_by, initiated_by, payment_channel, proof_url, contribution_source, receipt_ref, balance_after")
         .eq("aso_client_id", client_id)
         .order("created_at", { ascending: false })
         .limit(1000);

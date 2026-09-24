@@ -1,7 +1,8 @@
 /**
  * Platform-wide transaction detail + shareable receipt.
  * Shows the full ReceiptCard in-modal (what you see = what you get).
- * "Share Receipt" captures it via html2canvas as Image or PDF.
+ * "Share Receipt" captures it via html2canvas as an image, or builds a real
+ * vector PDF (selectable text) from the same receipt data.
  *
  * Props:
  *   data            — receipt data from receiptConfig.js build* functions
@@ -11,11 +12,10 @@
  */
 import { useRef, useState } from "react";
 import { useToast } from "../Toast";
-import { jsPDF } from "jspdf";
 import { Capacitor } from "@capacitor/core";
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
-import { savePdf } from "../../utils/pdfSave";
+import { saveReceiptPdf } from "../../utils/generateReceiptPdf";
 import { captureReceiptCanvas } from "../../utils/captureReceipt";
 import { ReceiptCard } from "./ReceiptCard";
 import SupportTicketModal from "./SupportTicketModal";
@@ -195,19 +195,15 @@ export default function TransactionDetailModal({ data, onClose, onReportIssue, o
     setShareOpen(false);
     setLoading(type);
     try {
-      const canvas = await captureReceiptCanvas(receiptRef.current);
       let result;
       if (type === 'image') {
+        const canvas = await captureReceiptCanvas(receiptRef.current);
         const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
         const file = new File([blob], filenames?.image || 'receipt.png', { type: 'image/png' });
         result = await shareFile(file);
       } else {
-        const imgData = canvas.toDataURL('image/png');
-        const mmW = (canvas.width  / 3) * (25.4 / 96);
-        const mmH = (canvas.height / 3) * (25.4 / 96);
-        const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: [mmW, mmH] });
-        pdf.addImage(imgData, 'PNG', 0, 0, mmW, mmH);
-        await savePdf(pdf, filenames?.pdf || 'receipt.pdf');
+        // A real vector PDF built from the receipt data — text stays selectable.
+        await saveReceiptPdf(data);
         result = Capacitor.isNativePlatform() ? 'shared' : 'downloaded';
       }
       if (result === 'downloaded') toast({ title: 'Receipt saved to your downloads folder.', type: 'success' });

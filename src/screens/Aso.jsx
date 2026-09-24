@@ -4,7 +4,7 @@ import Modal  from "../components/shared/Modal";
 import Field  from "../components/shared/Field";
 import Badge  from "../components/shared/Badge";
 import TransactionDetailModal from "../components/shared/TransactionDetailModal";
-import { buildAsoContributionReceipt, buildAsoClientReceipt } from "../utils/receiptConfig";
+import { buildAsoContributionReceipt, buildAsoClientReceipt, bizFromProfile } from "../utils/receiptConfig";
 import { ClientProfile } from "../components/shared/ClientProfile";
 import { supabase } from "../utils/supabase";
 import { canDo, featureLimit, upgradeLabel, planRequiredLabel, planAvailableText } from "../utils/plans";
@@ -126,7 +126,7 @@ function isGroupAccount(c) {
 }
 
 /* ── Per-client Ajo Contribution History Modal ─────────────────────────── */
-function AsoClientHistoryModal({ client, contributions, cycles = [], businessName, staffMap = {}, onClose, onOpenCycle, onCloseCycle, onExecuteCommission, onReverseContrib }) {
+function AsoClientHistoryModal({ client, contributions, cycles = [], businessName, biz, staffMap = {}, onClose, onOpenCycle, onCloseCycle, onExecuteCommission, onReverseContrib }) {
   // Derived from props — computed before state so they can seed initial values
   // Name map over ALL cycles (active + closed) — used to label history rows
   const cycleNameMap = Object.fromEntries(cycles.map(c => [c.id, c.label || "Personal Savings"]));
@@ -226,7 +226,7 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
     <div className="fixed inset-0 z-sheet bg-black/60 flex flex-col">
       {receipt && (
         <TransactionDetailModal
-          data={buildAsoContributionReceipt(receipt, client.full_name, businessName, receipt.recorded_by ? staffMap[receipt.recorded_by] : undefined)}
+          data={buildAsoContributionReceipt(receipt, client.full_name, businessName, receipt.recorded_by ? staffMap[receipt.recorded_by] : undefined, biz)}
           onClose={() => setReceipt(null)}
         />
       )}
@@ -959,7 +959,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     try {
       const { data, error } = await supabase
         .from("ajo_contributions")
-        .select("id, aso_client_id, owner_id, amount, type, status, created_at, payment_method, notes, proof_url, contribution_context, recorded_by, cycle_id, contribution_source, aso_clients(full_name, email, membership_number)")
+        .select("id, aso_client_id, owner_id, amount, type, status, created_at, payment_method, notes, proof_url, contribution_context, recorded_by, cycle_id, contribution_source, receipt_ref, balance_after, aso_clients(full_name, email, membership_number)")
         .eq("status", "pending")
         .eq("type", "contribution")
         .or("contribution_source.neq.staff_collection,contribution_source.is.null")
@@ -2816,7 +2816,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                     const [contribRes, cycleRes] = await Promise.all([
                       supabase
                         .from("ajo_contributions")
-                        .select("id, aso_client_id, owner_id, amount, type, status, created_at, payment_method, contribution_context, cycle_id, group_id, reverses_contribution_id, fee_for_contribution_id, notes, recorded_by, paystack_ref, paystack_status, paid_at, approved_at, approved_by, confirmed_at, confirmed_by, initiated_by, payment_channel, proof_url, contribution_source, ajo_groups(name)")
+                        .select("id, aso_client_id, owner_id, amount, type, status, created_at, payment_method, contribution_context, cycle_id, group_id, reverses_contribution_id, fee_for_contribution_id, notes, recorded_by, paystack_ref, paystack_status, paid_at, approved_at, approved_by, confirmed_at, confirmed_by, initiated_by, payment_channel, proof_url, contribution_source, receipt_ref, balance_after, ajo_groups(name)")
                         .eq("aso_client_id", c.id)
                         .order("created_at", { ascending: false }),
                       supabase
@@ -3161,7 +3161,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                   setHistLoading(true);
                   const [contribRes, cycleRes] = await Promise.all([
                     supabase.from("ajo_contributions")
-                      .select("id, aso_client_id, owner_id, amount, type, status, created_at, payment_method, contribution_context, cycle_id, group_id, reverses_contribution_id, fee_for_contribution_id, notes, recorded_by, paystack_ref, paystack_status, paid_at, approved_at, approved_by, confirmed_at, confirmed_by, initiated_by, payment_channel, proof_url, contribution_source, ajo_groups(name)")
+                      .select("id, aso_client_id, owner_id, amount, type, status, created_at, payment_method, contribution_context, cycle_id, group_id, reverses_contribution_id, fee_for_contribution_id, notes, recorded_by, paystack_ref, paystack_status, paid_at, approved_at, approved_by, confirmed_at, confirmed_by, initiated_by, payment_channel, proof_url, contribution_source, receipt_ref, balance_after, ajo_groups(name)")
                       .eq("aso_client_id", c.id).order("created_at", { ascending: false }),
                     supabase.from("ajo_cycles")
                       .select("id, client_id, label, status, commission_model, commission_balance, expected_amount_per_period, frequency, length_periods, start_date, created_at, commission_percent")
@@ -3293,7 +3293,17 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                 const result = await asoContribute(savedClient.id, a, savedCtx, savedCtx === "personal_savings" ? savedCycleId : null, savedCtx !== "personal_savings" ? savedGroupId : null);
                 if (!result?.error) {
                   speakConfirmation("ajoDeposit", getLang());
-                  setContribSuccess({ client: savedClient, amount: a, showShare: false });
+                  // The stored row carries the database-issued reference, server time and balance.
+                  let storedRow = null;
+                  try {
+                    const cid = result.data?.contribution_id;
+                    if (cid) {
+                      const { data: r } = await supabase.from("ajo_contributions")
+                        .select("id, status, created_at, receipt_ref, balance_after").eq("id", cid).maybeSingle();
+                      storedRow = r || null;
+                    }
+                  } catch (_) { /* receipt falls back to "Assigned on sync" */ }
+                  setContribSuccess({ client: savedClient, amount: a, showShare: false, row: storedRow });
                 } else {
                   setContribError(result.error);
                 }
@@ -3404,7 +3414,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
       {receipt && (
         <TransactionDetailModal
-          data={buildAsoClientReceipt(receipt, profile?.business_name || profile?.owner_name || "My Business")}
+          data={buildAsoClientReceipt(receipt, profile?.business_name || profile?.owner_name || "My Business", bizFromProfile(profile))}
           onClose={() => setReceipt(null)}
         />
       )}
@@ -3414,12 +3424,14 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         const bizName = profile?.business_name || "My Business";
         const receiptData = buildAsoContributionReceipt(
           {
-            id:             `CS-${Date.now()}`,
+            id:             contribSuccess.row?.id || `CS-${Date.now()}`,
             type:           "contribution",
-            status:         "completed",
+            status:         contribSuccess.row?.status === "pending" ? "pending" : "completed",
             amount:         contribSuccess.amount,
-            created_at:     new Date().toISOString(),
+            created_at:     contribSuccess.row?.created_at || new Date().toISOString(),
             payment_method: "cash",
+            receipt_ref:    contribSuccess.row?.receipt_ref,
+            balance_after:  contribSuccess.row?.balance_after,
           },
           contribSuccess.client?.full_name || "Client",
           bizName
@@ -3604,6 +3616,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
               contributions={hcons}
               cycles={hcycles}
               businessName={bizName}
+              biz={bizFromProfile(profile)}
               staffMap={store.staffMap || {}}
               onClose={() => { setHistoryFor(null); setHistoryErr(""); setHistoryNote(""); }}
               onOpenCycle={isOwner ? handleOpenCycle : undefined}

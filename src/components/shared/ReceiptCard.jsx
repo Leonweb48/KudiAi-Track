@@ -250,8 +250,10 @@ export function ReceiptCard({ data, innerRef }) {
   const {
     title, direction, status, amount, datetime,
     fields = [], businessName, issuedBy, receiptRef,
-    provider, category, processorName, iconType,
+    provider, category, processorName, processorLine, iconType,
   } = data;
+  // Names who actually took the payment (read from the record) — never assumed.
+  const paidLine = processorLine || (processorName ? `Payments securely processed via ${processorName}` : null);
 
   const st           = statusProps(status);
   const showProvider = !!(provider || category);
@@ -391,9 +393,9 @@ export function ReceiptCard({ data, innerRef }) {
           <p style={{ margin: 0, fontSize: 9, color: '#cbd5e1', textAlign: 'center', fontStyle: 'italic', lineHeight: 1.5 }}>
             Talk your money. Track your profit. Grow your business.
           </p>
-          {processorName && (
+          {paidLine && (
             <p style={{ margin: '6px 0 0', fontSize: 8, color: '#94a3b8', textAlign: 'center', lineHeight: 1.5 }}>
-              Payments securely processed via {processorName}
+              {paidLine}
             </p>
           )}
         </div>

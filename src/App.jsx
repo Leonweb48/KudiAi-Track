@@ -48,6 +48,7 @@ import ConsentModal          from "./components/ConsentModal";
 import OfflineScreen         from "./screens/OfflineScreen";
 import PaymentReturn         from "./screens/PaymentReturn";
 import BvnVerificationReturn from "./screens/BvnVerificationReturn";
+import VerifyReceipt         from "./screens/VerifyReceipt";
 // ── Lazy imports — split into separate chunks, loaded on first use ────────────
 // Heavy screen chunks (jsPDF + html2canvas live in Reports; AI SDK in AIAssistant)
 const Reports        = lazy(() => import("./screens/Reports"));
@@ -474,6 +475,8 @@ export default function App() {
   if (location.pathname === "/payment-return" ||
       location.pathname === "/app/payment-callback") return <PaymentReturn />;
   if (location.pathname === "/bvn-return") return <BvnVerificationReturn />;
+  // Anyone holding a receipt can check it — no session needed.
+  if (location.pathname === "/verify") return <VerifyReceipt />;
 
   const portalStatuses = ["ready", "staff", "branch_manager", "marketer", "organisation", "org_member", "ajo_client"];
 

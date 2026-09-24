@@ -1,5 +1,4 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
-import { jsPDF } from "jspdf";
 import { fmt, today, applyPeriodFilter } from "../utils/helpers";
 import PeriodFilter from "../components/shared/PeriodFilter";
 import { useCampaigns }    from "../hooks/useCampaigns";
@@ -24,7 +23,7 @@ import TransactionPinModal  from "../components/TransactionPinModal";
 import { buildCallbackUrl, openPaystackCheckout } from "../utils/paystackCheckout";
 import { Browser } from "@capacitor/browser";
 import { Capacitor } from "@capacitor/core";
-import { savePdf }       from "../utils/pdfSave";
+import { saveReceiptPdf } from "../utils/generateReceiptPdf";
 import { createReportPdf } from "../utils/generateReportPdf";
 import { captureReceiptCanvas } from "../utils/captureReceipt";
 import { Filesystem, Directory } from "@capacitor/filesystem";
@@ -807,6 +806,9 @@ function billToReceipt(bill, profile, staffName) {
   return {
     ...bill,
     businessName:   profile?.business_name || profile?.owner_name || "My Business",
+    businessAddress: profile?.business_address || profile?.address || "",
+    businessPhone:   profile?.business_phone || profile?.phone || "",
+    paidVia:        bd.paid_via || undefined,
     service:        CATS.find(c => c.id === bill.category)?.label || bill.category,
     apiRef:         bd.orderId || pick(/Ref:\s*([^\s|]+)/i),
     token:          bd.token  || (() => { const t = (pick(/Token:\s*([^|]+)/i) || "").trim(); return t && !t.toLowerCase().startsWith("loading") ? t : undefined; })(),
@@ -1035,7 +1037,13 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
     const fr = fulfillResult;
     const fs = fr.formSnap || {};
     return buildBillReceipt({
-      created_at:   new Date().toISOString(),
+      id:           fr.txnId || undefined,
+      receipt_ref:  fr.receiptRef || undefined,
+      created_at:   fr.occurredAt || new Date().toISOString(),
+      balance_after: fr.balanceAfter,
+      paidVia:      fr.paidVia,
+      businessAddress: profile?.business_address || profile?.address || "",
+      businessPhone:   profile?.business_phone || profile?.phone || "",
       businessName: businessName || profile?.business_name || profile?.owner_name || "My Business",
       amount:       fr.amount || 0,
       category:     fr.cat,
@@ -1068,20 +1076,16 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
     setShareSheet(false);
     setShareLoading(type);
     try {
-      if (!receiptCardRef.current) return;
-      const canvas = await captureReceiptCanvas(receiptCardRef.current);
       const fnames = successReceiptData?.filenames;
       if (type === 'image') {
+        if (!receiptCardRef.current) return;
+        const canvas = await captureReceiptCanvas(receiptCardRef.current);
         const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
         const file = new File([blob], fnames?.image || 'receipt.png', { type: 'image/png' });
         await shareBillReceiptFile(file);
-      } else {
-        const imgData = canvas.toDataURL('image/png');
-        const mmW = (canvas.width  / 3) * (25.4 / 96);
-        const mmH = (canvas.height / 3) * (25.4 / 96);
-        const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: [mmW, mmH] });
-        pdf.addImage(imgData, 'PNG', 0, 0, mmW, mmH);
-        await savePdf(pdf, fnames?.pdf || 'receipt.pdf');
+      } else if (successReceiptData) {
+        // A real vector PDF built from the receipt data — text stays selectable.
+        await saveReceiptPdf(successReceiptData);
       }
     } catch (_) {
       // ignore user cancel / AbortError
@@ -2671,12 +2675,17 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         : cat === "airtime-bundle" ? paidAmount
         : paidAmount || amount;
 
-      const bill_details =
-        pinsArr?.length > 0                      ? { pins: pinsArr }
-        : cat === "electricity" && elecToken     ? { token: elecToken, orderId: elecOrderId || apiRef || "", units: elecUnits }
-        : cat === "electricity" && elecOrderId   ? { orderId: elecOrderId || apiRef || "" }
-        : cardDetails                            ? { cardDetails }
-        : null;
+      // Who actually took the money — recorded so the receipt names the right
+      // processor later (wallet-paid bills used to be labelled "Paystack").
+      const paidVia = pending.walletPaid ? "wallet" : pending.isFree ? "cashback" : "paystack";
+      const bill_details = {
+        ...(pinsArr?.length > 0                    ? { pins: pinsArr }
+          : cat === "electricity" && elecToken     ? { token: elecToken, orderId: elecOrderId || apiRef || "", units: elecUnits }
+          : cat === "electricity" && elecOrderId   ? { orderId: elecOrderId || apiRef || "" }
+          : cardDetails                            ? { cardDetails }
+          : {}),
+        paid_via: paidVia,
+      };
 
       const payload = {
         type: "out", category: cat, payment_type: "bill_payment",
@@ -2750,7 +2759,10 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
       localStorage.removeItem(BILL_PENDING_PREFIX + ref);
       setSaving(false);
-      const successResult = { ok: true, label: itemName, detail: note, pinsArr: pinsArr || [], psRef: ref, apiRef, cardDetails, cat, amount: totalAmount || amount, earnedPts, txnHistoryPending, elecToken, elecOrderId, elecUnits, formSnap: { ...f } };
+      // The stored row is the source of truth for the receipt: its database-issued
+      // reference, server timestamp and running balance.
+      const successResult = { ok: true, label: itemName, detail: note, pinsArr: pinsArr || [], psRef: ref, apiRef, cardDetails, cat, amount: totalAmount || amount, earnedPts, txnHistoryPending, elecToken, elecOrderId, elecUnits, formSnap: { ...f },
+        txnId: savedTxn?.id || null, receiptRef: savedTxn?.receipt_ref || null, occurredAt: savedTxn?.created_at || null, balanceAfter: savedTxn?.balance_after ?? null, paidVia };
       setFulfillResult(successResult);
       try { sessionStorage.setItem(BILL_LAST_RESULT, JSON.stringify(successResult)); } catch (_) {}
       saveBeneficiary(cat, f, vName);
@@ -2761,6 +2773,8 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       if (cat === "electricity" && elecOrderId) {
         const _ref      = ref;
         const _txnId    = savedTxn?.id || null;
+        // the saved row's stored reference, server time, running balance and funding source
+        const _emailFacts = { txn_id: savedTxn?.id || undefined, receipt_ref: savedTxn?.receipt_ref || undefined, occurred_at: savedTxn?.created_at || undefined, balance_after: savedTxn?.balance_after ?? undefined, paid_via: paidVia };
         const _orderId  = elecOrderId || apiRef || "";
         const _email    = profile?.email || null;
         const _name     = profile?.owner_name || profile?.business_name || null;
@@ -2769,7 +2783,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
           elecPendingCbRef.current = null;
           if (_txnId) {
             const dbPatch = tok
-              ? { note: updatedNote, bill_details: { token: tok, orderId: _orderId, units: "" } }
+              ? { note: updatedNote, bill_details: { token: tok, orderId: _orderId, units: "", paid_via: paidVia } }
               : { note: updatedNote };
             Promise.resolve(supabase.from("transactions").update(dbPatch).eq("id", _txnId)).catch(() => {});
             patchTransactionNote(_txnId, updatedNote);
@@ -2777,7 +2791,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
           emailAllowed(ownerId).then(ok => {
             if (!ok) return;
             supabase.functions.invoke("clubkonnect", {
-              body: { action: "bill-success-email", user_email: _email, user_name: _name, service: "Electricity", amount: _amount, reference: _ref, detail: updatedNote },
+              body: { action: "bill-success-email", user_email: _email, user_name: _name, service: "Electricity", amount: _amount, reference: _ref, detail: updatedNote, ..._emailFacts },
             }).catch(() => {});
           });
           notify({
@@ -2802,7 +2816,8 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         try {
           if (await emailAllowed(ownerId)) {
             await supabase.functions.invoke("clubkonnect", {
-              body: { action: "bill-success-email", user_email: profile?.email || null, user_name: profile?.owner_name || profile?.business_name || null, service: svcLabel, amount: totalAmount || amount, reference: ref, detail: cleanDetail, pins: emailPins || undefined },
+              body: { action: "bill-success-email", user_email: profile?.email || null, user_name: profile?.owner_name || profile?.business_name || null, service: svcLabel, amount: totalAmount || amount, reference: ref, detail: cleanDetail, pins: emailPins || undefined,
+                txn_id: savedTxn?.id || undefined, receipt_ref: savedTxn?.receipt_ref || undefined, occurred_at: savedTxn?.created_at || undefined, balance_after: savedTxn?.balance_after ?? undefined, paid_via: paidVia },
             });
           }
         } catch (_) {}
@@ -3024,7 +3039,12 @@ export default function BillPayments({ store, plan, session = null, staffName = 
             const fr = fulfillResult;
             const fs = fr?.formSnap || {};
             setReceipt({
-              created_at:   new Date().toISOString(),
+              receipt_ref:  fr?.receiptRef || undefined,
+              created_at:   fr?.occurredAt || new Date().toISOString(),
+              balance_after: fr?.balanceAfter,
+              paidVia:      fr?.paidVia,
+              businessAddress: profile?.business_address || profile?.address || "",
+              businessPhone:   profile?.business_phone || profile?.phone || "",
               businessName: profile?.business_name || profile?.owner_name || "My Business",
               amount:       fr?.amount || 0,
               category:     fr?.cat,
@@ -3051,7 +3071,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
               psRef:        fr?.psRef || "",
               apiRef:       fr?.apiRef || "",
               staffName:    staffName || undefined,
-              id:           Date.now(),
+              id:           fr?.txnId || Date.now(),
             });
             sessionStorage.removeItem(BILL_LAST_RESULT);
             setFulfillResult(null);
@@ -3858,7 +3878,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                         .replace("Token loading...", "");
                       const unitsSegment = qUnits && !baseNote.includes("Units:") ? ` | Units: ${qUnits}` : "";
                       const updatedNote = `Token: ${qToken}${unitsSegment} | ${baseNote}`.replace(" |  | ", " | ");
-                      Promise.resolve(supabase.from("transactions").update({ note: updatedNote, bill_details: { token: qToken, orderId: receipt.apiRef || "", units: qUnits } }).eq("id", receipt.id)).catch(() => {});
+                      Promise.resolve(supabase.from("transactions").update({ note: updatedNote, bill_details: { ...(receipt.bill_details || {}), token: qToken, orderId: receipt.apiRef || "", units: qUnits, ...(receipt.paidVia ? { paid_via: receipt.paidVia } : {}) } }).eq("id", receipt.id)).catch(() => {});
                       patchTransactionNote(receipt.id, updatedNote);
                       // Update the open receipt state so the modal immediately shows the token
                       // in the main field (collapses the retrieve button on the next render)
