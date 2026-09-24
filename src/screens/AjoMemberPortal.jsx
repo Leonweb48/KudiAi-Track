@@ -40,6 +40,8 @@ import { useWallet } from "../hooks/useWallet";
 import WalletMigrationCard from "../components/WalletMigrationCard";
 import WalletIdFields from "../components/WalletIdFields";
 import WalletTierCard from "../components/WalletTierCard";
+import { withdrawalStage, STAGE_CLS } from "../utils/withdrawalStage";
+import { ProcessingWithdrawalCard, PendingPayoutNotice, pendingPayoutRow } from "../components/WithdrawalStatus";
 import { walletIdError } from "../utils/walletId";
 import { useBvnVerification } from "../hooks/useBvnVerification";
 import { BottomSheet, ActionButton, AccountCard, FundWalletSheet, TransferSheet, ReceivePaymentSheet, WalletMiniAction, WALLET_MINI_ICONS, cleanBankName, WalletTxRow, WALLET_SOURCE } from "../components/WalletPanel";
@@ -2096,7 +2098,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
 }
 
 // ── Overview tab ──────────────────────────────────────────────────────────
-function OverviewTab({ client, contributions, cycles = [], rotationsData = [], rotationLoading, onWithdrawClick, onPayClick, onDepositClick, ownerInfo, withdrawRequests = [], onBillsClick, userEmail, onGoToMe, walletEnabled, wallet, onWalletClick, onWalletAction }) {
+function OverviewTab({ client, contributions, cycles = [], rotationsData = [], rotationLoading, onWithdrawClick, onPayClick, onDepositClick, ownerInfo, withdrawRequests = [], pendingPayouts = [], onBillsClick, userEmail, onGoToMe, walletEnabled, wallet, onWalletClick, onWalletAction }) {
   const t = useT();
   const { lang } = useLanguage();
   const toast = useToast();
@@ -2301,6 +2303,11 @@ function OverviewTab({ client, contributions, cycles = [], rotationsData = [], r
                 <p className="text-3xl font-black text-white/50 tracking-widest mt-1.5 mb-1 leading-none select-none">₦ • • •</p>
               ) : (
                 <AmountDisplay amount={wallet?.balanceKobo || 0} fromKobo size="hero" align="left" className="mt-1.5 mb-1 text-white" />
+              )}
+              {!wallet?.loading && (pendingPayouts || []).length > 0 && (
+                <p className="text-[11px] font-bold text-sky-200 mb-1">
+                  +{fmt((pendingPayouts || []).reduce((s, p) => s + Number(p.amount_kobo || 0), 0) / 100)} pending — on its way to your wallet
+                </p>
               )}
               {/* mini actions — raised "3D" buttons, same style as the owner's Home hero */}
               <div className="flex items-center gap-1.5 mt-3.5">
@@ -2702,11 +2709,13 @@ function OverviewTab({ client, contributions, cycles = [], rotationsData = [], r
       )}
 
       {/* Pending withdrawal requests */}
-      {withdrawRequests.filter(r => r.status === "pending").length > 0 && (
+      {withdrawRequests.filter(r => r.status === "pending" || withdrawalStage(r)?.key === "processing").length > 0 && (
         <div>
           <p className="text-[12px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">{t("ajoPt.pendingRequestsSection")}</p>
           <div className="space-y-2">
-            {withdrawRequests.filter(r => r.status === "pending").map(r => (
+            {withdrawRequests.filter(r => r.status === "pending" || withdrawalStage(r)?.key === "processing").map(r => withdrawalStage(r) ? (
+              <ProcessingWithdrawalCard key={r.id} request={r} />
+            ) : (
               <div key={r.id} className="bg-amber-50 dark:bg-amber-900/20 rounded-xl px-3 py-3 border border-amber-200 dark:border-amber-800/60 flex items-center gap-3">
                 <div className="w-8 h-8 bg-amber-100 dark:bg-amber-900/40 rounded-xl flex items-center justify-center flex-shrink-0">
                   <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-amber-500" stroke="currentColor" strokeWidth={2}>
@@ -3150,6 +3159,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
     id: r.id, amount: r.amount, net_amount: r.net_amount,
     fee_amount: r.fee_amount, fee_type: r.fee_type,
     status: r.status, date: r.requested_at,
+    payout_status: r.payout_status, payout_date: r.payout_date, payout_amount_kobo: r.payout_amount_kobo,
   }));
   const contribItems = contributions.map(c => ({ _type: "contribution", ...c, date: c.created_at }));
 
@@ -3247,7 +3257,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
       const isWdReq = item._type === "withdrawal_request";
       const isFee   = item.type === "withdrawal_fee" || item.type === "registration_fee";
       const isWd    = !isWdReq && (item.type === "withdrawal" || isFee || item.type === "commission" || (item.type || "").startsWith("reversal_"));
-      const desc    = isWdReq ? "Withdrawal Request (Pending)" : ledgerTypeLabel(item);
+      const desc    = isWdReq ? (item.status === "approved" ? "Withdrawal Request (Approved)" : "Withdrawal Request (Pending)") : ledgerTypeLabel(item);
       if (!isWdReq) { if (isWd) runBal -= amt; else runBal += amt; }
       return {
         date:        pdfFmtDate(item.created_at || item.date),
@@ -3396,7 +3406,10 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
               {isPending && <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 px-1.5 py-0.5 rounded-full">Pending · tap for info</span>}
               {isHeld24h && <span className="text-[10px] font-bold text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 px-1.5 py-0.5 rounded-full">Under review for your security — up to 24h</span>}
               {isReversed && <span className="text-[10px] font-bold text-red-500 bg-red-50 dark:bg-red-900/20 px-1.5 py-0.5 rounded-full">{t("ajoPt.reversed")}</span>}
-              {!isPending && !isHeld24h && !isReversed && <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full capitalize ${statusCls(item.status)}`}>{item.status || "—"}</span>}
+              {!isPending && !isHeld24h && !isReversed && (isWdReq && withdrawalStage(item)
+                ? <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${STAGE_CLS[withdrawalStage(item).tone]}`}>{withdrawalStage(item).label}</span>
+                : <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full capitalize ${statusCls(item.status)}`}>{item.status || "—"}</span>)}
+              {isWdReq && withdrawalStage(item)?.detail && <span className="basis-full text-[10px] text-slate-400 dark:text-slate-500">{withdrawalStage(item).detail}</span>}
               {isWdReq && item.net_amount != null && <span className="text-[10px] text-slate-400 dark:text-slate-500">Net: {fmt(item.net_amount)}</span>}
             </div>
             {!isWallet && (
@@ -5152,7 +5165,7 @@ function WalletMigrationBanner({ retired, onOpen }) {
 }
 
 // ── KudiAI Wallet — activation (BVN) or balance/actions, for the client ────
-function MemberWalletSheet({ wallet, testMode, bvnVerificationEnabled, client, businessName, ownerName, onClose, onProfileUpdate, onFund, onTransfer, onStatement }) {
+function MemberWalletSheet({ pendingPayouts = [], wallet, testMode, bvnVerificationEnabled, client, businessName, ownerName, onClose, onProfileUpdate, onFund, onTransfer, onStatement }) {
   const [bvn, setBvn] = useState("");
   const [nin, setNin] = useState("");
   const [address,  setAddress]  = useState(client?.address || "");
@@ -5404,10 +5417,12 @@ function MemberWalletSheet({ wallet, testMode, bvnVerificationEnabled, client, b
                 </button>
               )}
             </div>
-            {wallet.ledger.length === 0 ? (
+            <PendingPayoutNotice payouts={pendingPayouts} />
+            {wallet.ledger.length === 0 && pendingPayouts.length === 0 ? (
               <p className="text-[13px] text-slate-400 py-8 text-center">No wallet activity yet.</p>
             ) : (
               <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                {pendingPayouts.map((p) => <WalletTxRow key={`payout-${p.id}`} row={pendingPayoutRow(p)} />)}
                 {wallet.ledger.map((row) => <WalletTxRow key={row.id} row={row} onOpen={openReceipt} />)}
               </div>
             )}
@@ -5455,6 +5470,8 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
   const [showPay,          setShowPay]          = useState(false);
   const [showOpenCycle,    setShowOpenCycle]    = useState(false);
   const [withdrawRequests, setWithdrawRequests] = useState([]);
+  // payouts to the client's wallet that were approved but have not landed yet (shown as Pending in the wallet)
+  const [pendingPayouts, setPendingPayouts] = useState([]);
   const [showPwdModal,     setShowPwdModal]     = useState(false);
   const [showWallet,       setShowWallet]       = useState(false);
   const [walletSheet,      setWalletSheet]      = useState(null); // "fund" | "transfer" | "receive" | null
@@ -5505,6 +5522,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
     try {
       const r = await ajoFn("get-withdrawal-requests", { client_id: ajoClient.id });
       if (r?.requests) setWithdrawRequests(r.requests);
+      if (Array.isArray(r?.pending_payouts)) setPendingPayouts(r.pending_payouts);
     } catch (e) {
       console.error("Failed to load withdrawal requests:", e);
     }
@@ -5524,6 +5542,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
           if (d.contributions) setContributions(d.contributions);
           if (d.ownerInfo)     setOwnerInfo(d.ownerInfo);
           if (d.withdrawRequests) setWithdrawRequests(d.withdrawRequests);
+          if (d.pendingPayouts) setPendingPayouts(d.pendingPayouts);
           if (d.cycles)        setCycles(d.cycles);
           setPortalFromCache(true);
           setLastSyncTime(cached.ts);
@@ -5561,6 +5580,8 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
         setOwnerInfo(ownerRes.value);
       if (reqRes.status === "fulfilled" && reqRes.value?.requests)
         setWithdrawRequests(reqRes.value.requests);
+      if (reqRes.status === "fulfilled" && Array.isArray(reqRes.value?.pending_payouts))
+        setPendingPayouts(reqRes.value.pending_payouts);
       if (cycleRes.status === "fulfilled")
         setCycles(cycleRes.value?.cycles || []);
       if (!silent) {
@@ -5577,6 +5598,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
           contributions:   contribRes.status === "fulfilled" ? contribRes.value?.contributions : null,
           ownerInfo:       ownerRes.status === "fulfilled" ? ownerRes.value : null,
           withdrawRequests: reqRes.status === "fulfilled" ? reqRes.value?.requests : null,
+          pendingPayouts:   reqRes.status === "fulfilled" ? reqRes.value?.pending_payouts : null,
           cycles:          cycleRes.status === "fulfilled" ? cycleRes.value?.cycles || [] : null,
         };
         setCache(cacheUserId, "ajo_portal", snap);
@@ -5796,6 +5818,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
               onDepositClick={() => setShowPay(true)}
               ownerInfo={ownerInfo}
               withdrawRequests={withdrawRequests}
+              pendingPayouts={pendingPayouts}
               onBillsClick={() => setTab("bills")}
               onGoToMe={() => setTab("me")}
               walletEnabled={walletEnabled}
@@ -5943,6 +5966,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
       )}
       {showWallet && (
         <MemberWalletSheet
+          pendingPayouts={pendingPayouts}
           wallet={wallet}
           testMode={walletTestMode}
           bvnVerificationEnabled={bvnVerificationEnabled}

@@ -228,7 +228,7 @@ export function WalletTxRow({ row, hidden, onOpen }) {
         <p className={`text-[14px] font-extrabold tabular-nums ${credit ? "text-emerald-600 dark:text-emerald-400" : "text-slate-800 dark:text-slate-200"} ${reversed ? "line-through opacity-60" : ""}`}>
           {hidden ? "••••" : <>{credit ? "+" : "−"}{fmt(row.amount_kobo / 100)}</>}
         </p>
-        {pending && <p className="text-[10px] font-bold text-amber-500">Processing</p>}
+        {pending && <p className="text-[10px] font-bold text-amber-500">{credit ? "Pending" : "Processing"}</p>}
         {reversed && <p className="text-[10px] font-bold text-slate-400">Reversed</p>}
       </div>
     </button>

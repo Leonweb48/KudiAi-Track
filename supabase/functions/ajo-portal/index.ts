@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { loadAccounts, resolveActive, graceStatus } from "../_shared/flwAccounts.ts";
+import { attachPayouts, pendingPayouts as pendingPayoutsOf, type Payout } from "../_shared/ajoPayouts.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin":  "*",
@@ -756,7 +757,24 @@ serve(async (req) => {
         .eq("aso_client_id", client_id)
         .order("requested_at", { ascending: false })
         .limit(20);
-      return json({ requests: data || [] });
+      const requests = data || [];
+
+      // Where the money is: an APPROVED withdrawal is paid into the client's KudiAI Wallet on the next business day
+      // (ajo_wallet_payouts: pending → paid, or failed). Attach that to each request so the app can say "Approved · processing to
+      // wallet" until it lands, and return every still-pending payout (including ones with no request, e.g. a matured savings
+      // card) so the wallet can show them as Pending. Best-effort: a failure here never hides the requests themselves.
+      try {
+        const { data: payouts } = await sb.from("ajo_wallet_payouts")
+          .select("id, request_id, status, amount_kobo, scheduled_date, paid_at, created_at")
+          .eq("client_id", client_id)
+          .order("created_at", { ascending: false })
+          .limit(50);
+        const rows = (payouts || []) as Payout[];
+        return json({ requests: attachPayouts(requests, rows), pending_payouts: pendingPayoutsOf(rows) });
+      } catch (e) {
+        console.warn("[ajo-portal] get-withdrawal-requests payouts:", (e as Error).message);
+        return json({ requests, pending_payouts: [] });
+      }
     }
 
     // ── Client submits a manual bank-transfer claim ───────────────
