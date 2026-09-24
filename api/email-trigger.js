@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import nodemailer from "nodemailer";
 import { escapeHtml, escapeDeep, decodeEntities, cleanSubject } from "./_lib/escapeHtml.js";
+import { handleMoneyEmail } from "./_lib/moneyEmails.js";
 
 const SUPABASE_URL = process.env.REACT_APP_SUPABASE_URL || process.env.SUPABASE_URL;
 const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -279,13 +280,25 @@ async function logDelivery(sb, to, subject, status, error_msg = null) {
     .catch(() => {});
 }
 
+// Plain-text alternative: some clients, screen readers and spam filters want one.
+function htmlToText(html) {
+  return String(html)
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|tr|h1|h2|li)>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")               // last: "&amp;lt;" must become "&lt;", not "<"
+    .replace(/[ \t]+/g, " ").replace(/ ?\n ?/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 async function send(transport, from, sb, to, subject, html, attachments = []) {
   // `to` and `subject` arrive HTML-escaped (they were built from the escaped
   // payload) but they are not HTML — decode them for the SMTP envelope/headers.
   const toAddr = decodeEntities(to).trim();
   const subj   = cleanSubject(subject);
   try {
-    const mail = { from, to: toAddr, subject: subj, html };
+    const mail = { from, to: toAddr, subject: subj, html, text: htmlToText(html) };
     if (attachments.length) mail.attachments = attachments;
     await transport.sendMail(mail);
     await logDelivery(sb, toAddr, subj, "sent");
@@ -356,113 +369,15 @@ export default async function handler(req, res) {
   const qa = (to, subject, html, attachments) => { if (to) sends.push(send(transport, from, sb, str(to), subject, html, attachments || [])); };
 
   // ── Cash in / Cash out ──────────────────────────────────────────────────────
-  if (event === "transaction_credit" || event === "transaction_debit") {
-    const isIn   = event === "transaction_credit";
-    const amt    = fmt(d.amount);
-    const color  = isIn ? "#059669" : "#dc2626";
-    const bgColor = isIn ? "#f0fdf4" : "#fef2f2";
-    const border  = isIn ? "#bbf7d0" : "#fecaca";
-    const label   = isIn ? "Cash In" : "Cash Out";
-
-    const pmLabel = (d.payment_method || "cash").replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
-    q(d.user_email, `${label}: ${amt} — ${str(d.business_name) || "KudiAI Track"}`,
-      emailHtml(`${label} Recorded`, `
-        <p style="font-size:14px;color:#374151;margin:0 0 16px;">
-          A ${label.toLowerCase()} transaction has been recorded on <strong>${str(d.business_name) || "your account"}</strong>.
-        </p>
-        <div style="background:${bgColor};border:1px solid ${border};border-radius:12px;padding:20px;text-align:center;margin:0 0 20px;">
-          <p style="margin:0 0 4px;font-size:11px;color:${color};font-weight:700;text-transform:uppercase;letter-spacing:1px;">${label}</p>
-          <p style="margin:0;font-size:36px;font-weight:900;color:${color};">${amt}</p>
-          <p style="margin:8px 0 0;font-size:12px;color:#6b7280;">${str(d.description) || "Transaction"} · ${str(d.date) || now}</p>
-        </div>
-        ${detailRows([
-          ["Payment Method", pmLabel],
-          ["Category",       d.category],
-          ["Quantity",       d.quantity],
-          ["Note",          d.note],
-          ["Date",          str(d.date) || now],
-        ])}
-        ${str(d.customer_name) ? personBlock("Customer", d.customer_name, "", "") : ""}
-        ${str(d.staff_name) ? personBlock("Recorded By", d.staff_name, d.staff_email, "", [["Business", d.business_name], ["Biz Phone", d.business_phone]]) : ""}
-      `, color));
+  if (await handleMoneyEmail(event, { d, q, sb, user, fmt })) {
+    // handled by the bank-grade templates in api/_lib/moneyEmails.js
   }
 
   // ── Transaction failed / cancelled ──────────────────────────────────────────
-  else if (event === "transaction_failed" || event === "transaction_cancelled") {
-    const label = event === "transaction_failed" ? "Failed" : "Cancelled";
-    q(d.user_email, `Transaction ${label} — ${str(d.business_name) || "KudiAI Track"}`,
-      emailHtml(`Transaction ${label}`, `
-        <p style="font-size:14px;color:#374151;margin:0 0 20px;">A transaction on your account was ${label.toLowerCase()}.</p>
-        <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:20px;text-align:center;margin:0 0 16px;">
-          <p style="margin:0;font-size:28px;font-weight:900;color:#dc2626;">${fmt(d.amount)}</p>
-          <p style="margin:8px 0 0;font-size:12px;color:#6b7280;">${str(d.description) || "Transaction"} · ${now}</p>
-        </div>
-        ${str(d.reason) ? `<p style="font-size:13px;color:#374151;margin:0;">Reason: ${str(d.reason)}</p>` : ""}
-      `, "#dc2626"));
-  }
 
   // ── Credit added ─────────────────────────────────────────────────────────────
-  else if (event === "credit_added") {
-    const amt = fmt(d.total_amount);
-    q(d.owner_email || d.user_email, `New Credit Record — ${str(d.customer_name)} · ${amt}`,
-      emailHtml("New Credit Added", `
-        <p style="font-size:14px;color:#374151;margin:0 0 16px;">A new credit record has been created on <strong>${str(d.business_name) || "your account"}</strong>.</p>
-        <div style="background:#fff1f2;border:1px solid #fecdd3;border-radius:12px;padding:20px;text-align:center;margin:0 0 20px;">
-          <p style="margin:0 0 4px;font-size:11px;color:#9f1239;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Amount Owed</p>
-          <p style="margin:0;font-size:32px;font-weight:900;color:#9f1239;">${amt}</p>
-          ${d.due_date ? `<p style="margin:8px 0 0;font-size:12px;color:#6b7280;">Due Date: <strong>${str(d.due_date)}</strong></p>` : ""}
-        </div>
-        ${personBlock("Customer / Debtor", d.customer_name, d.customer_email, d.customer_phone, [
-          ["Address", d.customer_address],
-          ["NIN",     d.nin],
-          ["Next of Kin", d.next_of_kin],
-          ["NOK Phone",   d.next_of_kin_phone],
-        ])}
-        ${d.notes ? `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;margin:0 0 14px;font-size:12px;color:#78350f;"><strong>Notes:</strong> ${str(d.notes)}</div>` : ""}
-        ${personBlock("Recorded By", d.staff_name, "", "", [["Business", d.business_name], ["Biz Phone", d.business_phone]])}
-      `, "linear-gradient(135deg,#dc2626 0%,#f87171 100%)"));
-
-    if (d.customer_email) {
-      q(d.customer_email, `Credit Notice — ${amt} recorded under your name`,
-        emailHtml("Credit Recorded For You", `
-          <p style="font-size:14px;color:#374151;margin:0 0 16px;">Hi <strong>${str(d.customer_name)}</strong>, a credit record of <strong>${amt}</strong> has been created for you by <strong>${str(d.business_name) || "your creditor"}</strong>. Please ensure timely repayment.</p>
-          <div style="background:#fff1f2;border:1px solid #fecdd3;border-radius:12px;padding:20px;text-align:center;margin:0 0 16px;">
-            <p style="margin:0 0 4px;font-size:11px;color:#9f1239;font-weight:700;text-transform:uppercase;">Amount Owed</p>
-            <p style="margin:0;font-size:32px;font-weight:900;color:#9f1239;">${amt}</p>
-          </div>
-          ${detailRows([["Due Date", d.due_date]])}
-          ${personBlock("Creditor Business", d.business_name, "", d.business_phone)}
-          ${d.notes ? `<p style="font-size:12px;color:#374151;margin:0;">Note: ${str(d.notes)}</p>` : ""}
-        `, "linear-gradient(135deg,#dc2626 0%,#f87171 100%)"));
-    }
-  }
 
   // ── Credit repayment / fully paid ───────────────────────────────────────────
-  else if (event === "credit_repayment" || event === "credit_fully_paid") {
-    const isFull = event === "credit_fully_paid";
-    const amt    = fmt(d.amount_paid || d.amount);
-    const label  = isFull ? "Credit Fully Paid!" : "Credit Repayment Received";
-    const color  = isFull ? "#059669" : "#0891b2";
-    const pmLabel = (d.payment_method || "cash").replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
-    q(d.owner_email || d.user_email, `${label} — ${str(d.customer_name)}`,
-      emailHtml(label, `
-        <p style="font-size:14px;color:#374151;margin:0 0 16px;"><strong>${str(d.customer_name)}</strong> made a repayment on <strong>${str(d.business_name) || "your account"}</strong>.</p>
-        <div style="background:${isFull ? "#f0fdf4" : "#eff6ff"};border:1px solid ${isFull ? "#bbf7d0" : "#bfdbfe"};border-radius:12px;padding:20px;text-align:center;margin:0 0 20px;">
-          <p style="margin:0 0 4px;font-size:11px;color:${color};font-weight:700;text-transform:uppercase;letter-spacing:1px;">Amount Paid</p>
-          <p style="margin:0;font-size:32px;font-weight:900;color:${color};">${amt}</p>
-        </div>
-        ${detailRows([
-          ["Payment Method", pmLabel],
-          ["Total Debt",     fmt(d.total_amount)],
-          ["Balance Left",   isFull ? "₦0 — Fully Settled ✓" : fmt(d.outstanding)],
-          ["Note",           d.notes],
-          ["Date",           now],
-        ])}
-        ${isFull ? `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 14px;margin:0 0 14px;font-size:13px;color:#15803d;font-weight:700;">✓ Credit fully settled. No balance remaining.</div>` : ""}
-        ${personBlock("Customer", d.customer_name, d.customer_email, d.customer_phone)}
-        ${personBlock("Recorded By", d.staff_name, "", "", [["Business", d.business_name], ["Biz Phone", d.business_phone]])}
-      `, color));
-  }
 
   // ── Ajo contribution ────────────────────────────────────────────────────────
   else if (event === "ajo_contribution") {
@@ -815,19 +730,6 @@ export default async function handler(req, res) {
   }
 
   // ── Plan purchased (admin alert) ─────────────────────────────────────────────
-  else if (event === "plan_purchased") {
-    // Send confirmation to the user
-    q(d.user_email, `Plan Confirmed: ${str(d.plan_name)} — KudiAI Track`,
-      emailHtml("Plan Purchase Confirmed", `
-        <p style="font-size:14px;color:#374151;margin:0 0 20px;">Hi <strong>${str(d.user_name)}</strong>, your purchase of the <strong>${str(d.plan_name)}</strong> plan has been confirmed.</p>
-        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:20px;text-align:center;margin:0 0 16px;">
-          <p style="margin:0 0 4px;font-size:11px;color:#15803d;font-weight:700;text-transform:uppercase;">Plan</p>
-          <p style="margin:0;font-size:28px;font-weight:900;color:#15803d;text-transform:capitalize;">${str(d.plan_name)}</p>
-          ${Number(d.plan_price) > 0 ? `<p style="margin:8px 0 0;font-size:14px;color:#374151;">₦${Number(d.plan_price).toLocaleString("en-NG")}/month</p>` : ""}
-        </div>
-        ${str(d.reference) ? `<p style="font-size:12px;color:#64748b;margin:0;">Reference: ${str(d.reference)}</p>` : ""}
-      `, "linear-gradient(135deg,#059669 0%,#10b981 100%)"));
-  }
 
   // ── Plan upgraded ────────────────────────────────────────────────────────────
   else if (event === "plan_upgraded") {
@@ -995,50 +897,9 @@ export default async function handler(req, res) {
   }
 
   // ── Subscription payment failed ─────────────────────────────────────────────
-  else if (event === "payment_failed") {
-    q(d.user_email, `Payment failed — ${str(d.plan_name) || "your subscription"}`,
-      emailHtml("Payment Unsuccessful", `
-        <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 16px;">Your payment for the <strong>${str(d.plan_name) || "subscription"}</strong> plan could not be completed.</p>
-        <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:20px;text-align:center;margin:0 0 20px;">
-          <p style="margin:0 0 4px;font-size:11px;color:#991b1b;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Payment not completed</p>
-          <p style="margin:0;font-size:32px;font-weight:900;color:#dc2626;">${fmt(d.amount)}</p>
-        </div>
-        ${detailRows([["Plan", d.plan_name], ["Reference", d.reference], ["Date", now]])}
-        <p style="font-size:13px;color:#374151;line-height:1.7;margin:0 0 20px;">If your bank shows a debit for this attempt, it is returned to you automatically. If it is not, contact support and quote the reference above.</p>
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"><tr><td align="center">
-          <a href="https://kudiai.app" style="display:inline-block;background:#4f46e5;color:#fff;font-size:14px;font-weight:600;text-decoration:none;padding:12px 32px;border-radius:10px;">Try again →</a>
-        </td></tr></table>
-      `, "#dc2626"));
-  }
 
   // ── Credit extended (more credit added to an existing debtor) ───────────────
   // Owner always gets the email; the customer only if an address is on file.
-  else if (event === "credit_extended") {
-    const added = fmt(d.amount);
-    const outstanding = fmt(d.outstanding);
-    const box = `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:18px;margin:0 0 14px;">
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-        <tr><td style="font-size:12px;color:#3b82f6;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Extra credit added</td><td align="right" style="font-size:20px;font-weight:900;color:#1d4ed8;">${added}</td></tr>
-        <tr><td colspan="2" style="padding:8px 0;"><div style="height:1px;background:#bfdbfe;"></div></td></tr>
-        <tr><td style="font-size:12px;color:#6b7280;">New total outstanding</td><td align="right" style="font-size:15px;font-weight:700;color:#dc2626;">${outstanding}</td></tr>
-      </table></div>`;
-
-    q(d.owner_email || d.user_email, `Credit Extended: ${added} — ${str(d.customer_name) || "Customer"}`,
-      emailHtml("Credit Extended", `
-        <p style="font-size:14px;color:#374151;margin:0 0 16px;">Additional credit has been extended to <strong>${str(d.customer_name) || "a customer"}</strong>${str(d.business_name) ? ` on <strong>${str(d.business_name)}</strong>` : ""}.</p>
-        ${box}
-        ${str(d.staff_name) ? `<p style="font-size:12px;color:#64748b;margin:8px 0 0;">Recorded by: <strong>${str(d.staff_name)}</strong></p>` : ""}
-      `, "#2563eb"));
-
-    if (d.customer_email) {
-      q(d.customer_email, `Credit Update — ${added} added, new outstanding ${outstanding}`,
-        emailHtml("Credit Updated", `
-          <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 16px;">Hi <strong>${str(d.customer_name) || "Valued Customer"}</strong>, your credit has been updated${str(d.business_name) ? ` at <strong>${str(d.business_name)}</strong>` : ""}.</p>
-          ${box}
-          <p style="font-size:13px;color:#374151;margin:0 0 4px;">Please settle your outstanding balance as agreed. Contact us if you have any questions.</p>
-        `, "#2563eb"));
-    }
-  }
 
   else {
     await logDelivery(sb, str(d.user_email || d.owner_email), `[${event}] no handler`, "failed", `No email handler for event: ${event}`);

@@ -710,6 +710,8 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
       // Email sent only when a staff member records — owner self-recordings are silent.
       if (staffId) {
         fireEmailTrigger(t.type === "in" ? "transaction_credit" : "transaction_debit", {
+          // The server looks up the STORED reference, timestamp and balance-after by this id.
+          transaction_id: data?.id || "",
           owner_id:       userId,
           user_email:     authEmailRef.current || profile.email || "",
           business_name:  profile.business_name || "",
@@ -950,6 +952,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     if (updated) {
 
         fireEmailTrigger("credit_repayment", {
+          payment_id:     dp?.id || "",     // server looks up the stored reference + balance-after
           customer_name:  updated.customer_name || "",
           customer_email: updated.email         || "",
           customer_phone: updated.phone         || "",
@@ -971,6 +974,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
         if (branchId) notifyBranchManager(userId, branchId, { type: "credit_repayment", originUserId: staffId || userId, data: repayData });
         if (updated.status === "paid") {
           fireEmailTrigger("credit_fully_paid", {
+            payment_id:     dp?.id || "",
             owner_id:       userId,
             owner_email:    authEmailRef.current || profile.email || "",
             business_name:  profile.business_name || "",
