@@ -375,8 +375,11 @@ serve(async (req: Request) => {
       const roundId = (round as { id: string }).id;
       const { data: t } = await sb.from("peer_esusu_turns").select("*").eq("round_id", roundId).order("position", { ascending: true });
       turns = t || [];
-      const { data: c } = await sb.from("peer_esusu_contributions").select("*").eq("round_id", roundId).eq("type", "contribution");
-      contributionsThisRound = c || [];
+      // Contributions for the CURRENT payout (cycle_no), not the whole round: every payout needs a fresh set from
+      // every member. Falls back to the round if the column isn't there yet (function deployed a moment before its migration).
+      let cq = await sb.from("peer_esusu_contributions").select("*").eq("group_id", group_id).eq("cycle_no", (g.cycle_no as number) ?? 1).eq("type", "contribution");
+      if (cq.error) cq = await sb.from("peer_esusu_contributions").select("*").eq("round_id", roundId).eq("type", "contribution");
+      contributionsThisRound = cq.data || [];
     }
 
     const { data: pendingInvites } = isCreator

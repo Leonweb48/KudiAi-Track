@@ -46,6 +46,11 @@ export const WALLET_SOURCE = {
   ajo_contribution:    { label: "Savings contribution", icon: "send",       credit: false },
   ajo_collection:      { label: "Contribution received", icon: "arrow-down", credit: true },
   ajo_payout:          { label: "Savings withdrawal",   icon: "send",       credit: false },
+  // Client-started esusu circles: members pay into the creator's wallet, payouts come out of it
+  peer_esusu_contribution: { label: "Circle contribution",          icon: "send",       credit: false },
+  peer_esusu_collection:   { label: "Circle contribution received", icon: "arrow-down", credit: true },
+  peer_esusu_payout:       { label: "Circle payout",                icon: "arrow-down", credit: true },
+  peer_esusu_payout_sweep: { label: "Circle pot paid out",          icon: "send",       credit: false },
   transfer_fee:        { label: "Transfer fee",         icon: "wallet",     credit: false },
   cbn_levy:            { label: "CBN transfer levy",    icon: "wallet",     credit: false },
   wallet_fee:          { label: "Wallet transfer fee",  icon: "wallet",     credit: false },

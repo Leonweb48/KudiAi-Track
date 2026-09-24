@@ -38,7 +38,7 @@ function classifySource(source) {
   if (source === "topup" || source === "sale") return "income"; // excluded from the spend breakdown
   if (source === "bill_spend" || source === "bill_reversal") return "bills";
   if (source === "withdrawal" || source === "withdrawal_reversal") return "transfers";
-  if (source === "ajo_contribution" || source === "ajo_collection" || source === "ajo_payout") return "ajo";
+  if (source === "ajo_contribution" || source === "ajo_collection" || source === "ajo_payout" || String(source).startsWith("peer_esusu_")) return "ajo";
   if (source === "subscription_spend" || source === "subscription_reversal") return "subscription";
   if (source === "transfer_fee" || source === "cbn_levy" || source === "wallet_fee") return "fees";
   return "other";

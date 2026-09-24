@@ -353,7 +353,7 @@ function CircleDetail({ groupId, myUserId, onClose, onChanged }) {
 
         {active && round && (
           <>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-2">Round {round.round_number} — who's paid</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-2">Round {round.round_number} — paid for this payout</p>
             <div className="flex flex-wrap gap-2 mb-4">
               {(members || []).filter(m => m.status === "active").map(m => {
                 const paid = (contributions || []).filter(c => c.user_id === m.user_id).reduce((s, c) => s + Number(c.amount), 0) >= Number(group.contribution_amount);
@@ -373,13 +373,20 @@ function CircleDetail({ groupId, myUserId, onClose, onChanged }) {
               {currentTurns.map(t => (members || []).find(m => m.user_id === t.user_id)?.display_name || "—").join(", ") || "—"}
             </p>
 
+            {/* Where the money goes: the circle's collection account is the creator's own wallet */}
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/60 rounded-xl px-3 py-2.5 mb-3 leading-relaxed">
+              {isCreator
+                ? "Members pay into your KudiAI Wallet, and each payout is taken from it. Keep the pot in your wallet until you pay out — spending it will block the payout."
+                : `Your ${fmt(group.contribution_amount)} is paid into ${(members || []).find(m => m.user_id === group.creator_user_id)?.display_name || "the circle creator"}'s KudiAI Wallet, and each payout is paid out of it.`}
+            </p>
+
             {!haveIPaid && (
               <button onClick={payMyShare} disabled={busy}
                 className="w-full py-3.5 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] mb-2">
                 {busy ? "Paying…" : `Pay my ${fmt(group.contribution_amount)} contribution`}
               </button>
             )}
-            {haveIPaid && <p className="text-[12px] text-green-600 dark:text-green-400 font-semibold mb-2">You've paid for this round ✓</p>}
+            {haveIPaid && <p className="text-[12px] text-green-600 dark:text-green-400 font-semibold mb-2">You've paid for this payout ✓</p>}
 
             {isCreator && (
               <button onClick={executePayout} disabled={busy || !allPaid}
