@@ -172,6 +172,17 @@ export function AccountCard({ wallet, displayName }) {
     const text = `${name}\n${acct}\n${bank}`;
     try { if (navigator.share) await navigator.share({ title: "My account details", text }); else copy(); } catch {}
   };
+  // The platform has moved to a new banking account and the grace period for this (old) number is over: deposits to it
+  // no longer credit the wallet, so never present it as somewhere to send money (see utils/walletAccount.js).
+  if (wallet?.account_state === "retired") {
+    return (
+      <div className="rounded-3xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-5">
+        <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-red-500">Account number</p>
+        <p className="mt-1.5 text-[13px] font-bold text-red-700 dark:text-red-300">This number no longer receives deposits</p>
+        <p className="mt-1 text-[12px] text-red-600 dark:text-red-400 leading-relaxed">Get your new account number to fund your wallet or get paid again.</p>
+      </div>
+    );
+  }
   return (
     <div className="rounded-3xl bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 shadow-card p-5">
       <div className="flex items-center justify-between">
@@ -276,12 +287,14 @@ export function FundWalletSheet({ open, onClose, wallet, testMode, api, business
   };
   return (
     <BottomSheet open={open} onClose={onClose} title="Fund wallet">
-      <p className="text-[13px] text-slate-500 dark:text-slate-400 mb-4">
-        Transfer from any bank to the account below. Your wallet is credited automatically —
-        usually within a minute.
-      </p>
+      {wallet?.account_state !== "retired" && (
+        <p className="text-[13px] text-slate-500 dark:text-slate-400 mb-4">
+          Transfer from any bank to the account below. Your wallet is credited automatically —
+          usually within a minute.
+        </p>
+      )}
       <AccountCard wallet={wallet} displayName={businessName || ownerName} />
-      {testMode && (
+      {testMode && wallet?.account_state !== "retired" && (
         <button onClick={simulate} disabled={busy}
           className="w-full mt-4 rounded-2xl border border-dashed border-brand-300 dark:border-brand-700 text-brand-600 dark:text-brand-400 text-[13px] font-bold py-3.5 disabled:opacity-40">
           {busy ? "Sending…" : "Simulate a ₦2,000 top-up (test)"}
@@ -689,7 +702,16 @@ export function ReceivePaymentSheet({ open, onClose, wallet, payRequest, testMod
   return (
     <>
     <BottomSheet open={open} onClose={onClose} title={paid ? "" : payRequest ? "Awaiting payment" : "Receive payment"}>
-      {paid ? (
+      {wallet?.account_state === "retired" && !paid ? (
+        // the old number no longer credits the wallet — never ask a customer to pay into it
+        <div className="text-center py-3">
+          <p className="text-[15px] font-extrabold text-slate-900 dark:text-slate-50">Get your new account number first</p>
+          <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
+            Your old account number no longer receives payments. Open Wallet and tap “Get my new number”, then come back to receive.
+          </p>
+          <button onClick={onClose} className={primaryBtn + " mt-5"}>Close</button>
+        </div>
+      ) : paid ? (
         <div className="text-center py-3">
           <div className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center mx-auto mb-4">
             <Icon name="check" size={30} className="text-emerald-600 dark:text-emerald-400" />

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { supabase } from "../utils/supabase";
 import { buildWalletReceipt } from "../utils/receiptConfig";
+import { walletAccountState } from "../utils/walletAccount";
 
 // Lightweight read-only edge call — no busy toggle, no post-refresh (used for
 // bank list + account name lookup, which must not churn the consuming screen).
@@ -31,6 +32,10 @@ export function useWallet(userId, enabled = true) {
   const [dailyUsedKobo, setDailyUsedKobo] = useState(0); // today's withdrawals so far — mirrors wallet_hold_transfer's own check
   const [scheduledTransfers, setScheduledTransfers] = useState([]); // standing instructions — separate from ledger/wallet, fetched on demand
   const [bvnVerified, setBvnVerified] = useState(false);
+  // Which Flutterwave account the platform is using and the legacy account's grace deadline. Read fresh with every
+  // wallet load (NOT via usePlatformConfig, which caches for the whole session): the moment these change decides
+  // whether a holder is told to move to a new account number.
+  const [flwCfg, setFlwCfg]     = useState({ active: "", graceUntil: "" });
   const [loading, setLoading]   = useState(true);
   // True only once a real wallet load has SUCCEEDED for an enabled feature.
   // `loading` can't answer "do we actually know whether this user has a
@@ -51,7 +56,7 @@ export function useWallet(userId, enabled = true) {
     // stay in the loading state, don't flash the "activate wallet" screen.
     if (!userId) { setLoading(!loadedOnceRef.current); return; }
     try {
-      const [{ data: w }, { data: l }, { data: wd }, { data: rq }, { data: pf }, { data: cl }, { data: st }, { data: du }] = await Promise.all([
+      const [{ data: w }, { data: l }, { data: wd }, { data: rq }, { data: pf }, { data: cl }, { data: st }, { data: du }, { data: pc }] = await Promise.all([
         supabase.from("wallets").select("*").eq("user_id", userId).maybeSingle(),
         supabase.from("wallet_ledger").select("*").eq("user_id", userId)
           .order("created_at", { ascending: false }).limit(50),
@@ -63,7 +68,16 @@ export function useWallet(userId, enabled = true) {
         supabase.from("aso_clients").select("bvn_verified").eq("client_user_id", userId).maybeSingle(),
         supabase.from("staff").select("bvn_verified").eq("user_id", userId).maybeSingle(),
         supabase.rpc("wallet_daily_transfer_used", { p_user_id: userId }),
+        supabase.from("platform_config").select("key, value").in("key", ["flw_active_account", "flw_legacy_grace_until"]),
       ]);
+      // A failed read (pc === null) keeps what we knew rather than silently flipping everyone to "active".
+      if (Array.isArray(pc)) {
+        const pcv = (k) => pc.find((r) => r.key === k)?.value || "";
+        setFlwCfg((prev) => {
+          const next = { active: pcv("flw_active_account"), graceUntil: pcv("flw_legacy_grace_until") };
+          return prev.active === next.active && prev.graceUntil === next.graceUntil ? prev : next;
+        });
+      }
       setWallet(w || null);
       setLedger(l || []);
       setWd(wd || []);
@@ -171,6 +185,9 @@ export function useWallet(userId, enabled = true) {
   }, []);
 
   const provisionAccount = useCallback((bvn = "", nin = "") => invoke("provision-account", { bvn, nin }), [invoke]);
+  // Move a wallet that still has an OLD (legacy-account) number onto the business account. The old number is kept
+  // by the server and keeps crediting this wallet until the grace deadline.
+  const migrateAccount   = useCallback((bvn = "", nin = "") => invoke("provision-account", { bvn, nin, migrate: true }), [invoke]);
   const simulateTopup    = useCallback((amount_naira = 2000) => invoke("simulate-topup", { amount_naira }), [invoke]);
   const listBanks        = useCallback(() => fwRead("list-banks"), []);
   const resolveAccount   = useCallback((bank_code, account_number) => fwRead("resolve-account", { bank_code, account_number }), []);
@@ -235,6 +252,15 @@ export function useWallet(userId, enabled = true) {
   const balanceKobo = Number(wallet?.balance_kobo || 0);
   const hasAccount = !!(wallet?.flw_virtual_account_id && wallet?.flw_account_number);
 
+  // none | active | migrate | retired — see utils/walletAccount.js. Only `retired` changes what the wallet can do
+  // (its number stops receiving deposits); the wallet itself — balance, transfers, bills — keeps working in every state.
+  const acct = useMemo(() => walletAccountState({
+    hasAccount, walletAccount: wallet?.flw_account, activeAccount: flwCfg.active, graceUntil: flwCfg.graceUntil,
+  }), [hasAccount, wallet?.flw_account, flwCfg.active, flwCfg.graceUntil]);
+  // The row every screen reads, carrying the derived state so components handed only `wallet` (account card, fund /
+  // receive sheets) can tell a dead number from a live one without their own hook.
+  const walletView = useMemo(() => (wallet ? { ...wallet, account_state: acct.state } : wallet), [wallet, acct.state]);
+
   // Full receipt data for a ledger row — joins the matching withdrawal / payment
   // request and resolves the recipient bank name, ready for <TransactionDetailModal>.
   const receiptFor = useCallback((row, businessName = "", ownerName = "", biz = null) => {
@@ -263,17 +289,19 @@ export function useWallet(userId, enabled = true) {
   // Stable object identity — only changes when real data does, so screens/modals
   // that read the hook don't re-render (and re-run effects) on every tick.
   return useMemo(() => ({
-    wallet, ledger, withdrawals, requests, banks, payRequest, loading, resolved, busy,
+    wallet: walletView, ledger, withdrawals, requests, banks, payRequest, loading, resolved, busy,
     hasAccount, bvnVerified, balanceKobo, balanceNaira: balanceKobo / 100, dailyUsedKobo,
+    accountState: acct.state, graceUntilMs: acct.graceUntilMs, graceDaysLeft: acct.daysLeft,
     scheduledTransfers, refreshScheduled, scheduleTransfer, setScheduledTransferStatus,
     refresh: load, receiptFor,
-    provisionAccount, simulateTopup, listBanks, resolveAccount, transfer,
+    provisionAccount, migrateAccount, simulateTopup, listBanks, resolveAccount, transfer,
     startBvnVerification, checkBvnVerification,
     createPaymentRequest, cancelPaymentRequest,
   }), [
-    wallet, ledger, withdrawals, requests, banks, payRequest, loading, resolved, busy, hasAccount, bvnVerified, balanceKobo, dailyUsedKobo,
+    walletView, ledger, withdrawals, requests, banks, payRequest, loading, resolved, busy, hasAccount, bvnVerified, balanceKobo, dailyUsedKobo,
+    acct.state, acct.graceUntilMs, acct.daysLeft,
     scheduledTransfers, refreshScheduled, scheduleTransfer, setScheduledTransferStatus,
-    load, receiptFor, provisionAccount, simulateTopup, listBanks, resolveAccount, transfer,
+    load, receiptFor, provisionAccount, migrateAccount, simulateTopup, listBanks, resolveAccount, transfer,
     startBvnVerification, checkBvnVerification,
     createPaymentRequest, cancelPaymentRequest,
   ]);

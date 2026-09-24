@@ -909,6 +909,16 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
 
           {wallet.loading ? (
             <p className="text-[13px] text-slate-400 dark:text-slate-500 py-1">Loading…</p>
+          ) : wallet.hasAccount && wallet.accountState === "retired" ? (
+            <div className="space-y-3">
+              <p className="text-[12px] text-red-600 dark:text-red-400">Your old wallet number has stopped receiving money. Get your new number to keep receiving settlements.</p>
+              <button
+                onClick={() => navigate("/wallet")}
+                className="w-full py-2.5 rounded-xl bg-red-600 hover:bg-red-700 active:scale-[0.98] text-white font-semibold text-sm transition-colors"
+              >
+                Get my new number
+              </button>
+            </div>
           ) : wallet.hasAccount ? (
             <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl px-3.5 py-3">
               <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>

@@ -269,6 +269,25 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
         : <ProfileCompletionBanner profile={profile} onOpen={() => setShowCompleteFlow(true)} />
       }
 
+      {/* ── New wallet account number (the platform moved banking accounts) ── */}
+      {walletEnabled && (wallet.accountState === "migrate" || wallet.accountState === "retired") && (
+        <button type="button" onClick={() => setTab("wallet")}
+          className={`w-full flex items-center gap-3 rounded-2xl border px-4 py-3 text-left active:scale-[0.99] transition-transform ${
+            wallet.accountState === "retired"
+              ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
+              : "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800"}`}>
+          <span className="flex-1 min-w-0">
+            <span className={`block text-[13px] font-extrabold ${wallet.accountState === "retired" ? "text-red-700 dark:text-red-300" : "text-amber-800 dark:text-amber-200"}`}>
+              {wallet.accountState === "retired" ? "Your old wallet number has stopped working" : "Your wallet has a new account number"}
+            </span>
+            <span className={`block text-[11.5px] mt-0.5 ${wallet.accountState === "retired" ? "text-red-600 dark:text-red-400" : "text-amber-700 dark:text-amber-300"}`}>
+              Tap to get your new number
+            </span>
+          </span>
+          <span className={`text-[18px] leading-none ${wallet.accountState === "retired" ? "text-red-400" : "text-amber-400"}`}>›</span>
+        </button>
+      )}
+
       {/* ── Hero card — brand navy ─────────────────────────────────── */}
       <div className="rounded-3xl px-5 pt-5 pb-6 text-white relative overflow-hidden shadow-hero"
         style={{ background: "linear-gradient(145deg,var(--navy) 0%,var(--navy-mid) 55%,var(--navy-dark) 100%)" }}>
@@ -311,7 +330,7 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
               <button type="button" onClick={() => setTab("wallet")} className="block w-full text-left active:opacity-80 transition-opacity">
                 <div className="flex items-start justify-between gap-3">
                   <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest pt-0.5">WALLET BALANCE</p>
-                  {wallet.hasAccount && (
+                  {wallet.hasAccount && wallet.accountState !== "retired" && (
                     <div className="text-right flex-shrink-0">
                       <p className="text-[13px] font-extrabold tracking-[0.1em] text-white tabular-nums leading-none">{wallet.wallet.flw_account_number}</p>
                       <p className="text-[10px] text-white/60 mt-1">{cleanBankName(wallet.wallet.flw_account_bank)}</p>

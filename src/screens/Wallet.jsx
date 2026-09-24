@@ -9,6 +9,7 @@ import {
   ActionButton, AccountCard, WalletTxRow,
   FundWalletSheet, TransferSheet, ReceivePaymentSheet,
 } from "../components/WalletPanel";
+import WalletMigrationCard from "../components/WalletMigrationCard";
 import TransactionDetailModal from "../components/shared/TransactionDetailModal";
 import { fmt } from "../utils/helpers";
 import { bizFromProfile } from "../utils/receiptConfig";
@@ -134,7 +135,7 @@ export default function Wallet({ session, store }) {
               </button>
             </div>
             <AmountDisplay amount={w.balanceKobo} fromKobo size="hero" align="left" hidden={hidden} className="mt-2 text-white" />
-            {w.hasAccount && (
+            {w.hasAccount && w.accountState !== "retired" && (
               <p className="mt-2 text-[12px] text-white/60">
                 {w.wallet.flw_account_number} · KudiAI Wallet
               </p>
@@ -178,6 +179,7 @@ export default function Wallet({ session, store }) {
           </div>
         ) : (
           <>
+            <WalletMigrationCard api={w} testMode={walletTestMode} />
             <AccountCard wallet={w.wallet} displayName={store?.profile?.business_name || store?.profile?.owner_name} />
 
             {bvnVerificationEnabled && !w.bvnVerified && !walletTestMode && (

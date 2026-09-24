@@ -37,6 +37,7 @@ import { setCache, getCache } from "../utils/offlineCache";
 import ContributionCard from "../components/ContributionCard";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
 import { useWallet } from "../hooks/useWallet";
+import WalletMigrationCard from "../components/WalletMigrationCard";
 import { useBvnVerification } from "../hooks/useBvnVerification";
 import { BottomSheet, ActionButton, AccountCard, FundWalletSheet, TransferSheet, ReceivePaymentSheet, WalletMiniAction, WALLET_MINI_ICONS, cleanBankName, WalletTxRow, WALLET_SOURCE } from "../components/WalletPanel";
 import WalletStatement from "./WalletStatement";
@@ -2284,7 +2285,7 @@ function OverviewTab({ client, contributions, cycles = [], rotationsData = [], r
             <div>
               <div className="flex items-start justify-between gap-3 pr-7">
                 <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest pt-0.5">Wallet balance</p>
-                {wallet?.hasAccount && (
+                {wallet?.hasAccount && wallet.accountState !== "retired" && (
                   <div className="text-right flex-shrink-0">
                     <p className="text-[13px] font-extrabold tracking-[0.1em] text-white tabular-nums leading-none">{wallet.wallet.flw_account_number}</p>
                     <p className="text-[10px] text-white/60 mt-1">{cleanBankName(wallet.wallet.flw_account_bank)}</p>
@@ -5117,6 +5118,26 @@ function WalletActivationBanner({ onActivate, onDismiss }) {
   );
 }
 
+// The platform moved to a new banking account: this client's wallet still has an OLD number. Not dismissible — after
+// the deadline the old number stops receiving deposits.
+function WalletMigrationBanner({ retired, onOpen }) {
+  const tone = retired
+    ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
+    : "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800";
+  return (
+    <button type="button" onClick={onOpen}
+      className={`mx-4 mt-3 mb-1 w-[calc(100%-2rem)] border rounded-2xl px-4 py-3 flex items-center gap-3 text-left active:scale-[0.99] transition-transform ${tone}`}>
+      <div className="flex-1 min-w-0">
+        <p className={`text-[12.5px] font-bold ${retired ? "text-red-700 dark:text-red-300" : "text-amber-800 dark:text-amber-200"}`}>
+          {retired ? "Your old wallet number has stopped working" : "Your wallet has a new account number"}
+        </p>
+        <p className={`text-[11px] mt-0.5 ${retired ? "text-red-600 dark:text-red-400" : "text-amber-700 dark:text-amber-300"}`}>Tap to get your new number</p>
+      </div>
+      <span className={`text-[18px] leading-none ${retired ? "text-red-400" : "text-amber-400"}`}>›</span>
+    </button>
+  );
+}
+
 // ── KudiAI Wallet — activation (BVN) or balance/actions, for the client ────
 function MemberWalletSheet({ wallet, testMode, bvnVerificationEnabled, client, businessName, ownerName, onClose, onProfileUpdate, onFund, onTransfer, onStatement }) {
   const [bvn, setBvn] = useState("");
@@ -5291,6 +5312,7 @@ function MemberWalletSheet({ wallet, testMode, bvnVerificationEnabled, client, b
         <div>
           <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-1">Balance</p>
           <AmountDisplay amount={wallet.balanceKobo} fromKobo size="hero" align="left" className="mb-4" />
+          <WalletMigrationCard api={wallet} testMode={testMode} className="mb-3" />
           <AccountCard wallet={wallet.wallet} displayName={businessName || ownerName} />
 
           {bvnVerificationEnabled && !wallet.bvnVerified && !testMode && (
@@ -5749,6 +5771,9 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
             onActivate={() => setShowWallet(true)}
             onDismiss={() => { sessionStorage.setItem("ajo_wallet_banner_dismissed", "1"); setWalletBannerDismissed(true); }}
           />
+        )}
+        {walletEnabled && !wallet.loading && (wallet.accountState === "migrate" || wallet.accountState === "retired") && (
+          <WalletMigrationBanner retired={wallet.accountState === "retired"} onOpen={() => setShowWallet(true)} />
         )}
 
         {/* Content */}

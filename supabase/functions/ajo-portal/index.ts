@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { loadAccounts, resolveActive, graceStatus } from "../_shared/flwAccounts.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin":  "*",
@@ -485,7 +486,7 @@ serve(async (req) => {
         sb.from("profiles").select("business_name, full_name, phone, email, profile_image_url, bank_name, bank_account_number, bank_account_name").eq("id", owner_id).maybeSingle(),
         sb.from("aso_clients").select("staff_id, bank_code, account_number, account_name, bank_name").eq("id", client_id).maybeSingle(),
         sb.from("invoice_settings").select("logo_url").eq("user_id", owner_id).maybeSingle(),
-        sb.from("wallets").select("flw_account_number, flw_account_bank, flw_account_name, status").eq("user_id", owner_id).maybeSingle(),
+        sb.from("wallets").select("flw_account_number, flw_account_bank, flw_account_name, flw_account, status").eq("user_id", owner_id).maybeSingle(),
       ]);
 
       let staffInfo = null;
@@ -504,7 +505,18 @@ serve(async (req) => {
         : null;
 
       const wr = walletRes.data;
-      const ownerWallet = (wr?.flw_account_number && wr?.status === "active")
+      // Clients are shown this number to pay their contributions into. If the owner's wallet still has an OLD
+      // (legacy-account) number and the grace period for it is over, deposits to it are no longer credited — so
+      // don't hand it out (same rule as the flutterwave-webhook hold).
+      let retiredNumber = false;
+      if (wr?.flw_account_number && (wr.flw_account ?? "legacy") !== "business") {
+        const { data: cfgRows } = await sb.from("platform_config").select("key, value")
+          .in("key", ["flw_active_account", "flw_legacy_grace_until"]);
+        const cv = (k: string) => (cfgRows ?? []).find((r: { key: string }) => r.key === k)?.value as string | undefined;
+        const active = resolveActive(loadAccounts((k) => Deno.env.get(k)), cv("flw_active_account"));
+        retiredNumber = graceStatus(active.key, cv("flw_legacy_grace_until")).retired;
+      }
+      const ownerWallet = (wr?.flw_account_number && wr?.status === "active" && !retiredNumber)
         ? { account_number: wr.flw_account_number, bank_name: wr.flw_account_bank, account_name: wr.flw_account_name }
         : null;
 

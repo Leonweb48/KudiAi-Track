@@ -4,6 +4,7 @@ import TransactionDetailModal from "./shared/TransactionDetailModal";
 import {
   BottomSheet, ActionButton, AccountCard, FundWalletSheet, TransferSheet, WalletTxRow,
 } from "./WalletPanel";
+import WalletMigrationCard from "./WalletMigrationCard";
 import { useWallet } from "../hooks/useWallet";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
 
@@ -76,6 +77,7 @@ export default function StaffWalletPanel({ onClose, session, staffName }) {
           <div>
             <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-1">Balance</p>
             <AmountDisplay amount={wallet.balanceKobo} fromKobo size="hero" align="left" className="mb-4" />
+            <WalletMigrationCard api={wallet} testMode={walletTestMode} className="mb-4" />
             <AccountCard wallet={wallet.wallet} displayName={staffName} />
 
             <div className="flex items-center gap-2 mt-4 mb-2">
