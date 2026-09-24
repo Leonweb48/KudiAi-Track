@@ -2800,7 +2800,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
           }).catch(() => {});
           if (staffEmail && staffEmail !== _email) {
             supabase.functions.invoke("clubkonnect", {
-              body: { action: "bill-staff-email", staff_email: staffEmail, staff_name: staffName, business_name: businessName || profile?.business_name, service: "Electricity", amount: _amount, reference: _ref, detail: updatedNote, outcome: "success" },
+              body: { action: "bill-staff-email", staff_email: staffEmail, staff_name: staffName, business_name: businessName || profile?.business_name, service: "Electricity", amount: _amount, reference: _ref, detail: updatedNote, outcome: "success", ..._emailFacts },
             }).catch(() => {});
           }
         };
@@ -2827,7 +2827,8 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         }).catch(() => {});
         if (staffEmail && staffEmail !== profile?.email) {
           try {
-            supabase.functions.invoke("clubkonnect", { body: { action: "bill-staff-email", staff_email: staffEmail, staff_name: staffName, business_name: businessName || profile?.business_name, service: svcLabel, amount: totalAmount || amount, reference: ref, detail: cleanDetail, pins: emailPins || undefined, outcome: "success" } });
+            supabase.functions.invoke("clubkonnect", { body: { action: "bill-staff-email", staff_email: staffEmail, staff_name: staffName, business_name: businessName || profile?.business_name, service: svcLabel, amount: totalAmount || amount, reference: ref, detail: cleanDetail, pins: emailPins || undefined, outcome: "success",
+              txn_id: savedTxn?.id || undefined, receipt_ref: savedTxn?.receipt_ref || undefined, occurred_at: savedTxn?.created_at || undefined, balance_after: savedTxn?.balance_after ?? undefined, paid_via: paidVia } });
           } catch (_) {}
         }
       }

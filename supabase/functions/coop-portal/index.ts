@@ -1331,6 +1331,7 @@ serve(async (req) => {
               owner_email: ownerEmail,
               owner_id: orgFull?.owner_id || "",
               staff_id: recorded_by || "",
+              saving_id: saving.id,   // the email reads the stored reference / time / balance from this row
             },
           }),
         }).catch(() => null);
@@ -1465,14 +1466,16 @@ serve(async (req) => {
         }).select("id").single();
       if (wdErr) return json({ error: wdErr.message }, 400);
 
+      const wdSavingIds: Record<string, string> = {};   // member id -> the org_savings row written for them
       for (const m of affectedMembers) {
         const newBal = Math.max(0, (m.savings_balance || 0) - m.amount);
         await sb.from("org_members").update({ savings_balance: newBal }).eq("id", m.id);
-        await sb.from("org_savings").insert({
+        const { data: wdSaving } = await sb.from("org_savings").insert({
           org_id, member_id: m.id, amount: m.amount, type: "withdrawal",
           payment_method: "org_deduction", notes: purpose, balance_after: newBal,
           program_id: program_id || null,
-        });
+        }).select("id").single();
+        if (wdSaving?.id) wdSavingIds[m.id] = wdSaving.id as string;
         await sb.from("org_withdrawal_items").insert({
           withdrawal_id: wd.id, member_id: m.id, member_name: m.full_name, amount: m.amount,
         });
@@ -1522,7 +1525,8 @@ serve(async (req) => {
             body: JSON.stringify({
               event: "org_saving",
               data: { member_name: m.full_name || "", member_email: m.email, amount: mAmt,
-                type: "withdrawal", org_name: wdOrgInfo?.name || "", date: wdDate, owner_email: "" },
+                type: "withdrawal", org_name: wdOrgInfo?.name || "", date: wdDate, owner_email: "",
+                saving_id: wdSavingIds[m.id] },
             }),
           }).catch(() => null);
         }
@@ -1708,6 +1712,7 @@ serve(async (req) => {
         const due = new Date(); due.setMonth(due.getMonth() + months);
         update.due_date = due.toISOString().slice(0, 10);
         const amt = existingLoan.amount_approved || existingLoan.amount_requested;
+        let disbursedSavingId: string | null = null;   // the member's savings row for the disbursement (its stored reference goes in the email)
         if (amt > 0) {
           // Deduct from org wallet
           const { data: orgW } = await sb.from("organizations")
@@ -1724,11 +1729,12 @@ serve(async (req) => {
           const { data: mem } = await sb.from("org_members").select("savings_balance").eq("id", existingLoan.member_id).single();
           const newSavBal = (mem?.savings_balance || 0) + amt;
           await sb.from("org_members").update({ savings_balance: newSavBal }).eq("id", existingLoan.member_id);
-          await sb.from("org_savings").insert({
+          const { data: disbSaving } = await sb.from("org_savings").insert({
             org_id: existingLoan.org_id, member_id: existingLoan.member_id,
             amount: amt, type: "deposit", payment_method: "loan_disbursement",
             notes: `Loan disbursement — ${loan_id}`, balance_after: newSavBal,
-          });
+          }).select("id").single();
+          disbursedSavingId = (disbSaving?.id as string | undefined) ?? null;
         }
         // In-app: notify member of disbursement
         const disbAmt = existingLoan.amount_approved || existingLoan.amount_requested;
@@ -1747,6 +1753,7 @@ serve(async (req) => {
               member_email: memberEmail, member_name: memberName, org_name: disbOrg?.name || "",
               amount: amt, due_date: update.due_date,
               monthly_installment: existingLoan.monthly_installment || 0,
+              saving_id: disbursedSavingId || undefined,
             }}),
           }).catch(() => null);
         }
@@ -1824,6 +1831,8 @@ serve(async (req) => {
         org_name: repayOrg?.name || "", amount: amt,
         outstanding_balance: newOutstanding, is_fully_repaid: newOutstanding === 0,
         loan_purpose: loan.loan_purpose || "",
+        repayment_id: repayment.id,   // the email reads the stored reference / time from this row
+        payment_method: payment_method || "cash",
       };
       if (memberEmail) {
         await fetch("https://admin.kudiai.app/api/public/email-trigger", {
@@ -2536,6 +2545,7 @@ serve(async (req) => {
                 owner_email:  ownerEmail,
                 owner_id:     orgRow?.owner_id || "",
                 paystack_ref: reference,
+                saving_id:    saving?.id,
               },
             }),
           }).catch(() => null);
@@ -2624,11 +2634,11 @@ serve(async (req) => {
       const interestPortion  = parseFloat((paidAmount * interestRatio).toFixed(2));
       const principalPortion = parseFloat((paidAmount - interestPortion).toFixed(2));
 
-      await sb.from("org_loan_repayments").insert({
+      const { data: paidRepayment } = await sb.from("org_loan_repayments").insert({
         org_id, loan_id, member_id,
         amount: paidAmount, payment_method: "paystack", paystack_ref: reference,
         principal_portion: principalPortion, interest_portion: interestPortion,
-      });
+      }).select("id").single();
 
       const { data: updatedLoan } = await sb.from("org_loans")
         .update({ outstanding_balance: newOutstanding, status: newOutstanding === 0 ? "repaid" : "disbursed" })
@@ -2674,6 +2684,7 @@ serve(async (req) => {
         is_fully_repaid:    newOutstanding === 0,
         loan_purpose:       (loan as Record<string, unknown>).loan_purpose as string || "",
         payment_method:     "Paystack",
+        repayment_id:       paidRepayment?.id,
       };
       if (repayMem?.email) {
         await fetch("https://admin.kudiai.app/api/public/email-trigger", {
@@ -2964,6 +2975,7 @@ serve(async (req) => {
             body: JSON.stringify({
               event: "org_withdrawal_approved",
               data: {
+                saving_id:          saving?.id,
                 member_name:        mem.full_name || "",
                 member_email:       mem.email,
                 amount:             grossAmount,
