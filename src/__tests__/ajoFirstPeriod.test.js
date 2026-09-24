@@ -216,12 +216,12 @@ describe("ledgerTypeLabel", () => {
 
   test("commission row with cycle_id → Cycle fee label", () => {
     expect(ledgerTypeLabel({ type: "commission", cycle_id: "cycle-1" }))
-      .toBe("Cycle fee — first deposit");
+      .toBe("Cycle Commission Fee — Day 1");
   });
 
   test("commission row without cycle_id → Commission (manual execution)", () => {
     expect(ledgerTypeLabel({ type: "commission", cycle_id: null }))
-      .toBe("Commission");
+      .toBe("Collector Commission");
   });
 
   test("string fallback stays backward-compatible", () => {

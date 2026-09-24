@@ -45,6 +45,19 @@ Deno.test("webhook signer: each account's hash (or its HMAC) identifies it; unkn
   assert(identifySigner("old-hash", body, noBiz, fakeHmac) === "legacy", "before the switch only legacy exists, exactly as today");
 });
 
+Deno.test("webhook secret rotation: the previous hash keeps working alongside the new one, and only for its own account", () => {
+  const a = loadAccounts(env({ FLW_WEBHOOK_SECRET_HASH: "new-legacy", FLW_WEBHOOK_SECRET_HASH_PREV: "old-legacy", FLW_BIZ_WEBHOOK_SECRET_HASH: "biz" }));
+  const body = "{}";
+  assert(a.legacy.webhookHashPrev === "old-legacy" && a.business.webhookHashPrev === "", "prev is loaded per account");
+  assert(identifySigner("new-legacy", body, a, fakeHmac) === "legacy", "the new hash works");
+  assert(identifySigner("old-legacy", body, a, fakeHmac) === "legacy", "the old hash still works during the rotation");
+  assert(identifySigner(fakeHmac("old-legacy", body), body, a, fakeHmac) === "legacy", "and so does an HMAC made with the old one");
+  assert(identifySigner("biz", body, a, fakeHmac) === "business", "the business hash is unaffected");
+  const done = loadAccounts(env({ FLW_WEBHOOK_SECRET_HASH: "new-legacy" }));
+  assert(identifySigner("old-legacy", body, done, fakeHmac) === null, "once PREV is removed the old hash is dead");
+  assert(identifySigner("", body, done, fakeHmac) === null, "an empty PREV never matches an empty signature");
+});
+
 Deno.test("grace period: ends only when the business account is active AND an explicit deadline has passed", () => {
   const T = Date.parse("2026-10-01T12:00:00Z");
   const until = "2026-10-08T12:00:00Z";

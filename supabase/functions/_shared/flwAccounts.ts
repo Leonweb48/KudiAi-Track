@@ -12,6 +12,8 @@
 // The business account uses the same names with a BIZ_ infix:
 //   FLW_BIZ_CLIENT_ID · FLW_BIZ_CLIENT_SECRET · FLW_BIZ_BASE_URL (defaults to the legacy base) ·
 //   FLW_BIZ_V3_SECRET_KEY · FLW_BIZ_WEBHOOK_SECRET_HASH
+// ROTATING a webhook secret hash without losing events: set <NAME>_PREV to the OLD value, the main one to the NEW value, update the
+// Flutterwave dashboard, and remove <NAME>_PREV afterwards (FLW_WEBHOOK_SECRET_HASH_PREV / FLW_BIZ_WEBHOOK_SECRET_HASH_PREV).
 //
 // WHICH ACCOUNT IS ACTIVE (new numbers, payouts, name enquiry) is platform_config.flw_active_account
 // ('legacy' until the switch). The grace deadline is platform_config.flw_legacy_grace_until (ISO time).
@@ -25,6 +27,8 @@ export interface FlwAccount {
   base: string;
   v3Key: string;
   webhookHash: string;
+  /** the PREVIOUS secret hash, accepted alongside the current one while a rotation is in flight (empty when none) */
+  webhookHashPrev: string;
 }
 
 const DEFAULT_BASE = "https://developersandbox-api.flutterwave.com";
@@ -39,6 +43,7 @@ export function loadAccounts(env: (name: string) => string | undefined): Record<
       base: legacyBase,
       v3Key: env("FLW_V3_SECRET_KEY") ?? "",
       webhookHash: env("FLW_WEBHOOK_SECRET_HASH") ?? "",
+      webhookHashPrev: env("FLW_WEBHOOK_SECRET_HASH_PREV") ?? "",
     },
     business: {
       key: "business",
@@ -47,6 +52,7 @@ export function loadAccounts(env: (name: string) => string | undefined): Record<
       base: env("FLW_BIZ_BASE_URL") || legacyBase,
       v3Key: env("FLW_BIZ_V3_SECRET_KEY") ?? "",
       webhookHash: env("FLW_BIZ_WEBHOOK_SECRET_HASH") ?? "",
+      webhookHashPrev: env("FLW_BIZ_WEBHOOK_SECRET_HASH_PREV") ?? "",
     },
   };
 }
@@ -81,9 +87,11 @@ export function identifySigner(
 ): AccountKey | null {
   if (!signature) return null;
   for (const key of ["business", "legacy"] as AccountKey[]) {
-    const hash = accounts[key].webhookHash;
-    if (!hash) continue;
-    if (signature === hash || signature === hmacBase64(hash, rawBody)) return key;
+    // the current hash, then (only while a rotation is in flight) the previous one — so swapping a secret never drops an event
+    for (const hash of [accounts[key].webhookHash, accounts[key].webhookHashPrev]) {
+      if (!hash) continue;
+      if (signature === hash || signature === hmacBase64(hash, rawBody)) return key;
+    }
   }
   return null;
 }

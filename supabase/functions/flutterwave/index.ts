@@ -211,6 +211,22 @@ async function isServiceCall(req: Request, token: string): Promise<boolean> {
   } catch { return false; }
 }
 
+// Auth for the cron-only actions (pg_net from SQL → here): scheduled transfers and the Ajo payout email.
+// SQL sends the Vault's `cron_secret` in x-cron-secret. The CRON_SECRET *function* secret had drifted away from the Vault value,
+// so every one of those calls answered 401 and neither path ever ran. Accept the function secret OR the Vault value (checked by
+// the service-only verify_cron_secret RPC, which returns a boolean and never the secret) — the same pattern notify-send uses.
+// deno-lint-ignore no-explicit-any
+async function cronAuthorized(req: Request, sb: any): Promise<boolean> {
+  const provided = req.headers.get("x-cron-secret") ?? "";
+  if (!provided) return false;
+  const fromEnv = Deno.env.get("CRON_SECRET") ?? "";
+  if (fromEnv && provided === fromEnv) return true;
+  try {
+    const { data } = await sb.rpc("verify_cron_secret", { p_secret: provided });
+    return data === true;
+  } catch { return false; }
+}
+
 // Resolve a target user's identity — profiles (business owner) first,
 // aso_clients (an Ajo/savings client) as fallback — and report which table
 // owns the record, so callers can read/write BVN-verification columns on the
@@ -349,6 +365,7 @@ serve(async (req) => {
         configured: isConfigured(a),
         mode: /sandbox/i.test(a.base) ? "sandbox" : "live",
         webhook_hash_set: !!a.webhookHash,
+        webhook_hash_prev_set: !!a.webhookHashPrev,     // a rotation is in flight — remove *_PREV once the dashboard is updated
         v3_key_set: !!a.v3Key,
       };
       if (isConfigured(a)) {
@@ -454,6 +471,55 @@ serve(async (req) => {
       return json({ ok: true, sent, skipped_no_email: noEmail, failed, more_may_remain: (targets ?? []).length >= 200 });
     }
 
+    // ═══ remind-migration — service or cron. A SECOND email, to the holders of an old number who still have not moved, as the
+    //    deadline approaches (or after it has passed). Idempotent via wallets.migration_reminded_at. Called hourly by
+    //    flw_legacy_deadline_watch() once we are inside the last 48 hours; `dry_run: true` only counts. ═══
+    if (action === "remind-migration") {
+      if (!(await isServiceCall(req, token)) && !(await cronAuthorized(req, sb))) return json({ error: "Unauthorized" }, 401);
+      const g = graceStatus(ACTIVE.key, await cfg("flw_legacy_grace_until", ""));
+      if (ACTIVE.key !== "business" || g.until === null) return json({ error: "No migration deadline is set" }, 409);
+      const dryRun = (body as Record<string, unknown>).dry_run === true;
+      const deadline = new Date(g.until).toLocaleString("en-GB", { day: "numeric", month: "long", year: "numeric", hour: "numeric", minute: "2-digit", timeZone: "Africa/Lagos" }) + " WAT";
+
+      const { data: targets, error: tErr } = await sb.from("wallets")
+        .select("user_id, flw_account_number")
+        .eq("flw_account", "legacy").not("flw_account_number", "is", null).is("migration_reminded_at", null)
+        .limit(200);
+      if (tErr) return json({ error: "Could not list wallets" }, 500);
+      if (dryRun) return json({ ok: true, dry_run: true, would_email: (targets ?? []).length, retired: g.retired });
+
+      let sent = 0, noEmail = 0, failed = 0;
+      for (const t of targets ?? []) {
+        const who = await resolveIdentity(sb, t.user_id as string);
+        if (!who.email) { noEmail++; continue; }
+        try {
+          const delivered = await sendWalletEmail(sb, who.email,
+            g.retired ? "Your old KudiAI wallet number has stopped working" : "Reminder: your old KudiAI wallet number stops working soon",
+            () => bankEmail({
+              title: g.retired ? "Your Old Wallet Number Has Stopped Working" : "Your Old Wallet Number Stops Working Soon",
+              tone: "danger", timestamp: new Date(),
+              preheader: g.retired ? "Get your new wallet number to receive money again" : `Get your new wallet number before ${esc(deadline)}`,
+              intro: g.retired
+                ? "Transfers to your old wallet number no longer reach your wallet. Your balance and history are safe — get your new number to receive money again."
+                : "You haven't moved to your new wallet number yet. Transfers to your old number will stop reaching your wallet after the time below.",
+              rows: [
+                ["Your old number", esc(t.flw_account_number), { mono: true }],
+                [g.retired ? "Stopped working" : "Stops working", esc(deadline)],
+                ["What to do", "Log in to KudiAI Track and follow the prompt to get your new number"],
+                ["You will need", "Your BVN or NIN"],
+              ],
+              note: "Enter your BVN or NIN <b>only inside the KudiAI Track app</b> — never send it to anyone by email, chat or phone, and never share your PIN or OTP.",
+              button: { label: "Get my new number →", url: appLink({ tab: "wallet" }) },
+              security: false,
+            }));
+          if (!delivered) { failed++; continue; }
+          const { error: mErr } = await sb.rpc("flw_mark_migration_reminded", { p_user_id: t.user_id });
+          if (mErr) { failed++; console.error("[flutterwave] flw_mark_migration_reminded:", mErr.message); } else sent++;
+        } catch (e) { failed++; console.warn("[flutterwave] remind-migration email failed:", (e as Error).message); }
+      }
+      return json({ ok: true, sent, skipped_no_email: noEmail, failed, retired: g.retired, more_may_remain: (targets ?? []).length >= 200 });
+    }
+
     // ═══ send-account-details — service only. Emails the NEW account details to every wallet that is already on the business
     //    account and has not been sent them yet (wallets that update from now on get theirs automatically, straight after
     //    the move — see provision-account). Idempotent via wallets.account_details_emailed_at; `dry_run: true` only counts. ═══
@@ -489,9 +555,7 @@ serve(async (req) => {
     //    schedule-creation authorizes the STANDING INSTRUCTION, not a blanket
     //    bypass of these checks on every run. ══════════════════════════════
     if (action === "process-scheduled-transfer") {
-      const cronSecret = req.headers.get("x-cron-secret") ?? "";
-      const CRON_SECRET = Deno.env.get("CRON_SECRET") ?? "";
-      if (!CRON_SECRET || cronSecret !== CRON_SECRET) return json({ error: "Unauthorized" }, 401);
+      if (!(await cronAuthorized(req, sb))) return json({ error: "Unauthorized" }, 401);
 
       const { scheduled_transfer_id } = body as { scheduled_transfer_id: string };
       if (!scheduled_transfer_id) return json({ error: "Missing scheduled_transfer_id" }, 400);
@@ -547,9 +611,7 @@ serve(async (req) => {
     // already moved by the time this fires; a missing/bad email is never
     // allowed to affect the payout's settled status.
     if (action === "send-ajo-payout-email") {
-      const cronSecret = req.headers.get("x-cron-secret") ?? "";
-      const CRON_SECRET = Deno.env.get("CRON_SECRET") ?? "";
-      if (!CRON_SECRET || cronSecret !== CRON_SECRET) return json({ error: "Unauthorized" }, 401);
+      if (!(await cronAuthorized(req, sb))) return json({ error: "Unauthorized" }, 401);
 
       const { client_user_id, amount_kobo, balance_after_kobo, payout_id } = body as {
         client_user_id: string; amount_kobo: number; balance_after_kobo?: number; payout_id?: string;
