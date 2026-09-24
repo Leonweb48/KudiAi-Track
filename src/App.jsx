@@ -52,6 +52,7 @@ import OfflineScreen         from "./screens/OfflineScreen";
 import PaymentReturn         from "./screens/PaymentReturn";
 import BvnVerificationReturn from "./screens/BvnVerificationReturn";
 import VerifyReceipt         from "./screens/VerifyReceipt";
+import LegalScreen           from "./screens/LegalScreen";
 // ── Lazy imports — split into separate chunks, loaded on first use ────────────
 // Heavy screen chunks (jsPDF + html2canvas live in Reports; AI SDK in AIAssistant)
 const Reports        = lazy(() => import("./screens/Reports"));
@@ -489,6 +490,10 @@ export default function App() {
   if (location.pathname === "/bvn-return") return <BvnVerificationReturn />;
   // Anyone holding a receipt can check it — no session needed.
   if (location.pathname === "/verify") return <VerifyReceipt />;
+  // The privacy policy and terms must be readable at a public address (Google Play requires a privacy-policy URL).
+  if (location.pathname === "/privacy" || location.pathname === "/terms") {
+    return <LegalScreen type={location.pathname === "/terms" ? "terms" : "privacy"} onBack={() => window.location.assign("/")} />;   // full load: this branch returns before later hooks, so no client-side navigate
+  }
 
   const portalStatuses = ["ready", "staff", "branch_manager", "marketer", "organisation", "org_member", "ajo_client"];
 
