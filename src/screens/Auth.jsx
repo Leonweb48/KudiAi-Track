@@ -7,6 +7,7 @@ import { Capacitor } from "@capacitor/core";
 import { Browser } from "@capacitor/browser";
 import { useT } from "../contexts/LanguageContext";
 import LegalScreen from "./LegalScreen";
+import { registrationFeeNotice } from "../utils/registrationFee";
 
 const isNative = Capacitor.isNativePlatform();
 const OAUTH_REDIRECT = isNative
@@ -910,6 +911,19 @@ export default function Auth() {
                 Your registration goes to this business for review — they'll set your contribution terms and
                 approve before you can start saving.
               </p>
+              {(() => {
+                const biz = businesses.find(b => b.id === clientBusinessId);
+                if (!biz) return null;
+                const n = registrationFeeNotice(biz.registration_fee, biz.business_name);
+                return (
+                  <div className={`mt-2.5 rounded-xl px-3.5 py-3 border ${n.hasFee
+                    ? "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800/60"
+                    : "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/60"}`}>
+                    <p className={`text-xs font-bold ${n.hasFee ? "text-amber-800 dark:text-amber-300" : "text-emerald-800 dark:text-emerald-300"}`}>{n.headline}</p>
+                    <p className="text-[11px] text-gray-500 dark:text-slate-400 mt-0.5 leading-relaxed">{n.detail}</p>
+                  </div>
+                );
+              })()}
             </div>
           </>
         )}

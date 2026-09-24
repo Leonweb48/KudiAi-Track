@@ -7,6 +7,7 @@ import TransactionDetailModal from "../components/shared/TransactionDetailModal"
 import { buildAsoContributionReceipt, buildAsoClientReceipt, bizFromProfile } from "../utils/receiptConfig";
 import { ClientProfile } from "../components/shared/ClientProfile";
 import { supabase } from "../utils/supabase";
+import { cleanRegFee, MAX_REG_FEE } from "../utils/registrationFee";
 import { canDo, featureLimit, upgradeLabel, planRequiredLabel, planAvailableText } from "../utils/plans";
 import { fmt, today, applyPeriodFilter } from "../utils/helpers";
 import PeriodFilter from "../components/shared/PeriodFilter";
@@ -594,6 +595,75 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
   );
 }
 
+// Owner-only: the registration fee a new client sees on the signup page and is charged from their first deposit.
+// Self-contained (its own read/write of profiles.ajo_registration_fee) so a not-yet-migrated database just hides it.
+function RegistrationFeeSetting({ ownerId, onChange }) {
+  const [fee,     setFee]     = useState(null);   // null = loading, or the column isn't there yet
+  const [editing, setEditing] = useState(false);
+  const [draft,   setDraft]   = useState("");
+  const [saving,  setSaving]  = useState(false);
+  const [err,     setErr]     = useState("");
+
+  useEffect(() => {
+    if (!ownerId) return undefined;
+    let live = true;
+    supabase.from("profiles").select("ajo_registration_fee").eq("id", ownerId).maybeSingle()
+      .then(({ data, error }) => {
+        if (!live || error) return;
+        const v = cleanRegFee(data?.ajo_registration_fee);
+        setFee(v); onChange?.(v);
+      });
+    return () => { live = false; };
+  }, [ownerId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (fee === null) return null;
+
+  const save = async () => {
+    const raw = draft.trim();
+    const n = raw === "" ? 0 : Number(raw);
+    if (!Number.isFinite(n) || n < 0 || n > MAX_REG_FEE) { setErr(`Enter an amount from ₦0 to ₦${MAX_REG_FEE.toLocaleString("en-NG")}.`); return; }
+    setSaving(true); setErr("");
+    const v = cleanRegFee(n);
+    const { error } = await supabase.from("profiles").update({ ajo_registration_fee: v }).eq("id", ownerId);
+    setSaving(false);
+    if (error) { setErr(friendlyError(error, "Couldn't save the fee. Try again.")); return; }
+    setFee(v); onChange?.(v); setEditing(false);
+  };
+
+  return (
+    <div className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3 mb-4 shadow-card border border-slate-100 dark:border-slate-700/60">
+      {editing ? (
+        <>
+          <p className="text-xs font-bold text-slate-700 dark:text-slate-200 mb-2">Registration fee for new clients</p>
+          <div className="flex gap-2">
+            <input type="number" min="0" inputMode="decimal" value={draft} onChange={e => setDraft(e.target.value)} placeholder="0 for no fee"
+              className="flex-1 min-w-0 px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-800 dark:text-slate-100" />
+            <button onClick={save} disabled={saving}
+              className="px-4 rounded-xl bg-brand-600 text-white text-xs font-bold disabled:opacity-50 active:scale-95 transition-transform">{saving ? "…" : "Save"}</button>
+            <button onClick={() => { setEditing(false); setErr(""); }} disabled={saving}
+              className="px-3 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold">Cancel</button>
+          </div>
+          {err && <p className="text-[11px] text-red-500 mt-1.5">{err}</p>}
+          <p className="text-[10px] text-slate-400 mt-1.5 leading-snug">Shown to people registering with you. Applies to clients who register from now on; you can still change it per client when you approve them.</p>
+        </>
+      ) : (
+        <div className="flex items-center gap-3">
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-bold text-slate-700 dark:text-slate-200">Registration fee for new clients</p>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+              {fee > 0 ? `${fmt(fee)} — taken once from a client's first deposit` : "None set — new clients register free"}
+            </p>
+          </div>
+          <button onClick={() => { setDraft(fee > 0 ? String(fee) : ""); setErr(""); setEditing(true); }}
+            className="text-xs font-bold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-900/20 px-3 py-1.5 rounded-lg flex-shrink-0 active:scale-95 transition-transform">
+            {fee > 0 ? "Change" : "Set fee"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, onUpgrade, staffId = null, embedded, deepLink = null, onDeepLinkHandled = null }) {
   const t = useT();
   const toast = useToast();
@@ -764,6 +834,11 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [rejectReactivationNote, setRejectReactivationNote] = useState("");
 
   const [f, setF] = useState(BLANK);
+  // The business's default registration fee pre-fills a new client's fee (the owner can still change or clear it)
+  const [defaultRegFee, setDefaultRegFee] = useState(0);
+  useEffect(() => {
+    if (showAdd && defaultRegFee > 0) setF(p => (p.registration_charge === "" ? { ...p, registration_charge: String(defaultRegFee) } : p));
+  }, [showAdd, defaultRegFee]);
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
 
   useEffect(() => {
@@ -2475,6 +2550,8 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           </div>
         </div>
       )}
+
+      {isOwner && <RegistrationFeeSetting ownerId={profile?.id} onChange={setDefaultRegFee} />}
 
       {/* Overdue alert */}
       {overdueList.length > 0 && (

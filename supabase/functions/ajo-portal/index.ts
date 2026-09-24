@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { loadAccounts, resolveActive, graceStatus } from "../_shared/flwAccounts.ts";
 import { attachPayouts, pendingPayouts as pendingPayoutsOf, type Payout } from "../_shared/ajoPayouts.ts";
+import { cleanRegFee } from "../_shared/registrationFee.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin":  "*",
@@ -121,14 +122,20 @@ serve(async (req) => {
   //    "Client" registration business picker, before any account exists.
   //    Deliberately minimal fields — no email, no financials. ──────────────
   if (action === "list-businesses") {
-    const { data, error } = await sb
-      .from("profiles")
-      .select("id, business_name")
-      .not("business_name", "is", null)
-      .neq("business_name", "")
+    // registration_fee is the business's published default, so the client sees it before they sign up. The column
+    // arrives with a migration; if this function ever deploys first, fall back to the plain list rather than break signup.
+    const listBusinesses = (cols: string) => sb.from("profiles").select(cols)
+      .not("business_name", "is", null).neq("business_name", "")
       .order("business_name", { ascending: true });
+    let { data, error } = await listBusinesses("id, business_name, ajo_registration_fee");
+    if (error) ({ data, error } = await listBusinesses("id, business_name"));
     if (error) return json({ error: "Could not load businesses" }, 500);
-    return json({ ok: true, businesses: (data || []).map(b => ({ id: b.id, business_name: (b.business_name || "").trim() })) });
+    return json({
+      ok: true,
+      businesses: ((data || []) as unknown as Array<Record<string, unknown>>).map(b => ({
+        id: b.id, business_name: String(b.business_name || "").trim(), registration_fee: cleanRegFee(b.ajo_registration_fee),
+      })),
+    });
   }
 
   // ── Authenticate every request ────────────────────────────────────────────
@@ -287,6 +294,12 @@ serve(async (req) => {
       const ym = new Date();
       const membershipNumber = `AJO-${ym.getFullYear()}${String(ym.getMonth() + 1).padStart(2, "0")}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
 
+      // The business's published registration fee — read here, never taken from the request, so a client can't pick
+      // their own. Taken once from their first deposit; the owner can still change it when they approve. (Column
+      // arrives with a migration: on any error, fall back to no fee rather than block the registration.)
+      const { data: feeRow, error: feeErr } = await sb.from("profiles").select("ajo_registration_fee").eq("id", business_id).maybeSingle();
+      const registrationFee = feeErr ? 0 : cleanRegFee((feeRow as Record<string, unknown> | null)?.ajo_registration_fee);
+
       const { data: row, error: insErr } = await sb.from("aso_clients").insert({
         user_id:                 business_id,
         full_name:               full_name.trim(),
@@ -299,7 +312,7 @@ serve(async (req) => {
         registration_date:       new Date().toISOString().slice(0, 10),
         contribution_frequency:  "daily",
         contribution_amount:     0,
-        registration_charge:     0,
+        registration_charge:     registrationFee,
         withdrawal_fee_percent:  5,
         commission_model:        "none",
       }).select("id").single();

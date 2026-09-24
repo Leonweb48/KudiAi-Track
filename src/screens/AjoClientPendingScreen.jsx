@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../utils/supabase";
+import { registrationFeeNotice } from "../utils/registrationFee";
 
 export default function AjoClientPendingScreen({ ajoClient }) {
   const [businessName, setBusinessName] = useState("");
@@ -59,6 +60,16 @@ export default function AjoClientPendingScreen({ ajoClient }) {
             </p>
           )}
         </div>
+
+        {!rejected && (() => {
+          const n = registrationFeeNotice(ajoClient?.registration_charge, businessName);
+          return (
+            <div className={`rounded-2xl px-4 py-3.5 mb-5 border ${n.hasFee ? "bg-amber-500/10 border-amber-500/30" : "bg-slate-900 border-slate-800"}`}>
+              <p className={`text-sm font-semibold ${n.hasFee ? "text-amber-300" : "text-slate-300"}`}>{n.headline}</p>
+              <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">{n.detail}</p>
+            </div>
+          );
+        })()}
 
         <button onClick={signOut} className="w-full py-2.5 rounded-xl border border-slate-700 text-slate-400 text-sm font-medium">
           Sign Out

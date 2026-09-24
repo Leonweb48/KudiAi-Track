@@ -445,7 +445,7 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                 <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-2xl px-4 py-3.5">
                   <p className="text-sm font-bold text-amber-800 dark:text-amber-300 mb-1">New client registration</p>
                   <p className="text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
-                    {form.full_name} registered themselves under your business. Set their savings terms below, then
+                    {form.full_name} registered themselves under your business. Set their savings terms (including the registration fee) below, then
                     Approve to activate their account — or Decline if you don't recognise them.
                   </p>
                 </div>
@@ -511,6 +511,10 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                         </FormField>
                       )}
                     </div>
+                    <FormField label="Registration Fee (₦)">
+                      <input type="number" min="0" value={form.registration_charge || ""} onChange={e => set("registration_charge", parseFloat(e.target.value) || 0)} className={inputCls} placeholder="0.00" />
+                      <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 leading-snug">Taken once, from the client's first deposit. It has no effect on a client who has already deposited.</p>
+                    </FormField>
                     <FormField label="Next Due Date">
                       <input type="date" value={form.next_contribution_date || ""} onChange={e => set("next_contribution_date", e.target.value)} className={inputCls} />
                     </FormField>
@@ -847,6 +851,7 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                   <div className="px-4 pb-3">
                     <InfoRow label="Frequency"    value={record.contribution_frequency} />
                     <InfoRow label="Contribution" value={fmt(record.contribution_amount)} />
+                    {Number(record.registration_charge) > 0 && <InfoRow label="Registration fee" value={fmt(record.registration_charge)} />}
                     <InfoRow label="Next Due"     value={record.next_contribution_date} />
                     <InfoRow label="Registered"   value={record.registration_date} />
                     <InfoRow label="Notes"        value={record.notes} />
