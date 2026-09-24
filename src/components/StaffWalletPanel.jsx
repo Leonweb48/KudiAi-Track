@@ -5,6 +5,8 @@ import {
   BottomSheet, ActionButton, AccountCard, FundWalletSheet, TransferSheet, WalletTxRow,
 } from "./WalletPanel";
 import WalletMigrationCard from "./WalletMigrationCard";
+import WalletIdFields from "./WalletIdFields";
+import { walletIdError } from "../utils/walletId";
 import { useWallet } from "../hooks/useWallet";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
 
@@ -22,6 +24,7 @@ export default function StaffWalletPanel({ onClose, session, staffName }) {
   const wallet = useWallet(session?.user?.id || null, walletEnabled);
 
   const [bvn, setBvn] = useState("");
+  const [nin, setNin] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [walletSheet, setWalletSheet] = useState(null); // null | "fund" | "transfer"
@@ -29,10 +32,11 @@ export default function StaffWalletPanel({ onClose, session, staffName }) {
 
   const activate = async () => {
     setErr("");
-    if (!walletTestMode && !/^\d{11}$/.test(bvn)) { setErr("Enter your 11-digit BVN"); return; }
+    const idErr = walletIdError(bvn, nin, walletTestMode);
+    if (idErr) { setErr(idErr); return; }
     setBusy(true);
     try {
-      await wallet.provisionAccount(bvn, "");
+      await wallet.provisionAccount(bvn, nin);
     } catch (e) {
       setErr(e.message || "Could not activate your wallet");
     } finally {
@@ -57,12 +61,9 @@ export default function StaffWalletPanel({ onClose, session, staffName }) {
             </p>
             {!walletTestMode && (
               <div className="mb-4">
-                <label className="text-[12px] font-semibold text-slate-500 dark:text-slate-400">BVN</label>
-                <input inputMode="numeric" value={bvn} onChange={e => setBvn(e.target.value.replace(/\D/g, "").slice(0, 11))}
-                  placeholder="11-digit BVN"
-                  className="w-full mt-1.5 px-4 py-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/60 text-slate-900 dark:text-slate-50 text-[16px] font-semibold tracking-wider placeholder:font-normal placeholder:tracking-normal placeholder:text-slate-400 focus:outline-none focus:border-brand-400" />
+                <WalletIdFields bvn={bvn} nin={nin} onBvn={setBvn} onNin={setNin} />
                 <p className="mt-1.5 text-[11px] text-slate-400 leading-relaxed">
-                  Your BVN is required by the Central Bank of Nigeria to open any bank-linked account. It isn't
+                  A BVN or NIN is required by the Central Bank of Nigeria to open any bank-linked account. It isn't
                   stored by KudiAI; the name on it must match your staff profile.
                 </p>
               </div>

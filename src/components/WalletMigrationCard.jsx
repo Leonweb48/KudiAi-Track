@@ -1,6 +1,8 @@
 import { useState } from "react";
 import Icon from "./Icon";
 import { cleanBankName } from "./WalletPanel";
+import WalletIdFields from "./WalletIdFields";
+import { walletIdError } from "../utils/walletId";
 
 const fmtDay = (ms) => new Date(ms).toLocaleDateString("en-GB", { day: "numeric", month: "long", timeZone: "Africa/Lagos" });
 
@@ -11,6 +13,7 @@ const fmtDay = (ms) => new Date(ms).toLocaleDateString("en-GB", { day: "numeric"
 // keeps showing the "here is your new number" confirmation after the wallet flips to `active`.
 export default function WalletMigrationCard({ api, testMode = false, className = "" }) {
   const [bvn, setBvn] = useState("");
+  const [nin, setNin] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [done, setDone] = useState(null);      // { number, bank } once the move has gone through
@@ -20,12 +23,13 @@ export default function WalletMigrationCard({ api, testMode = false, className =
 
   const submit = async () => {
     setErr("");
-    if (!testMode && !/^\d{11}$/.test(bvn)) { setErr("Enter your 11-digit BVN"); return; }
+    const idErr = walletIdError(bvn, nin, testMode);
+    if (idErr) { setErr(idErr); return; }
     setBusy(true);
     try {
-      const r = await api.migrateAccount(bvn);
+      const r = await api.migrateAccount(bvn, nin);
       setDone({ number: r?.account_number || "", bank: cleanBankName(r?.account_bank) });
-      setBvn("");
+      setBvn(""); setNin("");
     } catch (e) {
       setErr(e?.message || "Could not get your new number. Please try again.");
     } finally {
@@ -85,11 +89,9 @@ export default function WalletMigrationCard({ api, testMode = false, className =
 
       {!testMode && (
         <div className="mt-3">
-          <label className="text-[12px] font-semibold text-slate-500 dark:text-slate-400">BVN</label>
-          <input inputMode="numeric" value={bvn} onChange={(e) => setBvn(e.target.value.replace(/\D/g, "").slice(0, 11))}
-            placeholder="11-digit BVN" className={input} />
+          <WalletIdFields bvn={bvn} nin={nin} onBvn={setBvn} onNin={setNin} inputClass={input} />
           <p className="mt-1.5 text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-            Your BVN opens your new account with our banking partner and isn't stored by KudiAI. The name and date of birth on it
+            Your BVN or NIN opens your new account with our banking partner and isn't stored by KudiAI. The name and date of birth on it
             must match your profile. Enter it only here in the app.
           </p>
         </div>

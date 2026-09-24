@@ -10,6 +10,8 @@ import {
   FundWalletSheet, TransferSheet, ReceivePaymentSheet,
 } from "../components/WalletPanel";
 import WalletMigrationCard from "../components/WalletMigrationCard";
+import WalletIdFields from "../components/WalletIdFields";
+import { walletIdError } from "../utils/walletId";
 import TransactionDetailModal from "../components/shared/TransactionDetailModal";
 import { fmt } from "../utils/helpers";
 import { bizFromProfile } from "../utils/receiptConfig";
@@ -39,7 +41,8 @@ export default function Wallet({ session, store }) {
   };
   const activate = async () => {
     setErr("");
-    if (!walletTestMode && !/^\d{11}$/.test(bvn)) { setErr("Enter your 11-digit BVN"); return; }
+    const idErr = walletIdError(bvn, nin, walletTestMode);
+    if (idErr) { setErr(idErr); return; }
     setActivating(true);
     try {
       // Real BVN verification (bvnVerify) is temporarily not required before
@@ -156,18 +159,9 @@ export default function Wallet({ session, store }) {
             </p>
             {!walletTestMode && (
               <div className="space-y-3 mb-4">
-                <div>
-                  <label className="text-[12px] font-semibold text-slate-500 dark:text-slate-400">BVN</label>
-                  <input inputMode="numeric" value={bvn} onChange={(e) => setBvn(e.target.value.replace(/\D/g, "").slice(0, 11))}
-                    placeholder="11-digit BVN" className={idInput} />
-                </div>
-                <div>
-                  <label className="text-[12px] font-semibold text-slate-500 dark:text-slate-400">NIN <span className="text-slate-300 font-normal">optional</span></label>
-                  <input inputMode="numeric" value={nin} onChange={(e) => setNin(e.target.value.replace(/\D/g, "").slice(0, 11))}
-                    placeholder="11-digit NIN" className={idInput} />
-                </div>
+                <WalletIdFields bvn={bvn} nin={nin} onBvn={setBvn} onNin={setNin} inputClass={idInput} />
                 <p className="text-[11px] text-slate-400 leading-relaxed">
-                  Your BVN opens your account with our banking partner and isn't stored by KudiAI.
+                  Your BVN or NIN opens your account with our banking partner and isn't stored by KudiAI.
                   The name and date of birth on it must match your profile.
                 </p>
               </div>

@@ -53,25 +53,42 @@ describe("WalletMigrationCard", () => {
   it("refuses a BVN that is not 11 digits and does not call the server", async () => {
     const a = api();
     render({ api: a, testMode: false });
-    type(host.querySelector("input"), "12345");
+    type(host.querySelectorAll("input")[0], "12345");
     await click(host.querySelector("button"));
-    expect(host.textContent).toContain("Enter your 11-digit BVN");
+    expect(host.textContent).toContain("Your BVN must be exactly 11 digits");
+    expect(a.migrateAccount).not.toHaveBeenCalled();
+  });
+
+  it("asks for a BVN or a NIN when neither is entered", async () => {
+    const a = api();
+    render({ api: a, testMode: false });
+    await click(host.querySelector("button"));
+    expect(host.textContent).toContain("Enter your BVN or your NIN");
     expect(a.migrateAccount).not.toHaveBeenCalled();
   });
 
   it("strips non-digits from the BVN field and caps it at 11", () => {
     render({ api: api(), testMode: false });
-    const input = host.querySelector("input");
+    const input = host.querySelectorAll("input")[0];
     type(input, "12ab345-678901234");
     expect(input.value).toBe("12345678901");
+  });
+
+  it("a NIN alone is enough", async () => {
+    const a = api();
+    render({ api: a, testMode: false });
+    type(host.querySelectorAll("input")[1], "10987654321");
+    await click(host.querySelector("button"));
+    expect(a.migrateAccount).toHaveBeenCalledWith("", "10987654321");
+    expect(host.textContent).toContain("Your new account number is ready");
   });
 
   it("sends the BVN, then shows the new number", async () => {
     const a = api();
     render({ api: a, testMode: false });
-    type(host.querySelector("input"), "12345678901");
+    type(host.querySelectorAll("input")[0], "12345678901");
     await click(host.querySelector("button"));
-    expect(a.migrateAccount).toHaveBeenCalledWith("12345678901");
+    expect(a.migrateAccount).toHaveBeenCalledWith("12345678901", "");
     expect(host.textContent).toContain("Your new account number is ready");
     expect(host.textContent).toContain("9998887776");
     expect(host.textContent).toContain("Wema Bank");
@@ -81,7 +98,7 @@ describe("WalletMigrationCard", () => {
   it("keeps showing the confirmation after the wallet flips to active, until dismissed", async () => {
     const a = api();
     render({ api: a, testMode: false });
-    type(host.querySelector("input"), "12345678901");
+    type(host.querySelectorAll("input")[0], "12345678901");
     await click(host.querySelector("button"));
     render({ api: { ...a, accountState: "active" } });          // the refresh landed
     expect(host.textContent).toContain("9998887776");
@@ -92,7 +109,7 @@ describe("WalletMigrationCard", () => {
   it("shows the server's message when it fails, and lets them try again", async () => {
     const a = api({ migrateAccount: jest.fn().mockRejectedValue(new Error("Your BVN could not be verified.")) });
     render({ api: a, testMode: false });
-    type(host.querySelector("input"), "12345678901");
+    type(host.querySelectorAll("input")[0], "12345678901");
     await click(host.querySelector("button"));
     expect(host.textContent).toContain("Your BVN could not be verified.");
     expect(host.querySelector("button").disabled).toBe(false);
@@ -103,6 +120,6 @@ describe("WalletMigrationCard", () => {
     render({ api: a, testMode: true });
     expect(host.querySelector("input")).toBeNull();
     await click(host.querySelector("button"));
-    expect(a.migrateAccount).toHaveBeenCalledWith("");
+    expect(a.migrateAccount).toHaveBeenCalledWith("", "");
   });
 });

@@ -308,6 +308,10 @@ serve(async (req) => {
           r.auth = "ok";
           const b = await flwFetch("/banks?country=NG", { account: a });
           r.banks = b.ok ? "ok" : `failed (${b.status})`;
+          // what is actually in this account — compare against wallet_liability_ngn below before switching payouts to it
+          const bal = await flwFetch("/wallets/balances", { account: a });
+          const ngn = (((bal.data as { data?: { currency: string; available_balance: number }[] })?.data) || []).find((x) => x.currency === "NGN");
+          r.ngn_available = bal.ok ? Number(ngn?.available_balance ?? 0) : `failed (${bal.status})`;
         } catch (e) { r.auth = `failed: ${(e as Error).message}`; }
       }
       report[key] = r;
@@ -327,7 +331,13 @@ serve(async (req) => {
     if (ACCOUNTS.business.base !== ACCOUNTS.legacy.base) {
       warnings.push("the accounts use different API base URLs — the payout relay talks to ONE base (its FLW_BASE_URL)");
     }
-    return json({ ok: true, active: ACTIVE.key, relay_egress_ip: relayIp, accounts: report, warnings });
+    // What the wallets owe holders (all of it should be covered by the ACTIVE account's balance).
+    const { data: st } = await sb.rpc("flw_account_status");
+    return json({
+      ok: true, active: ACTIVE.key, relay_egress_ip: relayIp, accounts: report,
+      wallet_liability_ngn: (st as { total_balance_ngn?: number } | null)?.total_balance_ngn ?? null,
+      wallets: st ?? null, warnings,
+    });
   }
 
   if (!isConfigured(ACTIVE)) return json({ error: "Flutterwave not configured" }, 503);
@@ -380,10 +390,10 @@ serve(async (req) => {
               ["Your current number", esc(t.flw_account_number), { mono: true }],
               ["Keeps working until", until ? esc(until) : "For a short while"],
               ["What to do", "Open Wallet in the app and tap “Get my new number”"],
-              ["You will need", "Your BVN"],
+              ["You will need", "Your BVN or NIN"],
             ],
             note: "After the date above, transfers to your current number will not reach your wallet automatically. "
-              + "Enter your BVN <b>only inside the KudiAI Track app</b> — never send it to anyone by email, chat or phone, and never share your PIN or OTP.",
+              + "Enter your BVN or NIN <b>only inside the KudiAI Track app</b> — never send it to anyone by email, chat or phone, and never share your PIN or OTP.",
             button: { label: "Open Wallet →", url: appLink({ tab: "wallet" }) },
             security: false,
           }));
@@ -676,16 +686,20 @@ serve(async (req) => {
         });
       }
 
-      // ── BVN / NIN. In test mode a placeholder is fine; live requires a
-      //    completed BVN verification (see verify-bvn-init/verify-bvn-status)
-      //    for this EXACT BVN, done recently — v4 alone would happily create
-      //    an account with an unverified or fake BVN otherwise.
+      // ── BVN or NIN. Flutterwave needs ONE of them for an NGN virtual account, so either opens the wallet
+      //    (the other can be added later). In test mode a placeholder BVN is fine. Where a BVN is given and
+      //    real BVN verification is on, it must be a verified one (see verify-bvn-init/verify-bvn-status)
+      //    for this EXACT BVN, done recently — v4 alone would happily create an account with an unverified
+      //    or fake BVN otherwise. A NIN is validated by Flutterwave itself when the account is created.
       const testMode = (await cfg("wallet_test_mode", "true")) === "true";
       const bvn = String((body as Record<string, unknown>).bvn ?? "").replace(/\D/g, "");
       const nin = String((body as Record<string, unknown>).nin ?? "").replace(/\D/g, "");
+      // a malformed number is refused rather than silently dropped
+      if (bvn && !/^\d{11}$/.test(bvn)) return json({ error: "Your BVN must be exactly 11 digits", code: "bvn_format" }, 400);
+      if (nin && !/^\d{11}$/.test(nin)) return json({ error: "Your NIN must be exactly 11 digits", code: "nin_format" }, 400);
       const effBvn = bvn || (testMode ? FLW_TEST_BVN : "");
-      if (!/^\d{11}$/.test(effBvn)) {
-        return json({ error: "A valid 11-digit BVN is required to activate your wallet", code: "bvn_required" }, 400);
+      if (!effBvn && !nin) {
+        return json({ error: "Enter your BVN or your NIN (11 digits) to activate your wallet", code: "id_required" }, 400);
       }
 
       // profiles (business owner) first, aso_clients (an Ajo/savings client) as fallback
@@ -702,7 +716,7 @@ serve(async (req) => {
       // every wallet activation. Flip bvn_verification_enabled to 'true' in
       // platform_config once Flutterwave confirms the product is enabled; no
       // redeploy needed. The reverify banner (frontend) checks the same flag.
-      if (!testMode && (await cfg("bvn_verification_enabled", "false")) === "true") {
+      if (effBvn && !testMode && (await cfg("bvn_verification_enabled", "false")) === "true") {
         const filterCol = filterColFor(idTable);
         const { data: verRow } = await sb.from(idTable)
           .select("bvn_verified, bvn_hash, bvn_verified_at").eq(filterCol, targetUid).maybeSingle();
@@ -730,18 +744,21 @@ serve(async (req) => {
         customerId = (c.data as any)?.data?.id || "";
       }
 
+      // The idempotency key carries a short fingerprint of the ID used, so retrying with a corrected (or the other)
+      // number is a fresh request instead of replaying the failed one; the same number retried stays idempotent.
+      const idTag = (await sha256Hex(`${effBvn}|${nin}`)).slice(0, 10);
       const va = await flwFetch("/virtual-accounts", {
         method: "POST",
         account: target,
-        headers: { "X-Idempotency-Key": `va-${targetUid}` },
+        headers: { "X-Idempotency-Key": `va-${targetUid}-${idTag}` },
         body: JSON.stringify({
           customer_id: customerId,
           reference: `kdt-${targetUid}`,             // ≤42 chars, stable per user
           currency: "NGN",
           account_type: "static",
           amount: 0,
-          bvn: effBvn,
-          ...(nin.length === 11 ? { nin } : {}),
+          ...(effBvn ? { bvn: effBvn } : {}),
+          ...(nin ? { nin } : {}),
           narration: `KudiAI Wallet - ${fullName}`.slice(0, 60),
         }),
       });
@@ -763,7 +780,7 @@ serve(async (req) => {
         }
         return json({
           error: bvnBad
-            ? "Your BVN could not be verified. Check the number and that the name and date of birth on it match your profile."
+            ? "Your BVN or NIN could not be verified. Check the number and that the name and date of birth on it match your profile."
             : acctHold
               ? "Wallet activation is temporarily unavailable. Our team has been notified — please try again later."
               : "Could not create your wallet account. Please try again shortly.",

@@ -38,6 +38,8 @@ import ContributionCard from "../components/ContributionCard";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
 import { useWallet } from "../hooks/useWallet";
 import WalletMigrationCard from "../components/WalletMigrationCard";
+import WalletIdFields from "../components/WalletIdFields";
+import { walletIdError } from "../utils/walletId";
 import { useBvnVerification } from "../hooks/useBvnVerification";
 import { BottomSheet, ActionButton, AccountCard, FundWalletSheet, TransferSheet, ReceivePaymentSheet, WalletMiniAction, WALLET_MINI_ICONS, cleanBankName, WalletTxRow, WALLET_SOURCE } from "../components/WalletPanel";
 import WalletStatement from "./WalletStatement";
@@ -1211,7 +1213,7 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], contribu
       {!wallet?.hasAccount ? (
         <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-3 py-2.5">
           <p className="text-[12px] font-bold text-amber-700 dark:text-amber-300">Your KudiAI Wallet isn't ready yet</p>
-          <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">Contributions are paid from your wallet. Saving needs no BVN — opening a wallet does, that's a CBN rule, not ours.</p>
+          <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">Contributions are paid from your wallet. Saving needs no ID number — opening a wallet needs your BVN or NIN, that's a CBN rule, not ours.</p>
           <button onClick={() => { onClose(); onActivateWallet?.(); }}
             className="w-full mt-2.5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold text-[12.5px] transition active:scale-[0.99]">
             Activate wallet
@@ -5102,7 +5104,7 @@ function WalletActivationBanner({ onActivate, onDismiss }) {
       <div className="flex-1 min-w-0">
         <p className="text-[12.5px] font-bold text-brand-800 dark:text-brand-200">Open your KudiAI Wallet</p>
         <p className="text-[11px] text-brand-700/80 dark:text-brand-300/70 mt-0.5 leading-snug">
-          Saving needs no BVN. A digital wallet does — that's a CBN rule for bank-linked accounts, not a KudiAI one.
+          Saving needs no ID number. A digital wallet needs your BVN or NIN — that's a CBN rule for bank-linked accounts, not a KudiAI one.
         </p>
         <button onClick={onActivate}
           className="mt-2 text-[11px] font-bold text-white bg-brand-600 hover:bg-brand-700 rounded-xl px-3 py-1.5 transition active:scale-[0.97]">
@@ -5165,7 +5167,8 @@ function MemberWalletSheet({ wallet, testMode, bvnVerificationEnabled, client, b
 
   const activate = async () => {
     setErr("");
-    if (!testMode && !/^\d{11}$/.test(bvn)) { setErr("Enter your 11-digit BVN"); return; }
+    const idErr = walletIdError(bvn, nin, testMode);
+    if (idErr) { setErr(idErr); return; }
     if (!kycValid) { setErr("Fill in address and next of kin — required to open the wallet."); return; }
     setBusy(true);
     try {
@@ -5222,8 +5225,8 @@ function MemberWalletSheet({ wallet, testMode, bvnVerificationEnabled, client, b
       ) : !wallet.hasAccount ? (
         <div>
           <p className="text-[13px] text-slate-500 dark:text-slate-400 mb-1 leading-relaxed">
-            Saving with us needs no BVN. A digital wallet does — that's a CBN rule for bank-linked accounts, not a
-            KudiAI one.
+            Saving with us needs no ID number. A digital wallet needs your BVN or NIN — that's a CBN rule for
+            bank-linked accounts, not a KudiAI one.
           </p>
           <p className="text-[13px] text-slate-500 dark:text-slate-400 mb-4 leading-relaxed">
             Get your own dedicated account number. Fund it, pay your savings contributions from it, and cash out
@@ -5231,21 +5234,10 @@ function MemberWalletSheet({ wallet, testMode, bvnVerificationEnabled, client, b
           </p>
           {!testMode && (
             <div className="space-y-3 mb-4">
-              <div>
-                <label className="text-[12px] font-semibold text-slate-500 dark:text-slate-400">BVN</label>
-                <input inputMode="numeric" value={bvn} onChange={e => setBvn(e.target.value.replace(/\D/g, "").slice(0, 11))}
-                  placeholder="11-digit BVN"
-                  className="w-full mt-1.5 px-4 py-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/60 text-slate-900 dark:text-slate-50 text-[16px] font-semibold tracking-wider placeholder:font-normal placeholder:tracking-normal placeholder:text-slate-400 focus:outline-none focus:border-brand-400" />
-              </div>
-              <div>
-                <label className="text-[12px] font-semibold text-slate-500 dark:text-slate-400">NIN <span className="text-slate-300 font-normal">optional</span></label>
-                <input inputMode="numeric" value={nin} onChange={e => setNin(e.target.value.replace(/\D/g, "").slice(0, 11))}
-                  placeholder="11-digit NIN"
-                  className="w-full mt-1.5 px-4 py-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/60 text-slate-900 dark:text-slate-50 text-[16px] font-semibold tracking-wider placeholder:font-normal placeholder:tracking-normal placeholder:text-slate-400 focus:outline-none focus:border-brand-400" />
-              </div>
+              <WalletIdFields bvn={bvn} nin={nin} onBvn={setBvn} onNin={setNin} />
               <p className="text-[11px] text-slate-400 leading-relaxed">
-                Your BVN is required by the Central Bank of Nigeria to open any bank-linked account — it isn't a
-                KudiAI requirement, and your savings themselves need no BVN at all. It isn't stored by KudiAI; the
+                A BVN or NIN is required by the Central Bank of Nigeria to open any bank-linked account — it isn't a
+                KudiAI requirement, and your savings themselves need no ID number at all. It isn't stored by KudiAI; the
                 name and date of birth on it must match your profile.
               </p>
             </div>
