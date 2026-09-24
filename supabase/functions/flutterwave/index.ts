@@ -15,6 +15,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import nodemailer from "npm:nodemailer@6";
 import { bankEmail, esc, cleanSubject, nairaFromKobo, appLink, htmlToText } from "../_shared/bankEmail.ts";
+import { loadAccounts, isConfigured, resolveActive, graceStatus, type FlwAccount, type AccountKey } from "../_shared/flwAccounts.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin":  "*",
@@ -24,9 +25,11 @@ const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { ...CORS, "Content-Type": "application/json" } });
 
 const FLW_TOKEN_URL = "https://idp.flutterwave.com/realms/flutterwave/protocol/openid-connect/token";
-const FLW_BASE      = Deno.env.get("FLW_BASE_URL") || "https://developersandbox-api.flutterwave.com";
-const FLW_CLIENT_ID = Deno.env.get("FLW_CLIENT_ID") ?? "";
-const FLW_CLIENT_SECRET = Deno.env.get("FLW_CLIENT_SECRET") ?? "";
+// Two Flutterwave accounts can be live at once (see _shared/flwAccounts.ts): the original "legacy" one and the
+// business one the platform is moving to. ACTIVE is the account new numbers, payouts and name enquiries use;
+// it is re-read from platform_config at the start of every request. Before the switch it is always legacy.
+const ACCOUNTS = loadAccounts((k) => Deno.env.get(k));
+let ACTIVE: FlwAccount = ACCOUNTS.legacy;
 const FLW_TEST_BVN  = Deno.env.get("FLW_TEST_BVN") || "22222222222";
 // Optional static-IP relay for payouts (Flutterwave IP-whitelists transfers).
 const FLW_RELAY_URL = (Deno.env.get("FLW_RELAY_URL") || "").replace(/\/$/, "");
@@ -34,7 +37,6 @@ const FLW_RELAY_KEY = Deno.env.get("FLW_RELAY_KEY") ?? "";
 // v3 — used ONLY for BVN Verification (v4 has no such product at all). Static
 // secret-key auth, completely separate host/auth from the v4 OAuth flow above.
 const FLW_V3_BASE       = "https://api.flutterwave.com";
-const FLW_V3_SECRET_KEY = Deno.env.get("FLW_V3_SECRET_KEY") ?? "";
 const SUPABASE_URL  = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY   = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const ANON_KEY      = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
@@ -63,29 +65,33 @@ async function sendWalletEmail(sb: any, to: string, subject: string, build: () =
 
 const fmtNgn = (kobo: number) => `₦${(kobo / 100).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
 
-// ── OAuth token cache (survives across invocations in the same isolate) ──────
-let _tok = { value: "", exp: 0 };
-async function flwToken(): Promise<string> {
-  if (_tok.value && Date.now() < _tok.exp - 60_000) return _tok.value;
+// ── OAuth token cache, one per account (survives across invocations in the same isolate) ──
+const _toks: Partial<Record<AccountKey, { value: string; exp: number }>> = {};
+async function flwToken(acct: FlwAccount = ACTIVE): Promise<string> {
+  const cached = _toks[acct.key];
+  if (cached && cached.value && Date.now() < cached.exp - 60_000) return cached.value;
   const res = await fetch(FLW_TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       grant_type: "client_credentials",
-      client_id: FLW_CLIENT_ID,
-      client_secret: FLW_CLIENT_SECRET,
+      client_id: acct.clientId,
+      client_secret: acct.clientSecret,
     }),
   });
   const j = await res.json().catch(() => ({}));
   if (!res.ok || !j.access_token) {
-    throw new Error(`FLW auth failed (${res.status}): ${j.error_description || j.error || "unknown"}`);
+    throw new Error(`FLW auth failed (${acct.key}, ${res.status}): ${j.error_description || j.error || "unknown"}`);
   }
-  _tok = { value: j.access_token, exp: Date.now() + (Number(j.expires_in || 600) * 1000) };
-  return _tok.value;
+  _toks[acct.key] = { value: j.access_token, exp: Date.now() + (Number(j.expires_in || 600) * 1000) };
+  return j.access_token as string;
 }
 
-async function flwFetch(path: string, init: RequestInit & { scenario?: string; relay?: boolean } = {}) {
-  const token = await flwToken();
+// `account` picks the Flutterwave account for this call (default: the active one).
+async function flwFetch(path: string, rawInit: RequestInit & { scenario?: string; relay?: boolean; account?: FlwAccount } = {}) {
+  const { account, ...init } = rawInit;
+  const acct = account ?? ACTIVE;
+  const token = await flwToken(acct);
   const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`,
     "Content-Type": "application/json",
@@ -96,7 +102,7 @@ async function flwFetch(path: string, init: RequestInit & { scenario?: string; r
   // Payouts must leave from a whitelisted IP — send them via the static-IP relay
   // when one is configured. Everything else goes direct.
   const useRelay = init.relay && FLW_RELAY_URL && FLW_RELAY_KEY;
-  const target = useRelay ? `${FLW_RELAY_URL}${path}` : `${FLW_BASE}${path}`;
+  const target = useRelay ? `${FLW_RELAY_URL}${path}` : `${acct.base}${path}`;
   if (useRelay) headers["x-relay-key"] = FLW_RELAY_KEY;
 
   const res = await fetch(target, { ...init, headers });
@@ -111,7 +117,7 @@ async function flwFetch(path: string, init: RequestInit & { scenario?: string; r
 // api.flutterwave.com. Used exclusively by verify-bvn-init/verify-bvn-status.
 async function flwV3Fetch(path: string, init: RequestInit = {}) {
   const headers: Record<string, string> = {
-    Authorization: `Bearer ${FLW_V3_SECRET_KEY}`,
+    Authorization: `Bearer ${ACTIVE.v3Key}`,
     "Content-Type": "application/json",
     ...(init.headers as Record<string, string> || {}),
   };
@@ -126,6 +132,33 @@ async function flwV3Fetch(path: string, init: RequestInit = {}) {
 async function sha256Hex(input: string): Promise<string> {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
   return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+// Is this a server-to-server call (service role)? True only for the service key itself, the internal shared
+// secret, or a service_role JWT that the DATABASE accepts.
+//
+// SECURITY: this function is deployed --no-verify-jwt, so nothing upstream checks a JWT's signature. It used to
+// decode the token and believe its `role` claim — meaning anyone could forge an unsigned token claiming
+// role=service_role and call `disburse` (a bank payout), `provision-account` for any user, etc. The claim is now
+// only a hint for whether to ask; PostgREST verifies the signature and only a genuine service_role token may run
+// the service-only probe function.
+async function isServiceCall(req: Request, token: string): Promise<boolean> {
+  const internal = req.headers.get("x-internal-secret") ?? "";
+  if (SERVICE_KEY && token === SERVICE_KEY) return true;
+  if (INTERNAL_SECRET && (internal === INTERNAL_SECRET || token === INTERNAL_SECRET)) return true;
+  if (!token || token.split(".").length !== 3) return false;
+  try {
+    const p = JSON.parse(atob((token.split(".")[1] || "").replace(/-/g, "+").replace(/_/g, "/")));
+    if (p?.role !== "service_role") return false;          // ordinary user tokens never reach the probe
+  } catch { return false; }
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/flw_account_status`, {
+      method: "POST",
+      headers: { apikey: token, Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: "{}",
+    });
+    return r.ok;
+  } catch { return false; }
 }
 
 // Resolve a target user's identity — profiles (business owner) first,
@@ -237,8 +270,6 @@ async function flwDisburse(o: {
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
-  if (!FLW_CLIENT_ID || !FLW_CLIENT_SECRET) return json({ error: "Flutterwave not configured" }, 503);
-
   let body: Record<string, unknown>;
   try { body = await req.json(); } catch { return json({ error: "Invalid JSON" }, 400); }
 
@@ -253,19 +284,14 @@ serve(async (req) => {
     return (data?.value ?? dflt) as string;
   };
 
+  // Which Flutterwave account is active right now (legacy until the switch).
+  ACTIVE = resolveActive(ACCOUNTS, await cfg("flw_active_account", "legacy"), (m) => console.warn("[flutterwave]", m));
+  if (!isConfigured(ACTIVE)) return json({ error: "Flutterwave not configured" }, 503);
+
   try {
     // ═══ disburse — server-to-server only (called by the admin approval API) ═
     if (action === "disburse") {
-      const internal = req.headers.get("x-internal-secret") ?? "";
-      // A bearer token that decodes to a service_role JWT for this project also passes.
-      let jwtServiceRole = false;
-      try {
-        const p = JSON.parse(atob((token.split(".")[1] || "").replace(/-/g, "+").replace(/_/g, "/")));
-        jwtServiceRole = p?.role === "service_role" && (!p?.ref || SUPABASE_URL.includes(p.ref));
-      } catch { /* not a JWT */ }
-      const authed = (SERVICE_KEY && token === SERVICE_KEY)
-        || (INTERNAL_SECRET && (internal === INTERNAL_SECRET || token === INTERNAL_SECRET))
-        || jwtServiceRole;
+      const authed = await isServiceCall(req, token);
       if (!authed) return json({ error: "Unauthorized" }, 401);
       const { reference, amount_kobo, bank_code, account_number, account_name, narration } = body as {
         reference: string; amount_kobo: number; bank_code: string;
@@ -391,15 +417,7 @@ serve(async (req) => {
     // must actively approve on Flutterwave's hosted page before we learn
     // whether the BVN is real and matches a name.
     if (action === "verify-bvn-init") {
-      const internal = req.headers.get("x-internal-secret") ?? "";
-      let jwtServiceRole = false;
-      try {
-        const p = JSON.parse(atob((token.split(".")[1] || "").replace(/-/g, "+").replace(/_/g, "/")));
-        jwtServiceRole = p?.role === "service_role" && (!p?.ref || SUPABASE_URL.includes(p.ref));
-      } catch { /* not a JWT */ }
-      const serviceAuthed = (SERVICE_KEY && token === SERVICE_KEY)
-        || (INTERNAL_SECRET && (internal === INTERNAL_SECRET || token === INTERNAL_SECRET))
-        || jwtServiceRole;
+      const serviceAuthed = await isServiceCall(req, token);
       const targetFromBody = String((body as Record<string, unknown>).target_user_id || "");
 
       let targetUid: string;
@@ -412,7 +430,7 @@ serve(async (req) => {
         targetUid = selfUser.id;
       }
 
-      if (!FLW_V3_SECRET_KEY) return json({ error: "BVN verification is not configured" }, 503);
+      if (!ACTIVE.v3Key) return json({ error: "BVN verification is not configured" }, 503);
 
       const bvn = String((body as Record<string, unknown>).bvn ?? "").replace(/\D/g, "");
       if (!/^\d{11}$/.test(bvn)) return json({ error: "Enter a valid 11-digit BVN" }, 400);
@@ -453,15 +471,7 @@ serve(async (req) => {
 
     // ═══ verify-bvn-status — check/finalise a pending BVN consent ═══════════
     if (action === "verify-bvn-status") {
-      const internal = req.headers.get("x-internal-secret") ?? "";
-      let jwtServiceRole = false;
-      try {
-        const p = JSON.parse(atob((token.split(".")[1] || "").replace(/-/g, "+").replace(/_/g, "/")));
-        jwtServiceRole = p?.role === "service_role" && (!p?.ref || SUPABASE_URL.includes(p.ref));
-      } catch { /* not a JWT */ }
-      const serviceAuthed = (SERVICE_KEY && token === SERVICE_KEY)
-        || (INTERNAL_SECRET && (internal === INTERNAL_SECRET || token === INTERNAL_SECRET))
-        || jwtServiceRole;
+      const serviceAuthed = await isServiceCall(req, token);
       const targetFromBody = String((body as Record<string, unknown>).target_user_id || "");
 
       let targetUid: string;
@@ -474,7 +484,7 @@ serve(async (req) => {
         targetUid = selfUser.id;
       }
 
-      if (!FLW_V3_SECRET_KEY) return json({ error: "BVN verification is not configured" }, 503);
+      if (!ACTIVE.v3Key) return json({ error: "BVN verification is not configured" }, 503);
 
       const { table, fullName } = await resolveIdentity(sb, targetUid);
       const filterCol = filterColFor(table);
@@ -524,15 +534,7 @@ serve(async (req) => {
     // added, has no session of their own yet — same auth as `disburse` lets
     // manage-ajo-client-account provision on their behalf (target_user_id).
     if (action === "provision-account") {
-      const internal = req.headers.get("x-internal-secret") ?? "";
-      let jwtServiceRole = false;
-      try {
-        const p = JSON.parse(atob((token.split(".")[1] || "").replace(/-/g, "+").replace(/_/g, "/")));
-        jwtServiceRole = p?.role === "service_role" && (!p?.ref || SUPABASE_URL.includes(p.ref));
-      } catch { /* not a JWT */ }
-      const serviceAuthed = (SERVICE_KEY && token === SERVICE_KEY)
-        || (INTERNAL_SECRET && (internal === INTERNAL_SECRET || token === INTERNAL_SECRET))
-        || jwtServiceRole;
+      const serviceAuthed = await isServiceCall(req, token);
       const targetFromBody = String((body as Record<string, unknown>).target_user_id || "");
 
       let targetUid: string;
@@ -553,10 +555,31 @@ serve(async (req) => {
       if (initErr) { console.error("[flutterwave] wallet_get_or_create_for:", initErr.message); return json({ error: "Wallet init failed" }, 500); }
       const { data: w } = await sb.from("wallets").select("*").eq("user_id", targetUid).maybeSingle();
       if (!w) return json({ error: "Wallet init failed" }, 500);
-      if (w.flw_virtual_account_id && w.flw_account_number) {
+      // Which Flutterwave account this wallet's number lives on, and which one a NEW number should be
+      // created under (normally the active account; a service caller can pin one for a pilot).
+      const walletAcct: AccountKey = w.flw_account === "business" ? "business" : "legacy";
+      const hasVa = !!(w.flw_virtual_account_id && w.flw_account_number);
+      let target: FlwAccount = ACTIVE;
+      const pinned = String((body as Record<string, unknown>).use_account || "");
+      if (serviceAuthed && (pinned === "business" || pinned === "legacy")) target = ACCOUNTS[pinned];
+      if (!isConfigured(target)) return json({ error: `The ${target.key} Flutterwave account is not configured` }, 503);
+      const wantsMigrate = (body as Record<string, unknown>).migrate === true;
+
+      if (hasVa && walletAcct === target.key) {
         return json({
           ok: true, account_number: w.flw_account_number,
           account_bank: w.flw_account_bank, account_name: w.flw_account_name,
+          account: walletAcct,
+        });
+      }
+      if (hasVa && !wantsMigrate) {
+        // The wallet still sits on the other account. Its old number keeps working during the grace period;
+        // the caller must ask explicitly (migrate: true, with a BVN) to move to the new one.
+        const g = graceStatus(ACTIVE.key, await cfg("flw_legacy_grace_until", ""));
+        return json({
+          ok: true, needs_migration: true, account: walletAcct,
+          account_number: w.flw_account_number, account_bank: w.flw_account_bank, account_name: w.flw_account_name,
+          grace_until: g.until ? new Date(g.until).toISOString() : null, retired: g.retired,
         });
       }
 
@@ -598,10 +621,12 @@ serve(async (req) => {
         }
       }
 
-      let customerId = w.flw_customer_id as string | null;
+      // A stored customer id only means something on the account that created it.
+      let customerId = (walletAcct === target.key ? (w.flw_customer_id as string | null) : null) ?? null;
       if (!customerId) {
         const c = await flwFetch("/customers", {
           method: "POST",
+          account: target,
           headers: { "X-Idempotency-Key": `cus-${targetUid}` },
           body: JSON.stringify({
             email, name: { first: fn || "KudiAI", last: ln.join(" ") || "Owner" },
@@ -614,6 +639,7 @@ serve(async (req) => {
 
       const va = await flwFetch("/virtual-accounts", {
         method: "POST",
+        account: target,
         headers: { "X-Idempotency-Key": `va-${targetUid}` },
         body: JSON.stringify({
           customer_id: customerId,
@@ -654,17 +680,30 @@ serve(async (req) => {
       }
       const v = (va.data as any)?.data || {};
 
-      await sb.rpc("wallet_persist_account", {
+      const persistArgs = {
         p_user_id: targetUid,
         p_customer_id: customerId,
         p_va_id: v.id || "",
         p_account_no: v.account_number || "",
         p_account_bank: v.account_bank_name || "",
         p_account_name: v.narration || fullName,
-      });
+      };
+      let migrated = false;
+      if (hasVa) {
+        // Moving an existing wallet to the new account: the old number is remembered (legacy_flw_*) so deposits
+        // made to it during the grace period still credit this wallet.
+        const { data: moved, error: mErr } = await sb.rpc("wallet_migrate_account", persistArgs);
+        if (mErr) { console.error("[flutterwave] wallet_migrate_account:", mErr.message); return json({ error: "Could not switch your wallet to the new account. Please try again." }, 500); }
+        migrated = moved === true;
+      } else {
+        const { error: pErr } = await sb.rpc("wallet_persist_account", { ...persistArgs, p_account: target.key });
+        if (pErr) { console.error("[flutterwave] wallet_persist_account:", pErr.message); return json({ error: "Could not save your wallet account. Please try again." }, 500); }
+      }
 
       return json({
         ok: true,
+        migrated,
+        account: target.key,
         account_number: v.account_number || "",
         account_bank: v.account_bank_name || "",
         account_name: v.narration || fullName,
@@ -694,8 +733,10 @@ serve(async (req) => {
 
       // Reuse the user's wallet customer_id if they have one; otherwise create a
       // lightweight Flutterwave customer just for this charge.
-      const { data: w } = await sb.from("wallets").select("flw_customer_id").eq("user_id", uid).maybeSingle();
-      let customerId = w?.flw_customer_id as string | null;
+      // (A customer id only means something on the Flutterwave account that created it, so a wallet that
+      // still sits on the other account gets a fresh customer on the active one.)
+      const { data: w } = await sb.from("wallets").select("flw_customer_id, flw_account").eq("user_id", uid).maybeSingle();
+      let customerId = (w?.flw_account === "business" ? "business" : "legacy") === ACTIVE.key ? (w?.flw_customer_id as string | null) : null;
       if (!customerId) {
         const { data: profile } = await sb.from("profiles").select("email, full_name, business_name, phone").eq("id", uid).maybeSingle();
         const email = profile?.email || user.email || `bill+${uid.slice(0, 8)}@kudiai.app`;
@@ -776,7 +817,7 @@ serve(async (req) => {
     if (action === "simulate-topup") {
       if ((await cfg("wallet_test_mode", "true")) !== "true") return json({ error: "Not available" }, 403);
       const { data: w } = await sb.from("wallets").select("*").eq("user_id", uid).maybeSingle();
-      if (!w?.flw_customer_id) return json({ error: "Activate your wallet first" }, 400);
+      if (!w?.flw_customer_id || (w.flw_account === "business" ? "business" : "legacy") !== ACTIVE.key) return json({ error: "Activate your wallet first" }, 400);
       const naira = Math.min(Math.max(Math.round(Number(body.amount_naira || 2000)), 100), 50000);
       const r = await flwFetch("/virtual-accounts", {
         method: "POST",
