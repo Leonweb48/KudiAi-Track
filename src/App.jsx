@@ -13,6 +13,9 @@ import { useBranches }       from "./hooks/useBranches";
 import { usePermissions }    from "./hooks/usePermissions";
 import { useNotifications }  from "./hooks/useNotifications";
 import { useConsent }        from "./hooks/useConsent";
+import { useWalletMigrationGate } from "./hooks/useWalletMigrationGate";
+import WalletMigrationGate   from "./components/WalletMigrationGate";
+import { performLogout }     from "./utils/logout";
 import { usePlatformConfig } from "./hooks/usePlatformConfig";
 import { supabase }          from "./utils/supabase";
 import { unlockAudio }       from "./utils/tts";
@@ -180,7 +183,16 @@ export default function App() {
   const pinLock = usePinLock(userId);
 
   // Feature flags — fetched once per session from platform_config table, no rebuild to toggle
-  const { coopEnabled, walletEnabled, configLoading } = usePlatformConfig();
+  const { coopEnabled, walletEnabled, walletTestMode, configLoading } = usePlatformConfig();
+
+  // Wallet account-number move: anyone whose wallet still has a number on the OLD bank account must get a new one at login
+  // (see hooks/useWalletMigrationGate.js). Owners, staff, branch managers and Ajo/Esusu clients have wallets; coop members,
+  // marketers and organisations don't.
+  const WALLET_GATE_STATUSES = ["ready", "staff", "branch_manager", "ajo_client"];
+  const walletGate = useWalletMigrationGate(
+    (status === "ajo_client" ? ajoClient?.client_user_id : null) || userId,
+    !!walletEnabled && WALLET_GATE_STATUSES.includes(status),
+  );
 
   // Notification engine — owner portal only. Pass null for ajo_client to prevent a
   // ghost realtime subscription when AjoMemberPortal's NotificationCenter is live.
@@ -551,6 +563,15 @@ export default function App() {
   const langGateStatuses = ["ready", "staff", "branch_manager", "marketer", "organisation", "org_member", "ajo_client"];
   if (langGateStatuses.includes(status) && !langChosen && !store.loading) {
     return <S><LanguageSelector userId={userId} /></S>;
+  }
+
+  // ── Wallet account-number gate — after PIN/lock/language, before any portal ──
+  // Shows a spinner only for the first check (capped at 4 s inside the hook), then either the step or nothing.
+  if (WALLET_GATE_STATUSES.includes(status)) {
+    if (walletGate.checking) return <Spinner />;
+    if (walletGate.blocking || walletGate.holding) {
+      return <WalletMigrationGate gate={walletGate} testMode={walletTestMode} onLogout={performLogout} />;
+    }
   }
 
   // ── Authenticated portals (PIN already set) ──

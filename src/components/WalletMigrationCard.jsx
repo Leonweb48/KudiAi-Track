@@ -11,7 +11,7 @@ const fmtDay = (ms) => new Date(ms).toLocaleDateString("en-GB", { day: "numeric"
 //   retired — the deadline has passed; the old number no longer credits the wallet
 // `api` is the useWallet() object. Renders nothing for anyone else, so screens can mount it unconditionally — it also
 // keeps showing the "here is your new number" confirmation after the wallet flips to `active`.
-export default function WalletMigrationCard({ api, testMode = false, className = "" }) {
+export default function WalletMigrationCard({ api, testMode = false, className = "", onDone }) {
   const [bvn, setBvn] = useState("");
   const [nin, setNin] = useState("");
   const [busy, setBusy] = useState(false);
@@ -60,7 +60,7 @@ export default function WalletMigrationCard({ api, testMode = false, className =
           {api.graceUntilMs && !retired ? ` Your old number keeps working until ${fmtDay(api.graceUntilMs)}.` : ""}
           {" "}Your balance and history haven't changed.
         </p>
-        <button onClick={() => setDone(null)}
+        <button onClick={() => { setDone(null); onDone?.(); }}
           className="mt-3 w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[13px]">
           Done
         </button>
