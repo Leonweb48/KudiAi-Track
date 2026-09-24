@@ -16,6 +16,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import nodemailer from "npm:nodemailer@6";
 import { bankEmail, esc, cleanSubject, nairaFromKobo, appLink, htmlToText } from "../_shared/bankEmail.ts";
 import { loadAccounts, isConfigured, resolveActive, graceStatus, type FlwAccount, type AccountKey } from "../_shared/flwAccounts.ts";
+import { customerName, customerPhone, customerEmail } from "../_shared/flwCustomer.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin":  "*",
@@ -704,10 +705,8 @@ serve(async (req) => {
 
       // profiles (business owner) first, aso_clients (an Ajo/savings client) as fallback
       const { table: idTable, fullName: idFullName, phoneRaw: idPhone, email: idEmail } = await resolveIdentity(sb, targetUid);
-      const email    = idEmail || `wallet+${targetUid.slice(0, 8)}@kudiai.app`;
+      const email    = customerEmail(idEmail, `wallet+${targetUid.slice(0, 8)}@kudiai.app`);
       const fullName = idFullName || "KudiAI Owner";
-      const phoneRaw = idPhone;
-      const [fn, ...ln] = fullName.split(/\s+/);
 
       // Real BVN verification (verify-bvn-init/verify-bvn-status, Flutterwave v3)
       // is gated on this flag rather than always-on, because Flutterwave has BVN
@@ -731,16 +730,27 @@ serve(async (req) => {
       // A stored customer id only means something on the account that created it.
       let customerId = (walletAcct === target.key ? (w.flw_customer_id as string | null) : null) ?? null;
       if (!customerId) {
+        // Flutterwave's customer API only takes letters in names and a 7–10 digit phone (see _shared/flwCustomer.ts) —
+        // a business name like "Amaya & Co." used to be rejected here, failing every such activation.
+        const custBody = JSON.stringify({
+          email, name: customerName(fullName, "Owner"),
+          ...(customerPhone(idPhone) ? { phone: customerPhone(idPhone) } : {}),
+        });
         const c = await flwFetch("/customers", {
           method: "POST",
           account: target,
-          headers: { "X-Idempotency-Key": `cus-${targetUid}` },
-          body: JSON.stringify({
-            email, name: { first: fn || "KudiAI", last: ln.join(" ") || "Owner" },
-            ...(phoneRaw.length >= 10 ? { phone: { country_code: "234", number: phoneRaw.replace(/^234/, "").replace(/^0/, "") } } : {}),
-          }),
+          // fingerprint of the payload: a corrected profile is a fresh request, an identical retry stays idempotent
+          headers: { "X-Idempotency-Key": `cus-${targetUid}-${(await sha256Hex(custBody)).slice(0, 10)}` },
+          body: custBody,
         });
-        if (!c.ok) return json({ error: "Could not create wallet profile", detail: c.data }, 502);
+        if (!c.ok) {
+          return json({
+            error: c.status === 400
+              ? "We couldn't set up your wallet profile. Please check the name and phone number on your profile, then try again."
+              : "Could not create wallet profile",
+            code: "profile_failed", detail: c.data,
+          }, 502);
+        }
         customerId = (c.data as any)?.data?.id || "";
       }
 
@@ -849,17 +859,16 @@ serve(async (req) => {
       let customerId = (w?.flw_account === "business" ? "business" : "legacy") === ACTIVE.key ? (w?.flw_customer_id as string | null) : null;
       if (!customerId) {
         const { data: profile } = await sb.from("profiles").select("email, full_name, business_name, phone").eq("id", uid).maybeSingle();
-        const email = profile?.email || user.email || `bill+${uid.slice(0, 8)}@kudiai.app`;
+        const email = customerEmail(profile?.email || user.email, `bill+${uid.slice(0, 8)}@kudiai.app`);
         const fullName = (profile?.full_name || profile?.business_name || "KudiAI User").trim();
-        const [fn, ...ln] = fullName.split(/\s+/);
-        const phoneRaw = String(profile?.phone ?? "").replace(/\D/g, "");
+        const custBody = JSON.stringify({
+          email, name: customerName(fullName, "User"),
+          ...(customerPhone(String(profile?.phone ?? "")) ? { phone: customerPhone(String(profile?.phone ?? "")) } : {}),
+        });
         const c = await flwFetch("/customers", {
           method: "POST",
-          headers: { "X-Idempotency-Key": `cus-${uid}` },
-          body: JSON.stringify({
-            email, name: { first: fn || "KudiAI", last: ln.join(" ") || "User" },
-            ...(phoneRaw.length >= 10 ? { phone: { country_code: "234", number: phoneRaw.replace(/^234/, "").replace(/^0/, "") } } : {}),
-          }),
+          headers: { "X-Idempotency-Key": `cus-${uid}-${(await sha256Hex(custBody)).slice(0, 10)}` },
+          body: custBody,
         });
         if (!c.ok) return json({ error: "Could not start payment. Please try again." }, 502);
         customerId = (c.data as any)?.data?.id || "";
