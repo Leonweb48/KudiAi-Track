@@ -28,6 +28,13 @@ export default function WalletMigrationCard({ api, testMode = false, className =
     setBusy(true);
     try {
       const r = await api.migrateAccount(bvn, nin);
+      // Only a wallet the server actually MOVED has a new number. If it answered with the existing one (the platform
+      // switched back to the old account since this screen loaded), say so instead of calling that number "new".
+      if (r?.migrated !== true && r?.account !== "business") {
+        setErr("Your new account number isn't available yet — nothing has changed on your wallet. Please try again later.");
+        api.refresh?.();
+        return;
+      }
       setDone({ number: r?.account_number || "", bank: cleanBankName(r?.account_bank) });
       setBvn(""); setNin("");
     } catch (e) {

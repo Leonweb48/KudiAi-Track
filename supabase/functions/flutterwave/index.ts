@@ -670,8 +670,11 @@ serve(async (req) => {
       const wantsMigrate = (body as Record<string, unknown>).migrate === true;
 
       if (hasVa && walletAcct === target.key) {
+        // Nothing to do — the wallet's number is already on the account we'd create one under. `migrated: false`
+        // matters to the "Get my new number" screen: after a rollback its cached state can be stale, and it must not
+        // present this (existing) number as a new one.
         return json({
-          ok: true, account_number: w.flw_account_number,
+          ok: true, migrated: false, account_number: w.flw_account_number,
           account_bank: w.flw_account_bank, account_name: w.flw_account_name,
           account: walletAcct,
         });

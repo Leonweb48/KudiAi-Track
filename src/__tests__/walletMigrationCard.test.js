@@ -20,7 +20,7 @@ const type = (input, value) => act(() => {
 const click = (el) => act(async () => { el.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
 
 const GRACE = Date.parse("2026-10-08T12:00:00Z");
-const api = (over = {}) => ({ accountState: "migrate", graceUntilMs: GRACE, graceDaysLeft: 5, busy: false, migrateAccount: jest.fn().mockResolvedValue({ account_number: "9998887776", account_bank: "Wema Bank (NG)" }), ...over });
+const api = (over = {}) => ({ accountState: "migrate", graceUntilMs: GRACE, graceDaysLeft: 5, busy: false, migrateAccount: jest.fn().mockResolvedValue({ ok: true, migrated: true, account: "business", account_number: "9998887776", account_bank: "Wema Bank (NG)" }), ...over });
 
 describe("WalletMigrationCard", () => {
   it("renders nothing for wallets that are already on the current account, or have none", () => {
@@ -113,6 +113,18 @@ describe("WalletMigrationCard", () => {
     await click(host.querySelector("button"));
     expect(host.textContent).toContain("Your BVN could not be verified.");
     expect(host.querySelector("button").disabled).toBe(false);
+  });
+
+  it("does NOT call the existing number \"new\" when the server did not move the wallet (platform switched back)", async () => {
+    const a = api({ refresh: jest.fn(), migrateAccount: jest.fn().mockResolvedValue({ ok: true, migrated: false, account: "legacy", account_number: "1111222233", account_bank: "Flutterwave MFB" }) });
+    render({ api: a, testMode: false });
+    type(host.querySelectorAll("input")[0], "12345678901");
+    await click(host.querySelector("button"));
+    expect(host.textContent).not.toContain("Your new account number is ready");
+    expect(host.textContent).not.toContain("1111222233");
+    expect(host.textContent).toContain("isn't available yet");
+    expect(a.refresh).toHaveBeenCalled();
+    expect(host.querySelector("button").disabled).toBe(false);      // can try again later
   });
 
   it("test mode needs no BVN", async () => {
