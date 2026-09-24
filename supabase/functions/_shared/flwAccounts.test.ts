@@ -1,5 +1,5 @@
 // deno test --no-lock --node-modules-dir=none supabase/functions/_shared/flwAccounts.test.ts
-import { graceStatus, identifySigner, isConfigured, loadAccounts, resolveActive } from "./flwAccounts.ts";
+import { graceStatus, identifySigner, isConfigured, loadAccounts, PREV_HASH_HONOURED_UNTIL, resolveActive } from "./flwAccounts.ts";
 
 function assert(cond: unknown, msg: string) { if (!cond) throw new Error("assertion failed: " + msg); }
 const fakeHmac = (secret: string, body: string) => `hmac(${secret}|${body})`;
@@ -49,9 +49,12 @@ Deno.test("webhook secret rotation: the previous hash keeps working alongside th
   const a = loadAccounts(env({ FLW_WEBHOOK_SECRET_HASH: "new-legacy", FLW_WEBHOOK_SECRET_HASH_PREV: "old-legacy", FLW_BIZ_WEBHOOK_SECRET_HASH: "biz" }));
   const body = "{}";
   assert(a.legacy.webhookHashPrev === "old-legacy" && a.business.webhookHashPrev === "", "prev is loaded per account");
-  assert(identifySigner("new-legacy", body, a, fakeHmac) === "legacy", "the new hash works");
-  assert(identifySigner("old-legacy", body, a, fakeHmac) === "legacy", "the old hash still works during the rotation");
-  assert(identifySigner(fakeHmac("old-legacy", body), body, a, fakeHmac) === "legacy", "and so does an HMAC made with the old one");
+  const T0 = PREV_HASH_HONOURED_UNTIL - 86_400_000;
+  assert(identifySigner("new-legacy", body, a, fakeHmac, T0) === "legacy", "the new hash works");
+  assert(identifySigner("old-legacy", body, a, fakeHmac, T0) === "legacy", "the old hash still works during the rotation");
+  assert(identifySigner(fakeHmac("old-legacy", body), body, a, fakeHmac, T0) === "legacy", "and so does an HMAC made with the old one");
+  assert(identifySigner("old-legacy", body, a, fakeHmac, PREV_HASH_HONOURED_UNTIL + 1) === null, "after the cut-off date the old hash is dead even though *_PREV is still set");
+  assert(identifySigner("new-legacy", body, a, fakeHmac, PREV_HASH_HONOURED_UNTIL + 1) === "legacy", "the new hash keeps working after the cut-off");
   assert(identifySigner("biz", body, a, fakeHmac) === "business", "the business hash is unaffected");
   const done = loadAccounts(env({ FLW_WEBHOOK_SECRET_HASH: "new-legacy" }));
   assert(identifySigner("old-legacy", body, done, fakeHmac) === null, "once PREV is removed the old hash is dead");

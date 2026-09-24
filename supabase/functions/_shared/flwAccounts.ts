@@ -20,6 +20,13 @@
 
 export type AccountKey = "legacy" | "business";
 
+/**
+ * A PREVIOUS webhook secret hash is only honoured until this moment (one week after the old-wallet-number deadline of 1 Oct 2026),
+ * so an old — possibly leaked — hash stops working on its own even if nobody ever removes the *_PREV secret. To rotate again
+ * later, move this date forward when setting a new *_PREV.
+ */
+export const PREV_HASH_HONOURED_UNTIL = Date.parse("2026-10-08T00:00:00Z");
+
 export interface FlwAccount {
   key: AccountKey;
   clientId: string;
@@ -84,11 +91,12 @@ export function identifySigner(
   rawBody: string,
   accounts: Record<AccountKey, FlwAccount>,
   hmacBase64: (secret: string, body: string) => string,
+  now: number = Date.now(),
 ): AccountKey | null {
   if (!signature) return null;
   for (const key of ["business", "legacy"] as AccountKey[]) {
     // the current hash, then (only while a rotation is in flight) the previous one — so swapping a secret never drops an event
-    for (const hash of [accounts[key].webhookHash, accounts[key].webhookHashPrev]) {
+    for (const hash of [accounts[key].webhookHash, now < PREV_HASH_HONOURED_UNTIL ? accounts[key].webhookHashPrev : ""]) {
       if (!hash) continue;
       if (signature === hash || signature === hmacBase64(hash, rawBody)) return key;
     }
