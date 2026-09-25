@@ -203,7 +203,7 @@ serve(async (req) => {
   // service-role key. This function is deployed --no-verify-jwt, so the gateway does NOT check anything for us:
   // these MUST be gated here (they used to be reachable by anyone on the internet with no credentials at all).
   let callerUser: { id: string } | null = null;   // set for ordinary logged-in callers; stays null for server (service-role) calls
-  const SERVICE_ONLY = new Set(["wallet-balance", "connectivity-check", "wallet-balance-alert", "health-check", "data-probe", "refresh-ck-prices"]);
+  const SERVICE_ONLY = new Set(["wallet-balance", "connectivity-check", "wallet-balance-alert", "health-check", "data-probe", "refresh-ck-prices", "price-list"]);
   // Public catalogue lookups (plan lists) stay open; purchase / write actions require the service key OR a user JWT.
   const READ_ONLY = new Set(["data-plans", "cabletv-plans"]);
   if (SERVICE_ONLY.has(action)) {
@@ -1547,6 +1547,31 @@ serve(async (req) => {
         ping("Print Data",    "APIDatabundlePlansV2.asp",    { APIKey: PRINT_DATA_K, MobileNetwork: "01" }),
       ]);
       return json({ results });
+    }
+
+    // ── Price lists exactly as ClubKonnect returns them (operator export, read-only) ─────────────────
+    // Data and Print Data each use their OWN api key, so each product's list is fetched with its own key; Print Airtime
+    // and normal airtime only expose a per-network discount. Nothing is calculated or normalised here.
+    if (action === "price-list") {
+      const NETS: Record<string, string> = { MTN: "01", Glo: "02", "9mobile": "03", Airtel: "04" };
+      const plansFor = async (key: string) => {
+        if (!key) return { error: "api key not configured" };
+        const out: Record<string, unknown> = {};
+        await Promise.all(Object.entries(NETS).map(async ([name, id]) => {
+          try { out[name] = await ck("APIDatabundlePlansV2.asp", { APIKey: key, MobileNetwork: id }); }
+          catch (e) { out[name] = { error: (e as Error).message }; }
+        }));
+        return out;
+      };
+      const once = async (path: string, key: string) => {
+        if (!key) return { error: "api key not configured" };
+        try { return await ck(path, { APIKey: key }); } catch (e) { return { error: (e as Error).message }; }
+      };
+      const [data, print_data, print_airtime, airtime] = await Promise.all([
+        plansFor(DATA_K), plansFor(PRINT_DATA_K),
+        once("APIEPINDiscountV2.asp", PRINT_AIRTIME_K), once("APIAirtimeDiscountV1.asp", AIRTIME_K),
+      ]);
+      return json({ fetched_at: new Date().toISOString(), data, print_data, print_airtime, airtime });
     }
 
     // ── Wallet balance + commission (admin dashboard) ──────────────────────────
