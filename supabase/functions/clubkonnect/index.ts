@@ -98,6 +98,14 @@ const SUPABASE_URL  = Deno.env.get("SUPABASE_URL")              ?? "";
 const SERVICE_KEY   = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const ANON_KEY      = Deno.env.get("SUPABASE_ANON_KEY")         ?? "";
 
+// Constant-time string comparison for secrets (avoids leaking a match prefix through timing).
+function timingSafeEqual(a: string, b: string): boolean {
+  const ea = new TextEncoder().encode(a), eb = new TextEncoder().encode(b);
+  let diff = ea.length ^ eb.length;
+  for (let i = 0; i < Math.max(ea.length, eb.length); i++) diff |= (ea[i] ?? 0) ^ (eb[i] ?? 0);
+  return diff === 0;
+}
+
 function unauthorized() {
   return new Response(JSON.stringify({ error: "Unauthorized" }), {
     status: 401,
@@ -120,17 +128,22 @@ serve(async (req) => {
   // and CK returns the existing order rather than fulfilling twice.
   const rid = String((body as Record<string, unknown>).requestId ?? "").trim().slice(0, 64) || reqId();
 
-  // Read-only monitoring actions (wallet-balance, plan lookups) are gated only by
-  // the Supabase gateway's own apikey validation — the gateway rejects any call
-  // that doesn't carry a valid anon key before the function is ever invoked.
-  // Purchase / write actions require the service role key OR a user JWT.
-  const READ_ONLY = new Set(["wallet-balance", "connectivity-check", "data-plans", "cabletv-plans"]);
-  if (!READ_ONLY.has(action)) {
+  // Operator actions expose the provider account itself (wallet balance, account id + phone, credentials health) or
+  // e-mail the admins, and nothing in the app calls them — only the admin portal / server code, always with the
+  // service-role key. This function is deployed --no-verify-jwt, so the gateway does NOT check anything for us:
+  // these MUST be gated here (they used to be reachable by anyone on the internet with no credentials at all).
+  const SERVICE_ONLY = new Set(["wallet-balance", "connectivity-check", "wallet-balance-alert", "health-check", "data-probe", "refresh-ck-prices"]);
+  // Public catalogue lookups (plan lists) stay open; purchase / write actions require the service key OR a user JWT.
+  const READ_ONLY = new Set(["data-plans", "cabletv-plans"]);
+  if (SERVICE_ONLY.has(action)) {
+    const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+    if (!SERVICE_KEY || !timingSafeEqual(token, SERVICE_KEY)) return unauthorized();
+  } else if (!READ_ONLY.has(action)) {
     const authHeader = req.headers.get("Authorization") ?? "";
     const token = authHeader.replace(/^Bearer\s+/i, "").trim();
     if (!token) return unauthorized();
 
-    if (token !== SERVICE_KEY) {
+    if (!(SERVICE_KEY && timingSafeEqual(token, SERVICE_KEY))) {
       if (!SUPABASE_URL || !ANON_KEY) return unauthorized();
       const sb = createClient(SUPABASE_URL, ANON_KEY, { auth: { persistSession: false } });
       const { data: { user }, error } = await sb.auth.getUser(token);

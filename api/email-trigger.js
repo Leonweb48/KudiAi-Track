@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import nodemailer from "nodemailer";
 import { escapeHtml, escapeDeep, decodeEntities, cleanSubject } from "./_lib/escapeHtml.js";
 import { handleMoneyEmail } from "./_lib/moneyEmails.js";
+import { singleEmail, countRecipients, overQuota } from "./_lib/relayLimits.js";
 
 const SUPABASE_URL = process.env.REACT_APP_SUPABASE_URL || process.env.SUPABASE_URL;
 const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -211,25 +212,6 @@ function detailRows(pairs) {
   return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 14px;">${rows}</table>`;
 }
 
-// ─── One-time-code emails ─────────────────────────────────────────────────────
-// Shared by every code email so the wording and the anti-phishing notice are
-// identical. Values passed in come from the escaped payload.
-
-function securityNotice() {
-  return `<div style="background:#fef3c7;border-left:3px solid #f59e0b;border-radius:0 8px 8px 0;padding:12px 16px;margin:0 0 20px;">
-    <p style="margin:0;font-size:12px;color:#92400e;line-height:1.6;"><strong>Security notice:</strong> KudiAI Track will never ask for your PIN, password or one-time code by phone, SMS, chat or email.</p>
-  </div>`;
-}
-
-function otpBox(otp, expires) {
-  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 24px;"><tr>
-    <td style="background:#f5f3ff;border:2px dashed #c4b5fd;border-radius:14px;padding:28px 20px;text-align:center;">
-      <p style="margin:0 0 10px;font-size:11px;font-weight:700;letter-spacing:4px;text-transform:uppercase;color:#7c3aed;">One-Time Verification Code</p>
-      <p style="margin:0;font-size:44px;font-weight:900;letter-spacing:12px;color:#4f46e5;font-family:'Courier New',Courier,monospace;line-height:1;">${str(otp)}</p>
-      <p style="margin:12px 0 0;font-size:12px;color:#94a3b8;">Expires in <strong>${str(expires)}</strong> &bull; Do not share this code</p>
-    </td></tr></table>`;
-}
-
 // ─── SMTP helpers ─────────────────────────────────────────────────────────────
 
 async function getSmtpConfig(sb) {
@@ -325,6 +307,18 @@ export default async function handler(req, res) {
   // reasons…) can reach an email's HTML unescaped after this line.
   const d = escapeDeep({ owner_email: user.email || "", user_email: user.email || "", ...(rawData || {}) });
 
+  // Per-user sending allowance — this route is callable by any logged-in user and can address third parties, so
+  // without a cap a free account is a spam/phishing relay from the company domain. An outage of the counter must
+  // never block real mail, so a failed lookup lets the request through.
+  try {
+    const { data: usageRows } = await sb.rpc("email_relay_quota", { p_user: user.id });
+    const why = overQuota(Array.isArray(usageRows) ? usageRows[0] : usageRows);
+    if (why) {
+      await logDelivery(sb, str(user.email), `[${event}] refused`, "failed", `rate limited: ${why}`);
+      return res.status(429).json({ error: "Too many emails — try again later", detail: why });
+    }
+  } catch { /* fail open */ }
+
   // Get SMTP
   const smtp = await getSmtpConfig(sb);
   if (!smtp?.host || !smtp.username || !smtp.password) {
@@ -338,8 +332,15 @@ export default async function handler(req, res) {
   const now = new Date().toLocaleDateString("en-NG", { dateStyle: "medium" });
 
   const sends = [];
-  const q  = (to, subject, html)              => { if (to) sends.push(send(transport, from, sb, str(to), subject, html)); };
-  const qa = (to, subject, html, attachments) => { if (to) sends.push(send(transport, from, sb, str(to), subject, html, attachments || [])); };
+  const recipients = [];   // every address this request actually queued (counted against the user's allowance below)
+  // One plain address only — a comma-separated "to" would turn one counted send into many recipients.
+  const queueTo = (to) => {
+    const addr = singleEmail(decodeEntities(str(to)));
+    if (addr) recipients.push(addr);
+    return addr;
+  };
+  const q  = (to, subject, html)              => { const a = queueTo(to); if (a) sends.push(send(transport, from, sb, a, subject, html)); };
+  const qa = (to, subject, html, attachments) => { const a = queueTo(to); if (a) sends.push(send(transport, from, sb, a, subject, html, attachments || [])); };
 
   // ── Cash in / Cash out ──────────────────────────────────────────────────────
   if (await handleMoneyEmail(event, { d, q, qa, sb, user, fmt })) {
@@ -733,43 +734,10 @@ export default async function handler(req, res) {
       `, headerBg));
   }
 
-  // ── Fallback: unknown event — still log it ───────────────────────────────────
-  // ── Coop member: portal PIN reset code ──────────────────────────────────────
-  else if (event === "org_member_pin_reset_otp") {
-    q(d.member_email || d.email, "Your KudiAI portal PIN reset code",
-      emailHtml("Reset Your Portal PIN", `
-        <p style="font-size:15px;font-weight:700;color:#0f172a;margin:0 0 6px;">Hi ${str(d.member_name) || "there"},</p>
-        <p style="font-size:14px;color:#64748b;line-height:1.7;margin:0 0 22px;">We received a request to reset the PIN for your member portal${str(d.org_name) ? ` at <strong>${str(d.org_name)}</strong>` : ""}. Enter this code to continue.</p>
-        ${otpBox(d.otp, `${str(d.expires_minutes) || "15"} minutes`)}
-        ${securityNotice()}
-        <p style="font-size:12px;color:#94a3b8;line-height:1.6;margin:0;">If you didn't ask to reset your PIN, ignore this email — your PIN will not change.</p>
-      `, "#4f46e5"));
-  }
-
-  // ── Ajo client: transaction-PIN verification code ───────────────────────────
-  else if (event === "ajo_txn_pin_otp") {
-    q(d.email || d.client_email, "Your transaction PIN verification code",
-      emailHtml("Verify Your Transaction PIN", `
-        <p style="font-size:15px;font-weight:700;color:#0f172a;margin:0 0 6px;">Hi ${str(d.name) || "there"},</p>
-        <p style="font-size:14px;color:#64748b;line-height:1.7;margin:0 0 22px;">Use this code to set or change the PIN that protects your withdrawals and transfers.</p>
-        ${otpBox(d.otp, str(d.expires_in) || "10 minutes")}
-        ${securityNotice()}
-        <p style="font-size:12px;color:#94a3b8;line-height:1.6;margin:0;">If you didn't ask to change your transaction PIN, ignore this email and contact your savings agent — someone may be trying to use your account.</p>
-      `, "#4f46e5"));
-  }
-
-  // ── Staff: confirm a new email address ──────────────────────────────────────
-  else if (event === "staff_email_change_otp") {
-    q(d.staff_email || d.email, "Confirm your new email address",
-      emailHtml("Confirm Your New Email", `
-        <p style="font-size:15px;font-weight:700;color:#0f172a;margin:0 0 6px;">Hi ${str(d.staff_name) || "there"},</p>
-        <p style="font-size:14px;color:#64748b;line-height:1.7;margin:0 0 22px;">A request was made to use this address for your KudiAI Track staff account. Enter this code in the app to confirm it.</p>
-        ${otpBox(d.otp_code || d.otp, "30 minutes")}
-        ${securityNotice()}
-        <p style="font-size:12px;color:#94a3b8;line-height:1.6;margin:0;">If you didn't request this change, ignore this email — your account keeps its current address.</p>
-      `, "#4f46e5"));
-  }
-
+  // ── Fallback: unknown event — still log it. (The OTP-carrying events — portal PIN reset, transaction-PIN and staff
+  //    email-change codes — are NOT handled here: their codes are generated by server code, which sends them through the
+  //    admin pipeline. Letting any logged-in user send a "verification code" email with a code of their choosing from
+  //    this route was a phishing vector.)
   // ── Subscription payment failed ─────────────────────────────────────────────
 
   // ── Credit extended (more credit added to an existing debtor) ───────────────
@@ -783,6 +751,12 @@ export default async function handler(req, res) {
   const results = await Promise.allSettled(sends);
   const sent   = results.filter(r => r.status === "fulfilled" && r.value === true).length;
   const failed = results.filter(r => r.status === "rejected" || r.value === false).length;
+
+  // Count what this request sent against the user's allowance (awaited: Vercel freezes the function after the response).
+  if (recipients.length) {
+    const { total, third } = countRecipients(recipients, user.email);
+    await sb.rpc("email_relay_record", { p_user: user.id, p_third: third, p_total: total }).then(() => null, () => null);
+  }
 
   return res.status(200).json({ ok: true, event, queued: sends.length, sent, failed });
 }
