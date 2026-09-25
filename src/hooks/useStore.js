@@ -7,7 +7,8 @@ import { logAudit } from "../utils/auditLog";
 import { sendEmailTrigger } from "../utils/emailTrigger";
 import { compute, computeCapital } from "../lib/profitEngine";
 import { notify, notifyBranchManager } from "../lib/notifyEngine";
-import { emailAllowed } from "../utils/emailPref";
+import { emailAllowed, claimEmailOnce } from "../utils/emailPref";
+import { attachOverdueEligibility, overdueEligible } from "../utils/asoOverdue";
 import { savePendingOp, getPendingCount, getPendingOps } from "../utils/offlineDb";
 import { syncPending } from "../utils/syncManager";
 
@@ -136,6 +137,13 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     ]);
     authEmailRef.current = sessRes?.data?.session?.user?.email || "";
 
+    // Stamp each Ajo client with whether they have anything ACTIVE to be overdue on (active card / group / esusu
+    // round). Done on the fetched rows so the state, the offline cache and the digest below all see the same answer.
+    if (asoRes.data) {
+      asoRes.data = await attachOverdueEligibility(asoRes.data, (ids) =>
+        supabase.rpc("ajo_overdue_eligible_clients", { p_client_ids: ids }));
+    }
+
     if (txRes.data) {
       if (keepPendingIds && keepPendingIds.size > 0) {
         // Called from doSync: some ops failed — merge their _pending rows back in
@@ -163,13 +171,18 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
       const todayStr  = today();
       const digestKey = `kt_ajo_overdue_digest_${userId}_${todayStr}`;
       if (!localStorage.getItem(digestKey)) {
+        // Same rule as the Aso screen: an ACTIVE client, past their due date, with something active to be overdue on
+        // (an active card / group / esusu round) — settled cards and unstarted or closed groups don't count.
         const overdueCls = asoRes.data.filter(cl =>
+          cl.status === "active" &&
+          !cl.archived_at &&
+          overdueEligible(cl) &&
           cl.next_contribution_date &&
-          cl.next_contribution_date < todayStr &&
-          !["paid", "cancelled", "completed"].includes(cl.status)
+          cl.next_contribution_date < todayStr
         );
-        if (overdueCls.length > 0) {
-          localStorage.setItem(digestKey, "1");
+        if (overdueCls.length > 0) localStorage.setItem(digestKey, "1");   // this device is done for today, win or lose
+        // once per day across ALL devices/browsers, not once per device
+        if (overdueCls.length > 0 && await claimEmailOnce("ajo_overdue_digest", todayStr)) {
           const bizName = profRes.data?.business_name || "";
           fireEmailTrigger("ajo_overdue_digest", {
             owner_id:        userId,
@@ -217,11 +230,14 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
         const nudgeKey = `kt_unnamed_nudge_${userId}_${weekBucket}`;
         if (!localStorage.getItem(nudgeKey)) {
           localStorage.setItem(nudgeKey, "1");
-          fireEmailTrigger("weekly_unnamed_sales_nudge", {
-            owner_id:      userId,
-            owner_email:   authEmailRef.current,
-            unnamed_count: unnamedCount,
-          });
+          // once per week across ALL devices/browsers, not once per device
+          if (await claimEmailOnce("weekly_unnamed_nudge", weekBucket)) {
+            fireEmailTrigger("weekly_unnamed_sales_nudge", {
+              owner_id:      userId,
+              owner_email:   authEmailRef.current,
+              unnamed_count: unnamedCount,
+            });
+          }
         }
       }
     }
@@ -251,7 +267,9 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
             : new Date(t.created_at);
           return d >= ydStart && d <= ydEnd;
         });
-        if (dayTxs.length > 0) {
+        // Only the FIRST device/browser to get here today sends it — the localStorage key above only stops this one
+        // device, so every new device or browser used to send the owner's profit email again on login.
+        if (dayTxs.length > 0 && await emailAllowed(userId) && await claimEmailOnce("daily_summary", todayStr)) {
           const [{ data: prodData }, { data: ajoData }] = await Promise.all([
             supabase.from("products").select("id, product_name, cost_price, needs_costing").eq("user_id", userId),
             supabase.from("ajo_contributions").select("id, amount, type, created_at")
@@ -290,8 +308,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
               )
             : null;
 
-          const dailyEmailOk = await emailAllowed(userId);
-          if (dailyEmailOk) fireEmailTrigger("daily_summary", {
+          fireEmailTrigger("daily_summary", {
             owner_id:         userId,
             owner_email:      authEmailRef.current,
             business_name:    profRes.data?.business_name || "",
@@ -1176,7 +1193,10 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
   };
 
   // ── Update Aso Client record ───────────────────────────────────
-  const updateAsoClient = async (id, updates) => {
+  const updateAsoClient = async (id, rawUpdates) => {
+    // overdue_eligible is a client-side annotation (attachOverdueEligibility), NOT a column — and the profile form
+    // sends back the whole client row, so it must never reach the database (or overwrite the fresh value locally).
+    const { overdue_eligible: _annotation, ...updates } = rawUpdates;
     setAsoClients(p => p.map(c => c.id === id ? { ...c, ...updates } : c));
     const { error } = await supabase.from("aso_clients").update(updates).eq("id", id);
     if (error) { console.error("updateAsoClient:", error); loadData(); return { error }; }

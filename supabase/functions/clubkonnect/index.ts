@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import nodemailer from "npm:nodemailer@6";
 import { bankEmail, esc, cleanSubject, naira, appLink, htmlToText, type EmailRow } from "../_shared/bankEmail.ts";
+import { parseCkAmount } from "../_shared/ckAmount.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -1183,11 +1184,7 @@ serve(async (req) => {
         return json({ ok: false, error: "CK credentials not configured", balance: null });
 
       const wbData = await ck("APIWalletBalanceV1.asp", { APIKey: useKey });
-      const parseAmt = (v: unknown): number | null => {
-        if (v === null || v === undefined || v === "") return null;
-        const n = Number(String(v).replace(/[^0-9.]/g, ""));
-        return isNaN(n) ? null : n;
-      };
+      const parseAmt = parseCkAmount;
       const BALANCE_FIELDS = [
         "WalletBalance","walletbalance","wallet_balance","Balance","balance",
         "AccountBalance","Wallet_Balance","WALLETBALANCE","available_balance","AvailableBalance",
@@ -1250,11 +1247,8 @@ serve(async (req) => {
         const d = await ck("APIWalletBalanceV1.asp", { APIKey: useKey }, { retries: 1, timeoutMs: 12000 });
         for (const f of ["WalletBalance","walletbalance","wallet_balance","Balance","balance",
                          "AccountBalance","Wallet_Balance","WALLETBALANCE","available_balance","AvailableBalance"]) {
-          const v = d[f];
-          if (v !== null && v !== undefined && v !== "") {
-            const n = Number(String(v).replace(/[^0-9.]/g, ""));
-            if (!isNaN(n)) return n;
-          }
+          const n = parseCkAmount(d[f]);
+          if (n !== null) return n;
         }
       } catch (e) { console.warn("readWalletBalance failed:", (e as Error).message); }
       return null;
@@ -1471,12 +1465,8 @@ serve(async (req) => {
       const data = await ck("APIWalletBalanceV1.asp", { APIKey: useKey });
       console.log("wallet-balance raw:", JSON.stringify(data));
 
-      // Strip currency symbols / commas before parsing — CK sometimes returns "₦26.00"
-      const parseAmt = (v: unknown): number | null => {
-        if (v === null || v === undefined || v === "") return null;
-        const n = Number(String(v).replace(/[^0-9.]/g, ""));
-        return isNaN(n) ? null : n;
-      };
+      // CK sometimes returns "₦26.00", "3,169.36" or "-343.85" — parseCkAmount handles all and keeps the sign
+      const parseAmt = parseCkAmount;
 
       const BALANCE_FIELDS    = ["WalletBalance","walletbalance","wallet_balance","Balance","balance","AccountBalance","Wallet_Balance","WALLETBALANCE","available_balance","AvailableBalance"];
       const COMMISSION_FIELDS = ["TotalCommission","Commission","commission","total_commission","CommissionBalance","CommissionEarned","commission_balance","commission_earned"];

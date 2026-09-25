@@ -20,3 +20,26 @@ export async function emailAllowed(userId) {
     return true;
   }
 }
+
+/**
+ * Once-per-period claim for the emails the app sends on first load (daily profit summary, overdue digest, weekly
+ * nudge). localStorage alone only stops ONE device from repeating them — a new device, another browser or a cleared
+ * cache sent the email again — so the winner is decided on the server: the first caller for a (kind, bucket) gets
+ * true, every other device gets false. Callers keep their localStorage check as a cheap first gate.
+ *
+ * Fails OPEN (true) when the server can't be asked, like emailAllowed: the worst case is the old once-per-device
+ * behaviour, never a silently dropped email.
+ */
+export async function claimEmailOnce(
+  kind,
+  bucket,
+  rpc = (k, b) => supabase.rpc("claim_daily_email", { p_kind: k, p_bucket: b }),
+) {
+  try {
+    const { data, error } = await rpc(kind, bucket);
+    if (error) return true;
+    return data === true;
+  } catch {
+    return true;
+  }
+}

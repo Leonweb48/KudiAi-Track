@@ -28,6 +28,7 @@ import { App as CapApp } from "@capacitor/app";
 import { InAppBrowser, ToolBarType } from "@capgo/capacitor-inappbrowser";
 import { friendlyError } from "../utils/errorMessage";
 import { useToast } from "../components/Toast";
+import { overdueEligible } from "../utils/asoOverdue";
 
 const BLANK = {
   full_name: "", contribution_frequency: "daily", contribution_amount: "",
@@ -106,8 +107,10 @@ function getExpectedContribs(c) {
   return Math.floor(since / days);
 }
 
+// Overdue = active client, past their due date, who still has something ACTIVE to be overdue on (an active card,
+// savings group or esusu round — see utils/asoOverdue). Settled cards / unstarted or closed groups don't count.
 function isOverdue(c) {
-  return c.status === "active" && c.next_contribution_date && daysDiff(c.next_contribution_date) > 0;
+  return c.status === "active" && overdueEligible(c) && c.next_contribution_date && daysDiff(c.next_contribution_date) > 0;
 }
 
 function buildReminderMsg(c, businessName) {
