@@ -173,6 +173,33 @@ async function logHook(passed: boolean, verdict: string, actionType: string, enf
 // the request body as-is.
 const ALLOWED_REDIRECT_HOST = /^(https:\/\/([a-z0-9-]+\.)*kudiai\.app|http:\/\/localhost(:\d+)?|capacitor:\/\/localhost)(\/|$)/i;
 
+// Hand one email to the admin mail service. Never throws. Retries ONCE, and only when it is certain nothing was
+// sent (a non-2xx answer, or 2xx with sent = 0) — never after a timeout/abort, which could still be delivered late.
+async function dispatchEmail(event: string, payload: Record<string, string>): Promise<void> {
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const ctrl  = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 20_000);
+    try {
+      const r = await fetch(`${ADMIN_URL}/api/public/email-trigger`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-trigger-secret": TRIGGER_SECRET },
+        body: JSON.stringify({ event, data: payload }),
+        signal: ctrl.signal,
+      });
+      const j = await r.json().catch(() => null) as { sent?: number; queued?: number } | null;
+      const delivered = r.ok && (j == null || j.sent == null || j.sent > 0 || !(Number(j.queued) > 0));
+      if (delivered) return;
+      console.error(`[auth-email-hook] ${event}: mail service did not send (HTTP ${r.status}, attempt ${attempt})`, j);
+    } catch (e) {
+      console.error(`[auth-email-hook] ${event}: email trigger failed (attempt ${attempt}):`, e);
+      return;                                          // may have been delivered late — do not risk a duplicate
+    } finally {
+      clearTimeout(timer);
+    }
+    if (attempt < 2) await new Promise((res) => setTimeout(res, 1500));
+  }
+}
+
 export async function handle(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response(null, { status: 204 });
 
@@ -243,11 +270,15 @@ export async function handle(req: Request): Promise<Response> {
     }
 
     if (event && recipient) {
-      await fetch(`${ADMIN_URL}/api/public/email-trigger`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-trigger-secret": TRIGGER_SECRET },
-        body: JSON.stringify({ event, data: payload }),
-      }).catch((e) => console.error("[auth-email-hook] email trigger failed:", e));
+      // Supabase Auth gives a send-email hook only ~5 s to answer, and stores the one-time code only AFTER the hook
+      // returns. The path here (this function -> admin Next.js function -> SMTP) took ~3.6 s in a live test and
+      // longer on a cold start; when it overran, Auth failed the request although the email had already gone out,
+      // so the user received a code that was never saved (or saw "couldn't send"). Answer immediately and finish
+      // the send in the background (EdgeRuntime.waitUntil keeps the isolate alive until it completes).
+      const job = dispatchEmail(event, payload);
+      const rt = (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime;
+      if (rt?.waitUntil) rt.waitUntil(job);
+      else await job;                                  // no background helper (tests / local): finish before answering
     }
 
     return ok();

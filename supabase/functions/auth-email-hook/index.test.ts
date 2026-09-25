@@ -33,15 +33,22 @@ async function run(opts: {
   signWith?: string | null;           // null => send no signature headers at all
   ageSeconds?: number;                // simulate a replayed request
   hookSecretEnv?: string;             // what the function has configured
+  adminReply?: (callNo: number) => Response | Promise<Response>;   // how the admin mail service answers (throw to simulate a network error)
+  background?: boolean;               // simulate the Supabase edge runtime's EdgeRuntime.waitUntil
 }) {
   Deno.env.set("HOOK_SECRET", opts.hookSecretEnv ?? REAL_SECRET);
   const calls: Call[] = [];
+  const pending: Promise<unknown>[] = [];
   const realFetch = globalThis.fetch;
+  let adminCalls = 0;
+  const g = globalThis as { EdgeRuntime?: unknown };
+  if (opts.background) g.EdgeRuntime = { waitUntil: (p: Promise<unknown>) => { pending.push(p); } }; else delete g.EdgeRuntime;
   globalThis.fetch = (async (input: any, init?: any) => {
     const url = String(input);
     const body = init?.body ? JSON.parse(init.body) : null;
     calls.push({ url, method: init?.method ?? "GET", body });
     if (url.includes("/rest/v1/internal_flags")) return new Response(JSON.stringify([{ value: opts.enforce }]), { status: 200 });
+    if (url.includes("admin.kudiai.app") && opts.adminReply) return await opts.adminReply(++adminCalls);
     return new Response("{}", { status: 200 });
   }) as typeof fetch;
   try {
@@ -55,15 +62,21 @@ async function run(opts: {
       headers.set("webhook-timestamp", String(ts));
       headers.set("webhook-signature", await sign(opts.signWith ?? REAL_SECRET, id, ts, raw));
     }
+    const t0 = performance.now();
     const res = await mod.handle(new Request("https://hook.test/", { method: "POST", headers, body: raw }));
+    const handledMs = performance.now() - t0;
+    const json = await res.json();
+    await Promise.all(pending);          // let any background email finish before fetch is restored
     return {
       status: res.status,
-      json: await res.json(),
+      json,
+      handledMs,
       emailCalls: calls.filter((c) => c.url.includes("admin.kudiai.app")),
       logCalls: calls.filter((c) => c.url.includes("/rest/v1/email_delivery_log")),
     };
   } finally {
     globalThis.fetch = realFetch;
+    delete g.EdgeRuntime;
   }
 }
 
@@ -121,6 +134,50 @@ Deno.test("even with a VALID signature, an attacker-supplied token_url is never 
   const url: string = r.emailCalls[0].body.data.reset_url;
   assert(url.startsWith("https://proj.supabase.co/auth/v1/verify?token=HASH123"), "link built from our own project + token_hash");
   assert(!url.includes("evil.example/reset") && !url.includes("evil.example%2Fsteal"), "no attacker host in the link");
+});
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const reply = (o: unknown, status = 200) => new Response(JSON.stringify(o), { status });
+
+Deno.test("SLOW mail service: with the background runtime the hook answers Supabase at once, and the email still goes out", async () => {
+  // Supabase Auth only waits ~5 s for a hook; the mail path (edge -> admin -> SMTP) can be slow on a cold start.
+  const r = await run({ enforce: "true", body: magiclink, background: true, adminReply: async () => { await sleep(600); return reply({ ok: true, queued: 1, sent: 1, failed: 0 }); } });
+  assert(r.status === 200 && JSON.stringify(r.json) === "{}", "answers 200 {}");
+  assert(r.handledMs < 300, `answered before the slow email finished (took ${r.handledMs.toFixed(0)} ms)`);
+  assert(r.emailCalls.length === 1, "the email was still handed to the mail service, in the background");
+});
+
+Deno.test("without a background runtime (local/tests) the hook finishes the send before answering", async () => {
+  const r = await run({ enforce: "true", body: magiclink, adminReply: async () => { await sleep(200); return reply({ ok: true, queued: 1, sent: 1, failed: 0 }); } });
+  assert(r.handledMs >= 190, "waited for the send");
+  assert(r.emailCalls.length === 1, "one call");
+});
+
+Deno.test("mail service answers 200 but sent=0 (e.g. SMTP rate limit) -> retried ONCE, second attempt delivers", async () => {
+  const r = await run({ enforce: "true", body: magiclink, adminReply: (n) => n === 1 ? reply({ ok: true, queued: 1, sent: 0, failed: 1 }) : reply({ ok: true, queued: 1, sent: 1, failed: 0 }) });
+  assert(r.emailCalls.length === 2, `retried once (calls: ${r.emailCalls.length})`);
+});
+
+Deno.test("mail service keeps failing -> exactly two attempts, never a loop, hook still answers {}", async () => {
+  const r = await run({ enforce: "true", body: magiclink, adminReply: () => reply({ ok: true, queued: 1, sent: 0, failed: 1 }) });
+  assert(r.emailCalls.length === 2, `two attempts only (calls: ${r.emailCalls.length})`);
+  assert(JSON.stringify(r.json) === "{}", "still answers {}");
+});
+
+Deno.test("a 5xx from the mail service is retried once", async () => {
+  const r = await run({ enforce: "true", body: magiclink, adminReply: (n) => n === 1 ? reply({ error: "boom" }, 503) : reply({ ok: true, queued: 1, sent: 1, failed: 0 }) });
+  assert(r.emailCalls.length === 2, "retried after 503");
+});
+
+Deno.test("a network error is NOT retried (it may have been delivered late; a retry would send a duplicate code)", async () => {
+  const r = await run({ enforce: "true", body: magiclink, adminReply: () => { throw new Error("connection reset"); } });
+  assert(r.emailCalls.length === 1, "one attempt only");
+  assert(JSON.stringify(r.json) === "{}", "still answers {}");
+});
+
+Deno.test("a delivered email is never re-sent", async () => {
+  const r = await run({ enforce: "true", body: magiclink, adminReply: () => reply({ ok: true, queued: 1, sent: 1, failed: 0 }) });
+  assert(r.emailCalls.length === 1, "single send");
 });
 
 Deno.test("event mapping: signup / magiclink / email change use their own events", async () => {
