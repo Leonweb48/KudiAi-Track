@@ -815,6 +815,13 @@ export function useAuth() {
     if (Capacitor.isNativePlatform()) {
       App.addListener("appUrlOpen", async ({ url }) => {
         if (url.startsWith("com.amayatechnologies.kuditrack://login-callback")) {
+          // Only complete a sign-in this app started (within 10 minutes). Any app or web page can open this custom-scheme
+          // link; without this check a crafted link carrying someone else's tokens would silently sign the device into
+          // THEIR account (the implicit-token fallback below), where the user's business data would then be entered.
+          let startedAt = 0;
+          try { startedAt = Number(localStorage.getItem("kuditrack_oauth_started") || 0); } catch { /* storage unavailable */ }
+          if (!startedAt || Date.now() - startedAt > 10 * 60 * 1000) return;
+          try { localStorage.removeItem("kuditrack_oauth_started"); } catch { /* ignore */ }
           // Signal browserFinished that we are handling this URL so it does not
           // race to declare failure while exchangeCodeForSession is in flight.
           sessionStorage.setItem("kuditrack_oauth_exchange", "1");

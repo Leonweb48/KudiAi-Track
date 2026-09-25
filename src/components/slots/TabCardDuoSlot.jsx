@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { isWhitelistedDeeplink } from "./SlotRegistry";
+import { safeExternalUrl } from "../../utils/sanitizeHtml";
 
 // Tab Card Duo — exactly 2 wider cards (4:3 image, headline, optional subtext, per-card CTA).
 // Does NOT render if tiles.length < 2.
@@ -20,7 +21,8 @@ export default function TabCardDuoSlot({ campaign, pageKey, recordEvent, navigat
     if (type === "deeplink" && value && isWhitelistedDeeplink(value)) {
       navigate?.(value);
     } else if (type === "external_url" && value) {
-      try { window.open(value, "_blank", "noopener,noreferrer"); } catch {}
+      const safeUrl = safeExternalUrl(value);   // campaign data: web / tel / mail links only
+      if (safeUrl) { try { window.open(safeUrl, "_blank", "noopener,noreferrer"); } catch {} }
     }
   };
 

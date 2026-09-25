@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../utils/supabase";
 import { friendlyError } from "../utils/errorMessage";
 import { askGemini } from "../utils/gemini";
+import { sanitizeHtml } from "../utils/sanitizeHtml";
 
 // ── Icons ────────────────────────────────────────────────────────────────────
 const ArrowLeft   = () => <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>;
@@ -129,7 +130,7 @@ function FaqItem({ item, expanded, onToggle, feedback, onFeedback }) {
         <div className="border-t border-slate-100 dark:border-slate-700 px-4 pt-3 pb-4">
           <div
             className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed faq-answer"
-            dangerouslySetInnerHTML={{ __html: item.answer }}
+            dangerouslySetInnerHTML={{ __html: sanitizeHtml(item.answer) }}
           />
           <div className="flex items-center gap-3 mt-4 pt-3 border-t border-slate-100 dark:border-slate-700/50">
             <span className="text-xs text-slate-400 dark:text-slate-500">Was this helpful?</span>

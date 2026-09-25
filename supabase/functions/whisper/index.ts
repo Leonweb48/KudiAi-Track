@@ -38,12 +38,22 @@ serve(async (req) => {
     ]);
     if (!ownerRow && !staffRow) return errJson("Forbidden", 403);
 
+    // ── Spend guard: every call costs real money at OpenAI and any business account can call this ─────────
+    // 60 transcriptions an hour per user is far above real use (voice-recording transactions) but stops a scripted loop.
+    // A failed limiter lookup lets the call through — an outage must not break voice entry.
+    try {
+      const { data: within } = await sb.rpc("rate_limit_hit", { p_key: `whisper:${user.id}`, p_window_seconds: 3600, p_max: 60 });
+      if (within === false) return errJson("Too many voice requests — please try again later.", 429);
+    } catch { /* fail open */ }
+
     // ── Transcribe ──────────────────────────────────────────────────────────
     const key = Deno.env.get("OPENAI_API_KEY");
     if (!key) throw new Error("OPENAI_API_KEY secret not set");
 
     const { audioBase64, mimeType, language } = await req.json();
     if (!audioBase64) throw new Error("audioBase64 is required");
+    // A spoken transaction is a few seconds of audio. ~6 MB of audio (≈ 8 M base64 chars) is already minutes long.
+    if (String(audioBase64).length > 8_000_000) return errJson("Recording is too long.", 413);
 
     const mime = mimeType || "audio/webm";
     const ext  = mime.includes("mp4") ? "mp4" : mime.includes("ogg") ? "ogg" : "webm";

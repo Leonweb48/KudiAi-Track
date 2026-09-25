@@ -659,6 +659,9 @@ export default function Auth() {
           }));
         });
 
+        // Remember that THIS app asked for a Google sign-in, so the login-callback deep link is only honoured for it
+        // (see useAuth): a stray link or another app cannot log this device into someone else's account.
+        try { localStorage.setItem("kuditrack_oauth_started", String(Date.now())); } catch { /* storage unavailable */ }
         await Browser.open({ url: authUrl });
         // Stay loading — browser is open. Either appUrlOpen fires (success) or
         // browserFinished fires (cancel/failure) — both paths eventually reset loading.

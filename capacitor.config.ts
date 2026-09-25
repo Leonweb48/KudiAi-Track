@@ -8,7 +8,7 @@ const config: CapacitorConfig = {
     androidScheme: 'https',
   },
   android: {
-    allowMixedContent: true,
+    allowMixedContent: false,   // https only: no plain-http content inside the app WebView
   },
   plugins: {
     StatusBar: {

@@ -1,5 +1,6 @@
 import { Capacitor } from "@capacitor/core";
 import { isWhitelistedDeeplink } from "./SlotRegistry";
+import { safeExternalUrl } from "../../utils/sanitizeHtml";
 
 export async function slotNavigate(actionType, actionValue, navigate) {
   if (!actionValue) return;
@@ -15,11 +16,13 @@ export async function slotNavigate(actionType, actionValue, navigate) {
     window.dispatchEvent(new CustomEvent("kt:openUpgrade"));
     return;
   }
-  // external_url
+  // external_url — campaign data: web / tel / mail links only (never javascript:, data:, intent: …)
+  const safeUrl = safeExternalUrl(actionValue);
+  if (!safeUrl) return;
   if (Capacitor.isNativePlatform()) {
     const { Browser } = await import("@capacitor/browser");
-    await Browser.open({ url: actionValue });
+    await Browser.open({ url: safeUrl });
   } else {
-    window.open(actionValue, "_blank", "noopener,noreferrer");
+    window.open(safeUrl, "_blank", "noopener,noreferrer");
   }
 }

@@ -3,8 +3,11 @@
 // Max one partner surface per session on client portals (enforced by maxPerSession prop).
 import { useState, useEffect, useCallback } from "react";
 import { Capacitor } from "@capacitor/core";
+import { safeExternalUrl } from "../../utils/sanitizeHtml";
 
-async function openUrl(url) {
+async function openUrl(rawUrl) {
+  const url = safeExternalUrl(rawUrl);   // partner data: web / tel / mail links only
+  if (!url) return;
   if (Capacitor.isNativePlatform()) {
     const { Browser } = await import("@capacitor/browser");
     await Browser.open({ url });

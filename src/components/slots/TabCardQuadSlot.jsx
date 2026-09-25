@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { isWhitelistedDeeplink } from "./SlotRegistry";
+import { safeExternalUrl } from "../../utils/sanitizeHtml";
 
 // Tab Card Quad — exactly 4 compact tiles (icon 1:1, label, per-tile CTA).
 // Matches Quick Services visual language: rounded tiles, themed icons.
@@ -22,7 +23,8 @@ export default function TabCardQuadSlot({ campaign, pageKey, recordEvent, naviga
     if (type === "deeplink" && value && isWhitelistedDeeplink(value)) {
       navigate?.(value);
     } else if (type === "external_url" && value) {
-      try { window.open(value, "_blank", "noopener,noreferrer"); } catch {}
+      const safeUrl = safeExternalUrl(value);   // campaign data: web / tel / mail links only
+      if (safeUrl) { try { window.open(safeUrl, "_blank", "noopener,noreferrer"); } catch {} }
     }
   };
 

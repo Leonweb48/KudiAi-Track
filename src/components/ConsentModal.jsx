@@ -1,6 +1,7 @@
 /* ConsentModal — mandatory full-screen consent gate, cannot be dismissed */
 import { useState, useEffect } from "react";
 import { supabase } from "../utils/supabase";
+import { sanitizeHtml } from "../utils/sanitizeHtml";
 
 /* ── Inner document viewer (bottom-sheet style) ──────────────────────── */
 function LegalViewerModal({ doc, onClose }) {
@@ -41,7 +42,7 @@ function LegalViewerModal({ doc, onClose }) {
               .lv-content p, .lv-content li { color: #94a3b8; }
             }
           `}</style>
-          <div className="lv-content" dangerouslySetInnerHTML={{ __html: doc.content }} />
+          <div className="lv-content" dangerouslySetInnerHTML={{ __html: sanitizeHtml(doc.content) }} />
         </div>
       </div>
     </div>

@@ -4,6 +4,7 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../utils/supabase";
 import { getActivePlans } from "../utils/plans";
+import { sanitizeHtml } from "../utils/sanitizeHtml";
 
 const COMPANY = {
   name:    "AMAYA & Co. Technologies",
@@ -693,7 +694,7 @@ export default function LegalScreen({ type, onBack }) {
                   .legal-content p, .legal-content li { color: #94a3b8; }
                 }
               `}</style>
-              <div className="legal-content prose" dangerouslySetInnerHTML={{ __html: dbContent }} />
+              <div className="legal-content prose" dangerouslySetInnerHTML={{ __html: sanitizeHtml(dbContent) }} />
             </>
           ) : (
             <>
