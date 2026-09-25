@@ -106,6 +106,33 @@ function timingSafeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
+// Is this bearer token the project's service-role key? The key injected into this function as SUPABASE_SERVICE_ROLE_KEY
+// is NOT necessarily the same string as the legacy service_role JWT that other callers (the admin portal) hold, so a
+// plain string match would lock them out. Anything else that claims service_role is PROVED by asking PostgREST to run a
+// service-only function with it — PostgREST verifies the signature, and only a genuine service_role token may execute
+// email_relay_quota (a harmless read-only lookup). A forged or user token cannot pass.
+const serviceProofCache = new Map<string, number>();   // token -> expiry ms (positive results only)
+async function isServiceCall(token: string): Promise<boolean> {
+  if (!token) return false;
+  if (SERVICE_KEY && timingSafeEqual(token, SERVICE_KEY)) return true;
+  if (!SUPABASE_URL || token.split(".").length !== 3) return false;
+  const cached = serviceProofCache.get(token);
+  if (cached && cached > Date.now()) return true;
+  try {
+    const payload = JSON.parse(atob((token.split(".")[1] || "").replace(/-/g, "+").replace(/_/g, "/")));
+    if (payload?.role !== "service_role") return false;   // ordinary user / anon tokens never reach the probe
+  } catch { return false; }
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/email_relay_quota`, {
+      method: "POST",
+      headers: { apikey: token, Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ p_user: "00000000-0000-0000-0000-000000000000" }),
+    });
+    if (r.ok) serviceProofCache.set(token, Date.now() + 5 * 60_000);
+    return r.ok;
+  } catch { return false; }
+}
+
 function unauthorized() {
   return new Response(JSON.stringify({ error: "Unauthorized" }), {
     status: 401,
@@ -137,7 +164,7 @@ serve(async (req) => {
   const READ_ONLY = new Set(["data-plans", "cabletv-plans"]);
   if (SERVICE_ONLY.has(action)) {
     const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
-    if (!SERVICE_KEY || !timingSafeEqual(token, SERVICE_KEY)) return unauthorized();
+    if (!(await isServiceCall(token))) return unauthorized();
   } else if (!READ_ONLY.has(action)) {
     const authHeader = req.headers.get("Authorization") ?? "";
     const token = authHeader.replace(/^Bearer\s+/i, "").trim();
