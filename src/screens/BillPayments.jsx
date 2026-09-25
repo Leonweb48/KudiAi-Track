@@ -2563,26 +2563,29 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       const { cat, form: f, verifyName: vName, meterAddress: mAddr = "", paidAmount, baseAmount, pointsDiscount: redeemedPoints = 0 } = pending;
       let apiRef = "", note = "", itemName = "", customerRef = "", cardDetails = "", pinsArr = null, txnHistoryPending = false, elecToken = "", elecOrderId = "", elecUnits = "";
       const amount = parseFloat(f.amount) || 0;
+      // The server confirms every purchase is paid for; a coupon that covers the whole order is the proof for a free one,
+      // so the code travels with each purchase call (see supabase/functions/_shared/billGate.ts).
+      const ck = (a, p) => clubkonnect(a, pending.couponCode ? { ...p, couponCode: pending.couponCode } : p);
 
       if (cat === "airtime") {
-        const r = await ckPurchase(clubkonnect, "airtime", { phone: f.phone, network: f.network, amount: String(f.amount) }, ref);
+        const r = await ckPurchase(ck, "airtime", { phone: f.phone, network: f.network, amount: String(f.amount) }, ref);
         apiRef = r.reference; itemName = `${f.network} Airtime`; customerRef = f.phone;
         note = `Phone: ${f.phone} | Network: ${f.network}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
 
       } else if (cat === "data") {
-        const r = await ckPurchase(clubkonnect, "data", { phone: f.phone, network: f.network, planId: f.planId }, ref);
+        const r = await ckPurchase(ck, "data", { phone: f.phone, network: f.network, planId: f.planId }, ref);
         apiRef = r.reference; itemName = `${f.network} ${f.planName} Data`; customerRef = f.phone;
         note = `Phone: ${f.phone} | Network: ${f.network} | Plan: ${f.planName}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
 
       } else if (cat === "cable") {
-        const r = await ckPurchase(clubkonnect, "cable", { provider: f.provider, packageId: f.packageId, smartcard: f.smartcard, phone: f.phone }, ref);
+        const r = await ckPurchase(ck, "cable", { provider: f.provider, packageId: f.packageId, smartcard: f.smartcard, phone: f.phone }, ref);
         apiRef = r.reference;
         const provName = CABLE_PROVIDERS.find(p => p.code === f.provider)?.name || f.provider;
         itemName = `${provName} ${f.packageName}`; customerRef = f.smartcard;
         note = `Provider: ${provName} | Package: ${f.packageName} | Smartcard: ${f.smartcard} | ${vName}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
 
       } else if (cat === "electricity") {
-        const r = await ckPurchase(clubkonnect, "electricity", { company: f.company, meterType: f.meterType, meterNo: f.meterNo, amount: String(f.amount), phone: f.phone }, ref);
+        const r = await ckPurchase(ck, "electricity", { company: f.company, meterType: f.meterType, meterNo: f.meterNo, amount: String(f.amount), phone: f.phone }, ref);
         apiRef = r.reference;
         const compName = ELECTRICITY_COMPANIES.find(c => c.code === f.company)?.name || f.company;
         const mTypeName = f.meterType === "01" ? "Prepaid" : "Postpaid";
@@ -2606,43 +2609,43 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         }
 
       } else if (cat === "betting") {
-        const r = await ckPurchase(clubkonnect, "betting", { company: f.company, customerId: f.customerId, amount: String(f.amount) }, ref);
+        const r = await ckPurchase(ck, "betting", { company: f.company, customerId: f.customerId, amount: String(f.amount) }, ref);
         apiRef = r.reference;
         const compName = BETTING_COMPANIES.find(c => c.code === f.company)?.name || f.company;
         itemName = `${compName} Wallet Top-up`; customerRef = f.customerId;
         note = `Platform: ${compName} | Customer: ${f.customerId} | ${vName}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
 
       } else if (cat === "waec") {
-        const r = await ckPurchase(clubkonnect, "waec", { examType: f.examType, phone: f.phone }, ref);
+        const r = await ckPurchase(ck, "waec", { examType: f.examType, phone: f.phone }, ref);
         apiRef = r.reference; cardDetails = r.cardDetails || "";
         itemName = `WAEC ${WAEC_TYPES.find(t => t.code === f.examType)?.name || f.examType}`; customerRef = f.phone;
         note = `Phone: ${f.phone}${cardDetails ? ` | ${cardDetails}` : ""}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
 
       } else if (cat === "jamb") {
-        const r = await ckPurchase(clubkonnect, "jamb", { examType: f.examType, phone: f.phone }, ref);
+        const r = await ckPurchase(ck, "jamb", { examType: f.examType, phone: f.phone }, ref);
         apiRef = r.reference; cardDetails = r.cardDetails || "";
         itemName = `JAMB ${JAMB_TYPES.find(t => t.code === f.examType)?.name || f.examType}`; customerRef = f.phone;
         note = `Phone: ${f.phone}${cardDetails ? ` | ${cardDetails}` : ""}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
 
       } else if (cat === "spectranet") {
-        const r = await ckPurchase(clubkonnect, "spectranet", { accountNo: f.accountNo, planId: f.planId }, ref);
+        const r = await ckPurchase(ck, "spectranet", { accountNo: f.accountNo, planId: f.planId }, ref);
         apiRef = r.reference; itemName = `Spectranet ${f.planName}`; customerRef = f.accountNo;
         note = `Account: ${f.accountNo} | Plan: ${f.planName}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
 
       } else if (cat === "smile") {
-        const r = await ckPurchase(clubkonnect, "smile", { accountNo: f.accountNo, planId: f.planId }, ref);
+        const r = await ckPurchase(ck, "smile", { accountNo: f.accountNo, planId: f.planId }, ref);
         apiRef = r.reference; itemName = `Smile ${f.planName}`; customerRef = f.accountNo;
         note = `Account: ${f.accountNo} | ${vName}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
 
       } else if (cat === "print-airtime") {
-        const r = await ckPurchase(clubkonnect, "print-airtime", { network: f.network, value: f.value, quantity: f.quantity }, ref);
+        const r = await ckPurchase(ck, "print-airtime", { network: f.network, value: f.value, quantity: f.quantity }, ref);
         apiRef = r.reference; pinsArr = (r.pins || []).map(p => ({ ...p, network: f.network }));
         const qty = parseInt(f.quantity, 10);
         itemName = `${f.network} ₦${f.value} Airtime Print x${qty}`; customerRef = `${qty} pins`;
         note = `Network: ${f.network} | Value: ₦${f.value} x${qty}${apiRef ? ` | Ref: ${apiRef}` : ""}__PINS__${JSON.stringify(pinsArr)}`;
 
       } else if (cat === "print-data") {
-        const r = await ckPurchase(clubkonnect, "print-data", { network: f.network, planId: f.planId, quantity: f.quantity }, ref);
+        const r = await ckPurchase(ck, "print-data", { network: f.network, planId: f.planId, quantity: f.quantity }, ref);
         apiRef = r.reference; pinsArr = (r.pins || []).map(p => ({ ...p, network: f.network }));
         const qty = parseInt(f.quantity, 10);
         itemName = `${f.network} ${f.planName} Data Print x${qty}`; customerRef = `${qty} pins`;
@@ -2652,10 +2655,10 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         const sets   = parseInt(f.sets || "1", 10);
         const bDenom = String(parseInt(f.denom || "1000", 10) || 1000);
         const [mtn, airtel, nm, glo] = await Promise.all([
-          ckPurchase(clubkonnect, "print-airtime", { network: "MTN",     value: bDenom, quantity: String(sets) }, `${ref}-MTN`),
-          ckPurchase(clubkonnect, "print-airtime", { network: "Airtel",  value: bDenom, quantity: String(sets) }, `${ref}-AIR`),
-          ckPurchase(clubkonnect, "print-airtime", { network: "9mobile", value: bDenom, quantity: String(sets) }, `${ref}-9MB`),
-          ckPurchase(clubkonnect, "print-airtime", { network: "Glo",     value: bDenom, quantity: String(sets) }, `${ref}-GLO`),
+          ckPurchase(ck, "print-airtime", { network: "MTN",     value: bDenom, quantity: String(sets) }, `${ref}-MTN`),
+          ckPurchase(ck, "print-airtime", { network: "Airtel",  value: bDenom, quantity: String(sets) }, `${ref}-AIR`),
+          ckPurchase(ck, "print-airtime", { network: "9mobile", value: bDenom, quantity: String(sets) }, `${ref}-9MB`),
+          ckPurchase(ck, "print-airtime", { network: "Glo",     value: bDenom, quantity: String(sets) }, `${ref}-GLO`),
         ]);
         pinsArr = [
           ...(mtn.pins    || []).map(p => ({ ...p, network: "MTN"     })),

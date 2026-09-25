@@ -80,6 +80,18 @@ serve(async (req) => {
       const { data: { user }, error: authErr } = await sb.auth.getUser(token);
       if (authErr || !user) return json({ error: "Unauthorized" }, 401);
 
+      // Bill references are timestamps (KDT-BILL-<ms>), i.e. guessable — so verify must only answer for the person the
+      // payment belongs to. Verifying someone else's reference would also use it up ("already_fulfilled" below) and could
+      // let another account buy with it. The order's pending_bills row records the owner; staff may verify for their owner.
+      // (No row = nothing to compare against, e.g. the app's intent write failed — allowed, as before.)
+      {
+        const { data: pb } = await sb.from("pending_bills").select("user_id").eq("reference", reference).maybeSingle();
+        if (pb?.user_id && pb.user_id !== user.id) {
+          const { data: st } = await sb.from("staff").select("id").eq("user_id", user.id).eq("owner_id", pb.user_id).eq("status", "active").maybeSingle();
+          if (!st) return json({ error: "This payment belongs to another account." }, 403);
+        }
+      }
+
       const res = await fetch(
         `https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`,
         { headers: psHeaders },

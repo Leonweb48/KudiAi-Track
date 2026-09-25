@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import nodemailer from "npm:nodemailer@6";
 import { bankEmail, esc, cleanSubject, naira, appLink, htmlToText, type EmailRow } from "../_shared/bankEmail.ts";
 import { parseCkAmount } from "../_shared/ckAmount.ts";
+import { checkBillGate, DEFAULT_CONFIG, PURCHASE_ACTIONS, type CouponRow, type GateConfig, type GateDeps, type GateMode } from "../_shared/billGate.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -98,6 +99,48 @@ const SUPABASE_URL  = Deno.env.get("SUPABASE_URL")              ?? "";
 const SERVICE_KEY   = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const ANON_KEY      = Deno.env.get("SUPABASE_ANON_KEY")         ?? "";
 
+// ── Bill purchase gate wiring (logic + tests live in _shared/billGate.ts) ─────────────────────────────────────────
+let gateConfigCache: { at: number; cfg: GateConfig } | null = null;
+function makeGateDeps(): GateDeps {
+  const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+  const asMode = (v: unknown, d: GateMode): GateMode => (v === "off" || v === "log" || v === "enforce" ? v : d);
+  return {
+    async config() {
+      if (gateConfigCache && Date.now() - gateConfigCache.at < 60_000) return gateConfigCache.cfg;
+      const { data } = await db.from("platform_config").select("key, value")
+        .in("key", ["bills_gate_mode", "bills_gate_floor_mode", "bills_gate_floor_pct", "bills_gate_tolerance_kobo"]);
+      const m: Record<string, string> = {};
+      (data ?? []).forEach((r: { key: string; value: string }) => { m[r.key] = r.value; });
+      const cfg: GateConfig = {
+        mode: asMode(m.bills_gate_mode, DEFAULT_CONFIG.mode),
+        floorMode: asMode(m.bills_gate_floor_mode, DEFAULT_CONFIG.floorMode),
+        floor_pct: Number.isFinite(Number(m.bills_gate_floor_pct)) && Number(m.bills_gate_floor_pct) > 0 ? Number(m.bills_gate_floor_pct) : DEFAULT_CONFIG.floor_pct,
+        tolerance_kobo: Number.isFinite(Number(m.bills_gate_tolerance_kobo)) && Number(m.bills_gate_tolerance_kobo) >= 0 ? Number(m.bills_gate_tolerance_kobo) : DEFAULT_CONFIG.tolerance_kobo,
+      };
+      gateConfigCache = { at: Date.now(), cfg };
+      return cfg;
+    },
+    rpc: (name, args) => db.rpc(name, args) as unknown as Promise<{ data: unknown; error: { message: string } | null }>,
+    async coupon(code) {
+      // exact match ignoring case; % and _ are escaped so a code can never act as a wildcard
+      const esc = code.replace(/[\\%_]/g, (c) => "\\" + c);
+      const { data } = await db.from("coupons")
+        .select("code, type, value, applies_to, min_amount, valid_from, valid_until, is_active, max_uses, used_count, one_per_user")
+        .ilike("code", esc).limit(2);
+      return (data && data.length === 1 ? data[0] : null) as CouponRow | null;
+    },
+    async paystack(reference) {
+      const key = Deno.env.get("PAYSTACK_SECRET_KEY") ?? "";
+      if (!key) return null;
+      const r = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, { headers: { Authorization: `Bearer ${key}` } });
+      const j = await r.json().catch(() => null) as { status?: boolean; data?: { status?: string; amount?: number; metadata?: { payment_type?: string } } } | null;
+      if (!r.ok || !j?.data) return null;
+      return { success: j.data.status === "success", amountKobo: Number(j.data.amount ?? 0), isBill: j.data.metadata?.payment_type === "bill" };
+    },
+    async log(row) { await db.from("bill_gate_log").insert(row); },
+  };
+}
+
 // Constant-time string comparison for secrets (avoids leaking a match prefix through timing).
 function timingSafeEqual(a: string, b: string): boolean {
   const ea = new TextEncoder().encode(a), eb = new TextEncoder().encode(b);
@@ -159,6 +202,7 @@ serve(async (req) => {
   // e-mail the admins, and nothing in the app calls them — only the admin portal / server code, always with the
   // service-role key. This function is deployed --no-verify-jwt, so the gateway does NOT check anything for us:
   // these MUST be gated here (they used to be reachable by anyone on the internet with no credentials at all).
+  let callerUser: { id: string } | null = null;   // set for ordinary logged-in callers; stays null for server (service-role) calls
   const SERVICE_ONLY = new Set(["wallet-balance", "connectivity-check", "wallet-balance-alert", "health-check", "data-probe", "refresh-ck-prices"]);
   // Public catalogue lookups (plan lists) stay open; purchase / write actions require the service key OR a user JWT.
   const READ_ONLY = new Set(["data-plans", "cabletv-plans"]);
@@ -175,7 +219,15 @@ serve(async (req) => {
       const sb = createClient(SUPABASE_URL, ANON_KEY, { auth: { persistSession: false } });
       const { data: { user }, error } = await sb.auth.getUser(token);
       if (error || !user) return unauthorized();
+      callerUser = { id: user.id };
     }
+  }
+
+  // A logged-in user asking to BUY something: the server must be able to see that it is paid for (see _shared/billGate.ts).
+  // Server-to-server calls (the payment webhooks) run their own checks and are not gated here.
+  if (callerUser && PURCHASE_ACTIONS.has(action)) {
+    const gate = await checkBillGate(makeGateDeps(), callerUser, action, body);
+    if (!gate.ok) return json({ error: gate.message, _gate: gate.reason });
   }
 
   try {

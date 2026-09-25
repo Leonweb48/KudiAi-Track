@@ -14,6 +14,7 @@
 import { serve }        from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { createHmac }   from "https://deno.land/std@0.168.0/node/crypto.ts";
+import { faceKobo }      from "../_shared/billGate.ts";
 
 const CORS = { "Access-Control-Allow-Origin": "*" };
 const EMAIL_TRIGGER_SECRET = Deno.env.get("EMAIL_TRIGGER_SECRET") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
@@ -161,6 +162,21 @@ async function handleBillPayment(
 
   const cat      = pb.cat as string;
   const formData = (pb.form_data ?? {}) as Record<string, string>;
+
+  // Price floor (RECORD ONLY for now): pending_bills is written by the app, so what it asks for can be more than what
+  // Paystack actually took. Same rule as the purchase gate in clubkonnect — the charge should cover ~80% of the order's
+  // face value less a NGN200 tolerance. Logged to bill_gate_log for review; it does not block fulfilment yet.
+  try {
+    const face = faceKobo(cat, { ...formData });
+    const required = Math.round(face * 0.8) - 20_000;
+    if (face > 0 && amountKobo < required) {
+      console.warn(`[webhook/bill] UNDERPAID? ref=${reference} cat=${cat} paid_kobo=${amountKobo} face_kobo=${face}`);
+      await sb.from("bill_gate_log").insert({
+        request_id: reference, user_id: pb.user_id ?? null, cat, reason: "webhook_underpaid",
+        face_kobo: face, paid_kobo: amountKobo, required_kobo: required, enforced: false,
+      });
+    }
+  } catch (e) { console.warn("[webhook/bill] floor check skipped:", (e as Error).message); }
 
   // POST to the ClubKonnect edge function (service role key bypasses the user JWT
   // check). Retries on a network-shaped failure — the pending_bills.reference is
