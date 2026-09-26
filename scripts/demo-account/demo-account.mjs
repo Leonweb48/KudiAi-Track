@@ -122,6 +122,15 @@ async function create() {
   await insertRows("subscriptions", [{ user_id: id, plan: plan.slug, status: "active", billing_cycle: "yearly", cancel_at_period_end: false, expires_at: new Date(Date.now() + 400 * 864e5).toISOString() }]);
   say("plan:", plan.slug, `(${plan.name})`);
 
+  // the app stops a first-time user on a "accept the Terms and Privacy Policy" screen; the demo account starts already past it, at the current versions
+  const docs = must(await api("GET", "/rest/v1/legal_documents?select=type,version&status=eq.published&order=version.desc"), "read legal documents").json || [];
+  const latest = (type) => docs.find((d) => d.type === type)?.version;
+  if (latest("tnc") && latest("privacy")) {
+    await clearRows("user_consents", "user_id", id);
+    await insertRows("user_consents", [{ user_id: id, tnc_version: latest("tnc"), privacy_version: latest("privacy"), consented_at: new Date().toISOString() }]);
+    say(`consent recorded at Terms v${latest("tnc")} / Privacy v${latest("privacy")}`);
+  }
+
   // fictional data — cleared first so a re-run does not double it
   for (const [table, col] of [["transactions", "user_id"], ["debt_payments", "owner_id"], ["credits", "user_id"], ["customers", "user_id"], ["products", "user_id"]]) await clearRows(table, col, id);
   const n = {};
