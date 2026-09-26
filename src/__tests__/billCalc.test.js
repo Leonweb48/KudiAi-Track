@@ -5,6 +5,7 @@ import {
   calcBillAmounts,
   cashbackEligible,
   CASHBACK_CATEGORIES,
+  printAirtimeUnitPrice,
 } from "../utils/billCalc";
 
 // ── calcPointsDiscount ──────────────────────────────────────────────────────
@@ -185,5 +186,22 @@ describe("cashbackEligible", () => {
     expect(on("data").finalAmount).toBe(4200);
     expect(on("electricity").cashbackDiscount).toBe(0);
     expect(on("electricity").finalAmount).toBe(5000);
+  });
+});
+
+// ── Print Airtime price per PIN comes from the owner's table ───────────────────────────────
+describe("printAirtimeUnitPrice", () => {
+  const table = { MTN: { "100": 99, "1000": 990 }, "9mobile": { "500": 480 } };
+  it("reads network -> face value", () => {
+    expect(printAirtimeUnitPrice(table, "MTN", "100")).toBe(99);
+    expect(printAirtimeUnitPrice(table, "MTN", 1000)).toBe(990);          // a number face value works too
+    expect(printAirtimeUnitPrice(table, "9mobile", "500")).toBe(480);
+  });
+  it("returns null when there is no price, so the caller falls back to its own rule", () => {
+    expect(printAirtimeUnitPrice(table, "Glo", "100")).toBeNull();
+    expect(printAirtimeUnitPrice(table, "MTN", "300")).toBeNull();
+    expect(printAirtimeUnitPrice(null, "MTN", "100")).toBeNull();
+    expect(printAirtimeUnitPrice({ MTN: { "100": 0 } }, "MTN", "100")).toBeNull();
+    expect(printAirtimeUnitPrice({ MTN: { "100": "abc" } }, "MTN", "100")).toBeNull();
   });
 });

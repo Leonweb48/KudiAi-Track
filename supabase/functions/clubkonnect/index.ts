@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import nodemailer from "npm:nodemailer@6";
 import { bankEmail, esc, cleanSubject, naira, appLink, htmlToText, type EmailRow } from "../_shared/bankEmail.ts";
 import { parseCkAmount } from "../_shared/ckAmount.ts";
+import { applyDataPrices, parseDiscountPct, parseSellingPrices, type SellingPrices } from "../_shared/dataPricing.ts";
 import { checkBillGate, DEFAULT_CONFIG, PURCHASE_ACTIONS, type CouponRow, type GateConfig, type GateDeps, type GateMode } from "../_shared/billGate.ts";
 
 const CORS = {
@@ -98,6 +99,25 @@ function errMsg(data: Record<string, unknown>, fallback: string): string {
 const SUPABASE_URL  = Deno.env.get("SUPABASE_URL")              ?? "";
 const SERVICE_KEY   = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const ANON_KEY      = Deno.env.get("SUPABASE_ANON_KEY")         ?? "";
+
+// ── Selling prices (logic + tests live in _shared/dataPricing.ts) ─────────────────────────────────────────
+// The owner sets what customers pay for data in platform_config (data_selling_prices, print_data_discount_pct); the data-plans action swaps them in for
+// the provider price. Cached for a minute so a plan-list request is not a database round trip every time.
+let priceCfgCache: { at: number; selling: SellingPrices; printPct: number } | null = null;
+async function priceConfig(): Promise<{ selling: SellingPrices; printPct: number }> {
+  if (priceCfgCache && Date.now() - priceCfgCache.at < 60_000) return priceCfgCache;
+  try {
+    const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+    const { data } = await db.from("platform_config").select("key, value").in("key", ["data_selling_prices", "print_data_discount_pct"]);
+    const m: Record<string, string> = {};
+    for (const r of (data ?? []) as { key: string; value: string }[]) m[r.key] = r.value;
+    priceCfgCache = { at: Date.now(), selling: parseSellingPrices(m.data_selling_prices), printPct: parseDiscountPct(m.print_data_discount_pct) };
+    return priceCfgCache;
+  } catch (e) {
+    console.warn("[data-plans] price config unavailable, using provider prices:", (e as Error).message);
+    return { selling: {}, printPct: 0 };
+  }
+}
 
 // ── Bill purchase gate wiring (logic + tests live in _shared/billGate.ts) ─────────────────────────────────────────
 let gateConfigCache: { at: number; cfg: GateConfig } | null = null;
@@ -309,7 +329,11 @@ serve(async (req) => {
         const availableKeys = mobileNet ? Object.keys(mobileNet).join(", ") : "none";
         return json({ plans: [], error: `No plans for "${network}". API keys: [${availableKeys}]. Raw: ${JSON.stringify(data).slice(0,200)}` });
       }
-      return json({ plans, _count: plans.length, _sample: _sampleProduct });
+      // What customers pay: the owner's selling price (Print Data: minus the print discount), not the provider price. cost_amount keeps the provider price.
+      const cfg = await priceConfig();
+      const isPrint = (body as { print?: unknown }).print === true || (body as { print?: unknown }).print === "true";
+      const priced = applyDataPrices(plans, network, cfg.selling, { print: isPrint, printDiscountPct: cfg.printPct });
+      return json({ plans: priced, _count: priced.length, _sample: _sampleProduct });
     }
 
     // ── Data purchase ─────────────────────────────────────────────────────────

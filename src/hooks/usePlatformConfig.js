@@ -44,6 +44,9 @@ export function usePlatformConfig() {
     // Business loans are offered through a third-party lender that is not live yet. Off ("coming soon", no application form) until
     // platform_config.business_loan_enabled = "true" — flipping it on needs no app rebuild.
     loansEnabled: config?.business_loan_enabled === "true",
+    // Print Airtime price per PIN (network -> face value -> naira) and the Bundle Set switch — both set in platform_config (see migration 20270216000000).
+    printAirtimePrices: (() => { try { const o = config?.print_airtime_prices ? JSON.parse(config.print_airtime_prices) : null; return o && typeof o === "object" ? o : null; } catch { return null; } })(),
+    bundleSetEnabled: config?.bundle_set_enabled === "true",         // paused until the owner turns it back on
     // Betting Wallet tile: on for the web, off in the Android app (Google Play gambling rules) until platform_config.android_betting_enabled = "true".
     bettingVisible: bettingVisible(config),
     walletTestMode: config?.wallet_test_mode !== "false",   // default on until explicitly disabled

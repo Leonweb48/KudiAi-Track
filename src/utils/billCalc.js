@@ -8,6 +8,13 @@
 export const CASHBACK_CATEGORIES = ["airtime", "data"];
 export const cashbackEligible = (category) => CASHBACK_CATEGORIES.includes(category);
 
+// Print Airtime is sold at the owner's price per PIN (platform_config.print_airtime_prices: network -> face value -> naira). Returns null when the table has no
+// price for that network/face value, so the caller can fall back to its own rule.
+export function printAirtimeUnitPrice(table, network, face) {
+  const n = Number(table?.[network]?.[String(face)]);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 // Points: up to 50% of charge, minimum 50 pts balance to redeem
 export function calcPointsDiscount({ chargeAmount, pointsBalance, usePoints, pointsEnabled }) {
   if (!pointsEnabled || !usePoints || pointsBalance < 50) return 0;

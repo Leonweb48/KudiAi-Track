@@ -4,7 +4,7 @@ import PeriodFilter from "../components/shared/PeriodFilter";
 import { useCampaigns }    from "../hooks/useCampaigns";
 import AnnouncementBarSlot from "../components/slots/AnnouncementBarSlot";
 import { useT } from "../contexts/LanguageContext";
-import { calcPointsDiscount, calcCashbackDiscount, calcCouponDiscount, calcBillAmounts, cashbackEligible } from "../utils/billCalc";
+import { calcPointsDiscount, calcCashbackDiscount, calcCouponDiscount, calcBillAmounts, cashbackEligible, printAirtimeUnitPrice } from "../utils/billCalc";
 import { saveBeneficiary, getBeneficiaries, getRecentBeneficiaries, deleteBeneficiary, benDisplayName, benSubLabel, BEN_CATS, upsertRemote, syncLocalToRemote, fetchRemoteRecent, fetchAllRemote, deleteRemote, updateRemoteNickname } from "../utils/billBeneficiaries";
 import { clubkonnect } from "../utils/clubkonnect";
 import { canDo, getLowestPlanWithFeature } from "../utils/plans";
@@ -1634,7 +1634,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
   // ── ClubKonnect wholesale pricing ────────────────────────────────────────
   // Enterprise owners buy airtime/data/print at CK cost + a small platform fee
   // so they can resell below face. Everyone else keeps retail pricing.
-  const { ckDiscounts, enterpriseFeePct, walletEnabled, loansEnabled, bettingVisible } = usePlatformConfig();
+  const { ckDiscounts, enterpriseFeePct, walletEnabled, loansEnabled, bettingVisible, printAirtimePrices, bundleSetEnabled } = usePlatformConfig();
 
   // ── Digital wallet — funding source; the only one when walletOnly (Ajo client portal).
   // When a parent screen already has a live useWallet() instance for this same user
@@ -1661,7 +1661,9 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     if (cat === "print-airtime") {
       const face = parseInt(f.value || "0", 10) || 0;
       if (!face || !f.network) return 0;
-      return Math.ceil(ckUnitCost(face, f.network, "epin", ckDiscounts) * (1 + enterpriseFeePct)) * q;
+      // the owner's price per PIN when one is set; otherwise the old rule (ClubKonnect cost + platform fee)
+      const unit = printAirtimeUnitPrice(printAirtimePrices, f.network, face);
+      return (unit ?? Math.ceil(ckUnitCost(face, f.network, "epin", ckDiscounts) * (1 + enterpriseFeePct))) * q;
     }
     if (cat === "airtime-bundle") {
       const sets = parseInt(f.sets || "0", 10) || 0;
@@ -1786,6 +1788,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     const catMeta = CATS.find(c => c.id === catId);
     if (catMeta?.enterprise && !isEnterprise) return;
     if (catMeta?.wholesale && !isWholesale) return;
+    if (catId === "airtime-bundle" && !bundleSetEnabled) return;       // Bundle Set is paused
     if (catId === "business-loan") { if (loansEnabled) setShowLoanModal(true); return; }
     setSelectedCat(catId);
     setForm({ network: "MTN", phone: "", amount: "", planId: "", planName: "",
@@ -1796,7 +1799,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     if (catId === "data") loadPlans("data-plans", { network: "MTN" });
     if (catId === "spectranet") loadPlans("spectranet-plans", {});
     if (catId === "smile") loadPlans("smile-plans", {});
-    if (catId === "print-data") loadPlans("data-plans", { network: "MTN" });
+    if (catId === "print-data") loadPlans("data-plans", { network: "MTN", print: true });     // print: the server takes the Print Data discount off
   }, [isEnterprise, isWholesale, excludeCats]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -2107,7 +2110,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       if (r?.plans?.length) {
         const network = extra?.network || form.network || "";
         const priced = r.plans.map(p => {
-          const customPrice = action === "data-plans" ? lookupDataPrice(network, p.plan_name) : null;
+          const customPrice = action === "data-plans" && !p.priced ? lookupDataPrice(network, p.plan_name) : null;
           if (customPrice !== null) return { ...p, plan_amount: customPrice };
           return markup > 1 ? { ...p, plan_amount: Math.ceil(p.plan_amount * markup) } : p;
         });
@@ -2139,7 +2142,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
   // Reload data plans when network changes
   const handleNetworkChange = (network) => {
     setF("network", network); setF("planId", ""); setF("planName", ""); setF("amount", "");
-    if (selectedCat === "data" || selectedCat === "print-data") loadPlans("data-plans", { network });
+    if (selectedCat === "data" || selectedCat === "print-data") loadPlans("data-plans", { network, ...(selectedCat === "print-data" ? { print: true } : {}) });
   };
 
   // Verify handlers
@@ -3201,10 +3204,11 @@ export default function BillPayments({ store, plan, session = null, staffName = 
               const lockedEnterprise = c.enterprise && !isEnterprise;
               const lockedWholesale  = c.wholesale  && !isWholesale;
               const lockedLoan       = c.loan && (!loansEnabled || !isEnterprise || !isLoanEligible);
-              const locked = lockedEnterprise || lockedWholesale || lockedLoan;
+              const pausedBundle     = c.id === "airtime-bundle" && !bundleSetEnabled;
+              const locked = lockedEnterprise || lockedWholesale || lockedLoan || pausedBundle;
               const count  = bills.filter(b => b.category === c.id).length;
               const reqPlanLabel = (getLowestPlanWithFeature("apiAccess")?.name ?? "Pro").slice(0, 4).toUpperCase();
-              const badge  = lockedEnterprise ? reqPlanLabel : lockedWholesale ? reqPlanLabel : c.loan && !loansEnabled ? "SOON" : lockedLoan && !isEnterprise ? reqPlanLabel : lockedLoan ? "4MO" : null;
+              const badge  = pausedBundle ? "PAUSED" : lockedEnterprise ? reqPlanLabel : lockedWholesale ? reqPlanLabel : c.loan && !loansEnabled ? "SOON" : lockedLoan && !isEnterprise ? reqPlanLabel : lockedLoan ? "4MO" : null;
               return (
                 <button key={c.id} onClick={() => openSheet(c.id)} disabled={locked}
                   className={`rounded-2xl p-4 flex flex-col items-center gap-2 shadow-sm active:scale-95 transition-all duration-150 text-white relative bg-gradient-to-br ${c.tileCls} ${locked ? "opacity-50 cursor-not-allowed" : ""}`}>
