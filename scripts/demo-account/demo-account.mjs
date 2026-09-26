@@ -8,6 +8,7 @@
 //     ACTION=tester-create     make it / reset it to the free plan
 //     ACTION=tester-upgrade    switch its subscription to the top paid plan (what a web upgrade does to the row)
 //     ACTION=tester-downgrade  put it back on the free plan
+//     ACTION=tester-stock-ping rename one of its products (a server-side stock change, to check that an open app updates live)
 //     ACTION=tester-disable    lock it
 //
 // Run by .github/workflows/demo-account.yml with secrets in the environment. Nothing secret is ever printed, and every write is scoped to the ONE user
@@ -215,9 +216,19 @@ async function testerPlan(which) {
   say(`tester is now on: ${sub?.plan} (${plan.name}) status=${sub?.status} expires=${sub?.expires_at || "never"}`);
 }
 
+async function stockPing() {
+  const id = await findUserId();
+  if (!id) fail("the tester account does not exist yet — run tester-create first");
+  const stamp = new Date().toISOString().slice(11, 19).replace(/:/g, "");
+  const name = `Hypo Toothpaste LIVE${stamp}`;
+  must(await api("PATCH", `/rest/v1/products?user_id=eq.${id}&sku=eq.AFM-1019`, { product_name: name }, { Prefer: "return=minimal" }), "rename product");
+  say("renamed a product to:", name);
+}
+
 if (ACTION === "create") await create();
 else if (ACTION === "disable" || ACTION === "tester-disable") await disable();
 else if (ACTION === "tester-create") await create();
 else if (ACTION === "tester-upgrade") await testerPlan("top");
 else if (ACTION === "tester-downgrade") await testerPlan("free");
+else if (ACTION === "tester-stock-ping") await stockPing();
 else fail(`unknown ACTION "${ACTION}"`);

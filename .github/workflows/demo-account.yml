@@ -13,7 +13,7 @@ on:
       action:
         description: "reviewer: create / disable — tester: tester-create / tester-upgrade / tester-downgrade / tester-disable"
         type: choice
-        options: [create, disable, tester-create, tester-upgrade, tester-downgrade, tester-disable]
+        options: [create, disable, tester-create, tester-upgrade, tester-downgrade, tester-stock-ping, tester-disable]
         default: create
 
 permissions:

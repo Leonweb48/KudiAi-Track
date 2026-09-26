@@ -67,20 +67,24 @@ export function useInventory(userId, staffId = null, branchId = null, staffName 
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // Realtime sync — all staff accounts see live qty changes
+  // Realtime sync — all staff accounts see live qty changes.
+  // Debounced: one sale writes a stock movement AND updates the product, and a bulk edit or import can fire hundreds of events — each one used to
+  // mean a full reload, so wait for the burst to settle and reload once.
   useEffect(() => {
-    if (!userId || !supabase) return;
+    if (!userId || !supabase) return undefined;
+    let timer = null;
+    const refresh = () => { clearTimeout(timer); timer = setTimeout(loadData, 700); };
     const ch = supabase.channel(`inv_${userId}`)
       .on("postgres_changes", {
         event: "*", schema: "public", table: "products",
         filter: `user_id=eq.${userId}`,
-      }, loadData)
+      }, refresh)
       .on("postgres_changes", {
         event: "*", schema: "public", table: "stock_movements",
         filter: `user_id=eq.${userId}`,
-      }, loadData)
+      }, refresh)
       .subscribe();
-    return () => supabase.removeChannel(ch);
+    return () => { clearTimeout(timer); supabase.removeChannel(ch); };
   }, [userId, loadData]);
 
   const addProduct = useCallback(async (data) => {
