@@ -1634,7 +1634,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
   // ── ClubKonnect wholesale pricing ────────────────────────────────────────
   // Enterprise owners buy airtime/data/print at CK cost + a small platform fee
   // so they can resell below face. Everyone else keeps retail pricing.
-  const { ckDiscounts, enterpriseFeePct, walletEnabled } = usePlatformConfig();
+  const { ckDiscounts, enterpriseFeePct, walletEnabled, loansEnabled } = usePlatformConfig();
 
   // ── Digital wallet — funding source; the only one when walletOnly (Ajo client portal).
   // When a parent screen already has a live useWallet() instance for this same user
@@ -1785,7 +1785,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     const catMeta = CATS.find(c => c.id === catId);
     if (catMeta?.enterprise && !isEnterprise) return;
     if (catMeta?.wholesale && !isWholesale) return;
-    if (catId === "business-loan") { setShowLoanModal(true); return; }
+    if (catId === "business-loan") { if (loansEnabled) setShowLoanModal(true); return; }
     setSelectedCat(catId);
     setForm({ network: "MTN", phone: "", amount: "", planId: "", planName: "",
                provider: "", smartcard: "", meterNo: "", meterType: "01",
@@ -3199,11 +3199,11 @@ export default function BillPayments({ store, plan, session = null, staffName = 
             {visibleCats.map(c => {
               const lockedEnterprise = c.enterprise && !isEnterprise;
               const lockedWholesale  = c.wholesale  && !isWholesale;
-              const lockedLoan       = c.loan && (!isEnterprise || !isLoanEligible);
+              const lockedLoan       = c.loan && (!loansEnabled || !isEnterprise || !isLoanEligible);
               const locked = lockedEnterprise || lockedWholesale || lockedLoan;
               const count  = bills.filter(b => b.category === c.id).length;
               const reqPlanLabel = (getLowestPlanWithFeature("apiAccess")?.name ?? "Pro").slice(0, 4).toUpperCase();
-              const badge  = lockedEnterprise ? reqPlanLabel : lockedWholesale ? reqPlanLabel : lockedLoan && !isEnterprise ? reqPlanLabel : lockedLoan ? "4MO" : null;
+              const badge  = lockedEnterprise ? reqPlanLabel : lockedWholesale ? reqPlanLabel : c.loan && !loansEnabled ? "SOON" : lockedLoan && !isEnterprise ? reqPlanLabel : lockedLoan ? "4MO" : null;
               return (
                 <button key={c.id} onClick={() => openSheet(c.id)} disabled={locked}
                   className={`rounded-2xl p-4 flex flex-col items-center gap-2 shadow-sm active:scale-95 transition-all duration-150 text-white relative bg-gradient-to-br ${c.tileCls} ${locked ? "opacity-50 cursor-not-allowed" : ""}`}>
@@ -3222,7 +3222,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
               Print Airtime & Data wholesale require the {getLowestPlanWithFeature("printWholesale")?.name ?? "a higher tier"} plan
             </p>
           )}
-          {isEnterprise && !isLoanEligible && (
+          {loansEnabled && isEnterprise && !isLoanEligible && (
             <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center mt-1">
               Business Loan unlocks after 4 months on the {getLowestPlanWithFeature("loanAccess")?.name ?? "a higher tier"} plan
             </p>

@@ -22,8 +22,8 @@ export default function LanguageSelector({ userId }) {
     // Sync language to profile in background — never block navigation.
     if (userId && supabase) {
       setTimeout(() => {
-        supabase.from("profiles").update({ preferred_language: selected })
-          .eq("id", userId).catch(() => null);
+        // Promise.resolve(): a Supabase query builder has no .catch of its own, so calling it directly threw and the save never ran.
+        Promise.resolve(supabase.from("profiles").update({ preferred_language: selected }).eq("id", userId)).catch(() => null);
       }, 0);
     }
     // Reload on all platforms. Lang + chosen are in localStorage so the app

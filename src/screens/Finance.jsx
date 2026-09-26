@@ -12,6 +12,7 @@ import { fmt, isBillPayment } from "../utils/helpers";
 import { AmountDisplay }    from "../components/shared/AmountDisplay";
 import { compute, computeCapital } from "../lib/profitEngine";
 import { supabase } from "../utils/supabase";
+import { usePlatformConfig } from "../hooks/usePlatformConfig";
 
 /* ── Period config ───────────────────────────────────────────────────────────── */
 const PERIODS = [
@@ -960,6 +961,7 @@ export default function Finance({
 }) {
   const [section,   setSection]   = useState(autoOpenTab || null);
   const [showLoan,  setShowLoan]  = useState(false);
+  const { loansEnabled } = usePlatformConfig();          // business loans: off ("coming soon", no tile, no application) until the lender is live
   const [period,    setPeriod]    = useState("month");
   const [lens,      setLens]      = useState("profit");
   const [drillDown, setDrillDown] = useState(null);
@@ -1117,7 +1119,7 @@ export default function Finance({
   const ajoActive         = asoClients.filter(c => c.status === "active").length;
 
   /* ── Sub-section view ─────────────────────────────────────────────────────── */
-  if (section) {
+  if (section && !(section === "loan" && !loansEnabled)) {
     return (
       <div className="flex flex-col min-h-full">
         <SectionHeader title={SECTION_LABELS[section]} onBack={() => { setSection(null); setSectionLink(null); }} />
@@ -1375,8 +1377,8 @@ export default function Finance({
         </div>
 
         {/* Bottom row: Loan / Org / Invoices — smaller icon tiles */}
-        <div className="grid grid-cols-3 gap-2">
-          {FINANCE_TILES.slice(2).map(tile => (
+        <div className={`grid gap-2 ${loansEnabled ? "grid-cols-3" : "grid-cols-2"}`}>
+          {FINANCE_TILES.slice(2).filter(tile => tile.id !== "loan" || loansEnabled).map(tile => (
             <button key={tile.id} onClick={() => openSection(tile.id)}
               className="flex flex-col items-center gap-1.5 py-3 rounded-2xl bg-slate-50 dark:bg-slate-700/50 active:scale-95 transition border border-slate-100 dark:border-slate-700/30 min-h-[44px]">
               <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${tile.bg}`}>

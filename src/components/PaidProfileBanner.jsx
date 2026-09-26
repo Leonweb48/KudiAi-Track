@@ -65,7 +65,7 @@ export default function PaidProfileBanner({ profile, walletActive = false, walle
         <p style={{ color: "rgba(255,255,255,0.85)", fontSize: 11, lineHeight: 1.55, margin: 0 }}>
           {isUrgent
             ? "Some premium features are restricted until your profile is complete. Core transactions, savings, and bills are always available."
-            : `You have ${graceDaysLeft} day${graceDaysLeft === 1 ? "" : "s"} to complete your profile. Verified identity is required for your plan and future lending partnerships.`}
+            : `You have ${graceDaysLeft} day${graceDaysLeft === 1 ? "" : "s"} to complete your profile. Verified identity is required for your plan.`}
         </p>
       </div>
 

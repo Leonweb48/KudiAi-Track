@@ -297,7 +297,7 @@ function LanguageModal({ current, userId, onClose }) {
     changeLang(code);
     markLangChosen();
     if (userId && supabase) {
-      supabase.from("profiles").update({ preferred_language: code }).eq("id", userId).catch(() => null);
+      Promise.resolve(supabase.from("profiles").update({ preferred_language: code }).eq("id", userId)).catch(() => null);
     }
     onClose();
   };

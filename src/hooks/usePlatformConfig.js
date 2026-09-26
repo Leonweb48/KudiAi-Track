@@ -40,6 +40,9 @@ export function usePlatformConfig() {
     ckDiscounts,                                            // { airtime:{NET:pct}, epin:{NET:pct}, epin_live:{}, ... }
     enterpriseFeePct: Number(config?.enterprise_bill_fee_pct ?? "0.01") || 0.01,
     walletEnabled: config?.wallet_enabled === "true",
+    // Business loans are offered through a third-party lender that is not live yet. Off ("coming soon", no application form) until
+    // platform_config.business_loan_enabled = "true" — flipping it on needs no app rebuild.
+    loansEnabled: config?.business_loan_enabled === "true",
     walletTestMode: config?.wallet_test_mode !== "false",   // default on until explicitly disabled
     // Off until Flutterwave confirms BVN Verification is enabled on this merchant
     // account — flipping this on is the only thing needed to re-enable both the
