@@ -89,7 +89,7 @@ export default function CashbackCard({ userEmail }) {
             )}
             <div className="px-4 py-2.5 bg-slate-50 dark:bg-slate-700/30 border-t border-slate-100 dark:border-slate-700/50">
               <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center">
-                Apply cashback at checkout when paying bills
+                Use cashback at checkout when buying airtime or data
               </p>
             </div>
           </div>

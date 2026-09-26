@@ -3,6 +3,8 @@ import {
   calcCashbackDiscount,
   calcCouponDiscount,
   calcBillAmounts,
+  cashbackEligible,
+  CASHBACK_CATEGORIES,
 } from "../utils/billCalc";
 
 // ── calcPointsDiscount ──────────────────────────────────────────────────────
@@ -162,5 +164,26 @@ describe("calcBillAmounts", () => {
     });
     expect(pointsDiscount).toBe(500);
     expect(finalAmount).toBe(500);
+  });
+});
+
+// ── cashback is for airtime and data only ─────────────────────────────────────
+describe("cashbackEligible", () => {
+  it("airtime and data earn and spend cashback", () => {
+    expect(cashbackEligible("airtime")).toBe(true);
+    expect(cashbackEligible("data")).toBe(true);
+    expect(CASHBACK_CATEGORIES).toEqual(["airtime", "data"]);
+  });
+
+  it.each(["electricity", "cable", "betting", "waec", "jamb", "spectranet", "smile", "print-airtime", "airtime-bundle", "print-data", "business-loan", undefined, null, ""])(
+    "%s does not", (cat) => { expect(cashbackEligible(cat)).toBe(false); });
+
+  it("the way BillPayments uses it: cashback is ignored on a non-eligible bill even if the toggle was left on", () => {
+    const base = { chargeAmount: 5000, pointsBalance: 0, usePoints: false, pointsEnabled: false, cashbackBalance: 800, coupon: null };
+    const on  = (cat) => calcBillAmounts({ ...base, useCashback: true && cashbackEligible(cat) });
+    expect(on("airtime").cashbackDiscount).toBe(800);
+    expect(on("data").finalAmount).toBe(4200);
+    expect(on("electricity").cashbackDiscount).toBe(0);
+    expect(on("electricity").finalAmount).toBe(5000);
   });
 });

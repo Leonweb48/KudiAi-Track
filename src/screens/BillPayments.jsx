@@ -4,7 +4,7 @@ import PeriodFilter from "../components/shared/PeriodFilter";
 import { useCampaigns }    from "../hooks/useCampaigns";
 import AnnouncementBarSlot from "../components/slots/AnnouncementBarSlot";
 import { useT } from "../contexts/LanguageContext";
-import { calcPointsDiscount, calcCashbackDiscount, calcCouponDiscount, calcBillAmounts } from "../utils/billCalc";
+import { calcPointsDiscount, calcCashbackDiscount, calcCouponDiscount, calcBillAmounts, cashbackEligible } from "../utils/billCalc";
 import { saveBeneficiary, getBeneficiaries, getRecentBeneficiaries, deleteBeneficiary, benDisplayName, benSubLabel, BEN_CATS, upsertRemote, syncLocalToRemote, fetchRemoteRecent, fetchAllRemote, deleteRemote, updateRemoteNickname } from "../utils/billBeneficiaries";
 import { clubkonnect } from "../utils/clubkonnect";
 import { canDo, getLowestPlanWithFeature } from "../utils/plans";
@@ -1670,7 +1670,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     if (cat === "airtime") {
       const amt = parseFloat(f.amount || "0") || 0;
       if (!amt) return 0;
-      return isEnterprise ? Math.ceil(ckUnitCost(amt, f.network, "airtime", ckDiscounts) * (1 + enterpriseFeePct)) : amt;
+      return amt;   // airtime is a flat rate: face value for everyone, Premium included (only Print Airtime / Bundle Set are wholesale)
     }
     return 0; // other cats priced inline
   };
@@ -2307,7 +2307,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         usePoints,
         pointsEnabled,
         cashbackBalance: cashbackBalanceRef.current,
-        useCashback,
+        useCashback:     useCashback && cashbackEligible(selectedCat),    // cashback only applies to airtime and data
         coupon:          billAppliedCouponRef.current,
       });
 
@@ -2697,7 +2697,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       // Cashback: record redeemed amount (if used) and earned amount (1% of paid)
       const { cashbackUsed = 0 } = pending;
       const cbEmail = staffEmail || profile?.email;
-      const cbEarned = parseFloat(((paidAmount || amount) * 0.01).toFixed(2));
+      const cbEarned = cashbackEligible(cat) ? parseFloat(((paidAmount || amount) * 0.01).toFixed(2)) : 0;   // 1% back on airtime and data only
       if (cbEmail && (cashbackUsed > 0 || cbEarned > 0)) {
         try {
           const rows = [];
@@ -2982,7 +2982,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
   const savedBens = selectedCat && BEN_CATS.has(selectedCat) ? getBeneficiaries(selectedCat) : [];
 
   const ptsSavings       = calcPointsDiscount({ chargeAmount: uiChargeAmt, pointsBalance, usePoints, pointsEnabled });
-  const cbSavings        = calcCashbackDiscount({ chargeAmount: uiChargeAmt, cashbackBalance, useCashback, pointsDiscount: ptsSavings });
+  const cbSavings        = calcCashbackDiscount({ chargeAmount: uiChargeAmt, cashbackBalance, useCashback: useCashback && cashbackEligible(selectedCat), pointsDiscount: ptsSavings });
   const billCouponSavings = calcCouponDiscount({ chargeAmount: uiChargeAmt, coupon: billAppliedCoupon, afterDiscounts: uiChargeAmt - ptsSavings - cbSavings });
 
   // Dynamic network brand theme — active when a network service has a network selected
@@ -3688,7 +3688,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
               </>}
 
               {/* Cashback balance toggle */}
-              {cashbackBalance > 0 && userEmailCB && uiChargeAmt > 0 && (
+              {cashbackBalance > 0 && userEmailCB && uiChargeAmt > 0 && cashbackEligible(selectedCat) && (
                 <div className="flex items-center justify-between bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl px-4 py-3">
                   <div>
                     <p className="text-xs font-black text-green-800 dark:text-green-200">Apply Cashback</p>

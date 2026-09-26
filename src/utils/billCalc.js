@@ -4,6 +4,10 @@
  * These are the authoritative implementations — BillPayments imports from here.
  */
 
+// Cashback is earned on, and can be spent on, AIRTIME and DATA only (not on electricity, cable, betting, exam pins, etc.).
+export const CASHBACK_CATEGORIES = ["airtime", "data"];
+export const cashbackEligible = (category) => CASHBACK_CATEGORIES.includes(category);
+
 // Points: up to 50% of charge, minimum 50 pts balance to redeem
 export function calcPointsDiscount({ chargeAmount, pointsBalance, usePoints, pointsEnabled }) {
   if (!pointsEnabled || !usePoints || pointsBalance < 50) return 0;
