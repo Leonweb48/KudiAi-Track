@@ -112,8 +112,8 @@ describe("getProviderLogo / getProviderBadge for electricity", () => {
     expect(getProviderLogo("APLE", "electricity")).toBe("/logos/aple.svg");
     expect(getProviderLogo("MTN", "airtime")).toBe("/mtn.png");
     expect(getProviderLogo("Glo", "data")).toBe("/glo.jpg");
-    expect(getProviderLogo("DSTV", "cable")).toBe("/logos/dstv.svg");
-    expect(getProviderLogo("SportyBet", "betting")).toBe("/logos/sportybet.svg");
+    expect(getProviderLogo("DSTV", "cable")).toBe("/logos/bills/dstv.png");
+    expect(getProviderLogo("SportyBet", "betting")).toBe("/logos/bills/sportybet.png");
     expect(getProviderLogo("9mobile", "airtime")).toBe("/9mobile.png");
   });
   test("a city word only counts as a DISCO for electricity (a Kano-named cable customer is not IKEDC/KEDC)", () => {

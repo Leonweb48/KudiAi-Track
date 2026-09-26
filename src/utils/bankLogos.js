@@ -76,6 +76,7 @@ export const BANKS = [
   { key: "coronation",  label: "Coronation Merchant Bank", file: "coronation.png", codes: ["559"],     match: /^coronation/i },
   { key: "fsdh",        label: "FSDH Merchant Bank",  file: "fsdh.png",        codes: ["501"],          match: /^fsdh/i },
   { key: "rand",        label: "Rand Merchant Bank",  file: "rand.png",        codes: ["502"],          match: /^rand\s+merchant/i },
+  { key: "heritage",    label: "Heritage Bank",       file: "heritage.png",    codes: ["030"],          match: /^heritage/i },
 ];
 
 const BY_CODE = new Map(BANKS.flatMap((b) => b.codes.map((c) => [c.toUpperCase(), b])));

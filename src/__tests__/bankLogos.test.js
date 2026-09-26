@@ -57,7 +57,7 @@ describe("bankFor — by code, by name, and the names a SENDING bank reports", (
   test("more banks — by code", () => {
     const expected = { "101": "providus", "076": "polaris", "082": "keystone", "032": "union", "102": "titan", "00103": "globus", "068": "standardchartered",
       "023": "citibank", "100": "suntrust", "104": "parallex", "303": "lotus", "105": "premiumtrust", "106": "signature", "107": "optimus",
-      "561": "nova", "302": "taj", "559": "coronation", "501": "fsdh", "502": "rand" };
+      "561": "nova", "302": "taj", "030": "heritage", "559": "coronation", "501": "fsdh", "502": "rand" };
     for (const [code, key] of Object.entries(expected)) expect(bankFor({ code })?.key).toBe(key);
   });
   test("fintech and merchant-bank names, as the lists and the sending banks spell them", () => {
@@ -70,7 +70,7 @@ describe("bankFor — by code, by name, and the names a SENDING bank reports", (
       "Union Bank of Nigeria": "union", "Titan Trust Bank": "titan", "Globus Bank": "globus", "Standard Chartered Bank": "standardchartered",
       "Citibank Nigeria": "citibank", "Suntrust Bank": "suntrust", "Parallex Bank": "parallex", "Lotus Bank": "lotus", "PremiumTrust Bank": "premiumtrust",
       "Signature Bank Ltd": "signature", "Optimus Bank Limited": "optimus", "NOVA BANK": "nova", "TAJ Bank": "taj", "Coronation Merchant Bank": "coronation",
-      "FSDH Merchant Bank Limited": "fsdh", "Rand Merchant Bank": "rand" };
+      "FSDH Merchant Bank Limited": "fsdh", "Heritage Bank": "heritage", "HERITAGE BANK PLC": "heritage", "Rand Merchant Bank": "rand" };
     for (const [name, key] of Object.entries(names)) expect([name, bankFor({ name })?.key]).toEqual([name, key]);
   });
   test("look-alikes are NOT mistaken for them", () => {
@@ -78,9 +78,9 @@ describe("bankFor — by code, by name, and the names a SENDING bank reports", (
       expect([name, bankFor({ name })]).toEqual([name, null]);
   });
   test("banks we have NO logo for resolve to nothing — never to a wrong bank", () => {
-    for (const name of ["Heritage Bank", "Mock Bank", "Hayat Trust MFB", "Lagos Building Investment Company Plc.", "TRUSTBANC J6 MICROFINANCE BANK"])
+    for (const name of ["Mock Bank", "Hayat Trust MFB", "Lagos Building Investment Company Plc.", "TRUSTBANC J6 MICROFINANCE BANK"])
       expect(bankFor({ name })).toBeNull();
-    for (const code of ["030", "090999", "000000", "123456"]) expect(bankFor({ code })).toBeNull();
+    for (const code of ["51364", "090999", "000000", "123456"]) expect(bankFor({ code })).toBeNull();
     expect(bankFor({})).toBeNull();
     expect(bankFor()).toBeNull();
   });
@@ -92,7 +92,8 @@ describe("bankLogoUrl", () => {
     expect(bankLogoUrl({ code: "058" })).toBe("/logos/banks/gtbank.png");
     expect(bankLogoUrl({ name: "WEMA BANK PLC" })).toBe("/logos/banks/wema.png");
     expect(bankLogoUrl({ name: "OPay" })).toBe("/logos/banks/opay.png");
-    expect(bankLogoUrl({ name: "Heritage Bank" })).toBeNull();
+    expect(bankLogoUrl({ name: "Heritage Bank" })).toBe("/logos/banks/heritage.png");
+    expect(bankLogoUrl({ name: "Hayat Trust MFB" })).toBeNull();
   });
 });
 
@@ -116,7 +117,7 @@ describe("displayBankName", () => {
   });
   test("an unknown bank reported in capitals is title-cased, keeping the usual acronyms", () => {
     expect(displayBankName({ name: "HAYAT TRUST MFB" })).toBe("Hayat Trust MFB");
-    expect(displayBankName({ name: "HERITAGE BANK PLC" })).toBe("Heritage Bank");
+    expect(displayBankName({ name: "INFINITY TRUST MORTGAGE BANK" })).toBe("Infinity Trust Mortgage Bank");
   });
   test("nothing / only an unknown code -> empty", () => {
     expect(displayBankName({})).toBe("");
@@ -153,7 +154,7 @@ describe("describeBank", () => {
     expect(describeBank({ code: "090405" })).toEqual({ name: "Moniepoint", code: "090405", logoUrl: "/logos/banks/moniepoint.png", initials: "MO" });
   });
   test("a bank with no logo still gets a name (and no logo)", () => {
-    expect(describeBank({ code: "030", name: "Heritage Bank" })).toEqual({ name: "Heritage Bank", code: "030", logoUrl: null, initials: "HE" });
+    expect(describeBank({ code: "51364", name: "Hayat Trust MFB" })).toEqual({ name: "Hayat Trust MFB", code: "51364", logoUrl: null, initials: "HT" });
   });
   test("we cannot name it -> null (a bare unknown code is not printed on a receipt)", () => {
     expect(describeBank({})).toBeNull();

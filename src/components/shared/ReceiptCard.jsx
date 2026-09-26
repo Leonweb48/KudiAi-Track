@@ -215,6 +215,18 @@ function ReceiptTypeIcon({ iconType, direction, status }) {
   );
 }
 
+// The network icons (airtime / data / print pins) are small squares; everything else — electricity pictures, cable / betting
+// wordmarks, the WAEC / JAMB crests — needs more room to stay readable.
+const NETWORK_CATEGORIES = new Set(['airtime', 'data', 'print-airtime', 'print-data', 'airtime-bundle']);
+function providerImgStyle(category) {
+  if (category === 'electricity') return { height: 56, width: 'auto', maxWidth: 120, objectFit: 'contain', borderRadius: 8 };   // ~4:3 pictures
+  if (!category || NETWORK_CATEGORIES.has(category)) return { height: 40, width: 'auto', maxWidth: 88, objectFit: 'contain', borderRadius: 8 };
+  // A logo that can be wide (a wordmark) or square (an icon): bound it with max-width / max-height ONLY and let the browser keep
+  // its ratio. Forcing a 150 x 44 box and relying on object-fit looks right on screen but html2canvas ignores object-fit, so the
+  // shared image came out with the wordmark stretched.
+  return { display: 'block', width: 'auto', height: 'auto', maxWidth: 150, maxHeight: 44, borderRadius: 8 };
+}
+
 // ── Provider logo image or colored initials badge ─────────────────────────────
 function ProviderBadge({ provider, category }) {
   const logoPath = getProviderLogo(provider, category);
@@ -226,10 +238,7 @@ function ProviderBadge({ provider, category }) {
         <img
           src={logoPath}
           alt={provider || ''}
-          style={category === 'electricity'
-            // the DISCO logos are ~4:3 pictures (some with the company name under the mark) — give them more room
-            ? { height: 56, width: 'auto', maxWidth: 120, objectFit: 'contain', borderRadius: 8 }
-            : { height: 40, width: 'auto', maxWidth: 88, objectFit: 'contain', borderRadius: 8 }}
+          style={providerImgStyle(category)}
           onError={e => { e.currentTarget.style.display = 'none'; }}
         />
       ) : (

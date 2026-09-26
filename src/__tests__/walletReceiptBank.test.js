@@ -49,10 +49,10 @@ describe("wallet transfer — the bank it went to", () => {
     expect(m.counterparty).toMatchObject({ bank: "Moniepoint", logoUrl: "/logos/banks/moniepoint.png" });
   });
   test("a bank we have no logo for is still NAMED — with no logo", () => {
-    const r = buildWalletReceipt(ledger({ source: "withdrawal" }), { ...base, recipientBankName: "Heritage Bank",
-      withdrawal: { account_name: "ADA OBI", account_number: "0123456789", bank_code: "030" } });
-    expect(r.counterparty).toEqual({ role: "recipient", bank: "Heritage Bank", logoUrl: null, initials: "HE" });
-    expect(field(r, "Recipient Details").value).toContain("Heritage Bank");
+    const r = buildWalletReceipt(ledger({ source: "withdrawal" }), { ...base, recipientBankName: "Hayat Trust MFB",
+      withdrawal: { account_name: "ADA OBI", account_number: "0123456789", bank_code: "51364" } });
+    expect(r.counterparty).toEqual({ role: "recipient", bank: "Hayat Trust MFB", logoUrl: null, initials: "HT" });
+    expect(field(r, "Recipient Details").value).toContain("Hayat Trust MFB");
   });
   test("a bare unknown code is not invented into a bank name (the row keeps showing the code as before)", () => {
     const r = buildWalletReceipt(ledger({ source: "withdrawal" }), { ...base, withdrawal: { account_name: "ADA OBI", account_number: "0123456789", bank_code: "090999" } });
@@ -174,12 +174,12 @@ describe("the card and the shared image", () => {
     expect(host.textContent).toContain(BAL);
   });
   test("a bank without a logo gets an initials tile and the same caption", () => {
-    const opay = buildWalletReceipt(ledger({ source: "withdrawal" }), { businessName: "B", recipientBankName: "Heritage Bank",
-      withdrawal: { account_name: "ADA OBI", account_number: "0123456789", bank_code: "030" } });
+    const opay = buildWalletReceipt(ledger({ source: "withdrawal" }), { businessName: "B", recipientBankName: "Hayat Trust MFB",
+      withdrawal: { account_name: "ADA OBI", account_number: "0123456789", bank_code: "51364" } });
     act(() => root.render(<ReceiptCard data={opay} />));
     expect(host.querySelector('img[src^="/logos/banks/"]')).toBeNull();
-    expect(host.textContent).toContain("HE");
-    expect(host.textContent).toContain("Sent to Heritage Bank");
+    expect(host.textContent).toContain("HT");
+    expect(host.textContent).toContain("Sent to Hayat Trust MFB");
   });
   test("a deposit card says who it was received from", () => {
     const dep = buildWalletReceipt(ledger({ source: "topup", direction: "credit" }), { businessName: "B", originator: "CHIDI OKEKE", originatorBank: "WEMA BANK PLC" });

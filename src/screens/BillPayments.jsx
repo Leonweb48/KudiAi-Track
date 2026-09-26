@@ -288,10 +288,11 @@ function ProviderTile({ name, category, size = 36, radius = 10, width }) {
   const logo  = getProviderLogo(name, category);
   const badge = getProviderBadge(name, category);
   const [imgFailed, setImgFailed] = useState(false);
-  // The electricity (DISCO) logos are full-colour pictures on a white background, so they sit on white, not on the brand colour.
-  const onWhite = category === "electricity" && !!logo && !imgFailed;
+  // The real logos (electricity companies, cable TV, betting, exam pins, internet) are pictures made for a light background —
+  // many are wordmarks in the brand's own colour — so they sit on white. Only the initials fallback uses the brand colour.
+  const onWhite = !!logo && !imgFailed;
   const tileStyle = { width: width || size, height: size, borderRadius: radius, background: onWhite ? "#fff" : badge.bg,
-    border: onWhite ? "1px solid #e2e8f0" : undefined, boxSizing: "border-box",
+    border: onWhite ? "1px solid #e2e8f0" : undefined, boxSizing: "border-box", padding: onWhite ? 3 : 0,
     display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 };
   if (logo && !imgFailed) {
     return (
@@ -321,7 +322,7 @@ function CableSelector({ value, onChange }) {
             <button key={p.code} type="button" onClick={() => onChange(p.code)}
               className={`relative flex flex-col items-center gap-1.5 py-3 rounded-2xl border-2 transition-all duration-200 active:scale-95 ${sel ? "shadow-md" : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"}`}
               style={sel ? { borderColor: badge.bg, background: badge.bg + "18" } : {}}>
-              <ProviderTile name={p.name} category="cable" size={36} radius={10} />
+              <div className="w-full px-1.5"><ProviderTile name={p.name} category="cable" size={36} radius={10} width="100%" /></div>
               <span className={`text-[9px] font-bold text-center leading-tight ${sel ? "text-slate-700 dark:text-slate-200" : "text-slate-400 dark:text-slate-500"}`}>{p.name}</span>
               {sel && (
                 <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full flex items-center justify-center shadow-sm" style={{ background: badge.bg }}>
@@ -376,7 +377,7 @@ function BettingSelector({ value, onChange }) {
             <button key={b.code} type="button" onClick={() => onChange(b.code)}
               className={`relative flex flex-col items-center gap-1.5 py-2.5 rounded-2xl border-2 transition-all duration-200 active:scale-95 ${sel ? "shadow-md" : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"}`}
               style={sel ? { borderColor: badge.bg, background: badge.bg + "18" } : {}}>
-              <ProviderTile name={b.name} category="betting" size={36} radius={10} />
+              <div className="w-full px-1.5"><ProviderTile name={b.name} category="betting" size={36} radius={10} width="100%" /></div>
               <span className={`text-[9px] font-bold text-center leading-tight px-1 ${sel ? "text-slate-700 dark:text-slate-200" : "text-slate-400 dark:text-slate-500"}`}>{b.name}</span>
               {sel && (
                 <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full flex items-center justify-center shadow-sm" style={{ background: badge.bg }}>
@@ -3009,6 +3010,16 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     ? NET_CONFIG[form.network] || null
     : null;
 
+  // The service header shows the provider's real logo once it is known: the single provider of Spectranet / Smile / WAEC / JAMB,
+  // or the cable / betting / electricity provider picked below. Until then it keeps the category icon.
+  const headerProviderName =
+      selectedCat === "cable"       ? CABLE_PROVIDERS.find(p => p.code === form.provider)?.name
+    : selectedCat === "betting"     ? BETTING_COMPANIES.find(c => c.code === form.company)?.name
+    : selectedCat === "electricity" ? ELECTRICITY_COMPANIES.find(c => c.code === form.company)?.name.match(/^([A-Z]+DC|APLE)/)?.[1]
+    : ["spectranet", "smile", "waec", "jamb"].includes(selectedCat) ? selectedCat
+    : null;
+  const headerLogo = headerProviderName ? getProviderLogo(headerProviderName, selectedCat) : null;
+
   return (
     <div className="pb-6 screen-enter">
 
@@ -3331,6 +3342,10 @@ export default function BillPayments({ store, plan, session = null, staffName = 
               {netTheme ? (
                 <div className="w-14 h-10 flex items-center justify-center rounded-xl overflow-hidden flex-shrink-0 bg-white/25">
                   <img src={netTheme.logo} alt={form.network} className="h-8 w-12 object-contain" draggable={false} />
+                </div>
+              ) : headerLogo ? (
+                <div key={headerLogo} className="w-14 h-10 flex items-center justify-center rounded-xl overflow-hidden flex-shrink-0 bg-white border border-slate-200 p-1">
+                  <img src={headerLogo} alt={headerProviderName} className="max-h-full max-w-full object-contain" draggable={false} />
                 </div>
               ) : (
                 <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-gradient-to-br ${cat.tileCls}`}>

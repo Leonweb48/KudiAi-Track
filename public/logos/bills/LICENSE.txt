@@ -1,0 +1,39 @@
+Logos of the bill providers (cable TV, betting, exam pins, internet), converted to PNG and trimmed.
+Every logo is the property of its respective company; it is used here only to identify that provider on bill screens and receipts.
+
+Where each one came from
+  nairabet, betway, sportybet, smile, spectranet
+      "NigeriaLogos" - https://github.com/PaystackHQ/nigerialogos - MIT License, Copyright (c) 2019 Paystack (text below)
+  dstv (2023 logo), showmax, 1xbet
+      Wikimedia Commons, files marked public domain by their uploaders:
+      "DStv Logo (2023).svg", "Showmax Logo.svg", "1xBet-Logo.png"
+  waec (crest)
+      Wikimedia Commons "Waec logo.png", licensed CC BY-SA 4.0 - https://creativecommons.org/licenses/by-sa/4.0/
+      (converted to a smaller PNG; the crest itself is WAEC's emblem)
+  gotv, startimes, betking, naijabet, bangbet, betland, jamb
+      The company's own website (site icon / logo file): gotvafrica.com, startimestv.com, betking.com, naijabet.com,
+      bangbet.com, betland.com, jamb.gov.ng. BetLand's yellow wordmark is set on BetLand's own dark brand colour (#1C2021).
+  merrybet
+      No logo yet - MerryBet shows an initials tile until a file is added.
+
+MIT License (NigeriaLogos)
+
+Copyright (c) 2019 Paystack
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

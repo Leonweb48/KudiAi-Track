@@ -6,12 +6,15 @@ import { savePdf } from "./pdfSave";
 import { loadPdfAssets, registerNotoSans, loadImageAsset } from "./pdfAssets";
 import { renderReceiptPdf } from "./receiptPdfLayout";
 import { discoFromText, electricityLogoUrl } from "./electricityLogos";
+import { getProviderLogo } from "./logoMap";
 
 export async function generateReceiptPdf(data) {
   // The receipt's header logo: an electricity receipt carries its DISCO's logo (public/logos/electricity logos/), a wallet
   // transfer / deposit the logo of the bank on the other side (public/logos/banks/). A bank without a logo prints none.
   const discoLogoUrl = data.category === "electricity" ? electricityLogoUrl(discoFromText(data.provider)) : null;
-  const headerLogoUrl = data.counterparty?.logoUrl || discoLogoUrl;
+  // every other bill (network, cable TV, betting, exam pins, internet) carries its provider's logo the same way
+  const billLogoPath = data.category && data.category !== "electricity" ? getProviderLogo(data.provider, data.category) : null;
+  const headerLogoUrl = data.counterparty?.logoUrl || discoLogoUrl || billLogoPath;
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const [{ jsPDF }, assets, providerLogo] = await Promise.all([
     import("jspdf"), loadPdfAssets(), headerLogoUrl ? loadImageAsset(origin + headerLogoUrl) : Promise.resolve(null),

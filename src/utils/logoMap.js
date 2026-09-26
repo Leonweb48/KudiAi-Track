@@ -3,7 +3,10 @@
 // getProviderBadge(provider, category) → { bg, fg, initials } (use colored badge)
 
 import { discoFromText, electricityLogoUrl } from './electricityLogos';
+import { billBrandFromText, billBrandForCategory, billLogoUrl } from './billLogos';
 
+// Networks and electricity companies live here. Cable TV, betting, exam pins and internet providers have their real logos in
+// public/logos/bills/ and are resolved by utils/billLogos.js (which also understands the codes the payment webhook stores).
 const LOGO_PATHS = {
   // Networks
   MTN:          '/mtn.png',
@@ -15,12 +18,6 @@ const LOGO_PATHS = {
   '9mobile':    '/9mobile.png',
   '9Mobile':    '/9mobile.png',
   etisalat:     '/9mobile.png',
-  // Cable TV
-  DSTV:         '/logos/dstv.svg',
-  DStv:         '/logos/dstv.svg',
-  GOtv:         '/logos/gotv.svg',
-  StarTimes:    '/logos/startimes.svg',
-  Showmax:      '/logos/showmax.svg',
   // Electricity — the DISCO logos are the files in public/logos/electricity logos/ (see utils/electricityLogos.js).
   // APLE has no logo in that folder yet, so it keeps its old badge.
   EKEDC:        electricityLogoUrl('EKEDC'),
@@ -35,25 +32,6 @@ const LOGO_PATHS = {
   BEDC:         electricityLogoUrl('BEDC'),
   YEDC:         electricityLogoUrl('YEDC'),
   APLE:         '/logos/aple.svg',
-  // Betting
-  NairaBet:     '/logos/nairabet.svg',
-  Betway:       '/logos/betway.svg',
-  SportyBet:    '/logos/sportybet.svg',
-  BetKing:      '/logos/betking.svg',
-  '1xBet':      '/logos/1xbet.svg',
-  MerryBet:     '/logos/merrybet.svg',
-  BangBet:      '/logos/bangbet.svg',
-  NaijaBet:     '/logos/naijabet.svg',
-  BetLand:      '/logos/betland.svg',
-  // Category-level (used when providerName is null but category is known)
-  WAEC:         '/logos/waec.svg',
-  waec:         '/logos/waec.svg',
-  JAMB:         '/logos/jamb.svg',
-  jamb:         '/logos/jamb.svg',
-  Spectranet:   '/logos/spectranet.svg',
-  spectranet:   '/logos/spectranet.svg',
-  Smile:        '/logos/smile.svg',
-  smile:        '/logos/smile.svg',
 };
 
 const BRAND_COLORS = {
@@ -107,6 +85,10 @@ export function getProviderLogo(provider, category) {
     // which used to hand "KAEDC (Kaduna)" the AEDC logo because AEDC is a substring of KAEDC.
     const disco = discoFromText(provider, { allowNames: category === 'electricity' });
     if (disco && LOGO_PATHS[disco]) return LOGO_PATHS[disco];
+    // Cable / betting / exam / internet providers — by name or by the code the payment webhook stores ("product-bang-bet").
+    // A provider we know but have no logo for (MerryBet) answers null rather than falling through to a look-alike below.
+    const brand = billBrandFromText(provider, category);
+    if (brand) return billLogoUrl(brand);
     const exact = LOGO_PATHS[provider];
     if (exact) return exact;
     const key = Object.keys(LOGO_PATHS).sort((a, b) => b.length - a.length).find(k =>
@@ -118,6 +100,9 @@ export function getProviderLogo(provider, category) {
   if (category) {
     const c = LOGO_PATHS[category];
     if (c) return c;
+    // a category with a single provider (WAEC, JAMB, Spectranet, Smile) IS that provider
+    const solo = billBrandForCategory(category);
+    if (solo) return billLogoUrl(solo);
   }
   return null;
 }

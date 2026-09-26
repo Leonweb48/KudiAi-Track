@@ -5,6 +5,7 @@ import { ledgerTypeLabel } from './helpers';
 import { formatWAT, formatWATDate, watStamp } from './wat';
 import { discoFromRecord, DISCO_LABELS } from './electricityLogos';
 import { describeBank } from './bankLogos';
+import { billBrandFromRecord } from './billLogos';
 
 // Which processor actually moved the money. Never assume one: a receipt that
 // names the wrong processor is worse than one that names none.
@@ -415,6 +416,9 @@ export function buildBillReceipt(bill) {
   // Electricity: name the DISCO from whatever the record carries ("EKEDC (Eko) Prepaid", a full company name, or the
   // company code the payment webhook stores) so every electricity receipt — older ones included — shows its DISCO's logo.
   const disco = bill.category === 'electricity' ? discoFromRecord(bill) : null;
+  // Cable / betting / exam pins / internet: the same idea — name the provider from whatever the record carries ("DSTV", the
+  // webhook's "dstv" / "product-bang-bet", the note) so every receipt, older ones included, shows its provider's logo.
+  const brand = billBrandFromRecord(bill);
 
   const fields = [
     { label: 'Transaction Type', value: title },
@@ -425,7 +429,8 @@ export function buildBillReceipt(bill) {
     bill.meterNo      && { label: 'Meter No.',     value: bill.meterNo },
     bill.meterAddress && { label: 'Address',       value: bill.meterAddress },
     bill.meterTypeName && { label: 'Meter Type',   value: bill.meterTypeName },
-    (bill.providerName || disco) && { label: 'Provider', value: bill.providerName || DISCO_LABELS[disco] || disco },
+    (bill.providerName || disco) && { label: 'Provider', value: (bill.category === 'cable' && brand?.name) || bill.providerName || DISCO_LABELS[disco] || disco },
+    bill.category === 'betting' && brand && { label: 'Platform', value: brand.name },
     bill.packageName  && { label: 'Package',       value: bill.packageName },
     bill.customerId   && { label: 'Customer ID',   value: bill.customerId },
     // electricity token — present value or mark as retrievable
@@ -460,7 +465,7 @@ export function buildBillReceipt(bill) {
     fees:         0,
     receiptRef:   ref,
     filenames:    { image, pdf },
-    provider:      disco || bill.network || bill.providerName || bill.platformName || null,
+    provider:      disco || brand?.name || bill.network || bill.providerName || bill.platformName || null,
     category:      bill.category || null,
     processorName: processor?.label || null,
     processorLine: processor?.line  || null,
