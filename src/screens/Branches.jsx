@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { canSellPlans } from "../utils/platform";
 import Modal from "../components/shared/Modal";
 import { useBranches } from "../hooks/useBranches";
 import { canDo, featureLimit, upgradeLabel, planAvailableText } from "../utils/plans";
@@ -633,9 +634,11 @@ export default function Branches({ store, onClose, userId, inventory = {}, onRep
           <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 max-w-xs leading-relaxed">
             Run multiple business locations from one dashboard. Compare performance, assign staff, and track sales per branch. {planAvailableText("branches")}
           </p>
-          <button onClick={onUpgrade} className="bg-violet-600 hover:bg-violet-700 text-white px-6 py-3 rounded-2xl font-bold text-sm active:scale-95 transition shadow-md">
-            {upgradeLabel("branches")}
-          </button>
+          {canSellPlans() && (
+            <button onClick={onUpgrade} className="bg-violet-600 hover:bg-violet-700 text-white px-6 py-3 rounded-2xl font-bold text-sm active:scale-95 transition shadow-md">
+              {upgradeLabel("branches")}
+            </button>
+          )}
         </div>
       </div>
     );

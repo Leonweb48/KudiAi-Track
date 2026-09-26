@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import { canSellPlans } from "../utils/platform";
 import { useToast } from "../components/Toast";
 import { supabase } from "../utils/supabase";
 import Icon   from "../components/Icon";
@@ -516,13 +517,15 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
           <div className="flex-1">
             <p className="text-sm font-bold text-amber-800 dark:text-amber-300">Monthly limit reached</p>
             <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
-              {limits.maxTxPerMonth} transactions/month limit reached. Upgrade to record more.
+              {limits.maxTxPerMonth} transactions/month limit reached.{canSellPlans() ? " Upgrade to record more." : ""}
             </p>
           </div>
-          <button onClick={onUpgrade}
-            className="text-xs font-bold text-amber-800 dark:text-amber-200 bg-amber-200 dark:bg-amber-700 px-2.5 py-1 rounded-lg flex-shrink-0">
-            Upgrade
-          </button>
+          {canSellPlans() && (
+            <button onClick={onUpgrade}
+              className="text-xs font-bold text-amber-800 dark:text-amber-200 bg-amber-200 dark:bg-amber-700 px-2.5 py-1 rounded-lg flex-shrink-0">
+              Upgrade
+            </button>
+          )}
         </div>
       )}
 

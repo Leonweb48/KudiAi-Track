@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { canSellPlans } from "../utils/platform";
 import { Capacitor } from "@capacitor/core";
 import { CapacitorUpdater } from "@capgo/capacitor-updater";
 import { compressImage } from "../utils/compressImage";
@@ -681,11 +682,13 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
         {/* Action buttons */}
         <div className="px-4 pb-4 flex gap-2">
           {/* Upgrade / Change Plan */}
-          <button
-            onClick={onUpgrade}
-            className={`flex-1 py-2.5 rounded-2xl text-sm font-bold text-white active:scale-95 transition ${planTier >= 2 ? "bg-navy" : planTier >= 1 ? "bg-blue-700" : "bg-brand-600"}`}>
-            {planTier === 0 ? "Upgrade Plan" : hasHigherPlanAvailable(plan) ? "Upgrade Plan" : "Change Plan"}
-          </button>
+          {canSellPlans() && (
+            <button
+              onClick={onUpgrade}
+              className={`flex-1 py-2.5 rounded-2xl text-sm font-bold text-white active:scale-95 transition ${planTier >= 2 ? "bg-navy" : planTier >= 1 ? "bg-blue-700" : "bg-brand-600"}`}>
+              {planTier === 0 ? "Upgrade Plan" : hasHigherPlanAvailable(plan) ? "Upgrade Plan" : "Change Plan"}
+            </button>
+          )}
 
           {/* Cancel — only for active paid subscribers who haven't already cancelled */}
           {planTier > 0 && !cancelDone && sub?.expires_at && (
@@ -710,7 +713,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
             <p className="text-sm text-slate-500 dark:text-slate-400 text-center leading-relaxed mb-6">
               You'll keep full access to <strong className="text-slate-700 dark:text-slate-200">{planName}</strong> until{" "}
               <strong className="text-slate-700 dark:text-slate-200">{fmt(sub?.expires_at)}</strong>.
-              After that, your account moves to the <strong className="text-slate-700 dark:text-slate-200">Free Plan</strong> automatically. You can resubscribe anytime.
+              After that, your account moves to the <strong className="text-slate-700 dark:text-slate-200">Free Plan</strong> automatically.{canSellPlans() ? " You can resubscribe anytime." : ""}
             </p>
             <div className="space-y-2.5">
               <button

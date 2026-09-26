@@ -6,6 +6,7 @@ import { fetchAndCachePlans, getActivePlans, normalizeSlug, ALL_FEATURE_LIST } f
 import { sendEmailTrigger } from "../utils/emailTrigger";
 import { useWallet } from "../hooks/useWallet";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
+import { canSellPlans } from "../utils/platform";
 
 function CheckIcon({ color = "green" }) {
   const cls = color === "violet" ? "text-violet-500" : color === "amber" ? "text-amber-500" : color === "blue" ? "text-blue-500" : color === "gray" ? "text-gray-400" : "text-green-500";
@@ -192,7 +193,67 @@ function ConfirmChangeModal({ info, busy, error, onCancel, onConfirm, onFundWall
   );
 }
 
-export default function SubscriptionPlan({ session, onComplete, onClose, isUpgrade = false, currentPlan = "kobo" }) {
+// The Android app does not sell plans (Google Play Billing rule — see utils/platform.js): a new account simply starts on the free plan,
+// with no prices, coupon box or payment options, and nothing that says where to pay. Existing paid plans are untouched.
+function FreePlanStart({ session, onComplete }) {
+  const [plans, setPlans] = useState(() => getActivePlans());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    fetchAndCachePlans(supabase).then(() => { if (alive) setPlans(getActivePlans()); }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  const free = plans.find(p => isFreePlanSlug(p.slug, plans)) || null;
+  const features = free ? getDisplayFeatures(free).slice(0, 8) : [];
+
+  const start = async () => {
+    setBusy(true); setError("");
+    try {
+      const slug = free?.slug || "kobo";
+      const { error: rpcErr } = await supabase.rpc("activate_free_subscription", { p_plan_slug: slug });
+      if (rpcErr) throw rpcErr;
+      try {   // the same welcome email the normal free-plan path sends (best-effort)
+        const { data: profile } = await supabase.from("profiles").select("full_name, business_name").eq("id", session.user.id).maybeSingle();
+        sendEmailTrigger("business_welcome", { user_email: session.user.email, user_name: profile?.full_name || session.user.email, business_name: profile?.business_name || "", current_plan: slug });
+      } catch { /* best-effort */ }
+      onComplete(slug);
+    } catch (e) {
+      setError(e?.message || "Could not start your account. Please try again.");
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 dark:from-slate-900 dark:to-slate-800 flex items-center justify-center px-4 py-10">
+      <div className="w-full max-w-sm text-center">
+        <AppLogo className="h-14 w-auto mx-auto mb-4" />
+        <h1 className="text-2xl font-bold text-gray-800 dark:text-white">Welcome to KudiAI Track</h1>
+        <p className="text-sm text-gray-500 dark:text-slate-400 mt-1">Your account starts on the {free?.name || "Free"} plan.</p>
+        {features.length > 0 && (
+          <ul className="mt-5 bg-white dark:bg-slate-800 rounded-2xl p-5 text-left space-y-2 shadow-sm">
+            {features.map(f => (
+              <li key={f} className="flex items-start gap-2 text-sm text-gray-700 dark:text-slate-200"><CheckIcon /><span>{f}</span></li>
+            ))}
+          </ul>
+        )}
+        {error && <p role="alert" className="mt-4 text-xs text-red-500">{error}</p>}
+        <button disabled={busy} onClick={start}
+          className="mt-6 w-full py-3.5 rounded-2xl font-bold text-sm text-white bg-gradient-to-br from-green-600 to-emerald-600 disabled:opacity-50 active:scale-[0.99] transition">
+          {busy ? "Setting up…" : "Continue"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export default function SubscriptionPlan(props) {
+  return canSellPlans() ? <PlanPicker {...props} /> : <FreePlanStart {...props} />;
+}
+
+function PlanPicker({ session, onComplete, onClose, isUpgrade = false, currentPlan = "kobo" }) {
   const [plans, setPlans] = useState(() => getActivePlans());
   const [loadingPlans, setLoadingPlans] = useState(plans.length === 0);
   const [error,   setError]   = useState("");

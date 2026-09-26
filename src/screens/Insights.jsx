@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { canSellPlans } from "../utils/platform";
 import { filterByPeriod, fmt, isBillPayment } from "../utils/helpers";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
 import { canDo, upgradeLabel, planRequiredLabel, getLowestPlanWithFeature } from "../utils/plans";
@@ -462,10 +463,12 @@ Use real figures from my data. Each point: 1-2 sentences max. Complete every sec
                 <p className="text-sm font-bold text-purple-800 dark:text-purple-300">{planRequiredLabel("aiInsights")}</p>
                 <p className="text-xs text-purple-600 dark:text-purple-400 mt-0.5">AI-powered business insights are available on the {getLowestPlanWithFeature("aiInsights")?.name ?? "higher"} plan.</p>
               </div>
-              <button onClick={onUpgrade}
-                className="flex-shrink-0 bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 rounded-xl font-bold text-xs active:scale-95 transition-all">
-                {upgradeLabel("aiInsights")}
-              </button>
+              {canSellPlans() && (
+                <button onClick={onUpgrade}
+                  className="flex-shrink-0 bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 rounded-xl font-bold text-xs active:scale-95 transition-all">
+                  {upgradeLabel("aiInsights")}
+                </button>
+              )}
             </div>
           )}
         </>

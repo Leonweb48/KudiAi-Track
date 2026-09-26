@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { canSellPlans } from "../utils/platform";
 import Icon from "../components/Icon";
 import Modal from "../components/shared/Modal";
 import { canDo, featureLimit, upgradeLabel, planAvailableText } from "../utils/plans";
@@ -371,10 +372,12 @@ export default function Loyalty({ loyalty, plan, onUpgrade, onClose }) {
             <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
               Reward loyal customers with points, cashback, and referral bonuses. {planAvailableText("loyalty")}
             </p>
-            <button onClick={onUpgrade}
-              className="px-6 py-3 bg-green-600 text-white rounded-xl font-bold text-sm shadow-sm">
-              {upgradeLabel("loyalty")}
-            </button>
+            {canSellPlans() && (
+              <button onClick={onUpgrade}
+                className="px-6 py-3 bg-green-600 text-white rounded-xl font-bold text-sm shadow-sm">
+                {upgradeLabel("loyalty")}
+              </button>
+            )}
           </div>
         </div>
       </div>

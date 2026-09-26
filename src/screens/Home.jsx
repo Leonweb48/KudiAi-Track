@@ -125,7 +125,7 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
   const [showCompleteFlow,   setShowCompleteFlow]   = useState(false);
 
   // ── Hero card: flip between Today's Sales and the wallet balance ──────────
-  const { walletEnabled, walletTestMode, configLoading } = usePlatformConfig();
+  const { walletEnabled, walletTestMode, configLoading, bettingVisible } = usePlatformConfig();
   const wallet = useWallet(profile?.id || null, walletEnabled);
   // Do we actually know yet whether this owner has a wallet? Needs the platform
   // flag loaded AND, when the wallet feature is on, a real wallet load finished.
@@ -577,7 +577,7 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
               className="text-[11px] font-bold text-brand-600 dark:text-brand-400">See all</button>
           </div>
           <div className="grid grid-cols-3 gap-y-4">
-            {BILL_SERVICES.map(s => (
+            {BILL_SERVICES.filter(s => s.id !== "betting" || bettingVisible).map(s => (
               <button key={s.id}
                 onClick={() => s.mic ? onVoiceOpen?.() : onQuickAction?.("bills", s.id)}
                 className="flex flex-col items-center gap-2 active:scale-90 transition-transform duration-150">

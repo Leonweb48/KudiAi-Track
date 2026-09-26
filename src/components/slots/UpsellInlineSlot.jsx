@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { slotNavigate } from "./useSlotNav";
+import { canSellPlans } from "../../utils/platform";
 
 function injectKf() {
   if (typeof document === "undefined" || document.getElementById("kt-upsell-kf")) return;
@@ -43,6 +44,7 @@ export default function UpsellInlineSlot({ campaigns = [], loading, recordEvent 
     return () => clearInterval(t);
   }, [campaigns.length]);
 
+  if (!canSellPlans()) return null;        // these slides sell plans ("Upgrade your plan") — not in the Android app
   if (loading) {
     return <div className="h-14 rounded-2xl bg-slate-100 dark:bg-slate-800 animate-pulse mb-3" />;
   }

@@ -2104,6 +2104,7 @@ function OverviewTab({ client, contributions, cycles = [], rotationsData = [], r
   const t = useT();
   const { lang } = useLanguage();
   const toast = useToast();
+  const { bettingVisible } = usePlatformConfig();
 
   const [goal,         setGoal]        = useState(0);
   const [editGoal,     setEditGoal]    = useState(false);
@@ -2500,7 +2501,7 @@ function OverviewTab({ client, contributions, cycles = [], rotationsData = [], r
             className="text-[11px] text-brand-500 dark:text-brand-400 font-bold">{t("cd.viewAll")}</button>
         </div>
         <div className="grid grid-cols-3 gap-3">
-          {QUICK_SERVICES.map(s => (
+          {QUICK_SERVICES.filter(s => s.id !== "betting" || bettingVisible).map(s => (
             <button key={s.id} onClick={onBillsClick}
               className="flex flex-col items-center gap-1.5 active:scale-95 transition-transform">
               <div className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm"

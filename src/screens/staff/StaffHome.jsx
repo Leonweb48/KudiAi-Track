@@ -10,6 +10,7 @@ import AnnouncementBarSlot from "../../components/slots/AnnouncementBarSlot";
 import OffersSection from "../../components/slots/OffersSection";
 import TabCardQuadSlot from "../../components/slots/TabCardQuadSlot";
 import TabCardDuoSlot from "../../components/slots/TabCardDuoSlot";
+import { usePlatformConfig } from "../../hooks/usePlatformConfig";
 import {
   Svg, P,
   TxRow,
@@ -41,7 +42,8 @@ const SVCGRAD = {
 export default function StaffHome({ staff, store, inventory, plan, onGoTo, onVoiceOpen, onAddCash, canAddTxn }) {
   const t = useT();
   const { lang } = useLanguage();
-  const BILL_SERVICES = useMemo(() => makeBillServices(t), [t]);
+  const { bettingVisible } = usePlatformConfig();
+  const BILL_SERVICES = useMemo(() => makeBillServices(t).filter(s => s.id !== "betting" || bettingVisible), [t, bettingVisible]);
   const { slotMap: camSlots, loading: camLoading, recordEvent: recordCamEvent } = useCampaigns(["announcement_bar","upsell_inline","tab_card_quad","tab_card_duo"], "staff", "staff.home");
   const staffTabCard = (camSlots.tab_card_quad || [])[0] ?? (camSlots.tab_card_duo || [])[0] ?? null;
   const annBars = camSlots.announcement_bar || [];

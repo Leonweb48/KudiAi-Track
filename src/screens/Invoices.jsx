@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import { canSellPlans } from "../utils/platform";
 import { useToast } from "../components/Toast";
 import TransactionPinModal from "../components/TransactionPinModal";
 import { Capacitor }             from "@capacitor/core";
@@ -653,10 +654,12 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
         </div>
         <p className="font-bold text-slate-700 dark:text-slate-200 text-base mb-1">Invoice Generation</p>
         <p className="text-sm text-slate-400 mb-5">{planAvailableText("invoices")}</p>
-        <button onClick={onUpgrade}
-          className="bg-brand-600 text-white font-bold px-6 py-3 rounded-2xl text-sm active:scale-95 transition">
-          Upgrade Plan
-        </button>
+        {canSellPlans() && (
+          <button onClick={onUpgrade}
+            className="bg-brand-600 text-white font-bold px-6 py-3 rounded-2xl text-sm active:scale-95 transition">
+            Upgrade Plan
+          </button>
+        )}
       </div>
     );
   }

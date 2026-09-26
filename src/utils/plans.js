@@ -4,6 +4,8 @@
 // canDo() / planLimits() / featureLimit() are synchronous; call
 // fetchAndCachePlans() once on app boot to warm the cache.
 
+import { canSellPlans } from "./platform";
+
 // ── Standard feature keys ─────────────────────────────────────────────────────
 export const FEATURE_KEYS = {
   credit:          "Credit Management",
@@ -227,6 +229,7 @@ export function getLowestPlanWithFeature(featureKey) {
 
 // Dynamic button label: "Upgrade to Naira — ₦7,000/mo"
 export function upgradeLabel(featureKey) {
+  if (!canSellPlans()) return "";        // the Android app does not sell plans (see utils/platform.js)
   const p = getLowestPlanWithFeature(featureKey);
   if (!p) return "Upgrade Plan";
   const price = p.price_monthly ? `₦${Number(p.price_monthly).toLocaleString()}/mo` : "Free";
@@ -235,12 +238,14 @@ export function upgradeLabel(featureKey) {
 
 // Dynamic heading: "Naira Plan Required"
 export function planRequiredLabel(featureKey) {
+  if (!canSellPlans()) return "Not included in your plan";
   const p = getLowestPlanWithFeature(featureKey);
   return p ? `${p.name} Plan Required` : "Upgrade Required";
 }
 
 // Dynamic description: "Available on the Naira plan and above."
 export function planAvailableText(featureKey) {
+  if (!canSellPlans()) return "This feature is not included in your current plan.";
   const p = getLowestPlanWithFeature(featureKey);
   return p ? `Available on the ${p.name} plan and above.` : "Upgrade to access this feature.";
 }

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { canSellPlans } from "../utils/platform";
 import { supabase } from "../utils/supabase";
 import { isBillPayment } from "../utils/helpers";
 import { canDo, featureLimit, upgradeLabel, planRequiredLabel, planAvailableText } from "../utils/plans";
@@ -375,7 +376,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
 
     const staffLimit = featureLimit(plan, "staffManagement");
     if (staffLimit !== Infinity && staffList.length >= staffLimit) {
-      setError(`Your plan allows up to ${staffLimit} staff member${staffLimit !== 1 ? "s" : ""}. Upgrade to add more.`);
+      setError(`Your plan allows up to ${staffLimit} staff member${staffLimit !== 1 ? "s" : ""}.${canSellPlans() ? " Upgrade to add more." : ""}`);
       return;
     }
 
@@ -596,9 +597,11 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
           <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 max-w-xs leading-relaxed">
             Add team members, assign roles and permissions, and track performance. {planAvailableText("staffManagement")}
           </p>
-          <button onClick={onUpgrade} className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-2xl font-bold text-sm active:scale-95 transition shadow-md">
-            {upgradeLabel("staffManagement")}
-          </button>
+          {canSellPlans() && (
+            <button onClick={onUpgrade} className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-2xl font-bold text-sm active:scale-95 transition shadow-md">
+              {upgradeLabel("staffManagement")}
+            </button>
+          )}
         </div>
       </div>
     );

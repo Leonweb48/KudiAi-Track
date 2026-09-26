@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { canSellPlans } from "../utils/platform";
 import Icon   from "../components/Icon";
 import Modal  from "../components/shared/Modal";
 import Field  from "../components/shared/Field";
@@ -1426,7 +1427,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     if (!profile?.id) return;
     const asoLimit = featureLimit(plan, "aso");
     if (asoLimit !== Infinity && groups.length >= asoLimit) {
-      setGroupError(`Your plan allows up to ${asoLimit} Ajo group${asoLimit !== 1 ? "s" : ""}. Upgrade to create more.`);
+      setGroupError(`Your plan allows up to ${asoLimit} Ajo group${asoLimit !== 1 ? "s" : ""}.${canSellPlans() ? " Upgrade to create more." : ""}`);
       onUpgrade?.();
       return;
     }
@@ -1911,10 +1912,12 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           Aso savings management is {planAvailableText("aso")}
         </p>
         <p className="text-xs text-slate-400 dark:text-slate-500 mb-6">Manage client contributions, withdrawals & statements.</p>
-        <button onClick={onUpgrade}
-          className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-2xl font-bold text-sm active:scale-95 transition-all shadow-md">
-          {upgradeLabel("aso")}
-        </button>
+        {canSellPlans() && (
+          <button onClick={onUpgrade}
+            className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-2xl font-bold text-sm active:scale-95 transition-all shadow-md">
+            {upgradeLabel("aso")}
+          </button>
+        )}
       </div>
     );
   }

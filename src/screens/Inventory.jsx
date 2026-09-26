@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { canSellPlans } from "../utils/platform";
 import { useDeepLink } from "../utils/deepLinkBus";
 import { fmt } from "../utils/helpers";
 import { TxRow } from "../components/shared/TxRow";
@@ -756,9 +757,11 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
         <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 max-w-xs leading-relaxed">
           Track stock, manage products, get low-stock alerts, and analyse your best sellers. {planAvailableText("inventory")}
         </p>
-        <button onClick={onUpgrade} className="bg-brand-500 hover:bg-brand-600 text-white px-6 py-3 rounded-2xl font-bold text-sm active:scale-95 transition shadow-md">
-          {upgradeLabel("inventory")}
-        </button>
+        {canSellPlans() && (
+          <button onClick={onUpgrade} className="bg-brand-500 hover:bg-brand-600 text-white px-6 py-3 rounded-2xl font-bold text-sm active:scale-95 transition shadow-md">
+            {upgradeLabel("inventory")}
+          </button>
+        )}
       </div>
     );
   }

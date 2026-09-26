@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../utils/supabase";
+import { bettingVisible } from "../utils/platform";
 
 // Module-level cache: fetched once per browser session, reused across all hook calls.
 let _cache = null;
@@ -43,6 +44,8 @@ export function usePlatformConfig() {
     // Business loans are offered through a third-party lender that is not live yet. Off ("coming soon", no application form) until
     // platform_config.business_loan_enabled = "true" — flipping it on needs no app rebuild.
     loansEnabled: config?.business_loan_enabled === "true",
+    // Betting Wallet tile: on for the web, off in the Android app (Google Play gambling rules) until platform_config.android_betting_enabled = "true".
+    bettingVisible: bettingVisible(config),
     walletTestMode: config?.wallet_test_mode !== "false",   // default on until explicitly disabled
     // Off until Flutterwave confirms BVN Verification is enabled on this merchant
     // account — flipping this on is the only thing needed to re-enable both the

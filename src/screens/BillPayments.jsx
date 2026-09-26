@@ -1634,7 +1634,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
   // ── ClubKonnect wholesale pricing ────────────────────────────────────────
   // Enterprise owners buy airtime/data/print at CK cost + a small platform fee
   // so they can resell below face. Everyone else keeps retail pricing.
-  const { ckDiscounts, enterpriseFeePct, walletEnabled, loansEnabled } = usePlatformConfig();
+  const { ckDiscounts, enterpriseFeePct, walletEnabled, loansEnabled, bettingVisible } = usePlatformConfig();
 
   // ── Digital wallet — funding source; the only one when walletOnly (Ajo client portal).
   // When a parent screen already has a live useWallet() instance for this same user
@@ -1778,7 +1778,8 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
   const resetVerify = () => { setVerifyStatus("idle"); setVerifyName(""); };
 
-  const visibleCats = excludeCats.length ? CATS.filter(c => !excludeCats.includes(c.id)) : CATS;
+  const hiddenCats  = bettingVisible ? excludeCats : [...excludeCats, "betting"];   // Betting Wallet is off in the Android app (see utils/platform.js)
+  const visibleCats = hiddenCats.length ? CATS.filter(c => !hiddenCats.includes(c.id)) : CATS;
 
   const openSheet = useCallback((catId) => {
     if (excludeCats.includes(catId)) return;

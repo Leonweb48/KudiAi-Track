@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
+import { canSellPlans } from "../utils/platform";
 import { useDeepLink }      from "../utils/deepLinkBus";
 import Credit               from "./Credit";
 import Aso                  from "./Aso";
@@ -300,10 +301,12 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
             </div>
           ))}
         </div>
-        <button onClick={onUpgrade}
-          className="w-full py-4 rounded-2xl font-bold text-sm text-white shadow-md active:scale-95 transition bg-brand-600 hover:bg-brand-700">
-          Upgrade to {getLowestPlanWithFeature("loanAccess")?.name ?? "Enterprise"} — Unlock Loans
-        </button>
+        {canSellPlans() && (
+          <button onClick={onUpgrade}
+            className="w-full py-4 rounded-2xl font-bold text-sm text-white shadow-md active:scale-95 transition bg-brand-600 hover:bg-brand-700">
+            Upgrade to {getLowestPlanWithFeature("loanAccess")?.name ?? "Enterprise"} — Unlock Loans
+          </button>
+        )}
       </div>
     );
   }
@@ -1356,7 +1359,7 @@ export default function Finance({
                 </p>
               </>
             ) : (
-              <p className="text-xs font-bold text-rose-600 dark:text-rose-400">Upgrade to access</p>
+              <p className="text-xs font-bold text-rose-600 dark:text-rose-400">{canSellPlans() ? "Upgrade to access" : "Not in your plan"}</p>
             )}
           </button>
 

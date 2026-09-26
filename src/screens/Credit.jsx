@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { canSellPlans } from "../utils/platform";
 import Icon   from "../components/Icon";
 import Modal  from "../components/shared/Modal";
 import { useToast } from "../components/Toast";
@@ -206,9 +207,11 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
         <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 max-w-xs leading-relaxed">
           Track credit sales, manage repayments, and monitor outstanding balances. {planAvailableText("credit")}
         </p>
-        <button onClick={onUpgrade} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-2xl font-bold text-sm active:scale-95 transition shadow-md">
-          {upgradeLabel("credit")}
-        </button>
+        {canSellPlans() && (
+          <button onClick={onUpgrade} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-2xl font-bold text-sm active:scale-95 transition shadow-md">
+            {upgradeLabel("credit")}
+          </button>
+        )}
       </div>
     );
   }
