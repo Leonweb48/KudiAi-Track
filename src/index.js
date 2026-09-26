@@ -6,6 +6,7 @@ import { LanguageProvider } from "./contexts/LanguageContext";
 import { ToastProvider } from "./components/Toast";
 import { CapacitorUpdater } from "@capgo/capacitor-updater";
 import { Capacitor } from "@capacitor/core";
+import { consumeAdminAccessLink, AdminAccessBannerHost } from "./utils/adminAccess";
 
 // Key used to carry a downloaded bundle ID across the WebView reload boundary.
 // localStorage persists across webView.loadUrl() calls (same https://localhost origin).
@@ -54,12 +55,16 @@ async function boot() {
     });
   }
 
+  // Admin portal "access account" link: sign in as the customer before the app reads the session (web only).
+  if (!Capacitor.isNativePlatform()) await consumeAdminAccessLink();
+
   const root = ReactDOM.createRoot(document.getElementById("root"));
   root.render(
     <BrowserRouter>
       <LanguageProvider>
         <ToastProvider>
           <App />
+          <AdminAccessBannerHost />
         </ToastProvider>
       </LanguageProvider>
     </BrowserRouter>
