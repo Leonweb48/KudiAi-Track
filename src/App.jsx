@@ -8,6 +8,7 @@ import { publishDeepLink } from "./utils/deepLinkBus";
 import { useInventory }      from "./hooks/useInventory";
 import { useInvoices }       from "./hooks/useInvoices";
 import { usePinLock }        from "./hooks/usePinLock";
+import { useAdminAccess } from "./utils/adminAccess";
 import { useLoyalty }        from "./hooks/useLoyalty";
 import { useBranches }       from "./hooks/useBranches";
 import { usePermissions }    from "./hooks/usePermissions";
@@ -184,6 +185,10 @@ export default function App() {
 
   // Two-tier PIN lock (server-side via pin-manager edge function)
   const pinLock = usePinLock(userId);
+
+  // Admin portal "access account" session: skips the customer's app lock, PIN-setup and consent screens only while
+  // the server confirms this exact login session was opened by an admin (see utils/adminAccess.jsx).
+  const adminAccess = useAdminAccess(userId);
 
   // Feature flags — fetched once per session from platform_config table, no rebuild to toggle
   const { coopEnabled, walletEnabled, walletTestMode, configLoading } = usePlatformConfig();
@@ -505,7 +510,7 @@ export default function App() {
   // Single loading gate: covers auth resolution, pin-manager check_status, and platform config.
   // Coop statuses also wait for configLoading so we never flash the portal when the flag is off.
   const isCoopStatus = ["organisation","org_otp","org_setup","org_member","org_member_otp","org_member_setup","org_member_archived"].includes(status);
-  if (status === "loading" || (portalStatuses.includes(status) && pinLock.loading) || (isCoopStatus && configLoading)) return <Spinner />;
+  if (status === "loading" || adminAccess.loading || (portalStatuses.includes(status) && pinLock.loading) || (isCoopStatus && configLoading)) return <Spinner />;
 
   // Cooperative module gate — show Coming Soon for ALL coop/org statuses when flag is off.
   // Behaviour: existing accounts see Coming Soon + sign-out; no broken screens.
@@ -540,7 +545,7 @@ export default function App() {
   if (status === "marketer_setup")   return <S><MarketerFirstLogin marketer={marketer} /></S>;
 
   // ── Consent gate — blocks portal entry until legal docs are accepted ──
-  if (portalStatuses.includes(status) && !consent.loading && consent.needsConsent) {
+  if (portalStatuses.includes(status) && !consent.loading && consent.needsConsent && !adminAccess.active) {
     return (
       <ConsentModal
         userId={userId}
@@ -554,11 +559,11 @@ export default function App() {
   // ── PIN setup gate — blocks all portals until both PINs are configured ──
   // Covers: organisation, org_member, ajo_client, staff, branch_manager, marketer, main app.
   // status !== null guards against triggering setup when check_status failed (network error / edge-function cold start).
-  if (pinLock.status !== null && (!pinLock.appPinSet || !pinLock.txnPinSet)) {
+  if (!adminAccess.active && pinLock.status !== null && (!pinLock.appPinSet || !pinLock.txnPinSet)) {
     return <PinSetupFlow pinLock={pinLock} userId={userId} session={session} />;
   }
   // Lock screen (inactivity or new device)
-  if (pinLock.locked) {
+  if (pinLock.locked && !adminAccess.active) {
     const isAjoCli = status === "ajo_client" || status === "ajo_client_setup";
     return <LockScreen
       pinLock={pinLock}
@@ -571,7 +576,7 @@ export default function App() {
   // ── Language selection gate — shown once per device if no preference is set ──
   // Excluded from the onboarding + subscription flows (owner hasn't set up their account yet).
   const langGateStatuses = ["ready", "staff", "branch_manager", "marketer", "organisation", "org_member", "ajo_client"];
-  if (langGateStatuses.includes(status) && !langChosen && !store.loading) {
+  if (langGateStatuses.includes(status) && !langChosen && !store.loading && !adminAccess.active) {
     return <S><LanguageSelector userId={userId} /></S>;
   }
 
