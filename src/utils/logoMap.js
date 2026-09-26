@@ -2,6 +2,8 @@
 // getProviderLogo(provider, category?) → path string or null (use <img>)
 // getProviderBadge(provider, category) → { bg, fg, initials } (use colored badge)
 
+import { discoFromText, electricityLogoUrl } from './electricityLogos';
+
 const LOGO_PATHS = {
   // Networks
   MTN:          '/mtn.png',
@@ -19,18 +21,19 @@ const LOGO_PATHS = {
   GOtv:         '/logos/gotv.svg',
   StarTimes:    '/logos/startimes.svg',
   Showmax:      '/logos/showmax.svg',
-  // Electricity
-  EKEDC:        '/logos/ekedc.svg',
-  IKEDC:        '/logos/ikedc.svg',
-  AEDC:         '/logos/aedc.svg',
-  KEDC:         '/logos/kedc.svg',
-  PHEDC:        '/logos/phedc.svg',
-  JEDC:         '/logos/jedc.svg',
-  IBEDC:        '/logos/ibedc.svg',
-  KAEDC:        '/logos/kaedc.svg',
-  EEDC:         '/logos/eedc.svg',
-  BEDC:         '/logos/bedc.svg',
-  YEDC:         '/logos/yedc.svg',
+  // Electricity — the DISCO logos are the files in public/logos/electricity logos/ (see utils/electricityLogos.js).
+  // APLE has no logo in that folder yet, so it keeps its old badge.
+  EKEDC:        electricityLogoUrl('EKEDC'),
+  IKEDC:        electricityLogoUrl('IKEDC'),
+  AEDC:         electricityLogoUrl('AEDC'),
+  KEDC:         electricityLogoUrl('KEDC'),
+  PHEDC:        electricityLogoUrl('PHEDC'),
+  JEDC:         electricityLogoUrl('JEDC'),
+  IBEDC:        electricityLogoUrl('IBEDC'),
+  KAEDC:        electricityLogoUrl('KAEDC'),
+  EEDC:         electricityLogoUrl('EEDC'),
+  BEDC:         electricityLogoUrl('BEDC'),
+  YEDC:         electricityLogoUrl('YEDC'),
   APLE:         '/logos/aple.svg',
   // Betting
   NairaBet:     '/logos/nairabet.svg',
@@ -100,9 +103,13 @@ const CATEGORY_COLORS = {
 // Fuzzy-matches provider name against LOGO_PATHS keys, then falls back to category.
 export function getProviderLogo(provider, category) {
   if (provider) {
+    // A DISCO named anywhere in the text ("EKEDC (Eko) Prepaid", "Ikeja Electric") wins over the generic fuzzy match below,
+    // which used to hand "KAEDC (Kaduna)" the AEDC logo because AEDC is a substring of KAEDC.
+    const disco = discoFromText(provider, { allowNames: category === 'electricity' });
+    if (disco && LOGO_PATHS[disco]) return LOGO_PATHS[disco];
     const exact = LOGO_PATHS[provider];
     if (exact) return exact;
-    const key = Object.keys(LOGO_PATHS).find(k =>
+    const key = Object.keys(LOGO_PATHS).sort((a, b) => b.length - a.length).find(k =>
       provider.toLowerCase().includes(k.toLowerCase()) ||
       k.toLowerCase().includes(provider.toLowerCase())
     );
@@ -117,9 +124,11 @@ export function getProviderLogo(provider, category) {
 
 export function getProviderBadge(provider, category) {
   if (provider) {
+    const disco = discoFromText(provider, { allowNames: category === 'electricity' });
+    if (disco && BRAND_COLORS[disco]) return { ...BRAND_COLORS[disco], initials: provider.slice(0, 2).toUpperCase() };
     const exact = BRAND_COLORS[provider];
     if (exact) return { ...exact, initials: provider.slice(0, 2).toUpperCase() };
-    const key = Object.keys(BRAND_COLORS).find(k =>
+    const key = Object.keys(BRAND_COLORS).sort((a, b) => b.length - a.length).find(k =>
       provider.toLowerCase().includes(k.toLowerCase()) ||
       k.toLowerCase().includes(provider.toLowerCase())
     );

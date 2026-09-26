@@ -226,7 +226,10 @@ function ProviderBadge({ provider, category }) {
         <img
           src={logoPath}
           alt={provider || ''}
-          style={{ height: 40, width: 'auto', maxWidth: 88, objectFit: 'contain', borderRadius: 8 }}
+          style={category === 'electricity'
+            // the DISCO logos are ~4:3 pictures (some with the company name under the mark) — give them more room
+            ? { height: 56, width: 'auto', maxWidth: 120, objectFit: 'contain', borderRadius: 8 }
+            : { height: 40, width: 'auto', maxWidth: 88, objectFit: 'contain', borderRadius: 8 }}
           onError={e => { e.currentTarget.style.display = 'none'; }}
         />
       ) : (

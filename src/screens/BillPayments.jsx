@@ -284,11 +284,14 @@ function VerifyBadge({ status, name }) {
 
 /* ─── Visual provider selectors (logoMap + fallback chain) ─────────────────── */
 
-function ProviderTile({ name, category, size = 36, radius = 10 }) {
+function ProviderTile({ name, category, size = 36, radius = 10, width }) {
   const logo  = getProviderLogo(name, category);
   const badge = getProviderBadge(name, category);
   const [imgFailed, setImgFailed] = useState(false);
-  const tileStyle = { width: size, height: size, borderRadius: radius, background: badge.bg,
+  // The electricity (DISCO) logos are full-colour pictures on a white background, so they sit on white, not on the brand colour.
+  const onWhite = category === "electricity" && !!logo && !imgFailed;
+  const tileStyle = { width: width || size, height: size, borderRadius: radius, background: onWhite ? "#fff" : badge.bg,
+    border: onWhite ? "1px solid #e2e8f0" : undefined, boxSizing: "border-box",
     display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 };
   if (logo && !imgFailed) {
     return (
@@ -345,7 +348,7 @@ function ElecCompanySelector({ value, onChange }) {
           return (
             <button key={c.code} type="button" onClick={() => onChange(c.code)}
               className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors active:scale-[0.98] ${sel ? "bg-slate-50 dark:bg-slate-700/60" : ""} ${i > 0 ? "border-t border-slate-100 dark:border-slate-700/60" : ""}`}>
-              <ProviderTile name={abbr} category="electricity" size={32} radius={8} />
+              <ProviderTile name={abbr} category="electricity" size={40} width={54} radius={8} />
               <div className="flex-1 min-w-0">
                 <p className={`text-xs font-bold truncate ${sel ? "text-slate-800 dark:text-white" : "text-slate-600 dark:text-slate-300"}`}>{c.name}</p>
               </div>

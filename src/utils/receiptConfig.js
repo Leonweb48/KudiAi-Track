@@ -3,6 +3,7 @@
 
 import { ledgerTypeLabel } from './helpers';
 import { formatWAT, formatWATDate, watStamp } from './wat';
+import { discoFromRecord, DISCO_LABELS } from './electricityLogos';
 
 // Which processor actually moved the money. Never assume one: a receipt that
 // names the wrong processor is worse than one that names none.
@@ -407,6 +408,9 @@ export function buildBillReceipt(bill) {
   // bill that never recorded its funding source shows no processor at all.
   const processor    = processorFor(billPaidVia(bill));
   const balanceAfter = numOrNull(bill.balance_after);
+  // Electricity: name the DISCO from whatever the record carries ("EKEDC (Eko) Prepaid", a full company name, or the
+  // company code the payment webhook stores) so every electricity receipt — older ones included — shows its DISCO's logo.
+  const disco = bill.category === 'electricity' ? discoFromRecord(bill) : null;
 
   const fields = [
     { label: 'Transaction Type', value: title },
@@ -417,7 +421,7 @@ export function buildBillReceipt(bill) {
     bill.meterNo      && { label: 'Meter No.',     value: bill.meterNo },
     bill.meterAddress && { label: 'Address',       value: bill.meterAddress },
     bill.meterTypeName && { label: 'Meter Type',   value: bill.meterTypeName },
-    bill.providerName && { label: 'Provider',      value: bill.providerName },
+    (bill.providerName || disco) && { label: 'Provider', value: bill.providerName || DISCO_LABELS[disco] || disco },
     bill.packageName  && { label: 'Package',       value: bill.packageName },
     bill.customerId   && { label: 'Customer ID',   value: bill.customerId },
     // electricity token — present value or mark as retrievable
@@ -451,7 +455,7 @@ export function buildBillReceipt(bill) {
     fees:         0,
     receiptRef:   ref,
     filenames:    { image, pdf },
-    provider:      bill.network || bill.providerName || bill.platformName || null,
+    provider:      disco || bill.network || bill.providerName || bill.platformName || null,
     category:      bill.category || null,
     processorName: processor?.label || null,
     processorLine: processor?.line  || null,

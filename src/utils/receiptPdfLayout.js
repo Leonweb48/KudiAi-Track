@@ -51,7 +51,7 @@ export function fmtNaira(n) {
  * @param data   receipt spec from receiptConfig.js
  * @param assets { logo?: dataURL, font: "NotoSans" | "helvetica" }
  */
-export function renderReceiptPdf(doc, data, { logo = null, font = "helvetica" } = {}) {
+export function renderReceiptPdf(doc, data, { logo = null, providerLogo = null, font = "helvetica" } = {}) {
   const custom = font !== "helvetica";
   // helvetica has no naira sign — spell it out rather than print a broken glyph
   const t = (s) => (custom ? String(s ?? "") : String(s ?? "").replace(/₦/g, "NGN "));
@@ -100,6 +100,13 @@ export function renderReceiptPdf(doc, data, { logo = null, font = "helvetica" } 
   setReg(9.5, MUTED);
   y += 6;
   if (stamp) doc.text(stamp, ML, y);
+
+  // Provider logo (electricity DISCO) on the right of the title row, scaled to fit a 38 x 16 mm box
+  if (providerLogo && providerLogo.w > 0 && providerLogo.h > 0) {
+    const k = Math.min(38 / providerLogo.w, 16 / providerLogo.h);
+    try { doc.addImage(providerLogo.dataUrl, "PNG", RIGHT - providerLogo.w * k, 34.5, providerLogo.w * k, providerLogo.h * k); }
+    catch (_) { /* the logo is decoration only */ }
+  }
 
   // ── Amount box: amount left, status right, amount in words underneath ─────
   y += 8;

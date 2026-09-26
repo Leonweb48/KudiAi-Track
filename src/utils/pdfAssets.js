@@ -60,6 +60,34 @@ export function downscaleImage(dataUrl, px = 160) {
   });
 }
 
+/**
+ * Fetch an image and return it ready for jsPDF.addImage: { dataUrl (PNG), w, h } with the longest side at most `px`.
+ * Used for provider logos (e.g. the electricity DISCO on an electricity receipt). Null when it can't be loaded — a receipt
+ * without a logo is still a valid receipt.
+ */
+export async function loadImageAsset(url, px = 400) {
+  const raw = await imgToBase64(url);
+  if (!raw || typeof Image === "undefined" || typeof document === "undefined") return null;
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const scale = Math.min(1, px / Math.max(img.width, img.height));
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);   // JPEG logos have no alpha; keep any transparency on white
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve({ dataUrl: canvas.toDataURL("image/png"), w, h });
+      } catch { resolve(null); }
+    };
+    img.onerror = () => resolve(null);
+    img.src = raw;
+  });
+}
+
 /** Fetch the logo and both NotoSans weights in parallel (any of them may come back null). */
 export async function loadPdfAssets() {
   const origin = typeof window !== "undefined" ? window.location.origin : "";
