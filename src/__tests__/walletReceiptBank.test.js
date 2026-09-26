@@ -39,16 +39,25 @@ describe("wallet transfer — the bank it went to", () => {
     expect(r.counterparty.logoUrl).toBe("/logos/banks/access.png");
     expect(r.counterparty.bank).toBe("Access Bank");
   });
-  test("a bank we have no logo for is still NAMED — with no logo", () => {
-    const r = buildWalletReceipt(ledger({ source: "withdrawal" }), { ...base, recipientBankName: "OPay Digital Services Limited",
+  test("a fintech gets its logo and a short name, whichever provider's code / spelling the list used", () => {
+    const r = buildWalletReceipt(ledger({ source: "withdrawal" }), { ...base, recipientBankName: "OPay Digital Services Limited (OPay)",
       withdrawal: { account_name: "ADA OBI", account_number: "0123456789", bank_code: "100004" } });
-    expect(r.counterparty).toEqual({ role: "recipient", bank: "OPay Digital Services Limited", logoUrl: null, initials: "OP" });
-    expect(field(r, "Recipient Details").value).toContain("OPay Digital Services Limited");
+    expect(r.counterparty).toEqual({ role: "recipient", bank: "OPay", logoUrl: "/logos/banks/opay.png", initials: "OP" });
+    expect(field(r, "Recipient Details").value).toBe("ADA OBI\nOPay  •  0123456789");
+    // the bank list may not have loaded — the code alone is enough
+    const m = buildWalletReceipt(ledger({ source: "withdrawal" }), { ...base, withdrawal: { account_name: "ADA OBI", account_number: "0123456789", bank_code: "090405" } });
+    expect(m.counterparty).toMatchObject({ bank: "Moniepoint", logoUrl: "/logos/banks/moniepoint.png" });
+  });
+  test("a bank we have no logo for is still NAMED — with no logo", () => {
+    const r = buildWalletReceipt(ledger({ source: "withdrawal" }), { ...base, recipientBankName: "Heritage Bank",
+      withdrawal: { account_name: "ADA OBI", account_number: "0123456789", bank_code: "030" } });
+    expect(r.counterparty).toEqual({ role: "recipient", bank: "Heritage Bank", logoUrl: null, initials: "HE" });
+    expect(field(r, "Recipient Details").value).toContain("Heritage Bank");
   });
   test("a bare unknown code is not invented into a bank name (the row keeps showing the code as before)", () => {
-    const r = buildWalletReceipt(ledger({ source: "withdrawal" }), { ...base, withdrawal: { account_name: "ADA OBI", account_number: "0123456789", bank_code: "090405" } });
+    const r = buildWalletReceipt(ledger({ source: "withdrawal" }), { ...base, withdrawal: { account_name: "ADA OBI", account_number: "0123456789", bank_code: "090999" } });
     expect(r.counterparty).toBeNull();
-    expect(field(r, "Recipient Details").value).toBe("ADA OBI\n090405  •  0123456789");
+    expect(field(r, "Recipient Details").value).toBe("ADA OBI\n090999  •  0123456789");
   });
   test("a transfer reversal has no bank header", () => {
     const r = buildWalletReceipt(ledger({ source: "withdrawal_reversal", direction: "credit" }), { ...base, withdrawal: { account_name: "ADA OBI", account_number: "0123456789", bank_code: "058" } });
@@ -64,9 +73,13 @@ describe("wallet deposit — the bank it came from", () => {
     expect(r.counterparty).toEqual({ role: "sender", bank: "Wema Bank", logoUrl: "/logos/banks/wema.png", initials: "WE" });
     expect(field(r, "Sender Details").value).toBe("CHIDI OKEKE\nWema Bank");
   });
-  test("funding from a bank with no logo still names the bank", () => {
+  test("funding from a fintech: its logo and short name", () => {
     const r = buildWalletReceipt(ledger({ source: "topup", direction: "credit" }), { ...base, originator: "CHIDI OKEKE", originatorBank: "KUDA MICROFINANCE BANK" });
-    expect(r.counterparty).toEqual({ role: "sender", bank: "Kuda Microfinance Bank", logoUrl: null, initials: "KU" });
+    expect(r.counterparty).toEqual({ role: "sender", bank: "Kuda Bank", logoUrl: "/logos/banks/kuda.png", initials: "KU" });
+  });
+  test("funding from a bank with no logo still names the bank", () => {
+    const r = buildWalletReceipt(ledger({ source: "topup", direction: "credit" }), { ...base, originator: "CHIDI OKEKE", originatorBank: "HAYAT TRUST MFB" });
+    expect(r.counterparty).toEqual({ role: "sender", bank: "Hayat Trust MFB", logoUrl: null, initials: "HT" });
   });
   test("an older deposit (no bank stored) is unchanged", () => {
     const r = buildWalletReceipt(ledger({ source: "topup", direction: "credit" }), { ...base, originator: "CHIDI OKEKE" });
@@ -161,12 +174,12 @@ describe("the card and the shared image", () => {
     expect(host.textContent).toContain(BAL);
   });
   test("a bank without a logo gets an initials tile and the same caption", () => {
-    const opay = buildWalletReceipt(ledger({ source: "withdrawal" }), { businessName: "B", recipientBankName: "OPay Digital Services Limited",
-      withdrawal: { account_name: "ADA OBI", account_number: "0123456789", bank_code: "100004" } });
+    const opay = buildWalletReceipt(ledger({ source: "withdrawal" }), { businessName: "B", recipientBankName: "Heritage Bank",
+      withdrawal: { account_name: "ADA OBI", account_number: "0123456789", bank_code: "030" } });
     act(() => root.render(<ReceiptCard data={opay} />));
     expect(host.querySelector('img[src^="/logos/banks/"]')).toBeNull();
-    expect(host.textContent).toContain("OP");
-    expect(host.textContent).toContain("Sent to OPay Digital Services Limited");
+    expect(host.textContent).toContain("HE");
+    expect(host.textContent).toContain("Sent to Heritage Bank");
   });
   test("a deposit card says who it was received from", () => {
     const dep = buildWalletReceipt(ledger({ source: "topup", direction: "credit" }), { businessName: "B", originator: "CHIDI OKEKE", originatorBank: "WEMA BANK PLC" });

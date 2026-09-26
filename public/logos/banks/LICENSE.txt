@@ -1,10 +1,13 @@
-Bank logos in this folder come from the open-source "Nigerian Bank Logos" collection
-(https://github.com/Pariola-droid/Nigerian-Bank-Logos), converted from SVG to trimmed PNG.
-Each logo is the property of its respective bank; it is used here only to identify that bank.
+Bank logos in this folder come from two open-source collections, converted to trimmed PNG:
+  - "Nigerian Bank Logos"    https://github.com/Pariola-droid/Nigerian-Bank-Logos   (Copyright (c) 2025 NBL)
+  - "nigerian-banks"         https://github.com/ichtrojan/nigerian-banks             (Copyright (c) 2020 Michael Okoh)
+Both are MIT licensed (text below). Each logo is the property of its respective bank or company; it is used here
+only to identify that bank.
 
 MIT License
 
 Copyright (c) 2025 NBL
+Copyright (c) 2020 Michael Okoh
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
