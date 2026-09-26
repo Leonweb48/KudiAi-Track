@@ -911,6 +911,29 @@ export function useAuth() {
     supabase.auth.getSession().then(({ data }) => resolve(data.session));
   }, [resolve]);
 
+  // Re-read the plan whenever the app comes back to the foreground. Android drops the realtime feed while the app is in the background, and a plan
+  // changed somewhere else (for example an upgrade made on the website) must show up when the person returns — without signing out and in.
+  useEffect(() => {
+    const uid = session?.user?.id;
+    if (!uid) return undefined;
+    let last = 0;
+    const check = async () => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      if (Date.now() - last < 10000) return;               // at most once every 10 s
+      last = Date.now();
+      try {
+        const { data } = await supabase.from("subscriptions").select("plan, status").eq("user_id", uid).eq("status", "active").maybeSingle();
+        if (!data?.plan) return;                            // nothing to say (staff, expired, offline): keep what we have
+        const next = normalizeSlug(data.plan);
+        setPlan(next);
+        try { localStorage.setItem(CACHE_KEY, next); } catch { /* private mode */ }
+      } catch { /* offline: keep what we have */ }
+    };
+    document.addEventListener("visibilitychange", check);
+    window.addEventListener("focus", check);
+    return () => { document.removeEventListener("visibilitychange", check); window.removeEventListener("focus", check); };
+  }, [session?.user?.id]);
+
   // Realtime: when admin changes subscription_plans in DB, invalidate the
   // module cache, re-fetch, then bump plansVersion so App.jsx re-renders and
   // every canDo() call runs again against the fresh cache.
