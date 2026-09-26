@@ -1,0 +1,39 @@
+name: Demo reviewer account
+
+# Manual only. Creates / refreshes / locks the fictional demo business that Google Play's reviewers sign in with.
+#   create  — make the account (if missing), set its password from the DEMO_REVIEWER_PASSWORD secret, fill it with fictional data
+#   disable — lock it (random password + banned); use after the review
+# The password lives ONLY in the repository secret — never in the repo or the logs. See scripts/demo-account/.
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "create = make or refresh the demo account; disable = lock it"
+        type: choice
+        options: [create, disable]
+        default: create
+
+permissions:
+  contents: read
+
+concurrency:
+  group: demo-account
+  cancel-in-progress: false
+
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Run
+        env:
+          SUPABASE_URL: https://${{ secrets.SUPABASE_PROJECT_ID }}.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_ANON_KEY: ${{ secrets.REACT_APP_SUPABASE_ANON_KEY }}
+          DEMO_PASSWORD: ${{ secrets.DEMO_REVIEWER_PASSWORD }}
+          ACTION: ${{ inputs.action }}
+        run: node scripts/demo-account/demo-account.mjs
