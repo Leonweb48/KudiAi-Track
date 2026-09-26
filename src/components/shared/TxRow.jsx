@@ -1,6 +1,9 @@
 import { useState, useRef, useEffect } from "react";
 import { AmountDisplay } from "./AmountDisplay";
+import { HistoryAvatar, StatusPill } from "./HistoryRow";
 import { fmt } from "../../utils/helpers";
+import { txEntry } from "../../utils/historyEntries";
+import { formatWATStamp } from "../../utils/wat";
 
 /* ── Tiny SVG renderer ──────────────────────────────────────────────── */
 function Svg({ d, size = 18, color = "currentColor", sw = 2 }) {
@@ -28,6 +31,22 @@ const CAT_LABEL = {
   other:            "Other",
 };
 function catTitle(tx) { return tx.item_name || CAT_LABEL[tx.category] || "Transaction"; }
+
+/* ── The row's leading circle: a bill payment shows its provider's real logo (or a bulb / phone / tv icon); everything else keeps
+      its tinted arrow / category icon ── */
+function RowAvatar({ tx, entry, style, size = 40, iconSize = 15 }) {
+  if (entry.bill) {
+    return <HistoryAvatar size={size} avatar={{ logoUrl: entry.bill.logoUrl, name: entry.bill.name, icon: entry.bill.icon, dir: null, tone: entry.status.tone }} />;
+  }
+  return (
+    <div className={`rounded-full flex items-center justify-center flex-shrink-0 ${style.bg}`} style={{ width: size, height: size }}>
+      <Svg d={style.icon} size={iconSize} color={style.color} sw={2.5} />
+    </div>
+  );
+}
+
+/* ── "Sep 26th, 8:23:00 AM" — the server time when the row has one, else just the day ── */
+const stampOf = (tx) => formatWATStamp(tx.created_at || tx.transaction_date);
 
 /* ── Icon / colour map — single source of truth for all six variants ── */
 export function getTxStyle(tx) {
@@ -76,38 +95,28 @@ const TRASH_ICON   = "M3 6h18|M8 6V4h8v2|M19 6l-1 14H6L5 6";
    ═══════════════════════════════════════════════════════════════════════ */
 function TxRowHome({ tx, hidden, onClick }) {
   const isIn     = tx.type === "in";
-  const isFailed = tx.bill_status === "failed";
+  const entry    = txEntry(tx);
+  const isFailed = entry.status.key === "failed";
   const style    = getTxStyle(tx);
   return (
     <button
       onClick={onClick}
       className="w-full text-left flex items-center gap-3 bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 shadow-card border border-slate-100 dark:border-slate-700/50 active:scale-[0.98] transition-transform">
-      <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${style.bg}`}>
-        <Svg d={style.icon} size={15} color={style.color} sw={2.5} />
-      </div>
+      <RowAvatar tx={tx} entry={entry} style={style} />
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate">{catTitle(tx)}</p>
-        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-          <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">
-            {cap(tx.category)} · {fmtPT(tx.payment_type)}
-          </p>
-          {isFailed && (
-            <span className="text-[9px] bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded-full font-bold leading-none">
-              Failed
-            </span>
-          )}
-        </div>
+        <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{catTitle(tx)}</p>
+        <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5 truncate">{stampOf(tx)}</p>
       </div>
       <div className="text-right flex-shrink-0">
         <AmountDisplay
-          amount={tx.amount} size="row" align="right" hidden={hidden}
+          amount={tx.amount} size="row" align="right" hidden={hidden} sign={isIn ? "+" : "−"}
           className={
             isFailed ? "text-red-400 dark:text-red-500 line-through" :
             isIn     ? "text-green-600 dark:text-green-400" :
                        "text-red-500 dark:text-red-400"
           }
         />
-        <p className="text-[10px] text-slate-300 dark:text-slate-600 mt-0.5">{tx.transaction_date}</p>
+        <StatusPill status={entry.status} className="mt-1" />
       </div>
     </button>
   );
@@ -118,7 +127,8 @@ function TxRowHome({ tx, hidden, onClick }) {
    ═══════════════════════════════════════════════════════════════════════ */
 function TxRowTransactions({ tx, hidden, onClick, staffName, onSwipeReceipt, onSwipeDelete }) {
   const isIn     = tx.type === "in";
-  const isFailed = tx.bill_status === "failed";
+  const entry    = txEntry(tx);
+  const isFailed = entry.status.key === "failed";
   const style    = getTxStyle(tx);
   const ACTION = 88; // 2 × 44 px buttons
 
@@ -220,36 +230,33 @@ function TxRowTransactions({ tx, hidden, onClick, staffName, onSwipeReceipt, onS
           willChange: "transform",
           cursor:     "pointer",
         }}>
-        <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${style.bg}`}>
-          <Svg d={style.icon} size={15} color={style.color} sw={2.5} />
-        </div>
+        <div className="mt-0.5 flex-shrink-0"><RowAvatar tx={tx} entry={entry} style={style} /></div>
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
-            <p className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate flex-1">
+            <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate flex-1">
               {catTitle(tx)}
             </p>
             <div className="text-right flex-shrink-0 ml-2">
               <AmountDisplay
-                amount={tx.amount} size="row" align="right" hidden={hidden}
+                amount={tx.amount} size="row" align="right" hidden={hidden} sign={isIn ? "+" : "−"}
                 className={
                   isFailed ? "text-red-400 dark:text-red-500 line-through" :
                   isIn     ? "text-green-600 dark:text-green-400" :
                              "text-red-500 dark:text-red-400"
                 }
               />
-              <p className="text-[10px] text-slate-300 dark:text-slate-600 mt-0.5">{tx.transaction_date}</p>
             </div>
           </div>
-          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 truncate">
-            {parts.join(" · ")}
-          </p>
-          {(tx.quantity > 1 || staffName || isFailed) && (
+          {/* details on the left, the status pill on the right — so the pill does not push the details down */}
+          <div className="flex items-end justify-between gap-2 mt-0.5">
+            <div className="min-w-0">
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">{parts.join(" · ")}</p>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 truncate">{stampOf(tx)}</p>
+            </div>
+            <StatusPill status={entry.status} className="flex-shrink-0" />
+          </div>
+          {(tx.quantity > 1 || staffName) && (
             <div className="flex gap-1.5 mt-1.5 flex-wrap">
-              {isFailed && (
-                <span className="text-[9px] bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-2 py-0.5 rounded-full font-bold">
-                  Failed
-                </span>
-              )}
               {tx.quantity > 1 && (
                 <span className="text-[9px] bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-full font-semibold">
                   ×{tx.quantity}

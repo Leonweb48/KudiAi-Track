@@ -281,7 +281,7 @@ export default function Wallet({ session, store }) {
                 <p className="text-[13px] text-slate-400 py-8 text-center">No wallet activity yet.</p>
               ) : (
                 <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {w.ledger.map((row) => <WalletTxRow key={row.id} row={row} hidden={hidden} onOpen={openReceipt} />)}
+                  {w.ledger.map((row) => <WalletTxRow key={row.id} row={row} entry={w.entryFor(row)} hidden={hidden} onOpen={openReceipt} />)}
                 </div>
               )}
             </div>

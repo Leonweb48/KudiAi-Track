@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { supabase } from "../utils/supabase";
 import { buildWalletReceipt } from "../utils/receiptConfig";
+import { walletEntry } from "../utils/historyEntries";
 import { walletAccountState } from "../utils/walletAccount";
 import { TIER_CFG_KEYS, tierLimits, clampTier } from "../utils/walletTier";
 
@@ -274,10 +275,9 @@ export function useWallet(userId, enabled = true) {
   const tier = clampTier(wallet?.tier);
   const limits = useMemo(() => tierLimits(tier, tierCfg), [tier, tierCfg]);
 
-  // Full receipt data for a ledger row — joins the matching withdrawal / payment
-  // request and resolves the recipient bank name, ready for <TransactionDetailModal>.
-  const receiptFor = useCallback((row, businessName = "", ownerName = "", biz = null) => {
-    if (!row) return null;
+  // What a ledger row is joined with — the matching withdrawal / payment request, the recipient bank's name (from its code) and who
+  // paid in (and from which bank). The receipt and the history row are both built from this, so they always agree.
+  const contextFor = useCallback((row) => {
     const isTransfer = row.source === "withdrawal" || row.source === "withdrawal_reversal";
     const wd = isTransfer ? withdrawals.find((x) => x.ledger_id === row.id) || null : null;
     const rq = row.source === "sale"
@@ -286,19 +286,30 @@ export function useWallet(userId, enabled = true) {
     const recipientBankName = wd?.bank_code
       ? (banks.find((b) => String(b.code) === String(wd.bank_code))?.name || "")
       : "";
+    return {
+      withdrawal:     wd,
+      request:        rq,
+      originator:     row.meta?.originator || "",
+      originatorBank: row.meta?.originator_bank || "",
+      recipientBankName,
+    };
+  }, [withdrawals, requests, banks]);
+
+  // Full receipt data for a ledger row, ready for <TransactionDetailModal>.
+  const receiptFor = useCallback((row, businessName = "", ownerName = "", biz = null) => {
+    if (!row) return null;
     return buildWalletReceipt(row, {
       businessName,
       ownerName,
       walletAccountNumber: wallet?.flw_account_number || "",
-      withdrawal:          wd,
-      request:             rq,
-      originator:          row.meta?.originator || "",
-      originatorBank:      row.meta?.originator_bank || "",
-      recipientBankName,
+      ...contextFor(row),
       businessAddress:     biz?.address || "",
       businessPhone:       biz?.phone || "",
     });
-  }, [withdrawals, requests, banks, wallet]);
+  }, [contextFor, wallet]);
+
+  // The row's history entry: "Transfer to NAME", the bank's logo, the status pill (see utils/historyEntries.js).
+  const entryFor = useCallback((row) => (row ? walletEntry(row, contextFor(row)) : null), [contextFor]);
 
   // Stable object identity — only changes when real data does, so screens/modals
   // that read the hook don't re-render (and re-run effects) on every tick.
@@ -308,7 +319,7 @@ export function useWallet(userId, enabled = true) {
     accountState: acct.state, graceUntilMs: acct.graceUntilMs, graceDaysLeft: acct.daysLeft,
     tier, limits,
     scheduledTransfers, refreshScheduled, scheduleTransfer, setScheduledTransferStatus,
-    refresh: load, receiptFor,
+    refresh: load, receiptFor, entryFor,
     provisionAccount, migrateAccount, simulateTopup, listBanks, resolveAccount, transfer,
     startBvnVerification, checkBvnVerification,
     createPaymentRequest, cancelPaymentRequest,
@@ -316,7 +327,7 @@ export function useWallet(userId, enabled = true) {
     walletView, ledger, withdrawals, requests, banks, payRequest, loading, resolved, busy, hasAccount, bvnVerified, balanceKobo, dailyUsedKobo,
     acct.state, acct.graceUntilMs, acct.daysLeft, tier, limits,
     scheduledTransfers, refreshScheduled, scheduleTransfer, setScheduledTransferStatus,
-    load, receiptFor, provisionAccount, migrateAccount, simulateTopup, listBanks, resolveAccount, transfer,
+    load, receiptFor, entryFor, provisionAccount, migrateAccount, simulateTopup, listBanks, resolveAccount, transfer,
     startBvnVerification, checkBvnVerification,
     createPaymentRequest, cancelPaymentRequest,
   ]);

@@ -92,7 +92,7 @@ export default function StaffWalletPanel({ onClose, session, staffName }) {
                 <p className="text-[13px] text-slate-400 py-8 text-center">No wallet activity yet.</p>
               ) : (
                 <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {wallet.ledger.map((row) => <WalletTxRow key={row.id} row={row} onOpen={openReceipt} />)}
+                  {wallet.ledger.map((row) => <WalletTxRow key={row.id} row={row} entry={wallet.entryFor(row)} onOpen={openReceipt} />)}
                 </div>
               )}
             </div>

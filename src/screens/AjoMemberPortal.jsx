@@ -45,6 +45,7 @@ import { ProcessingWithdrawalCard, PendingPayoutNotice, pendingPayoutRow } from 
 import { walletIdError } from "../utils/walletId";
 import { useBvnVerification } from "../hooks/useBvnVerification";
 import { BottomSheet, ActionButton, AccountCard, FundWalletSheet, TransferSheet, ReceivePaymentSheet, WalletMiniAction, WALLET_MINI_ICONS, cleanBankName, WalletTxRow, WALLET_SOURCE } from "../components/WalletPanel";
+import { HistoryAvatar } from "../components/shared/HistoryRow";
 import WalletStatement from "./WalletStatement";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import EsusuRotationDashboard from "../components/EsusuRotationDashboard";
@@ -3344,6 +3345,8 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
       item.type === "reversal_withdrawal" || item.type === "reversal_withdrawal_fee" || item.type === "reversal_registration_fee"
     );
     const sign = isCredit ? "+" : "−";
+    // A wallet item names who it went to / came from and carries that bank's (or the bill provider's) logo, like the wallet list
+    const wEntry = isWallet ? wallet?.entryFor?.(item._walletRow) : null;
 
     const cardCls = isPending
       ? "bg-amber-50/70 dark:bg-amber-900/10 border-amber-200/70 dark:border-amber-800/40"
@@ -3377,6 +3380,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
       <button key={`${item._type}-${item.id}`} onClick={handleTap}
         className={`w-full text-left rounded-2xl px-4 py-3 border active:scale-[0.98] transition-transform ${cardCls}`}>
         <div className="flex items-start gap-3">
+          {wEntry?.avatar?.logoUrl ? <HistoryAvatar avatar={wEntry.avatar} size={36} /> : (
           <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${iconBg}`}>
             {isReversal ? (
               <svg viewBox="0 0 24 24" fill="none" className={`w-4 h-4 ${iconCls}`} stroke="currentColor" strokeWidth={2} strokeLinecap="round">
@@ -3392,10 +3396,11 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
               </svg>
             )}
           </div>
+          )}
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2">
               <p className={`text-xs font-semibold min-w-0 truncate ${isReversed ? "line-through text-slate-400 dark:text-slate-500" : "text-slate-700 dark:text-slate-200"}`}>
-                {isWdReq ? "Withdrawal Request" : isWallet ? (WALLET_SOURCE[item.type]?.label || item.type) : ledgerTypeLabel(item)}
+                {isWdReq ? "Withdrawal Request" : isWallet ? (wEntry?.title || WALLET_SOURCE[item.type]?.label || item.type) : ledgerTypeLabel(item)}
               </p>
               <span className={`text-sm font-extrabold tabular flex-shrink-0 ${amtCls}`}>
                 {sign}{fmt(item.amount)}
@@ -3453,9 +3458,13 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
       {receipt && (
         <TransactionDetailModal
           data={
-            receipt._type === "withdrawal_request"
-              ? buildAjoWithdrawalReceipt(receipt, client?.full_name || "", bizName)
-              : buildAjoContributionReceipt(receipt, client?.full_name || "", bizName)
+            // A wallet item arrives as a finished receipt (wallet.receiptFor — the bank, its logo, the reference…); running it through
+            // the Ajo contribution builder turned it into a blank "Transaction / Pending" receipt.
+            receipt.fields && receipt.receiptRef
+              ? receipt
+              : receipt._type === "withdrawal_request"
+                ? buildAjoWithdrawalReceipt(receipt, client?.full_name || "", bizName)
+                : buildAjoContributionReceipt(receipt, client?.full_name || "", bizName)
           }
           onClose={() => setReceipt(null)}
         />
@@ -5423,7 +5432,7 @@ function MemberWalletSheet({ pendingPayouts = [], wallet, testMode, bvnVerificat
             ) : (
               <div className="divide-y divide-slate-100 dark:divide-slate-800">
                 {pendingPayouts.map((p) => <WalletTxRow key={`payout-${p.id}`} row={pendingPayoutRow(p)} />)}
-                {wallet.ledger.map((row) => <WalletTxRow key={row.id} row={row} onOpen={openReceipt} />)}
+                {wallet.ledger.map((row) => <WalletTxRow key={row.id} row={row} entry={wallet.entryFor(row)} onOpen={openReceipt} />)}
               </div>
             )}
           </div>

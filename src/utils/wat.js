@@ -34,6 +34,22 @@ export function formatWAT(input, { seconds = true } = {}) {
   return `${w.getUTCDate()} ${MONTHS[w.getUTCMonth()]} ${w.getUTCFullYear()}, ${clock(w, seconds)} WAT`;
 }
 
+/** "Sep 26th, 8:23:00 AM" — the compact stamp on a history row (WAT, seconds, no year; the receipt has the full one) */
+export function formatWATStamp(input) {
+  const ordinal = (d) => d + (d % 100 >= 11 && d % 100 <= 13 ? "th" : ({ 1: "st", 2: "nd", 3: "rd" }[d % 10] || "th"));
+  // A date-only value (a row still in the offline queue has no server time yet) carries no clock — show the day, never an invented time
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(input));
+  if (dateOnly) return `${MONTHS[Number(dateOnly[2]) - 1]} ${ordinal(Number(dateOnly[3]))}`;
+  const w = toWAT(input);
+  if (!w) return "—";
+  const d = w.getUTCDate();
+  const th = ordinal(d).slice(String(d).length);
+  let h = w.getUTCHours();
+  const ap = h >= 12 ? "PM" : "AM";
+  h = h % 12 || 12;
+  return `${MONTHS[w.getUTCMonth()]} ${d}${th}, ${h}:${pad(w.getUTCMinutes())}:${pad(w.getUTCSeconds())} ${ap}`;
+}
+
 /** "18 Sep 2026" */
 export function formatWATDate(input) {
   const w = toWAT(input);

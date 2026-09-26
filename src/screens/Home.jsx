@@ -432,7 +432,7 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
           ) : (
             <div className="divide-y divide-slate-100 dark:divide-slate-800">
               {wallet.ledger.slice(0, 4).map(row => (
-                <WalletTxRow key={row.id} row={row} hidden={balanceHidden}
+                <WalletTxRow key={row.id} row={row} entry={wallet.entryFor(row)} hidden={balanceHidden}
                   onOpen={(r) => setReceipt(wallet.receiptFor(r, profile?.business_name, profile?.owner_name, bizFromProfile(profile)))} />
               ))}
             </div>

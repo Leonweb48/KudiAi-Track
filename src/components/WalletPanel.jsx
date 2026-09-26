@@ -4,7 +4,11 @@ import TransactionPinModal from "./TransactionPinModal";
 import BankSelect from "./shared/BankSelect";
 import BankLogo from "./shared/BankLogo";
 import TransactionDetailModal from "./shared/TransactionDetailModal";
-import { fmt, fmtDateTime } from "../utils/helpers";
+import { fmt } from "../utils/helpers";
+import { WALLET_SOURCE } from "../utils/walletSources";
+import { walletEntry } from "../utils/historyEntries";
+import { formatWATStamp } from "../utils/wat";
+import { HistoryAvatar, StatusPill } from "./shared/HistoryRow";
 import { hapticSuccess } from "../utils/haptics";
 import { supabase } from "../utils/supabase";
 import {
@@ -33,29 +37,8 @@ export const cleanBankName = (n) =>
   String(n || "").replace(/\s*\((?:formerly|former|prev\.?|previously)[^)]*\)/i, "").trim() || "Flutterwave MFB";
 
 // ── ledger row meta ────────────────────────────────────────────────────────
-export const WALLET_SOURCE = {
-  topup:               { label: "Wallet funding",     icon: "arrow-down", credit: true },
-  sale:                { label: "Payment received",   icon: "arrow-down", credit: true },
-  bill_reversal:       { label: "Bill refund",        icon: "arrow-down", credit: true },
-  withdrawal_reversal: { label: "Transfer refund",    icon: "arrow-down", credit: true },
-  bill_spend:          { label: "Bill payment",       icon: "bills",      credit: false },
-  withdrawal:          { label: "Transfer",           icon: "send",       credit: false },
-  adjustment:          { label: "Adjustment",         icon: "wallet",     credit: false },
-  // Ajo — client wallet -> owner wallet (contribution) and owner -> client
-  // (withdrawal payout); label/icon only, actual credit/debit styling always
-  // follows row.direction so one entry covers both sides of each source.
-  ajo_contribution:    { label: "Savings contribution", icon: "send",       credit: false },
-  ajo_collection:      { label: "Contribution received", icon: "arrow-down", credit: true },
-  ajo_payout:          { label: "Savings withdrawal",   icon: "send",       credit: false },
-  // Client-started esusu circles: members pay into the creator's wallet, payouts come out of it
-  peer_esusu_contribution: { label: "Circle contribution",          icon: "send",       credit: false },
-  peer_esusu_collection:   { label: "Circle contribution received", icon: "arrow-down", credit: true },
-  peer_esusu_payout:       { label: "Circle payout",                icon: "arrow-down", credit: true },
-  peer_esusu_payout_sweep: { label: "Circle pot paid out",          icon: "send",       credit: false },
-  transfer_fee:        { label: "Transfer fee",         icon: "wallet",     credit: false },
-  cbn_levy:            { label: "CBN transfer levy",    icon: "wallet",     credit: false },
-  wallet_fee:          { label: "Wallet transfer fee",  icon: "wallet",     credit: false },
-};
+// The label / icon table lives in utils/walletSources.js (the history logic uses it too); re-exported for existing importers.
+export { WALLET_SOURCE };
 
 // ── generic slide-up sheet ─────────────────────────────────────────────────
 export function BottomSheet({ open, onClose, title, back, children }) {
@@ -213,29 +196,26 @@ export function AccountCard({ wallet, displayName }) {
 }
 
 // ── transaction row ────────────────────────────────────────────────────────
-export function WalletTxRow({ row, hidden, onOpen }) {
-  const cfg = WALLET_SOURCE[row.source] || { label: row.source, icon: "wallet", credit: row.direction === "credit" };
+// OPay-style: the bank's / provider's logo (or an icon) on the left, "Transfer to NAME" and its time, the signed amount and a status pill.
+// `entry` is the row's history entry from useWallet().entryFor(row) — it knows the recipient / sender and their bank. Without it the row
+// still renders from the ledger row alone (a generic title and icon).
+export function WalletTxRow({ row, hidden, onOpen, entry }) {
+  const e = entry || walletEntry(row, {});
   const credit = row.direction === "credit";
-  const pending = row.status === "pending";
   const reversed = row.status === "reversed";
   return (
     <button type="button" onClick={onOpen ? () => onOpen(row) : undefined}
-      className={`w-full flex items-center gap-3 py-3.5 text-left ${onOpen ? "active:bg-slate-50 dark:active:bg-slate-800/60 -mx-2 px-2 rounded-xl transition-colors" : ""}`}>
-      <span className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
-        credit ? "bg-emerald-50 dark:bg-emerald-900/25 text-emerald-600 dark:text-emerald-400"
-               : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"}`}>
-        <Icon name={cfg.icon} size={16} />
-      </span>
+      className={`w-full flex items-center gap-3 py-3 text-left ${onOpen ? "active:bg-slate-50 dark:active:bg-slate-800/60 -mx-2 px-2 rounded-xl transition-colors" : ""}`}>
+      <HistoryAvatar avatar={e.avatar} />
       <div className="flex-1 min-w-0">
-        <p className="text-[14px] font-bold text-slate-900 dark:text-slate-100 truncate">{cfg.label}</p>
-        <p className="text-[11px] text-slate-400">{fmtDateTime(row.created_at)}</p>
+        <p className="text-[14px] font-semibold text-slate-900 dark:text-slate-100 truncate">{e.title}</p>
+        <p className="text-[11.5px] text-slate-400 mt-0.5">{formatWATStamp(row.created_at)}</p>
       </div>
       <div className="text-right flex-shrink-0">
-        <p className={`text-[14px] font-extrabold tabular-nums ${credit ? "text-emerald-600 dark:text-emerald-400" : "text-slate-800 dark:text-slate-200"} ${reversed ? "line-through opacity-60" : ""}`}>
+        <p className={`text-[15px] font-bold tabular-nums ${credit ? "text-emerald-600 dark:text-emerald-400" : "text-slate-800 dark:text-slate-200"} ${reversed ? "line-through opacity-60" : ""}`}>
           {hidden ? "••••" : <>{credit ? "+" : "−"}{fmt(row.amount_kobo / 100)}</>}
         </p>
-        {pending && <p className="text-[10px] font-bold text-amber-500">{credit ? "Pending" : "Processing"}</p>}
-        {reversed && <p className="text-[10px] font-bold text-slate-400">Reversed</p>}
+        <StatusPill status={e.status} className="mt-1" />
       </div>
     </button>
   );

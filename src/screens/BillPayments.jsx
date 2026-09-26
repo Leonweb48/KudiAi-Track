@@ -11,7 +11,7 @@ import { canDo, getLowestPlanWithFeature } from "../utils/plans";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
 import { useWallet } from "../hooks/useWallet";
 import TransactionDetailModal from "../components/shared/TransactionDetailModal";
-import { buildBillReceipt } from "../utils/receiptConfig";
+import { buildBillReceipt, parseBillRecord } from "../utils/receiptConfig";
 import { ReceiptCard } from "../components/shared/ReceiptCard";
 import SupportTicketModal from "../components/shared/SupportTicketModal";
 import { supabase } from "../utils/supabase";
@@ -29,6 +29,8 @@ import { captureReceiptCanvas } from "../utils/captureReceipt";
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
 import { getProviderLogo, getProviderBadge } from "../utils/logoMap";
+import { billVisual } from "../utils/historyEntries";
+import { HistoryAvatar } from "../components/shared/HistoryRow";
 import { shareVoucherPDF } from "../utils/printVouchers";
 
 /* ─── Service catalogue ───────────────────────────────────────────────────── */
@@ -559,13 +561,19 @@ function BillRow({ bill, onOpen }) {
   const cat     = CATS.find(c => c.id === bill.category) || CATS[0];
   const failed  = bill.bill_status === "failed";
   const pending = bill.bill_status === "pending";
+  // the provider's real logo when the bill names one (the category tile otherwise)
+  const visual  = billVisual({ category: bill.category, text: `${bill.item_name || ""} ${bill.note || ""}`, record: bill });
   return (
     <div className={`rounded-2xl border shadow-sm overflow-hidden ${failed ? "bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800/50" : pending ? "bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800/50" : "bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700/50"}`}>
       <div onClick={onOpen}
         className="px-4 py-3.5 flex items-center gap-3 cursor-pointer active:scale-[0.98] transition-transform">
-        <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-gradient-to-br ${failed ? "from-red-500 to-red-700" : pending ? "from-amber-400 to-amber-600" : cat.tileCls}`}>
-          <Ico d={CAT_ICONS[bill.category] || CAT_ICONS.airtime} size={18} c="white" />
-        </div>
+        {visual.logoUrl ? (
+          <HistoryAvatar size={40} avatar={{ logoUrl: visual.logoUrl, name: visual.name, icon: visual.icon, dir: null, tone: failed ? "failed" : pending ? "pending" : "ok" }} />
+        ) : (
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-gradient-to-br ${failed ? "from-red-500 to-red-700" : pending ? "from-amber-400 to-amber-600" : cat.tileCls}`}>
+            <Ico d={CAT_ICONS[bill.category] || CAT_ICONS.airtime} size={18} c="white" />
+          </div>
+        )}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
             <p className="text-sm font-bold text-slate-800 dark:text-white truncate">{bill.item_name}</p>
@@ -786,20 +794,10 @@ async function ckPurchase(clubkonnect, cat, params, ref) {
 
 /* ─── Map a stored bill transaction to BillReceipt props ─────────────────── */
 function billToReceipt(bill, profile, staffName) {
-  const raw  = bill.note || "";
-  const pinsIdx = raw.indexOf("__PINS__");
-  const n    = pinsIdx !== -1 ? raw.slice(0, pinsIdx) : raw;
-  const pick = (rx) => n.match(rx)?.[1]?.trim() || "";
-
-  let pinsArr;
-  if (pinsIdx !== -1) {
-    try { pinsArr = JSON.parse(raw.slice(pinsIdx + 8)); } catch (_) {}
-  }
-
-  // bill_details is the authoritative structured source — prefer it over regex
-  const bd = bill.bill_details || {};
-
-  const parsedProvider = pick(/Provider:\s*([^|]+)/i);
+  // The note / bill_details parsing is shared with the general history (receiptConfig.parseBillRecord), so the same bill makes the
+  // same receipt wherever it is opened.
+  const parsed = parseBillRecord(bill);
+  const parsedProvider = parsed.providerName;
   const elecComp = bill.category === "electricity"
     ? ELECTRICITY_COMPANIES.find(c =>
         (parsedProvider && parsedProvider.startsWith(c.name)) ||
@@ -812,27 +810,9 @@ function billToReceipt(bill, profile, staffName) {
     businessName:   profile?.business_name || profile?.owner_name || "My Business",
     businessAddress: profile?.business_address || profile?.address || "",
     businessPhone:   profile?.business_phone || profile?.phone || "",
-    paidVia:        bd.paid_via || undefined,
     service:        CATS.find(c => c.id === bill.category)?.label || bill.category,
-    apiRef:         bd.orderId || pick(/Ref:\s*([^\s|]+)/i),
-    token:          bd.token  || (() => { const t = (pick(/Token:\s*([^|]+)/i) || "").trim(); return t && !t.toLowerCase().startsWith("loading") ? t : undefined; })(),
-    units:          bd.units  || (pick(/Units:\s*([^|]+)/i) || "").trim() || undefined,
-    network:        pick(/Network:\s*([^|]+)/i),
-    phone:          pick(/Phone:\s*([^|]+)/i) || pick(/Beneficiary:\s*([^|]+)/i),
-    planName:       pick(/Plan:\s*([^|]+)/i),
-    smartcard:      pick(/Smartcard:\s*([^|]+)/i),
-    meterNo:        pick(/Meter:\s*([^|]+)/i),
-    meterAddress:   pick(/Meter Address:\s*([^|]+)/i),
-    meterTypeName:  pick(/Type:\s*([^|]+)/i),
-    providerName:   parsedProvider,
-    platformName:   pick(/Platform:\s*([^|]+)/i),
-    packageName:    pick(/Package:\s*([^|]+)/i),
-    customerId:     pick(/Customer:\s*([^|]+)/i),
-    accountNo:      pick(/Account:\s*([^|]+)/i),
-    value:          pick(/Value:\s*([^|]+)/i),
+    ...parsed,
     staffName:      staffName || undefined,
-    pinsArr:        bd.pins   || pinsArr,
-    cardDetails:    bd.cardDetails || undefined,
     stationAddress: elecComp?.address || undefined,
   };
 }

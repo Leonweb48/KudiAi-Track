@@ -239,7 +239,7 @@ export default function WalletStatement({ session, store, userId: userIdOverride
                 <p className="text-[13px] text-slate-400 py-8 text-center">No transactions in this range.</p>
               ) : (
                 <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {filtered.map((row) => <WalletTxRow key={row.id} row={row} hidden={false} onOpen={openReceipt} />)}
+                  {filtered.map((row) => <WalletTxRow key={row.id} row={row} entry={w.entryFor(row)} hidden={false} onOpen={openReceipt} />)}
                 </div>
               )}
             </div>

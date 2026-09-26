@@ -6,6 +6,7 @@ import { formatWAT, formatWATDate, watStamp } from './wat';
 import { discoFromRecord, DISCO_LABELS } from './electricityLogos';
 import { describeBank } from './bankLogos';
 import { billBrandFromRecord } from './billLogos';
+import { BILL_CATEGORIES } from './historyEntries';
 
 // Which processor actually moved the money. Never assume one: a receipt that
 // names the wrong processor is worse than one that names none.
@@ -103,7 +104,59 @@ function billPaidVia(bill) {
   return null;
 }
 
+// The structured facts of a stored bill (a transactions row): the note carries them as "Key: value | Key: value" (and the printed pins after
+// "__PINS__"), bill_details is the authoritative source when present. Shared by the Bills page and the general history so the same bill
+// makes the same receipt wherever it is opened.
+export function parseBillRecord(bill) {
+  const raw = bill.note || '';
+  const pinsIdx = raw.indexOf('__PINS__');
+  const n = pinsIdx !== -1 ? raw.slice(0, pinsIdx) : raw;
+  const pick = (rx) => n.match(rx)?.[1]?.trim() || '';
+
+  let pinsArr;
+  if (pinsIdx !== -1) {
+    try { pinsArr = JSON.parse(raw.slice(pinsIdx + 8)); } catch (_) { /* a damaged pin list is left off */ }
+  }
+  const bd = bill.bill_details || {};
+
+  return {
+    paidVia:       bd.paid_via || undefined,
+    apiRef:        bd.orderId || pick(/Ref:\s*([^\s|]+)/i),
+    token:         bd.token || (() => { const t = (pick(/Token:\s*([^|]+)/i) || '').trim(); return t && !t.toLowerCase().startsWith('loading') ? t : undefined; })(),
+    units:         bd.units || (pick(/Units:\s*([^|]+)/i) || '').trim() || undefined,
+    network:       pick(/Network:\s*([^|]+)/i),
+    phone:         pick(/Phone:\s*([^|]+)/i) || pick(/Beneficiary:\s*([^|]+)/i),
+    planName:      pick(/Plan:\s*([^|]+)/i),
+    smartcard:     pick(/Smartcard:\s*([^|]+)/i),
+    meterNo:       pick(/Meter:\s*([^|]+)/i),
+    meterAddress:  pick(/Meter Address:\s*([^|]+)/i),
+    meterTypeName: pick(/Type:\s*([^|]+)/i),
+    providerName:  pick(/Provider:\s*([^|]+)/i),
+    platformName:  pick(/Platform:\s*([^|]+)/i),
+    packageName:   pick(/Package:\s*([^|]+)/i),
+    customerId:    pick(/Customer:\s*([^|]+)/i),
+    accountNo:     pick(/Account:\s*([^|]+)/i),
+    value:         pick(/Value:\s*([^|]+)/i),
+    pinsArr:       bd.pins || pinsArr,
+    cardDetails:   bd.cardDetails || undefined,
+  };
+}
+
 export function buildTransactionReceipt(txn, profile) {
+  // A bill opened from the general history is the same receipt as on the Bills page: its provider's logo, the smartcard / meter / token
+  // details — not the plain income / expense layout below.
+  if (txn.payment_type === 'bill_payment' || (BILL_CATEGORIES.has(txn.category) && txn.type !== 'in')) {
+    const biz = bizFromProfile(profile);
+    const r = buildBillReceipt({
+      ...txn,
+      ...parseBillRecord(txn),
+      businessName:    profile?.business_name || 'My Business',
+      businessAddress: biz.address,
+      businessPhone:   biz.phone,
+      staffName:       txn.staff_name || undefined,
+    });
+    return txn._pending ? { ...r, status: 'pending' } : r;
+  }
   const isIn   = txn.type === 'in';
   const status =
     txn._pending         ? 'pending' :
@@ -407,7 +460,7 @@ const BILL_CAT_LABELS = {
 };
 export function buildBillReceipt(bill) {
   const businessName = bill.businessName || 'My Business';
-  const title = BILL_CAT_LABELS[bill.category] || humanize(bill.category) || 'Bill Payment';
+  const title = BILL_CAT_LABELS[bill.category] || (bill.category ? humanize(bill.category) : '') || 'Bill Payment';
   const { ref, hasRef, image, pdf } = receiptFilenames(bill.id, bill.created_at || bill.transaction_date, title, bill.receipt_ref);
   // Who actually took the payment — read from the record, never assumed. A legacy
   // bill that never recorded its funding source shows no processor at all.

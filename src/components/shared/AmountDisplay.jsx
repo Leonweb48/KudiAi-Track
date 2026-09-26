@@ -15,6 +15,7 @@
  *   size       — 'hero' | 'stat' | 'row' | 'small'  (default 'stat')
  *   colorBy    — 'in' | 'out' | 'neutral' | null     (default null = inherit colour)
  *   align      — 'left' | 'right' | 'center'          (default 'left')
+ *   sign       — text printed in front of the amount, e.g. "+" or "−"   (default "")
  *   className  — extra Tailwind classes on the root div
  *   style      — extra inline styles on the root div
  */
@@ -54,12 +55,15 @@ export function AmountDisplay({
   colorBy   = null,
   align     = 'left',
   hidden    = false,
+  sign      = '',
   className = '',
   style     = {},
 }) {
   const naira = fromKobo ? Number(amount || 0) / 100 : Number(amount || 0);
-  const full   = nairaFull(naira);
-  const cmpct  = nairaCompact(naira);
+  // `sign` ('+' / '−') goes in front of the amount, in the full and the compact form alike
+  const full   = sign + nairaFull(naira);
+  const cmpct0 = nairaCompact(naira);
+  const cmpct  = cmpct0 ? sign + cmpct0 : cmpct0;
   const cfg    = SIZE_CFG[size] || SIZE_CFG.stat;
 
   const containerRef = useRef(null);
