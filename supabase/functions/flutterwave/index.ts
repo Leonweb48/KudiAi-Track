@@ -422,6 +422,51 @@ serve(async (req) => {
       return json({ ok: true, transfer_id: r.transfer_id, status: r.status, fee_kobo: r.fee_kobo });
     }
 
+    // ═══ admin-recheck-transfer — service only (admin portal). Asks Flutterwave what really happened to a
+    //    withdrawal that is still pending/processing on our side and settles it through wallet_mark_withdrawal —
+    //    the same function the transfer webhook uses (successful → completes it; failed/reversed → refunds the
+    //    wallet, once). Nothing changes unless Flutterwave itself reports a final status, and a withdrawal we
+    //    already settled is never touched: a disagreement is only reported back. ═══
+    if (action === "admin-recheck-transfer") {
+      if (!(await isServiceCall(req, token))) return json({ error: "Unauthorized" }, 401);
+      const wid = String(body.withdrawal_id || "");
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(wid)) return json({ error: "withdrawal_id required" }, 400);
+      const { data: wd } = await sb.from("wallet_withdrawals").select("id, status, flw_transfer_id").eq("id", wid).maybeSingle();
+      if (!wd) return json({ error: "Withdrawal not found" }, 404);
+      if (!wd.flw_transfer_id) {
+        return json({ ok: true, applied: null, our_status: wd.status, flw_status: null,
+          message: "Flutterwave never returned a transfer id for this withdrawal, so it can't be checked automatically. Check the Flutterwave dashboard." });
+      }
+      const accts = [ACTIVE, ...(Object.values(ACCOUNTS) as FlwAccount[]).filter((a) => a.key !== ACTIVE.key)].filter(isConfigured);
+      let t: Record<string, unknown> | null = null;
+      for (const acct of accts) {
+        const r = await flwFetch(`/transfers/${encodeURIComponent(String(wd.flw_transfer_id))}`, { account: acct });
+        const d = (r.data ?? {}) as Record<string, unknown>;
+        if (r.ok && (d.data || d.id)) { t = (d.data ?? d) as Record<string, unknown>; break; }
+      }
+      if (!t) return json({ error: "Flutterwave did not return this transfer. Nothing was changed." }, 502);
+
+      const flwStatus = String(t.status || "").toUpperCase();
+      const final = ["SUCCESSFUL", "SUCCEEDED", "COMPLETED"].includes(flwStatus) ? "successful"
+        : flwStatus === "FAILED" ? "failed"
+        : flwStatus === "REVERSED" ? "reversed" : null;
+      const open = ["pending", "processing"].includes(String(wd.status));
+      if (final && open) {
+        const { error } = await sb.rpc("wallet_mark_withdrawal", { p_flw_transfer_id: wd.flw_transfer_id, p_status: final, p_reference: wd.id });
+        if (error) return json({ error: `Could not settle: ${error.message}` }, 500);
+      }
+      const { data: after } = await sb.from("wallet_withdrawals").select("status").eq("id", wid).maybeSingle();
+      return json({
+        ok: true, flw_status: flwStatus || "UNKNOWN", our_status: after?.status ?? wd.status,
+        applied: final && open ? final : null,
+        message: !final ? "Flutterwave hasn't finished this transfer yet. Nothing was changed."
+          : !open && final !== wd.status ? `Flutterwave says ${flwStatus}, but our record already says ${wd.status}. Nothing was changed — check this one by hand.`
+          : !open ? "Already settled. Nothing to do."
+          : final === "successful" ? "Flutterwave confirmed the transfer. Marked successful."
+          : "Flutterwave says the transfer did not go through. The money was returned to the wallet.",
+      });
+    }
+
     // ═══ announce-migration — service only. Emails every holder of an old (legacy) account number that a new one is
     //    available, and until when the old one keeps working. Idempotent: wallets.migration_emailed_at is set per
     //    person after their email goes out, so running it twice never emails anyone twice. `dry_run: true` only
