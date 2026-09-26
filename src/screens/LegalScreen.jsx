@@ -221,7 +221,7 @@ function TermsContent() {
       <P>All intellectual property rights in the platform — including software, design, trademarks, logos, content, and features — are owned by Amaya Technologies or its licensors. We grant you a limited, non-exclusive, non-transferable, revocable licence to use the platform solely for your personal or internal business purposes. You may not copy, modify, distribute, sell, sublicense, or reverse-engineer any part of the platform.</P>
 
       <H2>14. Suspension & Termination</H2>
-      <P>You may terminate your account by contacting support@kudiai.app. We may suspend or terminate your account, with or without notice, for breach of these Terms, suspected fraud or illegal activity, requirement of applicable law, non-payment of subscription fees, or prolonged inactivity (12 consecutive months for free accounts). Upon termination, your access ceases immediately and your data is retained per our Privacy Policy before deletion.</P>
+      <P>You may terminate your account by deleting it in the app (Settings → Delete my account), at kudiai.app/delete-account, or by contacting support@kudiai.app. We may suspend or terminate your account, with or without notice, for breach of these Terms, suspected fraud or illegal activity, requirement of applicable law, non-payment of subscription fees, or prolonged inactivity (12 consecutive months for free accounts). Upon termination, your access ceases immediately and your data is retained per our Privacy Policy before deletion.</P>
 
       <H2>15. Governing Law & Dispute Resolution</H2>
       <P>These Terms are governed by the laws of the Federal Republic of Nigeria. Before commencing any formal dispute process, you agree to contact us at support@kudiai.app for good-faith informal resolution (10 business day response). If unresolved after 30 days, either party may refer the dispute to mediation at the Lagos Multi-Door Courthouse (LMDC). If mediation fails within 45 days, disputes shall be referred to binding arbitration under the Arbitration and Conciliation Act, with a single arbitrator, seat in Lagos, Nigeria, language English.</P>
@@ -368,7 +368,7 @@ function PrivacyContent() {
         ["Support communications",      "3 years from resolution"],
         ["Marketing consents",          "Until withdrawn + 3 years"],
         ["AI interaction logs",         "6 months"],
-        ["Deleted account data",        "Anonymised within 30 days; audit trail retained 7 years"],
+        ["Deleted account data",        "Personal details erased when you delete your account; de-identified transaction and verification records retained up to 7 years"],
       ]} />
 
       <H2>9. Your Data Rights</H2>
@@ -382,7 +382,8 @@ function PrivacyContent() {
         "Right to Object — object to processing based on legitimate interests or for direct marketing.",
         "Right to Withdraw Consent — withdraw consent at any time without affecting prior processing.",
       ]} />
-      <P>To exercise any right, email support@kudiai.app with subject "Data Rights Request". We will respond within 30 days. You may also escalate complaints to the Nigeria Data Protection Commission (NDPC) at ndpc.gov.ng.</P>
+      <P>You can delete your account and erase your personal details yourself in the app (Settings → Delete my account), or request it at kudiai.app/delete-account if you can no longer sign in. Deletion is available once your wallet balance and any open transfers, savings or loans are settled; financial transaction records are kept without your identity for the period the law requires.</P>
+      <P>To exercise any other right, email support@kudiai.app with subject "Data Rights Request". We will respond within 30 days. You may also escalate complaints to the Nigeria Data Protection Commission (NDPC) at ndpc.gov.ng.</P>
 
       <H2>10. Data Security</H2>
       <P>Technical measures include TLS/HTTPS encryption in transit, AES-256 encryption at rest via Supabase, Row-Level Security (RLS) policies, JWT authentication with secure cookie storage, two-factor authentication for Admin and Marketer portals, reCAPTCHA v3 bot protection, and automated session logging for anomaly detection.</P>

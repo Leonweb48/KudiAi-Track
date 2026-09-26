@@ -20,6 +20,7 @@ import WalletTierCard from "../../components/WalletTierCard";
 import { usePlatformConfig } from "../../hooks/usePlatformConfig";
 import { useLanguage } from "../../contexts/LanguageContext";
 import { LANGUAGES, markLangChosen } from "../../utils/i18n";
+import { DeleteAccountLink } from "../../components/shared/DeleteAccountSheet";
 
 /* ─ Inline profile display components — mirror business Profile.jsx */
 function SectionCard({ title, children }) {
@@ -642,6 +643,7 @@ export default function StaffMe({ staff, session, store, inventory, livePerms, s
           <Svg d={P.out2} size={18} color="currentColor" />
           Sign Out
         </button>
+        <DeleteAccountLink className="mt-1" />
       </div>
 
       {/* Footer */}

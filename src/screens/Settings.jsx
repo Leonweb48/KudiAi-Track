@@ -13,6 +13,7 @@ import TransactionPinModal from "../components/TransactionPinModal";
 import ForgotPinFlow      from "../components/ForgotPinFlow";
 import { supabase }       from "../utils/supabase";
 import { performLogout }  from "../utils/logout";
+import { DeleteAccountLink } from "../components/shared/DeleteAccountSheet";
 import { canDo, planAvailableText, hasHigherPlanAvailable, getPlanInfo } from "../utils/plans";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import { LANGUAGES, getLangMeta, markLangChosen } from "../utils/i18n";
@@ -1044,6 +1045,8 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
         <LogoutIconSvg />
         {signingOut ? t("settings.signingOut") : t("settings.logOut")}
       </button>
+
+      <DeleteAccountLink className="mt-2" />
 
       <p className="text-center text-[11px] text-slate-300 dark:text-slate-600 mt-6 font-medium select-all">
         {buildVer?.version

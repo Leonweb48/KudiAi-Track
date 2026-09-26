@@ -51,6 +51,7 @@ import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import EsusuRotationDashboard from "../components/EsusuRotationDashboard";
 import LegalScreen from "./LegalScreen";
 import PeerEsusuScreen from "./PeerEsusuScreen";
+import { DeleteAccountLink } from "../components/shared/DeleteAccountSheet";
 
 async function ajoFn(action, body = {}) {
   const { data, error } = await supabase.functions.invoke("ajo-portal", {
@@ -4687,6 +4688,7 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
           <Svg d={P.out2} size={18} color="currentColor" />
           Sign Out
         </button>
+        <DeleteAccountLink className="mt-1" />
       </div>
 
       {/* Footer */}

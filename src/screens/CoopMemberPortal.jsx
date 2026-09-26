@@ -5,6 +5,7 @@ import { App as CapApp } from "@capacitor/app";
 import { buildCallbackUrl, openPaystackCheckout } from "../utils/paystackCheckout";
 import { supabase } from "../utils/supabase";
 import { performLogout } from "../utils/logout";
+import { DeleteAccountLink } from "../components/shared/DeleteAccountSheet";
 import { useTheme } from "../hooks/useTheme";
 import { useT, useLanguage } from "../contexts/LanguageContext";
 import { LANGUAGES, markLangChosen } from "../utils/i18n";
@@ -3628,6 +3629,7 @@ export default function CoopMemberPortal({ member: initialMember, pinLock }) {
                   </svg>
                   {t("common.logOut")}
                 </button>
+                <DeleteAccountLink className="!text-left !text-slate-400 mt-2 !px-0" />
               </div>
             </div>
           </div>
