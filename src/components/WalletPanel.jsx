@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Icon from "./Icon";
 import TransactionPinModal from "./TransactionPinModal";
 import BankSelect from "./shared/BankSelect";
+import BankLogo from "./shared/BankLogo";
 import TransactionDetailModal from "./shared/TransactionDetailModal";
 import { fmt, fmtDateTime } from "../utils/helpers";
 import { hapticSuccess } from "../utils/haptics";
@@ -503,7 +504,14 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
                 ...(repeat ? [["Repeats", frequency[0].toUpperCase() + frequency.slice(1)]] : [])].map(([k, v]) => (
                 <div key={k} className="flex items-center justify-between px-4 py-3">
                   <span className="text-[12px] text-slate-400">{k}</span>
-                  <span className="text-[13px] font-semibold text-slate-800 dark:text-slate-100 text-right max-w-[62%] truncate">{v}</span>
+                  {k === "Bank" ? (
+                    <span className="flex items-center gap-2 min-w-0 max-w-[62%]">
+                      <BankLogo code={bank?.code} name={bank?.name} size={26} radius={8} />
+                      <span className="text-[13px] font-semibold text-slate-800 dark:text-slate-100 text-right truncate">{v}</span>
+                    </span>
+                  ) : (
+                    <span className="text-[13px] font-semibold text-slate-800 dark:text-slate-100 text-right max-w-[62%] truncate">{v}</span>
+                  )}
                 </div>
               ))}
             </div>
@@ -515,9 +523,7 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
         ) : step === "amount" ? (
           <div className="space-y-4">
             <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/60 p-3.5 flex items-center gap-3">
-              <span className="w-9 h-9 rounded-full bg-brand-100 dark:bg-brand-900/40 text-brand-600 dark:text-brand-400 flex items-center justify-center text-[12px] font-bold">
-                {(recipientName||"?").slice(0, 2).toUpperCase()}
-              </span>
+              <BankLogo code={bank?.code} name={bank?.name} size={40} />
               <div className="min-w-0">
                 <p className="text-[13px] font-bold text-slate-800 dark:text-slate-100 truncate">{recipientName}</p>
                 <p className="text-[11px] text-slate-400">{acctNo} · {bank?.name}</p>
@@ -606,9 +612,13 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
               </p>
             )}
             {name && (
-              <div className="rounded-2xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200/70 dark:border-emerald-800/50 px-4 py-3">
-                <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold uppercase tracking-wide">Account name</p>
-                <p className="text-[15px] font-extrabold text-emerald-800 dark:text-emerald-300">{name}</p>
+              <div className="rounded-2xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200/70 dark:border-emerald-800/50 px-4 py-3 flex items-center gap-3">
+                <BankLogo code={bank?.code} name={bank?.name} size={46} />
+                <div className="min-w-0">
+                  <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold uppercase tracking-wide">Account name</p>
+                  <p className="text-[15px] font-extrabold text-emerald-800 dark:text-emerald-300 break-words">{name}</p>
+                  {bank?.name && <p className="text-[11px] text-emerald-700/70 dark:text-emerald-400/70 mt-0.5 truncate">{bank.name}</p>}
+                </div>
               </div>
             )}
             {name && isFirstTimeRecipient && (

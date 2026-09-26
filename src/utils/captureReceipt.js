@@ -46,6 +46,10 @@ export async function captureReceiptCanvas(el) {
   wrap.appendChild(clone);
   document.body.appendChild(wrap);
 
+  // Rows flagged data-private (the running wallet / cash-book balance on a bill or wallet receipt) are for the owner, in the
+  // app: they stay on screen but never go out with the shared image. Removed from the CLONE only, before it is measured.
+  clone.querySelectorAll('[data-private]').forEach(n => n.remove());
+
   // Wait for every image inside the clone to finish loading so logos appear.
   const imgs = Array.from(clone.querySelectorAll('img'));
   await Promise.all(

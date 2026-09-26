@@ -267,6 +267,9 @@ serve(async (req) => {
 
       const owner = await resolveContact(sb, wallet.user_id as string);
       const originator = String((pm.bank_transfer as Record<string, unknown>)?.originator_name || "a customer");
+      // The SENDER's bank, as the bank reports it ("WEMA BANK PLC"). Kept on the ledger row so the receipt can name that bank
+      // and show its logo — the app cleans the spelling up when it shows it.
+      const originatorBank = String((pm.bank_transfer as Record<string, unknown>)?.originator_bank_name || "").trim().slice(0, 80);
 
       if (pr) {
         const { data: saleRes, error: sErr } = await sb.rpc("wallet_record_sale", {
@@ -275,7 +278,20 @@ serve(async (req) => {
           p_amount_kobo: amountKobo,
         });
         if (sErr) { console.error("[flw-webhook] wallet_record_sale:", sErr.message); return bad("sale record failed", 500); }
-        const saleFacts = await ledgerFacts(sb, (saleRes as { ledger_id?: string } | null)?.ledger_id);
+        const saleLedgerId = (saleRes as { ledger_id?: string } | null)?.ledger_id;
+        // wallet_record_sale has no meta argument, so stamp who paid (name + bank) onto its ledger row afterwards. The sale is
+        // already recorded by now — a failure here only costs the receipt its sender-bank line.
+        if (saleLedgerId && (originatorBank || originator !== "a customer")) {
+          try {
+            const { data: lr } = await sb.from("wallet_ledger").select("meta").eq("id", saleLedgerId).maybeSingle();
+            const prev = ((lr?.meta ?? {}) as Record<string, unknown>);
+            const stamp: Record<string, unknown> = {};
+            if (originatorBank && !prev.originator_bank) stamp.originator_bank = originatorBank;
+            if (originator !== "a customer" && !prev.originator) stamp.originator = originator;
+            if (Object.keys(stamp).length) await sb.from("wallet_ledger").update({ meta: { ...prev, ...stamp } }).eq("id", saleLedgerId);
+          } catch (e) { console.warn("[flw-webhook] sale meta stamp:", (e as Error).message); }
+        }
+        const saleFacts = await ledgerFacts(sb, saleLedgerId);
         // Awaited — same reason as the topup path below: the function returns
         // (and the Deno isolate can be torn down) right after sendWalletEmail
         // resolves, which was silently dropping this un-awaited fetch before
@@ -354,6 +370,7 @@ serve(async (req) => {
         p_narration: "Wallet top-up (bank transfer)",
         p_meta: {
           originator: (pm.bank_transfer as Record<string, unknown>)?.originator_name || null,
+          originator_bank: originatorBank || null,
         },
       });
       if (error) { console.error("[flw-webhook] wallet_credit:", error.message); return bad("credit failed", 500); }

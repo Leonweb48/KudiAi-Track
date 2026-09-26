@@ -248,12 +248,40 @@ function ProviderBadge({ provider, category }) {
   );
 }
 
+// ── The bank on the other side of a wallet transfer / deposit: its logo (or initials) + who it was to / from ──
+// Inline styles only (html2canvas). The logo is sized by max-width/max-height so it keeps its own aspect ratio.
+function BankBadge({ counterparty }) {
+  const { role, bank, logoUrl, initials } = counterparty;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '10px 0 0', position: 'relative', zIndex: 2 }}>
+      <div style={{
+        width: 56, height: 56, borderRadius: 14, background: '#ffffff', border: '1px solid #e2e8f0',
+        boxShadow: '0 1px 4px rgba(0,0,0,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        {logoUrl ? (
+          <img
+            src={logoUrl}
+            alt={bank}
+            style={{ display: 'block', maxWidth: 40, maxHeight: 40 }}
+            onError={e => { e.currentTarget.style.display = 'none'; }}
+          />
+        ) : (
+          <span style={{ fontSize: 17, fontWeight: 800, color: '#475569', letterSpacing: '-0.02em' }}>{initials}</span>
+        )}
+      </div>
+      <span style={{ marginTop: 6, fontSize: 10, fontWeight: 600, color: '#64748b', textAlign: 'center', lineHeight: 1.4 }}>
+        {role === 'recipient' ? 'Sent to' : 'Received from'} {bank}
+      </span>
+    </div>
+  );
+}
+
 // ── Main receipt card ─────────────────────────────────────────────────────────
 export function ReceiptCard({ data, innerRef }) {
   const {
     title, direction, status, amount, datetime,
     fields = [], businessName, issuedBy, receiptRef,
-    provider, category, processorName, processorLine, iconType,
+    provider, category, processorName, processorLine, iconType, counterparty,
   } = data;
   // Names who actually took the payment (read from the record) — never assumed.
   const paidLine = processorLine || (processorName ? `Payments securely processed via ${processorName}` : null);
@@ -294,10 +322,12 @@ export function ReceiptCard({ data, innerRef }) {
           </span>
         </div>
 
-        {/* Provider logo (bills) or semantic type icon (all other receipts) */}
+        {/* Provider logo (bills), the other bank's logo (wallet transfer / deposit) or a semantic type icon (all else) */}
         {showProvider
           ? <ProviderBadge provider={provider} category={category} />
-          : <ReceiptTypeIcon iconType={iconType} direction={direction} status={status} />
+          : counterparty
+            ? <BankBadge counterparty={counterparty} />
+            : <ReceiptTypeIcon iconType={iconType} direction={direction} status={status} />
         }
 
         {/* Title subtitle */}
@@ -354,7 +384,7 @@ export function ReceiptCard({ data, innerRef }) {
           {printFields.map((field, i) => {
             const lines = String(field.value ?? '—').split('\n');
             return (
-              <div key={i} style={{
+              <div key={i} data-private={field.private ? 'true' : undefined} style={{
                 display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
                 padding: '7px 0',
                 borderBottom: i < printFields.length - 1 ? '0.5px solid #f1f5f9' : 'none',

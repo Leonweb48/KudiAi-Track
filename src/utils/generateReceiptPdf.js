@@ -8,11 +8,13 @@ import { renderReceiptPdf } from "./receiptPdfLayout";
 import { discoFromText, electricityLogoUrl } from "./electricityLogos";
 
 export async function generateReceiptPdf(data) {
-  // An electricity receipt carries its DISCO's logo (public/logos/electricity logos/)
+  // The receipt's header logo: an electricity receipt carries its DISCO's logo (public/logos/electricity logos/), a wallet
+  // transfer / deposit the logo of the bank on the other side (public/logos/banks/). A bank without a logo prints none.
   const discoLogoUrl = data.category === "electricity" ? electricityLogoUrl(discoFromText(data.provider)) : null;
+  const headerLogoUrl = data.counterparty?.logoUrl || discoLogoUrl;
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const [{ jsPDF }, assets, providerLogo] = await Promise.all([
-    import("jspdf"), loadPdfAssets(), discoLogoUrl ? loadImageAsset(origin + discoLogoUrl) : Promise.resolve(null),
+    import("jspdf"), loadPdfAssets(), headerLogoUrl ? loadImageAsset(origin + headerLogoUrl) : Promise.resolve(null),
   ]);
   const doc  = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait", compress: true });
   const font = registerNotoSans(doc, assets);

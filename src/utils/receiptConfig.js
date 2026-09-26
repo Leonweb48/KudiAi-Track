@@ -4,6 +4,7 @@
 import { ledgerTypeLabel } from './helpers';
 import { formatWAT, formatWATDate, watStamp } from './wat';
 import { discoFromRecord, DISCO_LABELS } from './electricityLogos';
+import { describeBank } from './bankLogos';
 
 // Which processor actually moved the money. Never assume one: a receipt that
 // names the wrong processor is worse than one that names none.
@@ -120,6 +121,8 @@ export function buildTransactionReceipt(txn, profile) {
     : txn.item_name || humanize(txn.category) || (isIn ? 'Payment Received' : 'Payment Made');
   const { ref, hasRef, image, pdf } = receiptFilenames(txn.id, txn.created_at || txn.transaction_date, title, txn.receipt_ref);
   const balanceAfter = numOrNull(txn.balance_after);
+  // A bill paid through the app is booked as an expense row; its receipt follows the same rule as a bill receipt
+  const isBillPayment = txn.payment_type === 'bill_payment';
 
   return {
     title,
@@ -137,7 +140,7 @@ export function buildTransactionReceipt(txn, profile) {
       !isMulti && txn.quantity > 1 && { label: 'Quantity',      value: String(txn.quantity) },
       txn.note          && { label: 'Note',                     value: txn.note },
       txn.staff_name    && { label: 'Recorded by',              value: txn.staff_name },
-      balanceAfter != null && { label: 'Balance After',        value: fmtAmt(balanceAfter) },
+      balanceAfter != null && { label: 'Balance After',        value: fmtAmt(balanceAfter), private: isBillPayment },
                            { label: 'Reference',                value: ref, copy: hasRef },
     ].filter(Boolean),
     businessName:  profile?.business_name || 'My Business',
@@ -149,6 +152,7 @@ export function buildTransactionReceipt(txn, profile) {
     iconType:      isIn ? 'income' : 'expense',
     recordedBy:    txn.staff_name || null,
     ...meta(txn, { hasRef, method, balanceAfter, biz: bizFromProfile(profile) }),
+    hideBalanceOnShare: isBillPayment,
   };
 }
 
@@ -439,7 +443,8 @@ export function buildBillReceipt(bill) {
     bill.apiRef && { label: 'Provider Ref.', value: bill.apiRef, copy: true },
     bill.staffName && { label: 'Served by',   value: bill.staffName },
     processor      && { label: 'Payment Method', value: processor.label },
-    balanceAfter != null && { label: 'Balance After', value: fmtAmt(balanceAfter) },
+    // the running balance is for the owner, in the app — it never goes out with a shared image / PDF (see PRIVATE ROWS)
+    balanceAfter != null && { label: 'Balance After', value: fmtAmt(balanceAfter), private: true },
     { label: 'Reference',     value: ref, copy: hasRef },
   ].filter(Boolean);
 
@@ -462,6 +467,7 @@ export function buildBillReceipt(bill) {
     iconType:      null,
     recordedBy:    bill.staffName || null,
     ...meta(bill, { hasRef, method: processor?.label, balanceAfter, biz: { address: bill.businessAddress, phone: bill.businessPhone } }),
+    hideBalanceOnShare: true,
     // Raw structured data for specialized display in TransactionDetailModal
     elecToken:    bill.token      || undefined,
     cardDetails:  bill.cardDetails || undefined,
@@ -608,7 +614,12 @@ function senderIdentity(businessName, ownerName) {
 
 // ctx (all optional): businessName, ownerName, walletAccountNumber,
 //   withdrawal (wallet_withdrawals row), request (wallet_payment_requests row),
-//   originator (deposit sender name), recipientBankName (resolved from bank_code)
+//   originator (deposit sender name), originatorBank (the sender's bank on a deposit / payment received),
+//   recipientBankName (resolved from bank_code)
+//
+// PRIVATE ROWS — a field flagged `private: true` (the running balance on a bill or wallet receipt) is shown in the app but
+// left off everything that leaves it: ReceiptCard marks it data-private (stripped from the shared image by
+// captureReceiptCanvas) and the PDF layout skips it. `hideBalanceOnShare` tells the PDF not to print its own balance row.
 export function buildWalletReceipt(row, ctx = {}) {
   const credit = row.direction === 'credit';
   const src    = row.source;
@@ -628,13 +639,22 @@ export function buildWalletReceipt(row, ctx = {}) {
   const wd           = ctx.withdrawal || null;
   const rq           = ctx.request || null;
   const narration    = (wd?.narration || row.narration || '').trim();
+  // The wallet's running balance is for its owner, in the app — never on a shared image / PDF (see PRIVATE ROWS)
+  const balRow = row.balance_after_kobo != null && { label: 'Account balance after', value: fmtAmt(row.balance_after_kobo / 100), private: true };
+
+  // The bank on the OTHER side of the movement — where a transfer went, or where a deposit / payment came from.
+  // It names the bank in the party rows and gives the receipt its logo. Unknown banks still get a name, just no logo.
+  let counterparty = null;
+  const withCounterparty = (role, bank) => { counterparty = bank ? { role, bank: bank.name, logoUrl: bank.logoUrl, initials: bank.initials } : null; return bank; };
 
   // Sending money out (transfer, bill payment) names the business and owner,
   // but never the wallet account that sent it. Receiving (funding, a sale)
   // still shows where it landed, account included.
   let fields;
   if (src === 'withdrawal' || src === 'withdrawal_reversal') {
-    const rcptBank = ctx.recipientBankName || cleanBankName(wd?.bank_name) || wd?.bank_code || '';
+    const bankInfo = describeBank({ code: wd?.bank_code, name: ctx.recipientBankName || cleanBankName(wd?.bank_name) });
+    if (src === 'withdrawal') withCounterparty('recipient', bankInfo);
+    const rcptBank = bankInfo?.name || wd?.bank_code || '';
     fields = [
       { label: 'Transaction Type', value: src === 'withdrawal_reversal' ? 'Transfer reversal — refunded to wallet' : 'Wallet transfer' },
       { label: 'Recipient Details', value: party(wd?.account_name || narration || 'Bank account', rcptBank, wd?.account_number) },
@@ -643,7 +663,7 @@ export function buildWalletReceipt(row, ctx = {}) {
       wd?.fee_kobo ? { label: 'Fee', value: fmtAmt(wd.fee_kobo / 100) } : null,
       wd?.flw_transfer_id && { label: 'Transaction No.', value: wd.flw_transfer_id, copy: true },
       wd?.session_id      && { label: 'Session ID',      value: wd.session_id, copy: true },
-      row.balance_after_kobo != null && { label: 'Account balance after', value: fmtAmt(row.balance_after_kobo / 100) },
+      balRow,
       { label: 'Payment Method', value: 'KudiAI Wallet' },
       { label: 'Status',    value: humanize(row.status) },
       { label: 'Reference', value: ref, copy: hasRef },
@@ -651,27 +671,29 @@ export function buildWalletReceipt(row, ctx = {}) {
   } else if (src === 'topup') {
     const grossKobo = row.meta?.gross_amount_kobo;
     const feeKobo    = row.meta?.fee_kobo;
+    const fromBank   = withCounterparty('sender', describeBank({ name: ctx.originatorBank }));
     fields = [
       { label: 'Transaction Type', value: 'Wallet funding (bank transfer)' },
       { label: 'Recipient Details', value: walletParty },
-      { label: 'Sender Details',    value: party(ctx.originator || 'Bank transfer', '', '') },
+      { label: 'Sender Details',    value: party(ctx.originator || 'Bank transfer', fromBank?.name, '') },
       grossKobo > 0 && { label: 'Amount received', value: fmtAmt(grossKobo / 100) },
       feeKobo > 0    && { label: 'CBN electronic transfer levy', value: fmtAmt(feeKobo / 100) },
       row.flw_reference && { label: 'Transaction No.', value: row.flw_reference, copy: true },
-      row.balance_after_kobo != null && { label: 'Account balance after', value: fmtAmt(row.balance_after_kobo / 100) },
+      balRow,
       { label: 'Payment Method', value: 'Bank transfer' },
       { label: 'Status',    value: humanize(row.status) },
       { label: 'Reference', value: ref, copy: hasRef },
     ];
   } else if (src === 'sale') {
     const note = (rq?.note || narration || '').replace(/^Sale —\s*/i, '').trim();
+    const fromBank = withCounterparty('sender', describeBank({ name: ctx.originatorBank }));
     fields = [
       { label: 'Transaction Type', value: 'Payment received' },
       { label: 'Recipient Details', value: walletParty },
-      { label: 'Sender Details',    value: party(rq?.customer_name || ctx.originator || 'Customer', '', '') },
+      { label: 'Sender Details',    value: party(rq?.customer_name || ctx.originator || 'Customer', fromBank?.name, '') },
       note && { label: 'For', value: note },
       row.flw_reference && { label: 'Transaction No.', value: row.flw_reference, copy: true },
-      row.balance_after_kobo != null && { label: 'Account balance after', value: fmtAmt(row.balance_after_kobo / 100) },
+      balRow,
       { label: 'Payment Method', value: 'Bank transfer' },
       { label: 'Status',    value: humanize(row.status) },
       { label: 'Reference', value: ref, copy: hasRef },
@@ -682,7 +704,7 @@ export function buildWalletReceipt(row, ctx = {}) {
       narration && { label: src === 'bill_reversal' ? 'Refund for' : 'Paid for', value: narration },
       src === 'bill_reversal' ? { label: 'Credited to', value: walletParty } : { label: 'Paid by', value: sender },
       row.flw_reference && { label: 'Provider Ref.', value: row.flw_reference, copy: true },
-      row.balance_after_kobo != null && { label: 'Account balance after', value: fmtAmt(row.balance_after_kobo / 100) },
+      balRow,
       { label: 'Payment Method', value: 'KudiAI Wallet' },
       { label: 'Status',    value: humanize(row.status) },
       { label: 'Reference', value: ref, copy: hasRef },
@@ -692,7 +714,7 @@ export function buildWalletReceipt(row, ctx = {}) {
       { label: 'Transaction Type', value: src === 'subscription_reversal' ? 'Subscription refund — credited to wallet' : 'Subscription payment' },
       narration && { label: src === 'subscription_reversal' ? 'Refund for' : 'Paid for', value: narration },
       src === 'subscription_reversal' ? { label: 'Credited to', value: walletParty } : { label: 'Paid by', value: sender },
-      row.balance_after_kobo != null && { label: 'Account balance after', value: fmtAmt(row.balance_after_kobo / 100) },
+      balRow,
       { label: 'Payment Method', value: 'KudiAI Wallet' },
       { label: 'Status',    value: humanize(row.status) },
       { label: 'Reference', value: ref, copy: hasRef },
@@ -702,7 +724,7 @@ export function buildWalletReceipt(row, ctx = {}) {
       { label: 'Transaction Type', value: title },
       { label: credit ? 'Money in' : 'Money out', value: fmtAmt(amount) },
       narration && { label: 'Details', value: narration },
-      row.balance_after_kobo != null && { label: 'Account balance after', value: fmtAmt(row.balance_after_kobo / 100) },
+      balRow,
       { label: 'Status',    value: humanize(row.status) },
       { label: 'Reference', value: ref, copy: hasRef },
     ];
@@ -722,6 +744,8 @@ export function buildWalletReceipt(row, ctx = {}) {
     filenames:     { image, pdf },
     processorName: 'KudiAI Track',
     iconType:      credit ? 'income' : 'expense',
+    counterparty,
+    hideBalanceOnShare: true,
     ...meta(row, {
       hasRef,
       method:       (src === 'topup' || src === 'sale') ? 'Bank transfer' : 'KudiAI Wallet',

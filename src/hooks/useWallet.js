@@ -293,6 +293,7 @@ export function useWallet(userId, enabled = true) {
       withdrawal:          wd,
       request:             rq,
       originator:          row.meta?.originator || "",
+      originatorBank:      row.meta?.originator_bank || "",
       recipientBankName,
       businessAddress:     biz?.address || "",
       businessPhone:       biz?.phone || "",

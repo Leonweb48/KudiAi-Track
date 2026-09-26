@@ -151,13 +151,14 @@ export function renderReceiptPdf(doc, data, { logo = null, providerLogo = null, 
   if (data.method) rows.push({ label: "Payment Method", value: data.method });
 
   for (const f of data.fields || []) {
-    if (!f || f.retrievable || f.value == null || f.value === "") continue;
+    if (!f || f.retrievable || f.private || f.value == null || f.value === "") continue;   // a PDF always leaves the app
     const key = String(f.label || "").trim().toLowerCase();
     if (OWN_ROWS.has(key)) continue;
     rows.push({ label: String(f.label || "").trim(), value: String(f.value), indent: /^\s/.test(String(f.label || "")) });
   }
 
-  if (data.balanceAfter != null && !isStatement) {
+  // The balance is the owner's own business — a bill or wallet receipt (data.hideBalanceOnShare) never prints it
+  if (data.balanceAfter != null && !isStatement && !data.hideBalanceOnShare) {
     rows.push({ label: data.balanceLabel || "Balance After", value: fmtNaira(data.balanceAfter), strong: true });
   }
   if (data.recordedBy) rows.push({ label: "Recorded by", value: data.recordedBy });
