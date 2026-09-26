@@ -1,16 +1,19 @@
 name: Demo reviewer account
 
-# Manual only. Creates / refreshes / locks the fictional demo business that Google Play's reviewers sign in with.
-#   create  — make the account (if missing), set its password from the DEMO_REVIEWER_PASSWORD secret, fill it with fictional data
-#   disable — lock it (random password + banned); use after the review
-# The password lives ONLY in the repository secret — never in the repo or the logs. See scripts/demo-account/.
+# Manual only. Two fictional accounts (see scripts/demo-account/):
+#   REVIEWER (Google Play's reviewers sign in with it)
+#     create  — make it (if missing), set its password from the DEMO_REVIEWER_PASSWORD secret, fill it with fictional data
+#     disable — lock it (random password + banned); use after the review
+#   TESTER (free-plan account for trying "register in the Android app, upgrade elsewhere")
+#     tester-create / tester-upgrade / tester-downgrade / tester-disable — password from the DEMO_TESTER_PASSWORD secret
+# Passwords live ONLY in repository secrets — never in the repo or the logs.
 on:
   workflow_dispatch:
     inputs:
       action:
-        description: "create = make or refresh the demo account; disable = lock it"
+        description: "reviewer: create / disable — tester: tester-create / tester-upgrade / tester-downgrade / tester-disable"
         type: choice
-        options: [create, disable]
+        options: [create, disable, tester-create, tester-upgrade, tester-downgrade, tester-disable]
         default: create
 
 permissions:
@@ -35,5 +38,6 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SUPABASE_ANON_KEY: ${{ secrets.REACT_APP_SUPABASE_ANON_KEY }}
           DEMO_PASSWORD: ${{ secrets.DEMO_REVIEWER_PASSWORD }}
+          TESTER_PASSWORD: ${{ secrets.DEMO_TESTER_PASSWORD }}
           ACTION: ${{ inputs.action }}
         run: node scripts/demo-account/demo-account.mjs

@@ -4,6 +4,8 @@ import { randomUUID } from "node:crypto";
 
 export const DEMO_EMAIL = "demo.reviewer@kudiai.app";
 export const DEMO_BUSINESS = "Adaeze Fresh Mart (Demo)";
+export const TESTER_EMAIL = "test.upgrade@kudiai.app";
+export const TESTER_BUSINESS = "KudiAI Upgrade Test (Test)";
 export const DEMO_APP_PIN = "246813";   // 6 digits, not on pin-manager's "too predictable" list
 export const DEMO_TXN_PIN = "2468";     // 4 digits
 
@@ -68,6 +70,11 @@ export function buildProfile(userId, now = new Date()) {
     verification_status: "tier2_verified", nin_verified: true,
     member_since: dayStr(now, 120),
   };
+}
+
+/** The free-plan test account (used to try "register in the app, upgrade elsewhere"): same fictional shop data, its own name. */
+export function buildTesterProfile(userId, now = new Date()) {
+  return { ...buildProfile(userId, now), full_name: "Test Owner", business_name: TESTER_BUSINESS, phone: "08000000002" };
 }
 
 export function buildProducts(userId, now = new Date()) {
