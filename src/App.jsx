@@ -158,8 +158,25 @@ export default function App() {
   const [showComplianceIntro, setShowComplianceIntro] = useState(false);
 
   // eslint-disable-next-line no-unused-vars
-  const { status, session, plan, setReady, refetch, retryAuth, upgradeAvailable, plansVersion, staff, ajoClient, orgMember, adminUser, marketer, org } = useAuth();
+  const { status: authStatus, session, plan, setReady, refetch, retryAuth, upgradeAvailable, plansVersion, staff, ajoClient, orgMember, adminUser, marketer, org } = useAuth();
   const userId = session?.user?.id;
+
+  // Admin portal "access account" session: skips the customer's app lock, PIN-setup and consent screens only while
+  // the server confirms this exact login session was opened by an admin (see utils/adminAccess.jsx).
+  const adminAccess = useAdminAccess(userId);
+  // An admin must never go through a customer's first-login steps (the one-time code is emailed to the customer and
+  // the next step sets their password) — during an admin session, go straight to the portal the account belongs to.
+  const status = adminAccess.active ? ({
+    staff_otp: staff?.role === "manager" && staff?.branch_id ? "branch_manager" : "staff",
+    staff_setup: staff?.role === "manager" && staff?.branch_id ? "branch_manager" : "staff",
+    ajo_client_otp: "ajo_client",
+    ajo_client_setup: "ajo_client",
+    org_member_otp: "org_member",
+    org_member_setup: "org_member",
+    org_otp: "organisation",
+    org_setup: "organisation",
+    marketer_setup: "marketer",
+  }[authStatus] || authStatus) : authStatus;
 
   // Consent gate — checks once per userId whether the user has accepted legal docs
   const consent = useConsent(userId);
@@ -185,10 +202,6 @@ export default function App() {
 
   // Two-tier PIN lock (server-side via pin-manager edge function)
   const pinLock = usePinLock(userId);
-
-  // Admin portal "access account" session: skips the customer's app lock, PIN-setup and consent screens only while
-  // the server confirms this exact login session was opened by an admin (see utils/adminAccess.jsx).
-  const adminAccess = useAdminAccess(userId);
 
   // Feature flags — fetched once per session from platform_config table, no rebuild to toggle
   const { coopEnabled, walletEnabled, walletTestMode, configLoading } = usePlatformConfig();
