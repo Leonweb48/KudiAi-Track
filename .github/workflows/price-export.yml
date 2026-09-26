@@ -1,0 +1,36 @@
+name: Provider price list (encrypted export)
+
+# Manual only. Asks the clubkonnect edge function for its operator "price-list" action (ClubKonnect's own price lists, exactly as the provider
+# returns them: Data, Print Data, Print Airtime, Airtime discount) using the service-role key, and stores the response as an ENCRYPTED artifact that
+# expires in a day. The repo is public and wholesale rates are business-sensitive, so the JSON is never printed to the log and never stored in the clear;
+# it can only be opened with the PRICE_EXPORT_PASSPHRASE secret:  openssl enc -d -aes-256-cbc -pbkdf2 -in price-list.json.enc -out price-list.json
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Fetch the price lists
+        env:
+          SUPABASE_URL: https://${{ secrets.SUPABASE_PROJECT_ID }}.supabase.co
+          SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ANON_KEY: ${{ secrets.REACT_APP_SUPABASE_ANON_KEY }}
+          PASS: ${{ secrets.PRICE_EXPORT_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          code=$(curl -sS -m 150 -o price-list.json -w '%{http_code}' -X POST "$SUPABASE_URL/functions/v1/clubkonnect" \
+            -H "Authorization: Bearer $SERVICE_KEY" -H "apikey: $ANON_KEY" -H "Content-Type: application/json" -d '{"action":"price-list"}')
+          echo "HTTP $code, $(wc -c < price-list.json) bytes"
+          node -e 'const j=JSON.parse(require("fs").readFileSync("price-list.json","utf8")); if(!j.fetched_at){console.error("unexpected response shape (keys: "+Object.keys(j).join(",")+")"); process.exit(1)} console.log("sections:", ["data","print_data","print_airtime","airtime"].map(k=>k+"="+(j[k]?(j[k].error?"error":"ok"):"missing")).join(" "))'
+          openssl enc -aes-256-cbc -pbkdf2 -salt -in price-list.json -out price-list.json.enc -pass env:PASS
+          rm price-list.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: price-list-encrypted
+          path: price-list.json.enc
+          retention-days: 1
