@@ -24,7 +24,7 @@ jobs:
         run: |
           set -euo pipefail
           code=$(curl -sS -m 150 -o price-list.json -w '%{http_code}' -X POST "$SUPABASE_URL/functions/v1/clubkonnect" \
-            -H "Authorization: Bearer $SERVICE_KEY" -H "apikey: $ANON_KEY" -H "Content-Type: application/json" -d '{"action":"price-list"}')
+            -H "Authorization: Bearer $SERVICE_KEY" -H "apikey: $SERVICE_KEY" -H "Content-Type: application/json" -d '{"action":"price-list"}')
           echo "HTTP $code, $(wc -c < price-list.json) bytes"
           if [ "$code" != "200" ]; then node -e 'try{const j=JSON.parse(require("fs").readFileSync("price-list.json","utf8")); console.log("error body:", String(j.message||j.error||"").slice(0,160), "|", String(j.hint||"").slice(0,160))}catch(e){console.log("non-JSON error body")}'; exit 1; fi
           node -e 'const j=JSON.parse(require("fs").readFileSync("price-list.json","utf8")); if(!j.fetched_at){console.error("unexpected response shape (keys: "+Object.keys(j).join(",")+")"); process.exit(1)} console.log("sections:", ["data","print_data","print_airtime","airtime"].map(k=>k+"="+(j[k]?(j[k].error?"error":"ok"):"missing")).join(" "))'
