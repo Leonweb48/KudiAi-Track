@@ -1,0 +1,46 @@
+name: ClubKonnect price snapshot
+
+# Read-only: prints the live ClubKonnect data-plan list for every network and the
+# airtime / print-airtime (EPIN) discount rates, so they can be put into a price sheet.
+# Plans come from the public `data-plans` catalogue action; discounts come from the
+# service-only `refresh-ck-prices` action (the same refresh the app runs every 24h).
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/ck-price-snapshot.yml"
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb   # v1 (pinned)
+        with:
+          version: 2.107.0
+
+      - name: Fetch prices
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ secrets.SUPABASE_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          FN="https://${REF}.supabase.co/functions/v1/clubkonnect"
+          mkdir -p out
+          for net in MTN Glo Airtel 9mobile; do
+            curl -sS -m 90 -X POST "$FN" -H "Content-Type: application/json" \
+              -d "{\"action\":\"data-plans\",\"network\":\"$net\"}" > "out/plans_$net.json" || true
+            echo "CKPLANS $net $(jq -c '{count: (.plans|length), plans: [.plans[] | [.plan_id, .plan_name, .plan_amount]], error}' "out/plans_$net.json")"
+          done
+          SRK=$(supabase projects api-keys --project-ref "$REF" -o json | jq -r '.[] | select(.name=="service_role") | .api_key')
+          echo "::add-mask::$SRK"
+          curl -sS -m 90 -X POST "$FN" -H "Content-Type: application/json" -H "Authorization: Bearer $SRK" \
+            -d '{"action":"refresh-ck-prices"}' > out/discounts.json || true
+          echo "CKDISC $(jq -c '.discounts | {airtime, epin, airtime_live, epin_live}' out/discounts.json)"
+          echo "CKRAWEPIN $(jq -c '.discounts.raw_epin' out/discounts.json | head -c 4000)"
+          echo "CKRAWAIRTIME $(jq -c '.discounts.raw_airtime' out/discounts.json | head -c 4000)"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ck-price-snapshot
+          path: out/
