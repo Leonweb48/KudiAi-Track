@@ -13,6 +13,8 @@ jest.mock("../components/SelfieCapture", () => (props) => (
     {props.value && <span>captured-thumbnail</span>}
   </div>
 ));
+let mockSelfieOn = true;
+jest.mock("../hooks/usePlatformConfig", () => ({ usePlatformConfig: () => ({ securitySelfieEnabled: mockSelfieOn }) }));
 jest.mock("../utils/supabase", () => ({
   supabase: {
     auth: {
@@ -52,6 +54,20 @@ async function reachSelfieStep(pinLock) {
   await click(button("Send Verification Code"));
   for (const d of "123456") await click(button(String(d)));
 }
+
+describe("ForgotPinFlow — security selfies paused", () => {
+  it("goes straight from OTP to setting a new PIN, with no selfie step, when security_selfie_enabled is off", async () => {
+    mockSelfieOn = false;
+    try {
+      const pinLock = mockPinLock();
+      await reachSelfieStep(pinLock);
+      expect(pinLock.authorizeReset).toHaveBeenCalledTimes(1);
+      expect(host.textContent).toMatch(/new app lock pin/i);
+      expect(button("MockCapture")).toBeUndefined();
+      expect(mockSubmit).not.toHaveBeenCalled();
+    } finally { mockSelfieOn = true; }
+  });
+});
 
 describe("ForgotPinFlow — security selfie step", () => {
   it("is inserted right after OTP verification succeeds, before any new PIN can be set", async () => {

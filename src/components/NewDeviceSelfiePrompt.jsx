@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import SelfieCapture from "./SelfieCapture";
 import { submitSecuritySelfie } from "../utils/securitySelfie";
+import { usePlatformConfig } from "../hooks/usePlatformConfig";
 
 // Mounted once, as a sibling of <App/> in index.js (the same spot as <AdminAccessBannerHost/>, for the same
 // reason: it must render outside App's many early-return status branches, so it works no matter which portal
@@ -10,6 +11,8 @@ import { submitSecuritySelfie } from "../utils/securitySelfie";
 // utils/securitySelfie.js) — dismissible, never blocks app usage, unlike the PIN-reset/large-transfer selfie
 // steps which sit INSIDE a specific action's own flow.
 export default function NewDeviceSelfiePrompt() {
+  // Paused unless platform_config.security_selfie_enabled = "true" (see usePlatformConfig).
+  const { securitySelfieEnabled } = usePlatformConfig();
   const [open, setOpen] = useState(false);
   const [selfie, setSelfie] = useState("");
   const [busy, setBusy] = useState(false);
@@ -33,7 +36,7 @@ export default function NewDeviceSelfiePrompt() {
     return () => clearTimeout(t);
   }, [done]);
 
-  if (!open) return null;
+  if (!open || !securitySelfieEnabled) return null;
 
   const dismiss = () => setOpen(false);
 
