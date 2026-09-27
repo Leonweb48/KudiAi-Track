@@ -19,7 +19,8 @@ beforeEach(() => { mockNative = false; mockGetPhoto = jest.fn(async () => ({ dat
 afterEach(() => { act(() => root.unmount()); host.remove(); });
 const show = async (el) => { await act(async () => { root.render(el); }); };
 const flush = async () => { await act(async () => { await Promise.resolve(); await Promise.resolve(); }); };
-const button = (text) => [...host.querySelectorAll("button")].find((b) => b.textContent.includes(text));
+// The live camera overlay is portalled to <body> (see SelfieCapture), so look in the whole document.
+const button = (text) => [...document.querySelectorAll("button")].find((b) => b.textContent.includes(text));
 const click = async (el) => { await act(async () => { el.dispatchEvent(new MouseEvent("click", { bubbles: true })); }); await flush(); };
 
 describe("SelfieCapture — captured state", () => {
@@ -92,7 +93,7 @@ describe("SelfieCapture — native (Capacitor Camera, front-facing, camera-only)
     mockNative = true;
     await show(<SelfieCapture value="" onCapture={() => {}} />);
     await click(button("Take a selfie"));
-    expect(host.querySelector("video")).toBeNull();
+    expect(document.querySelector("video")).toBeNull();
   });
 });
 
@@ -109,9 +110,12 @@ describe("SelfieCapture — web (getUserMedia)", () => {
     await show(<SelfieCapture value="" onCapture={() => {}} />);
     await click(button("Take a selfie"));
     expect(getUserMedia).toHaveBeenCalledWith(expect.objectContaining({ video: expect.objectContaining({ facingMode: "user" }), audio: false }));
-    expect(host.querySelector("video")).not.toBeNull();
+    expect(document.querySelector("video")).not.toBeNull();
     expect(button("Cancel")).not.toBeUndefined();
-    expect(host.querySelector('button[aria-label="Capture"]')).not.toBeNull();
+    expect(document.querySelector('button[aria-label="Capture"]')).not.toBeNull();
+    // full-screen overlay lives directly on <body>, never inside the (possibly transformed) parent card
+    expect(host.querySelector("video")).toBeNull();
+    expect(document.querySelector("video").closest("div.fixed").parentElement).toBe(document.body);
   });
 
   it("cancelling stops every camera track and closes the preview without capturing", async () => {
@@ -120,7 +124,7 @@ describe("SelfieCapture — web (getUserMedia)", () => {
     await click(button("Take a selfie"));
     await click(button("Cancel"));
     expect(tracks[0].stop).toHaveBeenCalledTimes(1);
-    expect(host.querySelector("video")).toBeNull();
+    expect(document.querySelector("video")).toBeNull();
     expect(captured).toEqual([]);
   });
 
@@ -129,7 +133,7 @@ describe("SelfieCapture — web (getUserMedia)", () => {
     await show(<SelfieCapture value="" onCapture={() => {}} />);
     await click(button("Take a selfie"));
     expect(host.textContent).toMatch(/camera access was blocked/i);
-    expect(host.querySelector("video")).toBeNull();
+    expect(document.querySelector("video")).toBeNull();
   });
 
   it("capturing draws a MIRRORED frame to a canvas, produces a JPEG data URI, hands it to onCapture, and stops the stream", async () => {
@@ -141,22 +145,22 @@ describe("SelfieCapture — web (getUserMedia)", () => {
     const captured = [];
     await show(<SelfieCapture value="" onCapture={(u) => captured.push(u)} />);
     await click(button("Take a selfie"));
-    const video = host.querySelector("video");
+    const video = document.querySelector("video");
     Object.defineProperty(video, "videoWidth", { value: 1280, configurable: true });
     Object.defineProperty(video, "videoHeight", { value: 960, configurable: true });
-    await click(host.querySelector('button[aria-label="Capture"]'));
+    await click(document.querySelector('button[aria-label="Capture"]'));
     expect(ctx.scale).toHaveBeenCalledWith(-1, 1);                    // mirrored, to match what the person saw in the live preview
     expect(ctx.drawImage).toHaveBeenCalledTimes(1);
     expect(toDataURL).toHaveBeenCalledWith("image/jpeg", expect.any(Number));
     expect(captured).toEqual(["data:image/jpeg;base64,CAPTURED"]);
     expect(tracks[0].stop).toHaveBeenCalledTimes(1);                  // the camera is released once a photo is taken
-    expect(host.querySelector("video")).toBeNull();                   // and the overlay closes
+    expect(document.querySelector("video")).toBeNull();                   // and the overlay closes
   });
 
   it("the downscale keeps the aspect ratio and never enlarges an already-small frame", async () => {
     await show(<SelfieCapture value="" onCapture={() => {}} />);
     await click(button("Take a selfie"));
-    const video = host.querySelector("video");
+    const video = document.querySelector("video");
     Object.defineProperty(video, "videoWidth", { value: 300, configurable: true });
     Object.defineProperty(video, "videoHeight", { value: 200, configurable: true });
     let capturedCanvas = null;
@@ -164,7 +168,7 @@ describe("SelfieCapture — web (getUserMedia)", () => {
     jest.spyOn(document, "createElement").mockImplementation((tag) => { const el = origCreate(tag); if (tag === "canvas") capturedCanvas = el; return el; });
     window.HTMLCanvasElement.prototype.getContext = jest.fn(() => ({ translate() {}, scale() {}, drawImage() {} }));
     window.HTMLCanvasElement.prototype.toDataURL = jest.fn(() => "data:image/jpeg;base64,X");
-    await click(host.querySelector('button[aria-label="Capture"]'));
+    await click(document.querySelector('button[aria-label="Capture"]'));
     expect(capturedCanvas.width).toBe(300); expect(capturedCanvas.height).toBe(200);   // no upscaling
     document.createElement.mockRestore();
   });
@@ -174,9 +178,9 @@ describe("SelfieCapture — web (getUserMedia)", () => {
     await show(<SelfieCapture value="" onCapture={(u) => captured.push(u)} />);
     await click(button("Take a selfie"));
     // videoWidth left at 0 (jsdom default) — no explicit dimensions set
-    await click(host.querySelector('button[aria-label="Capture"]'));
+    await click(document.querySelector('button[aria-label="Capture"]'));
     expect(captured).toEqual([]);
-    expect(host.querySelector("video")).not.toBeNull();   // the overlay stays open, nothing was captured
+    expect(document.querySelector("video")).not.toBeNull();   // the overlay stays open, nothing was captured
   });
 });
 

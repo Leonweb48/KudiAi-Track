@@ -1,14 +1,12 @@
 import { logPlatformSession } from "../hooks/useAuth";
 
-// A minimal fake matching exactly the two chains logPlatformSession uses:
-//   .from("platform_sessions").select(...).eq(...).order(...).limit(20)   -> { data: prevSessions }
-//   .from("platform_sessions").insert({...})                             -> (result unused)
+// A minimal fake matching exactly the two calls logPlatformSession uses:
+//   .rpc("my_recent_session_devices")        -> { data: prevSessions }  (own last 20 sessions)
+//   .from("platform_sessions").insert({...})  -> (result unused)
 function fakeClient(prevSessions) {
   const insert = jest.fn(async () => ({ data: null, error: null }));
-  const select = () => ({
-    eq: () => ({ order: () => ({ limit: async () => ({ data: prevSessions, error: null }) }) }),
-  });
-  return { from: () => ({ select, insert }), _insert: insert };
+  const rpc = jest.fn(async () => ({ data: prevSessions, error: null }));
+  return { rpc, from: () => ({ insert }), _insert: insert, _rpc: rpc };
 }
 
 const origFetch = global.fetch;
@@ -38,6 +36,12 @@ describe("logPlatformSession — new-device window event", () => {
     expect(client._insert).toHaveBeenCalledWith(expect.objectContaining({ is_new_device: false }));
   });
 
+  it("reads the history through my_recent_session_devices (platform_sessions itself is not readable by users)", async () => {
+    const client = fakeClient([{ device_type: "desktop", browser: "Other", city: null }]);
+    await logPlatformSession(client, "u6", "business", "Amaka", "a@example.com");
+    expect(client._rpc).toHaveBeenCalledWith("my_recent_session_devices");
+  });
+
   it("never fires twice for the same tab/session (the existing per-tab dedupe still applies)", async () => {
     const client = fakeClient([]);
     let count = 0;
@@ -49,10 +53,10 @@ describe("logPlatformSession — new-device window event", () => {
   });
 
   it("the anomaly check failing on its own still defaults to 'new' (fails open, not silently skipped) and still records the session", async () => {
-    // select() throws (the sub-query has its own try/catch and leaves isNewDevice at its true default);
+    // rpc() throws (the sub-query has its own try/catch and leaves isNewDevice at its true default);
     // insert() still works, so the row is still written and the event still fires.
     const insert = jest.fn(async () => ({ data: null, error: null }));
-    const client = { from: () => ({ select: () => { throw new Error("boom"); }, insert }) };
+    const client = { rpc: () => { throw new Error("boom"); }, from: () => ({ insert }) };
     const seen = [];
     window.addEventListener("kt:newDevice", () => seen.push(1));
     await expect(logPlatformSession(client, "u4", "business", "Amaka", "a@example.com")).resolves.toBeUndefined();
@@ -61,7 +65,7 @@ describe("logPlatformSession — new-device window event", () => {
   });
 
   it("a total failure (the insert itself throws) never throws out to the caller and never fires the event", async () => {
-    const client = { from: () => ({ select: () => { throw new Error("boom"); }, insert: () => { throw new Error("db down"); } }) };
+    const client = { rpc: () => { throw new Error("boom"); }, from: () => ({ insert: () => { throw new Error("db down"); } }) };
     const seen = [];
     window.addEventListener("kt:newDevice", () => seen.push(1));
     await expect(logPlatformSession(client, "u5", "business", "Amaka", "a@example.com")).resolves.toBeUndefined();

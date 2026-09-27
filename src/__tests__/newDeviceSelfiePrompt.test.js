@@ -45,6 +45,27 @@ describe("NewDeviceSelfiePrompt", () => {
     expect(host.textContent).toMatch(/thanks — recorded/i);
   });
 
+  it("closes on its own shortly after the thank-you (it used to stay on screen forever)", async () => {
+    jest.useFakeTimers();
+    try {
+      await act(async () => { root.render(<NewDeviceSelfiePrompt />); });
+      await fireNewDevice();
+      await click(button("MockCapture"));
+      expect(host.textContent).toMatch(/thanks — recorded/i);
+      await act(async () => { jest.advanceTimersByTime(2600); });
+      expect(host.textContent).toBe("");
+    } finally { jest.useRealTimers(); }
+  });
+
+  it("never opens during an admin access session (the admin is not the customer)", async () => {
+    sessionStorage.setItem("kt_admin_access_token", "x".repeat(40));
+    try {
+      await act(async () => { root.render(<NewDeviceSelfiePrompt />); });
+      await fireNewDevice();
+      expect(host.textContent).toBe("");
+    } finally { sessionStorage.removeItem("kt_admin_access_token"); }
+  });
+
   it("a failed submit shows the error and stays open for another try", async () => {
     mockSubmit = jest.fn(async () => ({ ok: false, error: "Couldn't save the photo — please try again." }));
     await act(async () => { root.render(<NewDeviceSelfiePrompt />); });
