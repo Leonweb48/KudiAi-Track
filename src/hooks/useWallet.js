@@ -194,10 +194,10 @@ export function useWallet(userId, enabled = true) {
     }
   }, []);
 
-  const provisionAccount = useCallback((bvn = "", nin = "") => invoke("provision-account", { bvn, nin, consent: kycConsentGiven() }), [invoke]);
+  const provisionAccount = useCallback((bvn = "", nin = "", selfie = "") => invoke("provision-account", { bvn, nin, consent: kycConsentGiven(), ...(selfie ? { selfie } : {}) }), [invoke]);
   // Move a wallet that still has an OLD (legacy-account) number onto the business account. The old number is kept
   // by the server and keeps crediting this wallet until the grace deadline.
-  const migrateAccount   = useCallback((bvn = "", nin = "") => invoke("provision-account", { bvn, nin, migrate: true, consent: kycConsentGiven() }), [invoke]);
+  const migrateAccount   = useCallback((bvn = "", nin = "", selfie = "") => invoke("provision-account", { bvn, nin, migrate: true, consent: kycConsentGiven(), ...(selfie ? { selfie } : {}) }), [invoke]);
   const simulateTopup    = useCallback((amount_naira = 2000) => invoke("simulate-topup", { amount_naira }), [invoke]);
   const listBanks        = useCallback(() => fwRead("list-banks"), []);
   const resolveAccount   = useCallback((bank_code, account_number) => fwRead("resolve-account", { bank_code, account_number }), []);

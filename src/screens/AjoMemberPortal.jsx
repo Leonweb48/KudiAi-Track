@@ -5180,6 +5180,7 @@ function WalletMigrationBanner({ retired, onOpen }) {
 function MemberWalletSheet({ pendingPayouts = [], wallet, testMode, bvnVerificationEnabled, client, businessName, ownerName, onClose, onProfileUpdate, onFund, onTransfer, onStatement }) {
   const [bvn, setBvn] = useState("");
   const [nin, setNin] = useState("");
+  const [selfie, setSelfie] = useState("");
   const [address,  setAddress]  = useState(client?.address || "");
   const [state,    setState]    = useState(client?.state || "");
   const [lga,      setLga]      = useState(client?.lga || "");
@@ -5221,7 +5222,7 @@ function MemberWalletSheet({ pendingPayouts = [], wallet, testMode, bvnVerificat
       // which would otherwise hard-block every activation. Re-add once
       // Flutterwave confirms the product is enabled. The reverify banner
       // below still uses bvnVerify directly, for anyone who wants to try.
-      await wallet.provisionAccount(bvn, nin);
+      await wallet.provisionAccount(bvn, nin, selfie);
     } catch (e) {
       setErr(e.message || "Could not activate your wallet");
     } finally {
@@ -5270,7 +5271,7 @@ function MemberWalletSheet({ pendingPayouts = [], wallet, testMode, bvnVerificat
           </p>
           {!testMode && (
             <div className="space-y-3 mb-4">
-              <WalletIdFields bvn={bvn} nin={nin} onBvn={setBvn} onNin={setNin} />
+              <WalletIdFields bvn={bvn} nin={nin} onBvn={setBvn} onNin={setNin} selfie={selfie} onSelfie={setSelfie} />
               <p className="text-[11px] text-slate-400 leading-relaxed">
                 A BVN or NIN is required by the Central Bank of Nigeria to open any bank-linked account — it isn't a
                 KudiAI requirement, and your savings themselves need no ID number at all. It isn't stored by KudiAI; the

@@ -17,7 +17,7 @@ import nodemailer from "npm:nodemailer@6";
 import { bankEmail, esc, cleanSubject, nairaFromKobo, appLink, htmlToText } from "../_shared/bankEmail.ts";
 import { loadAccounts, isConfigured, resolveActive, graceStatus, type FlwAccount, type AccountKey } from "../_shared/flwAccounts.ts";
 import { customerName, customerPhone, customerEmail } from "../_shared/flwCustomer.ts";
-import { checkIdentity, hmacHex, loadIdCheck, type IdKind, type IdTable } from "../_shared/idCheck.ts";
+import { checkIdentity, hmacHex, loadIdCheck, selfieImageOk, type IdKind, type IdTable } from "../_shared/idCheck.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin":  "*",
@@ -290,19 +290,28 @@ async function personalName(sb: any, table: IdTable, uid: string): Promise<strin
 /**
  * Run the identity checks for the numbers a customer typed. Returns a ready response when one must stop the request, or null to carry on
  * (checks passed, or the feature is off, or the provider is down and kyc_fail_open is on).
+ *
+ * selfieImage, when the customer submitted one, is sent alongside EVERY id being checked in this call (a Tier 2 upgrade checks BVN and NIN together —
+ * the same live photo is compared against both file photos, and either one failing to match blocks the whole action). selfieRequired, read from
+ * kyc_selfie_required, decides whether a photo is mandatory and whether it must actually match to pass.
  */
 async function runIdChecks(
   sb: any, cfg: (k: string, d: string) => Promise<string>,
-  a: { uid: string; table: IdTable; declaredName: string; consent: boolean; ids: { kind: IdKind; id: string }[] },
+  a: { uid: string; table: IdTable; declaredName: string; consent: boolean; ids: { kind: IdKind; id: string }[]; selfieImage?: string },
 ): Promise<Response | null> {
   if (!a.ids.length) return null;
   const kyc = await loadIdCheck(sb, cfg, { fetchFn: fetch, token: Deno.env.get("YOUVERIFY_TOKEN") ?? "" });
   if (!kyc.enabled) return null;
+  const selfieRequired = (await cfg("kyc_selfie_required", "false")) === "true";
   for (const { kind, id } of a.ids) {
-    const r = await checkIdentity(kyc.deps, { userId: a.uid, kind, id, consent: a.consent, declaredName: a.declaredName, table: a.table, hmac: await hmacHex(INTERNAL_SECRET || SERVICE_KEY, kind, id) });
+    const r = await checkIdentity(kyc.deps, {
+      userId: a.uid, kind, id, consent: a.consent, declaredName: a.declaredName, table: a.table, hmac: await hmacHex(INTERNAL_SECRET || SERVICE_KEY, kind, id),
+      selfieImage: a.selfieImage, selfieRequired,
+    });
     if (r.ok) continue;
     if (r.code === "unavailable" && kyc.failOpen) { console.warn("[kyc] provider unavailable — continuing unverified (kyc_fail_open is on)"); continue; }
-    return json({ error: r.message, code: `kyc_${r.code}` }, r.code === "rate_limited" ? 429 : r.code === "unavailable" ? 503 : 400);
+    const status = r.code === "rate_limited" ? 429 : r.code === "unavailable" ? 503 : 400;
+    return json({ error: r.message, code: `kyc_${r.code}` }, status);
   }
   return null;
 }
@@ -928,10 +937,15 @@ serve(async (req) => {
       // Identity check (Youverify, when switched on): a BVN / NIN typed here must be real and belong to this person. Only for the customer's own
       // request — when an owner opens a wallet for an Ajo client (service call) the client has not consented, so nothing is looked up.
       if (!serviceAuthed) {
+        const rawSelfie = (body as Record<string, unknown>).selfie;
+        if (rawSelfie !== undefined && rawSelfie !== "" && !selfieImageOk(rawSelfie)) {
+          return json({ error: "We couldn't read that photo. Please retake your selfie and try again.", code: "kyc_selfie_unreadable" }, 400);
+        }
         const stop = await runIdChecks(sb, cfg, {
           uid: targetUid, table: idTable as IdTable, declaredName: await personalName(sb, idTable as IdTable, targetUid),
           consent: (body as Record<string, unknown>).consent === true,
           ids: [...(bvn ? [{ kind: "bvn" as IdKind, id: bvn }] : []), ...(nin ? [{ kind: "nin" as IdKind, id: nin }] : [])],
+          selfieImage: selfieImageOk(rawSelfie) ? rawSelfie : undefined,
         });
         if (stop) return stop;
       }
@@ -1177,10 +1191,15 @@ serve(async (req) => {
       // Identity check (Youverify, when switched on): BOTH numbers must be real and belong to the name given. An ID already verified for this person
       // (e.g. at wallet opening) is not looked up — or paid for — again.
       {
+        const rawSelfie = b.selfie;
+        if (rawSelfie !== undefined && rawSelfie !== "" && !selfieImageOk(rawSelfie)) {
+          return json({ error: "We couldn't read that photo. Please retake your selfie and try again.", code: "kyc_selfie_unreadable" }, 400);
+        }
         const who = await resolveIdentity(sb, uid);
         const stop = await runIdChecks(sb, cfg, {
           uid, table: who.table as IdTable, declaredName: fullName, consent: b.consent === true,
           ids: [{ kind: "bvn", id: bvn }, { kind: "nin", id: nin }],
+          selfieImage: selfieImageOk(rawSelfie) ? rawSelfie : undefined,
         });
         if (stop) return stop;
       }

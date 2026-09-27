@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { checkIdentity, hmacHex, loadIdCheck } from "../_shared/idCheck.ts";
+import { checkIdentity, hmacHex, loadIdCheck, selfieImageOk } from "../_shared/idCheck.ts";
 
 const SUPABASE_URL         = Deno.env.get("SUPABASE_URL")               || "";
 const SERVICE_KEY          = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")  || "";
@@ -99,16 +99,20 @@ Deno.serve(async (req: Request) => {
       // approval does. Anything else falls back to the manual review below exactly as before (a name mismatch, an outage or a missing consent is not a
       // rejection). A NIN that does not exist is told to the customer straight away instead of queueing a typo for two days.
       let autoNote: string | null = null;
-      const kyc = await loadIdCheck(
-        admin, async (k, d) => String((await admin.from("platform_config").select("value").eq("key", k).maybeSingle()).data?.value ?? d),
-        { fetchFn: fetch, token: Deno.env.get("YOUVERIFY_TOKEN") || "" },
-      );
+      const cfg = async (k: string, d: string) => String((await admin.from("platform_config").select("value").eq("key", k).maybeSingle()).data?.value ?? d);
+      const kyc = await loadIdCheck(admin, cfg, { fetchFn: fetch, token: Deno.env.get("YOUVERIFY_TOKEN") || "" });
       if (kyc.enabled) {
+        const rawSelfie = (body as Record<string, unknown>).selfie;
+        if (rawSelfie !== undefined && rawSelfie !== "" && !selfieImageOk(rawSelfie)) {
+          return json({ error: "We couldn't read that photo. Please retake your selfie and try again.", code: "kyc_selfie_unreadable" }, 400);
+        }
+        const selfieRequired = (await cfg("kyc_selfie_required", "false")) === "true";
         const { data: prof } = await admin.from("profiles").select("full_name, owner_name").eq("id", userId).maybeSingle();
         const declared = String(prof?.full_name || prof?.owner_name || "").trim();
         const r = await checkIdentity(kyc.deps, {
           userId, kind: "nin", id: nin, consent: body.consent === true, declaredName: declared, table: "profiles",
           hmac: await hmacHex(EMAIL_TRIGGER_SECRET || SERVICE_KEY, "nin", nin),   // same keyed hash the wallet uses, so one NIN is checked (and paid for) once
+          selfieImage: selfieImageOk(rawSelfie) ? rawSelfie : undefined, selfieRequired,
         });
         if (r.ok && declared) {
           const now = new Date().toISOString();
@@ -116,8 +120,9 @@ Deno.serve(async (req: Request) => {
             user_id: userId, tier: 1, status: "approved",
             nin: `*******${nin.slice(-4)}`,                      // an approved row keeps no full NIN
             verified_name: r.verifiedName, nin_verified: true, name_match_score: 100,
-            provider_response: { provider: "youverify", checked_at: now, cached: r.cached },   // no personal data from the provider is kept
-            reviewed_at: now, review_notes: "Verified automatically (Youverify): the NIN is real and its name matches the profile name.",
+            provider_response: { provider: "youverify", checked_at: now, cached: r.cached, selfie_matched: r.selfieMatched },   // no personal data from the provider is kept
+            reviewed_at: now,
+            review_notes: `Verified automatically (Youverify): the NIN is real and its name matches the profile name.${r.selfieMatched === true ? " Selfie also matched the ID photo." : ""}`,
           }).select("id").single();
           await admin.from("profiles").update({
             verification_status: "tier1_verified", verification_submitted_at: now, verification_rejected_reason: null,
@@ -130,10 +135,13 @@ Deno.serve(async (req: Request) => {
           return json({ success: true, status: "tier1_verified", auto: true, verifiedName: r.verifiedName });
         }
         if (r.ok) autoNote = "Automatic check: the NIN is real, but there is no personal name on the profile to compare it with — please review.";
-        else if (r.code === "not_found" || r.code === "rate_limited") return json({ error: r.message, code: `kyc_${r.code}` }, r.code === "rate_limited" ? 429 : 400);
+        // A technical problem the customer can fix right now (a bad number, too many tries, an unreadable photo) is told immediately rather than
+        // queued for a person who cannot fix it either. A genuine mismatch (name or face) still goes to a human, same as it always has for names.
+        else if (r.code === "not_found" || r.code === "rate_limited" || r.code === "selfie_invalid_image") return json({ error: r.message, code: `kyc_${r.code}` }, r.code === "rate_limited" ? 429 : 400);
         else if (r.code === "mismatch") autoNote = "Automatic check: the NIN is real, but its name did not match the profile name — please review.";
+        else if (r.code === "selfie_no_match") autoNote = "Automatic check: the NIN is real and its name matched, but the selfie did not match the ID photo — please review.";
         else if (r.code === "unavailable") autoNote = "Automatic check was unavailable — please review.";
-        // consent_required: the customer did not agree to the automatic check, so it goes to a person, as it always did
+        // consent_required / selfie_required: the customer did not (yet) agree to / provide what the automatic check needs, so it goes to a person, as it always did
       }
 
       // Store NIN for manual admin review

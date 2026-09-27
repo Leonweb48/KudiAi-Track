@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../utils/supabase";
 import KycConsent from "../components/KycConsent";
+import SelfieCapture from "../components/SelfieCapture";
 import { kycConsentGiven } from "../utils/kycConsent";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
 
@@ -103,9 +104,10 @@ function GuarantorGroup({ num, value, onChange, dark }) {
 
 function Tier1Form({ dark, status, profile, onSuccess }) {
   const [nin,     setNin]     = useState("");
+  const [selfie,  setSelfie]  = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error,   setError]   = useState("");
-  const { kycEnabled } = usePlatformConfig();
+  const { kycEnabled, kycSelfieRequired } = usePlatformConfig();
   const instant = kycEnabled;   // identity checks are switched on: the NIN is checked at once, a person only steps in if it cannot be matched
 
   async function handleSubmit() {
@@ -114,7 +116,7 @@ function Tier1Form({ dark, status, profile, onSuccess }) {
     setError("");
     try {
       const { data, error: fnErr } = await supabase.functions.invoke("verify-identity", {
-        body: { action: "tier1_submit", nin, consent: kycConsentGiven() },
+        body: { action: "tier1_submit", nin, consent: kycConsentGiven(), ...(selfie ? { selfie } : {}) },
       });
       if (fnErr) throw fnErr;
       if (!data.success && data.error) { setError(data.error); return; }
@@ -165,6 +167,7 @@ function Tier1Form({ dark, status, profile, onSuccess }) {
       </div>
 
       <div style={{ marginBottom: 14 }}><KycConsent /></div>
+      {kycSelfieRequired && <div style={{ marginBottom: 14 }}><SelfieCapture value={selfie} onCapture={setSelfie} onClear={() => setSelfie("")} /></div>}
 
       {error && (
         <div style={{ background: dark ? "#2a1111" : "#fef2f2", borderRadius: 8, padding: "10px 12px", marginBottom: 12, fontSize: 12, color: "#ef4444", lineHeight: 1.5 }}>

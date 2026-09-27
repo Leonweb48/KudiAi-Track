@@ -14,6 +14,7 @@ const fmtDay = (ms) => new Date(ms).toLocaleDateString("en-GB", { day: "numeric"
 export default function WalletMigrationCard({ api, testMode = false, className = "", onDone }) {
   const [bvn, setBvn] = useState("");
   const [nin, setNin] = useState("");
+  const [selfie, setSelfie] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [done, setDone] = useState(null);      // { number, bank } once the move has gone through
@@ -27,7 +28,7 @@ export default function WalletMigrationCard({ api, testMode = false, className =
     if (idErr) { setErr(idErr); return; }
     setBusy(true);
     try {
-      const r = await api.migrateAccount(bvn, nin);
+      const r = await api.migrateAccount(bvn, nin, selfie);
       // Only a wallet the server actually MOVED has a new number. If it answered with the existing one (the platform
       // switched back to the old account since this screen loaded), say so instead of calling that number "new".
       if (r?.migrated !== true && r?.account !== "business") {
@@ -96,7 +97,7 @@ export default function WalletMigrationCard({ api, testMode = false, className =
 
       {!testMode && (
         <div className="mt-3">
-          <WalletIdFields bvn={bvn} nin={nin} onBvn={setBvn} onNin={setNin} inputClass={input} />
+          <WalletIdFields bvn={bvn} nin={nin} onBvn={setBvn} onNin={setNin} selfie={selfie} onSelfie={setSelfie} inputClass={input} />
           <p className="mt-1.5 text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
             Your BVN or NIN opens your new account with our banking partner and isn't stored by KudiAI. The name and date of birth on it
             must match your profile. Enter it only here in the app.

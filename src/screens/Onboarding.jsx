@@ -9,6 +9,7 @@ import { usePlatformConfig } from "../hooks/usePlatformConfig";
 import { useWallet } from "../hooks/useWallet";
 import { walletIdError, digits11 } from "../utils/walletId";
 import KycConsent from "../components/KycConsent";
+import SelfieCapture from "../components/SelfieCapture";
 
 /* ── Helpers ───────────────────────────────────────────────────── */
 async function uploadFile(file, bucket, path) {
@@ -33,10 +34,11 @@ export default function Onboarding({ session, onComplete }) {
   const firstName = fullName.split(" ")[0] || email.split("@")[0];
 
   /* ── Step 3 — Open a KudiAI Wallet (Flutterwave KYC), required at signup ── */
-  const { walletEnabled } = usePlatformConfig();
+  const { walletEnabled, kycSelfieRequired } = usePlatformConfig();
   const wallet = useWallet(session?.user?.id || null, walletEnabled);
   const [bvn,        setBvn]        = useState("");
   const [walletNin,  setWalletNin]  = useState("");
+  const [walletSelfie, setWalletSelfie] = useState("");
   const [walletErr,  setWalletErr]  = useState("");
   const [walletBusy, setWalletBusy] = useState(false);
 
@@ -227,7 +229,7 @@ export default function Onboarding({ session, onComplete }) {
       // merchant account ("Merchant is not enabled to use BVN service"),
       // which would otherwise hard-block every activation. Re-add once
       // Flutterwave confirms the product is enabled.
-      await wallet.provisionAccount(bvn, walletNin);
+      await wallet.provisionAccount(bvn, walletNin, walletSelfie);
       onComplete();
     } catch (err) {
       setWalletErr(err.message || "Could not activate your wallet. Please try again.");
@@ -498,6 +500,8 @@ export default function Onboarding({ session, onComplete }) {
               value={walletNin} onChange={(e) => setWalletNin(digits11(e.target.value))} />
 
             <KycConsent />
+
+            {kycSelfieRequired && <SelfieCapture value={walletSelfie} onCapture={setWalletSelfie} onClear={() => setWalletSelfie("")} />}
 
             {walletErr && (
               <div className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl px-3 py-2">{walletErr}</div>

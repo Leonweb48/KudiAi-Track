@@ -25,6 +25,7 @@ export default function StaffWalletPanel({ onClose, session, staffName }) {
 
   const [bvn, setBvn] = useState("");
   const [nin, setNin] = useState("");
+  const [selfie, setSelfie] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [walletSheet, setWalletSheet] = useState(null); // null | "fund" | "transfer"
@@ -36,7 +37,7 @@ export default function StaffWalletPanel({ onClose, session, staffName }) {
     if (idErr) { setErr(idErr); return; }
     setBusy(true);
     try {
-      await wallet.provisionAccount(bvn, nin);
+      await wallet.provisionAccount(bvn, nin, selfie);
     } catch (e) {
       setErr(e.message || "Could not activate your wallet");
     } finally {
@@ -61,7 +62,7 @@ export default function StaffWalletPanel({ onClose, session, staffName }) {
             </p>
             {!walletTestMode && (
               <div className="mb-4">
-                <WalletIdFields bvn={bvn} nin={nin} onBvn={setBvn} onNin={setNin} />
+                <WalletIdFields bvn={bvn} nin={nin} onBvn={setBvn} onNin={setNin} selfie={selfie} onSelfie={setSelfie} />
                 <p className="mt-1.5 text-[11px] text-slate-400 leading-relaxed">
                   A BVN or NIN is required by the Central Bank of Nigeria to open any bank-linked account. It isn't
                   stored by KudiAI; the name on it must match your staff profile.

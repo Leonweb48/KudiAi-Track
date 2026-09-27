@@ -57,6 +57,8 @@ export function usePlatformConfig() {
     // Identity checks for BVN / NIN through Youverify. Off (the default) = self-declared, as before; on shows the consent box wherever an ID is typed
     // and the server verifies it. A super admin toggles platform_config.kyc_youverify_enabled in the admin portal — no rebuild.
     kycEnabled: config?.kyc_youverify_enabled === "true",
+    // A live selfie, compared against the BVN/NIN's own file photo, on top of the name match. Off (the default) even when kycEnabled is on.
+    kycSelfieRequired: config?.kyc_selfie_required === "true",
     walletMinTopupKobo: Number(config?.wallet_min_topup_kobo ?? "10000") || 10000,
     walletMaxWithdrawalKobo: Number(config?.wallet_max_withdrawal_kobo ?? "5000000") || 5000000,
     // Mirrors the server-side cap already enforced in wallet_hold_transfer

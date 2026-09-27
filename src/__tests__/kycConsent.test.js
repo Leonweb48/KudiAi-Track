@@ -81,8 +81,8 @@ describe("the identity-check consent box", () => {
 describe("every request that carries a BVN / NIN also carries the consent", () => {
   const read = (p) => fs.readFileSync(path.join(__dirname, "..", p), "utf8");
   it.each([
-    ["hooks/useWallet.js", 'invoke("provision-account", { bvn, nin, consent: kycConsentGiven() })'],
-    ["hooks/useWallet.js", 'invoke("provision-account", { bvn, nin, migrate: true, consent: kycConsentGiven() })'],
+    ["hooks/useWallet.js", 'invoke("provision-account", { bvn, nin, consent: kycConsentGiven(), ...(selfie ? { selfie } : {}) })'],
+    ["hooks/useWallet.js", 'invoke("provision-account", { bvn, nin, migrate: true, consent: kycConsentGiven(), ...(selfie ? { selfie } : {}) })'],
     ["hooks/useWalletMigrationGate.js", 'action: "provision-account", bvn, nin, migrate: true, consent: kycConsentGiven()'],
     ["components/WalletTierCard.jsx", "consent: kycConsentGiven()"],
     ["screens/Verification.jsx", 'action: "tier1_submit", nin, consent: kycConsentGiven()'],

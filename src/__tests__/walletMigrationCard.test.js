@@ -79,7 +79,7 @@ describe("WalletMigrationCard", () => {
     render({ api: a, testMode: false });
     type(host.querySelectorAll("input")[1], "10987654321");
     await click(host.querySelector("button"));
-    expect(a.migrateAccount).toHaveBeenCalledWith("", "10987654321");
+    expect(a.migrateAccount).toHaveBeenCalledWith("", "10987654321", "");
     expect(host.textContent).toContain("Your new account number is ready");
   });
 
@@ -88,7 +88,7 @@ describe("WalletMigrationCard", () => {
     render({ api: a, testMode: false });
     type(host.querySelectorAll("input")[0], "12345678901");
     await click(host.querySelector("button"));
-    expect(a.migrateAccount).toHaveBeenCalledWith("12345678901", "");
+    expect(a.migrateAccount).toHaveBeenCalledWith("12345678901", "", "");
     expect(host.textContent).toContain("Your new account number is ready");
     expect(host.textContent).toContain("9998887776");
     expect(host.textContent).toContain("Wema Bank");
@@ -132,6 +132,6 @@ describe("WalletMigrationCard", () => {
     render({ api: a, testMode: true });
     expect(host.querySelector("input")).toBeNull();
     await click(host.querySelector("button"));
-    expect(a.migrateAccount).toHaveBeenCalledWith("", "");
+    expect(a.migrateAccount).toHaveBeenCalledWith("", "", "");
   });
 });
