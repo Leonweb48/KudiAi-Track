@@ -1,6 +1,8 @@
 import { useState, useCallback, useEffect } from "react";
 import { supabase } from "../utils/supabase";
 import PinDots from "./PinDots";
+import SelfieCapture from "./SelfieCapture";
+import { submitSecuritySelfie } from "../utils/securitySelfie";
 
 const BackspaceIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor"
@@ -40,6 +42,8 @@ export default function ForgotPinFlow({ pinLock, onCancel }) {
   const [resetToken, setResetToken] = useState(null);
   const [error,      setError]      = useState("");
   const [loading,    setLoading]    = useState(false);
+  const [selfie,     setSelfie]     = useState("");
+  const [selfieBusy, setSelfieBusy] = useState(false);
 
   useEffect(() => {
     supabase?.auth.getSession().then(({ data: { session } }) => {
@@ -94,7 +98,7 @@ export default function ForgotPinFlow({ pinLock, onCancel }) {
           if (!authData?.reset_token) throw new Error("Could not authorise PIN reset — please try again.");
           setResetToken(authData.reset_token);
           setPin("");
-          setStep("new_app");
+          setStep("selfie");
         } catch (err) {
           setPin("");
           setError(err.message || "Invalid or expired code.");
@@ -190,6 +194,46 @@ export default function ForgotPinFlow({ pinLock, onCancel }) {
         <button onClick={onCancel}
           className="py-3 px-4 text-sm text-white/40 underline underline-offset-2">
           Back to lock screen
+        </button>
+      </div>
+    );
+  }
+
+  // ── Security selfie — a live photo kept against this reset, never matched against anything (see
+  //    utils/securitySelfie.js). Required to continue the reset, but never itself a pass/fail check. ─────────────
+  const submitSelfie = async (dataUrl) => {
+    setSelfie(dataUrl);
+    setSelfieBusy(true);
+    setError("");
+    const r = await submitSecuritySelfie("pin_reset", dataUrl);
+    setSelfieBusy(false);
+    if (!r.ok) { setSelfie(""); setError(r.error); return; }
+    setStep("new_app");
+  };
+
+  if (step === "selfie") {
+    return (
+      <div className="fixed inset-0 z-[210] bg-[#0f1c45] flex flex-col items-center justify-center px-6 gap-6 select-none"
+        style={{ paddingTop: "env(safe-area-inset-top,0px)", paddingBottom: "env(safe-area-inset-bottom,0px)" }}>
+        <div className="w-20 h-20 rounded-full bg-white/10 flex items-center justify-center">
+          <svg viewBox="0 0 24 24" fill="none" className="w-10 h-10 text-brand-500" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+            <circle cx="12" cy="13" r="4" />
+          </svg>
+        </div>
+        <div className="text-center">
+          <p className="text-xl font-extrabold text-white">One more step</p>
+          <p className="text-sm text-white/60 mt-2 leading-relaxed max-w-xs">
+            For your security, we keep a quick photo against every PIN reset. It's just a record — take it to continue.
+          </p>
+        </div>
+        {error && <p className="text-xs font-semibold text-red-400 text-center">{error}</p>}
+        <div className="w-full max-w-[280px]">
+          <SelfieCapture value={selfie} onCapture={submitSelfie} onClear={() => setSelfie("")} label="Take a selfie to continue" />
+        </div>
+        {selfieBusy && <p className="text-xs text-white/40">Saving…</p>}
+        <button onClick={onCancel} className="py-3 px-4 text-sm text-white/40 underline underline-offset-2">
+          Cancel
         </button>
       </div>
     );

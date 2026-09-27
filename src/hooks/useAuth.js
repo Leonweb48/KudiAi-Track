@@ -42,7 +42,8 @@ function fireWelcomeEmail(event, data) {
   sendEmailTrigger(event, data);
 }
 
-async function logPlatformSession(supabaseClient, userId, userType, username, email) {
+// Exported for testing only — every real caller is inside this file's own resolve() state machine.
+export async function logPlatformSession(supabaseClient, userId, userType, username, email) {
   try {
     // Only log once per tab/session to avoid duplicates on token refresh events
     const key = `${SESSION_LOGGED_KEY}_${userId}`;
@@ -86,6 +87,13 @@ async function logPlatformSession(supabaseClient, userId, userType, username, em
       device_type: deviceType, browser, os_name: osName,
       is_new_device: isNewDevice, is_new_location: isNewLocation,
     });
+
+    // Surface it app-wide via a window event rather than threading state through every one of this function's
+    // callers (one per account type, deep in the resolve() state machine) — same decoupled pattern App.jsx
+    // already uses for "kt:openUpgrade". A listener mounted once at the app shell shows a dismissible "verify
+    // it's you" prompt (a security selfie, evidence only — see utils/securitySelfie.js) — it never blocks
+    // anything, so wiring it this way costs nothing if no one happens to be listening.
+    if (isNewDevice && typeof window !== "undefined") window.dispatchEvent(new CustomEvent("kt:newDevice"));
   } catch { /* session logging is non-critical */ }
 }
 

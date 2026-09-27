@@ -11,6 +11,9 @@ import { formatWATStamp } from "../utils/wat";
 import { HistoryAvatar, StatusPill } from "./shared/HistoryRow";
 import { hapticSuccess } from "../utils/haptics";
 import { supabase } from "../utils/supabase";
+import SelfieCapture from "./SelfieCapture";
+import { submitSecuritySelfie } from "../utils/securitySelfie";
+import { usePlatformConfig } from "../hooks/usePlatformConfig";
 import {
   getBeneficiaries, saveBeneficiary, upsertRemote, syncLocalToRemote,
   fetchAllRemote, benDisplayName, benSubLabel,
@@ -293,7 +296,12 @@ export function FundWalletSheet({ open, onClose, wallet, testMode, api, business
 
 // ── Transfer — bank-transfer style, PIN-confirmed, instant ─────────────────
 export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKobo = 0, dailyUsedKobo = 0, banks, api, businessName, ownerName, ownerId, onDone }) {
-  const [step, setStep] = useState("to");     // to | amount | review | pin | done
+  const { largeTransferSelfieThresholdKobo } = usePlatformConfig();
+  const [step, setStep] = useState("to");     // to | amount | review | pin | selfie | done
+  const [pendingPin, setPendingPin] = useState("");   // held between the PIN step and a required selfie step, for a large transfer
+  const [selfie, setSelfie] = useState("");
+  const [selfieBusy, setSelfieBusy] = useState(false);
+  const [selfieErr, setSelfieErr] = useState("");
   const [acctNo, setAcctNo] = useState("");
   const [bank, setBank] = useState(null);
   const [name, setName] = useState("");
@@ -320,6 +328,7 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
     setStep("to"); setAcctNo(""); setBank(null); setName(""); setAmount(""); setManual(false); setManualName("");
     setNarration(""); setBookExpense(false); setRepeat(false); setFrequency("monthly"); setErr(""); setFee(0); setResolving(false);
     setWdId(""); setReceipt(null); setReceiptLoading(false);
+    setPendingPin(""); setSelfie(""); setSelfieBusy(false); setSelfieErr("");
     doneKeyRef.current = "";
   }, [open]);
 
@@ -434,9 +443,29 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
     } finally { setBusy(false); }
   };
 
+  // A large transfer asks for a quick security selfie first — evidence only, never a match/verdict (see
+  // utils/securitySelfie.js) — right after the PIN is approved and before the money actually moves.
+  const handlePinApproved = (pin) => {
+    if (largeTransferSelfieThresholdKobo > 0 && kobo >= largeTransferSelfieThresholdKobo) {
+      setPendingPin(pin); setSelfieErr(""); setStep("selfie");
+    } else {
+      doTransfer(pin);
+    }
+  };
+
+  const submitTransferSelfie = async (dataUrl) => {
+    setSelfie(dataUrl); setSelfieBusy(true); setSelfieErr("");
+    const r = await submitSecuritySelfie("large_transfer", dataUrl, {
+      amountKobo: kobo, recipientName, bankName: bank?.name, acctLast4: acctNo,
+    });
+    setSelfieBusy(false);
+    if (!r.ok) { setSelfie(""); setSelfieErr(r.error); return; }
+    doTransfer(pendingPin);
+  };
+
   return (
     <>
-      <BottomSheet open={open && step !== "pin"} onClose={onClose}
+      <BottomSheet open={open && step !== "pin" && step !== "selfie"} onClose={onClose}
         title={step === "done" ? "" : step === "review" ? "Confirm transfer" : "Transfer"}
         back={step === "amount" ? () => setStep("to") : step === "review" ? () => setStep("amount") : undefined}>
 
@@ -632,9 +661,35 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
           title="Confirm transfer"
           amount={kobo}
           recipient={`${recipientName} · ${bank?.name}`}
-          onApprove={(pin) => doTransfer(pin)}
+          onApprove={handlePinApproved}
           onCancel={() => setStep("review")}
         />
+      )}
+
+      {open && step === "selfie" && (
+        <div className="fixed inset-0 z-[210] bg-[#0f1c45] flex flex-col items-center justify-center px-6 gap-6 select-none"
+          style={{ paddingTop: "env(safe-area-inset-top,0px)", paddingBottom: "env(safe-area-inset-bottom,0px)" }}>
+          <div className="w-20 h-20 rounded-full bg-white/10 flex items-center justify-center">
+            <svg viewBox="0 0 24 24" fill="none" className="w-10 h-10 text-brand-500" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+              <circle cx="12" cy="13" r="4" />
+            </svg>
+          </div>
+          <div className="text-center">
+            <p className="text-xl font-extrabold text-white">One more step</p>
+            <p className="text-sm text-white/60 mt-2 leading-relaxed max-w-xs">
+              This is a large transfer, so we keep a quick photo against it. It's just a record — take it to send {fmt(kobo / 100)}.
+            </p>
+          </div>
+          {selfieErr && <p className="text-xs font-semibold text-red-400 text-center">{selfieErr}</p>}
+          <div className="w-full max-w-[280px]">
+            <SelfieCapture value={selfie} onCapture={submitTransferSelfie} onClear={() => setSelfie("")} label="Take a selfie to continue" />
+          </div>
+          {selfieBusy && <p className="text-xs text-white/40">Saving…</p>}
+          <button onClick={() => { setPendingPin(""); setStep("review"); }} className="py-3 px-4 text-sm text-white/40 underline underline-offset-2">
+            Cancel
+          </button>
+        </div>
       )}
 
       {receipt && <TransactionDetailModal data={receipt} onClose={() => setReceipt(null)} />}

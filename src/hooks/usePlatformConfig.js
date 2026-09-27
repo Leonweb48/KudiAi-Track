@@ -65,6 +65,9 @@ export function usePlatformConfig() {
     // (SUM of today's withdrawals) — this value is display-only, the RPC
     // remains the sole authority on whether a transfer is actually allowed.
     walletDailyWithdrawalCapKobo: Number(config?.wallet_daily_withdrawal_cap_kobo ?? "10000000") || 10000000,
+    // A bank transfer at or above this asks for a quick security selfie first (evidence only — see securitySelfie.js;
+    // it never blocks the transfer on a match, there's nothing to match it against). 0 turns the check off.
+    largeTransferSelfieThresholdKobo: Number(config?.large_transfer_selfie_threshold_kobo ?? "10000000") || 0,
     configLoading: loading,
   };
 }
