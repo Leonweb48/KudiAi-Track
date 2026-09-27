@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "../utils/supabase";
 import { walletAccountState } from "../utils/walletAccount";
+import { kycConsentGiven } from "../utils/kycConsent";
 
 // Decides whether this signed-in user must stop and get a NEW wallet account number before using the app: their wallet still
 // has a number on the old Flutterwave account while the platform has moved to the new one (see utils/walletAccount.js).
@@ -62,7 +63,7 @@ export function useWalletMigrationGate(userId, enabled) {
   const migrateAccount = useCallback(async (bvn = "", nin = "") => {
     setBusy(true);
     try {
-      const { data, error } = await supabase.functions.invoke("flutterwave", { body: { action: "provision-account", bvn, nin, migrate: true } });
+      const { data, error } = await supabase.functions.invoke("flutterwave", { body: { action: "provision-account", bvn, nin, migrate: true, consent: kycConsentGiven() } });
       if (error) {
         let msg = error.message || "Could not get your new number. Please try again.";
         try { const b = await error.context?.json?.(); if (b?.error) msg = b.error; } catch { /* keep msg */ }

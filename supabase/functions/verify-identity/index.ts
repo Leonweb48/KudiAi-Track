@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { checkIdentity, hmacHex, loadIdCheck } from "../_shared/idCheck.ts";
 
 const SUPABASE_URL         = Deno.env.get("SUPABASE_URL")               || "";
 const SERVICE_KEY          = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")  || "";
@@ -93,9 +94,51 @@ Deno.serve(async (req: Request) => {
         return json({ success: true, status: "tier1_pending", already_submitted: true });
       }
 
-      // Store NIN for manual admin review (no external API call)
+      // ── Instant check (Youverify), when switched on (platform_config.kyc_youverify_enabled) ────────────────────────────
+      // The NIN is looked up and its name compared with the owner's own name. A match approves it on the spot — the same three things an admin's
+      // approval does. Anything else falls back to the manual review below exactly as before (a name mismatch, an outage or a missing consent is not a
+      // rejection). A NIN that does not exist is told to the customer straight away instead of queueing a typo for two days.
+      let autoNote: string | null = null;
+      const kyc = await loadIdCheck(
+        admin, async (k, d) => String((await admin.from("platform_config").select("value").eq("key", k).maybeSingle()).data?.value ?? d),
+        { fetchFn: fetch, token: Deno.env.get("YOUVERIFY_TOKEN") || "" },
+      );
+      if (kyc.enabled) {
+        const { data: prof } = await admin.from("profiles").select("full_name, owner_name").eq("id", userId).maybeSingle();
+        const declared = String(prof?.full_name || prof?.owner_name || "").trim();
+        const r = await checkIdentity(kyc.deps, {
+          userId, kind: "nin", id: nin, consent: body.consent === true, declaredName: declared, table: "profiles",
+          hmac: await hmacHex(EMAIL_TRIGGER_SECRET || SERVICE_KEY, "nin", nin),   // same keyed hash the wallet uses, so one NIN is checked (and paid for) once
+        });
+        if (r.ok && declared) {
+          const now = new Date().toISOString();
+          const { data: sub } = await admin.from("verification_submissions").insert({
+            user_id: userId, tier: 1, status: "approved",
+            nin: `*******${nin.slice(-4)}`,                      // an approved row keeps no full NIN
+            verified_name: r.verifiedName, nin_verified: true, name_match_score: 100,
+            provider_response: { provider: "youverify", checked_at: now, cached: r.cached },   // no personal data from the provider is kept
+            reviewed_at: now, review_notes: "Verified automatically (Youverify): the NIN is real and its name matches the profile name.",
+          }).select("id").single();
+          await admin.from("profiles").update({
+            verification_status: "tier1_verified", verification_submitted_at: now, verification_rejected_reason: null,
+          }).eq("id", userId);
+          await notifyUser(userId, "Identity verified ✓", "Your identity has been confirmed — your account is now verified.", "verification_approved");
+          await admin.from("admin_audit_log").insert({
+            admin_username: "system: Youverify", action: "verification_approved", target_type: "verification_submission", target_id: String(sub?.id ?? ""),
+            details: `Automatically approved Tier 1 verification for user ${userId}`,
+          }).then(null, () => {});
+          return json({ success: true, status: "tier1_verified", auto: true, verifiedName: r.verifiedName });
+        }
+        if (r.ok) autoNote = "Automatic check: the NIN is real, but there is no personal name on the profile to compare it with — please review.";
+        else if (r.code === "not_found" || r.code === "rate_limited") return json({ error: r.message, code: `kyc_${r.code}` }, r.code === "rate_limited" ? 429 : 400);
+        else if (r.code === "mismatch") autoNote = "Automatic check: the NIN is real, but its name did not match the profile name — please review.";
+        else if (r.code === "unavailable") autoNote = "Automatic check was unavailable — please review.";
+        // consent_required: the customer did not agree to the automatic check, so it goes to a person, as it always did
+      }
+
+      // Store NIN for manual admin review
       await admin.from("verification_submissions").insert({
-        user_id: userId, tier: 1, status: "pending", nin,
+        user_id: userId, tier: 1, status: "pending", nin, ...(autoNote ? { review_notes: autoNote } : {}),
       });
       await admin.from("profiles").update({
         verification_status: "tier1_pending",

@@ -8,6 +8,7 @@ import { compressImage } from "../utils/compressImage";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
 import { useWallet } from "../hooks/useWallet";
 import { walletIdError, digits11 } from "../utils/walletId";
+import KycConsent from "../components/KycConsent";
 
 /* ── Helpers ───────────────────────────────────────────────────── */
 async function uploadFile(file, bucket, path) {
@@ -495,6 +496,8 @@ export default function Onboarding({ session, onComplete }) {
             <Field label="NIN"
               type="tel" inputMode="numeric" placeholder="11-digit National Identification Number"
               value={walletNin} onChange={(e) => setWalletNin(digits11(e.target.value))} />
+
+            <KycConsent />
 
             {walletErr && (
               <div className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl px-3 py-2">{walletErr}</div>

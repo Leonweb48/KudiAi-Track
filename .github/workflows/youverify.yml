@@ -1,0 +1,75 @@
+name: Youverify (sandbox check / set token)
+
+# Manual only. Two jobs for the identity-check integration (BVN / NIN through Youverify), both driven by ONE repository secret, YOUVERIFY_TOKEN
+# (GitHub → Settings → Secrets and variables → Actions → New repository secret). The token never appears in chat, in the repo or in these logs.
+#
+#   sandbox-check  Calls the Youverify SANDBOX with their documented test BVN and prints only the HTTP status and the FIELD NAMES of the reply (never
+#                  values) — proof that the token works and that the reply has the shape our code expects. Costs nothing: the sandbox holds test data.
+#   set-token      Copies the repository secret into the Supabase edge functions' secrets (as YOUVERIFY_TOKEN) so verify-identity and flutterwave can use it.
+#
+# Order: add the SANDBOX token → sandbox-check → set-token → (optionally test in the app) → later replace the secret with the LIVE token, run set-token
+# again and only then turn on kyc_youverify_live in the admin Feature Flags. Turning kyc_youverify_enabled on is a separate, deliberate step.
+on:
+  workflow_dispatch:
+    inputs:
+      what:
+        description: "sandbox-check = test the token against the Youverify sandbox | set-token = copy the token to the Supabase functions"
+        type: choice
+        options: [sandbox-check, set-token]
+        default: sandbox-check
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Sandbox check
+        if: ${{ inputs.what == 'sandbox-check' }}
+        env:
+          YV_TOKEN: ${{ secrets.YOUVERIFY_TOKEN }}
+        run: |
+          set -uo pipefail
+          [ -n "$YV_TOKEN" ] || { echo "The YOUVERIFY_TOKEN repository secret is not set."; exit 1; }
+          status=0
+          for kind in bvn nin; do
+            code=$(curl -sS -m 45 -o resp.json -w '%{http_code}' -X POST "https://api.sandbox.youverify.co/v2/api/identity/ng/$kind" \
+              -H "token: $YV_TOKEN" -H "Content-Type: application/json" -d '{"id":"11111111111","isSubjectConsent":true}') || code="000"
+            echo "== $kind: HTTP $code"
+            KIND="$kind" CODE="$code" node -e '
+              const fs = require("fs"); let j = {};
+              try { j = JSON.parse(fs.readFileSync("resp.json", "utf8")); } catch { console.log("  reply is not JSON"); process.exit(0); }
+              const d = (j && j.data) || {};
+              const has = (k) => typeof d[k] === "string" && d[k].trim() !== "";
+              console.log("  success:", j.success, "| statusCode:", j.statusCode, "| data.status:", d.status);
+              console.log("  reply keys:", Object.keys(j).join(", "));
+              console.log("  data keys :", Object.keys(d).join(", "));
+              console.log("  names present (yes/no): firstName", has("firstName"), "| lastName", has("lastName"), "| middleName", has("middleName"), "| dateOfBirth", has("dateOfBirth"));
+              if (!/^2/.test(process.env.CODE)) console.log("  message:", String(j.message || "").slice(0, 100));   // an error message, never a record
+            '
+            [ "$code" = "200" ] || status=1
+          done
+          rm -f resp.json
+          [ "$status" = "0" ] && echo "Sandbox check passed for BVN and NIN." || { echo "Sandbox check FAILED — see above."; exit 1; }
+
+      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb   # v1 (pinned: this step holds the Supabase access token)
+        if: ${{ inputs.what == 'set-token' }}
+        with:
+          version: 2.107.0
+
+      - name: Set the token on the Supabase functions
+        if: ${{ inputs.what == 'set-token' }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ secrets.SUPABASE_PROJECT_ID }}
+          YV_TOKEN: ${{ secrets.YOUVERIFY_TOKEN }}
+        run: |
+          set -euo pipefail
+          [ -n "$YV_TOKEN" ] || { echo "The YOUVERIFY_TOKEN repository secret is not set."; exit 1; }
+          umask 077
+          printf 'YOUVERIFY_TOKEN=%s\n' "$YV_TOKEN" > yv.env          # a file, so the value is never on a command line
+          supabase secrets set --env-file yv.env --project-ref "$REF"
+          rm -f yv.env
+          echo "YOUVERIFY_TOKEN is now set on the Supabase functions."

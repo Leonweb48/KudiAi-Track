@@ -4,6 +4,8 @@ import { useWalletTier } from "../hooks/useWalletTier";
 import { TIER_INFO, formatKoboLimit } from "../utils/walletTier";
 import { STATES, getLGAs } from "../utils/nigeriaData";
 import { digits11 } from "../utils/walletId";
+import KycConsent from "./KycConsent";
+import { kycConsentGiven } from "../utils/kycConsent";
 
 const FIELD = "w-full mt-1.5 px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/60 text-slate-900 dark:text-slate-50 text-[15px] font-semibold placeholder:font-normal placeholder:text-slate-400 focus:outline-none focus:border-brand-400";
 const LABEL = "text-[12px] font-semibold text-slate-500 dark:text-slate-400";
@@ -50,7 +52,7 @@ function Tier2Sheet({ open, onClose, tierApi, prefill }) {
     if (f.bvn === f.nin) { setErr("Your BVN and NIN are different numbers — check both"); return; }
     setBusy(true);
     try {
-      await tierApi.upgradeToTier2({ ...f, full_name: f.full_name.trim(), address: f.address.trim() });
+      await tierApi.upgradeToTier2({ ...f, full_name: f.full_name.trim(), address: f.address.trim(), consent: kycConsentGiven() });
       setDone(true);
     } catch (e) {
       setErr(e?.message || "Could not upgrade your account. Please try again.");
@@ -92,6 +94,7 @@ function Tier2Sheet({ open, onClose, tierApi, prefill }) {
             <input inputMode="numeric" value={f.bvn} onChange={(e) => set("bvn")(digits11(e.target.value))} placeholder="11-digit BVN" className={FIELD + " tracking-wider"} /></div>
           <div><label className={LABEL}>NIN</label>
             <input inputMode="numeric" value={f.nin} onChange={(e) => set("nin")(digits11(e.target.value))} placeholder="11-digit NIN" className={FIELD + " tracking-wider"} /></div>
+          <KycConsent />
           <p className="text-[11px] text-slate-400 leading-relaxed">
             Tier 2 needs both numbers. They aren't stored by KudiAI in readable form. Enter them only here in the app — never share them by email, chat or phone.
           </p>

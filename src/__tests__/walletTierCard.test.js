@@ -158,7 +158,7 @@ describe("WalletTierCard", () => {
       const a = await open();
       await fill();
       await submit();
-      expect(a.upgradeToTier2).toHaveBeenCalledWith({ full_name: "Ada Obi", address: "12 Market Road, Onitsha", state: "Anambra", lga: "", bvn: "12345678901", nin: "10987654321" });
+      expect(a.upgradeToTier2).toHaveBeenCalledWith({ full_name: "Ada Obi", address: "12 Market Road, Onitsha", state: "Anambra", lga: "", bvn: "12345678901", nin: "10987654321", consent: false });
       expect(host.textContent).toContain("You're now on Tier 2");
     });
 

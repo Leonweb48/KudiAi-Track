@@ -94,7 +94,7 @@ describe("useWalletMigrationGate", () => {
     await mount({ userId: "u1", enabled: true });
     let r;
     await act(async () => { r = await latest.migrateAccount("12345678901", ""); });
-    expect(mockState.invoke).toHaveBeenCalledWith("flutterwave", { body: { action: "provision-account", bvn: "12345678901", nin: "", migrate: true } });
+    expect(mockState.invoke).toHaveBeenCalledWith("flutterwave", { body: { action: "provision-account", bvn: "12345678901", nin: "", migrate: true, consent: false } });
     expect(r.migrated).toBe(true);
     expect(latest.holding).toBe(true);
     await act(async () => { latest.release(); });

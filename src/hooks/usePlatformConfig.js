@@ -54,6 +54,9 @@ export function usePlatformConfig() {
     // account — flipping this on is the only thing needed to re-enable both the
     // backend enforcement (flutterwave/index.ts) and the reverify banners.
     bvnVerificationEnabled: config?.bvn_verification_enabled === "true",
+    // Identity checks for BVN / NIN through Youverify. Off (the default) = self-declared, as before; on shows the consent box wherever an ID is typed
+    // and the server verifies it. A super admin toggles platform_config.kyc_youverify_enabled in the admin portal — no rebuild.
+    kycEnabled: config?.kyc_youverify_enabled === "true",
     walletMinTopupKobo: Number(config?.wallet_min_topup_kobo ?? "10000") || 10000,
     walletMaxWithdrawalKobo: Number(config?.wallet_max_withdrawal_kobo ?? "5000000") || 5000000,
     // Mirrors the server-side cap already enforced in wallet_hold_transfer

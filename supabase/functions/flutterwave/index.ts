@@ -17,6 +17,7 @@ import nodemailer from "npm:nodemailer@6";
 import { bankEmail, esc, cleanSubject, nairaFromKobo, appLink, htmlToText } from "../_shared/bankEmail.ts";
 import { loadAccounts, isConfigured, resolveActive, graceStatus, type FlwAccount, type AccountKey } from "../_shared/flwAccounts.ts";
 import { customerName, customerPhone, customerEmail } from "../_shared/flwCustomer.ts";
+import { checkIdentity, hmacHex, loadIdCheck, type IdKind, type IdTable } from "../_shared/idCheck.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin":  "*",
@@ -270,6 +271,40 @@ async function resolveIdentity(sb: any, targetUid: string): Promise<{
 // profiles/aso_clients/staff each key their own-user link differently.
 function filterColFor(table: "profiles" | "aso_clients" | "staff"): string {
   return table === "profiles" ? "id" : table === "aso_clients" ? "client_user_id" : "user_id";
+}
+
+// ── Identity checks (BVN / NIN) through Youverify — logic + tests: _shared/idCheck.ts ───────────────────────────
+// OFF unless platform_config.kyc_youverify_enabled = 'true', so deploying this changes nothing for customers. When on, a typed BVN / NIN is looked up
+// (once per person and number — repeats are answered from kyc_verified for free) and its name compared with the person's own name.
+
+/** The person's OWN name (never the business name): what a BVN / NIN has to match. "" when we only know a business name. */
+async function personalName(sb: any, table: IdTable, uid: string): Promise<string> {
+  if (table === "profiles") {
+    const { data } = await sb.from("profiles").select("full_name, owner_name").eq("id", uid).maybeSingle();
+    return String(data?.full_name || data?.owner_name || "").trim();
+  }
+  const { data } = await sb.from(table).select("full_name").eq(filterColFor(table), uid).maybeSingle();
+  return String(data?.full_name || "").trim();
+}
+
+/**
+ * Run the identity checks for the numbers a customer typed. Returns a ready response when one must stop the request, or null to carry on
+ * (checks passed, or the feature is off, or the provider is down and kyc_fail_open is on).
+ */
+async function runIdChecks(
+  sb: any, cfg: (k: string, d: string) => Promise<string>,
+  a: { uid: string; table: IdTable; declaredName: string; consent: boolean; ids: { kind: IdKind; id: string }[] },
+): Promise<Response | null> {
+  if (!a.ids.length) return null;
+  const kyc = await loadIdCheck(sb, cfg, { fetchFn: fetch, token: Deno.env.get("YOUVERIFY_TOKEN") ?? "" });
+  if (!kyc.enabled) return null;
+  for (const { kind, id } of a.ids) {
+    const r = await checkIdentity(kyc.deps, { userId: a.uid, kind, id, consent: a.consent, declaredName: a.declaredName, table: a.table, hmac: await hmacHex(INTERNAL_SECRET || SERVICE_KEY, kind, id) });
+    if (r.ok) continue;
+    if (r.code === "unavailable" && kyc.failOpen) { console.warn("[kyc] provider unavailable — continuing unverified (kyc_fail_open is on)"); continue; }
+    return json({ error: r.message, code: `kyc_${r.code}` }, r.code === "rate_limited" ? 429 : r.code === "unavailable" ? 503 : 400);
+  }
+  return null;
 }
 
 // ── bank list cache ─────────────────────────────────────────────────────────
@@ -890,6 +925,17 @@ serve(async (req) => {
       const email    = customerEmail(idEmail, `wallet+${targetUid.slice(0, 8)}@kudiai.app`);
       const fullName = idFullName || "KudiAI Owner";
 
+      // Identity check (Youverify, when switched on): a BVN / NIN typed here must be real and belong to this person. Only for the customer's own
+      // request — when an owner opens a wallet for an Ajo client (service call) the client has not consented, so nothing is looked up.
+      if (!serviceAuthed) {
+        const stop = await runIdChecks(sb, cfg, {
+          uid: targetUid, table: idTable as IdTable, declaredName: await personalName(sb, idTable as IdTable, targetUid),
+          consent: (body as Record<string, unknown>).consent === true,
+          ids: [...(bvn ? [{ kind: "bvn" as IdKind, id: bvn }] : []), ...(nin ? [{ kind: "nin" as IdKind, id: nin }] : [])],
+        });
+        if (stop) return stop;
+      }
+
       // Real BVN verification (verify-bvn-init/verify-bvn-status, Flutterwave v3)
       // is gated on this flag rather than always-on, because Flutterwave has BVN
       // Verification disabled on this merchant account ("Merchant is not enabled
@@ -1127,6 +1173,17 @@ serve(async (req) => {
       const { data: tw } = await sb.from("wallets").select("tier, flw_account_number").eq("user_id", uid).maybeSingle();
       if (!tw?.flw_account_number) return json({ error: "Open your wallet first, then upgrade", code: "no_wallet" }, 400);
       if (Number(tw.tier ?? 1) >= 2) return json({ ok: true, tier: Number(tw.tier), changed: false });
+
+      // Identity check (Youverify, when switched on): BOTH numbers must be real and belong to the name given. An ID already verified for this person
+      // (e.g. at wallet opening) is not looked up — or paid for — again.
+      {
+        const who = await resolveIdentity(sb, uid);
+        const stop = await runIdChecks(sb, cfg, {
+          uid, table: who.table as IdTable, declaredName: fullName, consent: b.consent === true,
+          ids: [{ kind: "bvn", id: bvn }, { kind: "nin", id: nin }],
+        });
+        if (stop) return stop;
+      }
 
       const keyBytes = new TextEncoder().encode(INTERNAL_SECRET || SERVICE_KEY);
       const hk = await crypto.subtle.importKey("raw", keyBytes, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);

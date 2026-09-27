@@ -1,6 +1,9 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../utils/supabase";
+import KycConsent from "../components/KycConsent";
+import { kycConsentGiven } from "../utils/kycConsent";
+import { usePlatformConfig } from "../hooks/usePlatformConfig";
 
 // ── Status config ─────────────────────────────────────────────────────────────
 
@@ -102,6 +105,8 @@ function Tier1Form({ dark, status, profile, onSuccess }) {
   const [nin,     setNin]     = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error,   setError]   = useState("");
+  const { kycEnabled } = usePlatformConfig();
+  const instant = kycEnabled;   // identity checks are switched on: the NIN is checked at once, a person only steps in if it cannot be matched
 
   async function handleSubmit() {
     if (nin.length !== 11) { setError("NIN must be exactly 11 digits."); return; }
@@ -109,7 +114,7 @@ function Tier1Form({ dark, status, profile, onSuccess }) {
     setError("");
     try {
       const { data, error: fnErr } = await supabase.functions.invoke("verify-identity", {
-        body: { action: "tier1_submit", nin },
+        body: { action: "tier1_submit", nin, consent: kycConsentGiven() },
       });
       if (fnErr) throw fnErr;
       if (!data.success && data.error) { setError(data.error); return; }
@@ -129,7 +134,9 @@ function Tier1Form({ dark, status, profile, onSuccess }) {
         Step 1 — Verify your identity
       </div>
       <div style={{ fontSize: 12, color: dark ? "#9ca3af" : "#6b7280", marginBottom: 16, lineHeight: 1.6 }}>
-        Your NIN is matched against your settlement account name. This is instant and automated — no human sees your NIN.
+        {instant
+          ? "Your NIN is checked straight away against the national identity records and compared with your name. If it can't be matched automatically, our verification team reviews it."
+          : "Your NIN is reviewed by our verification team — usually within 1–2 business days."}
       </div>
 
       {canRetry && status === "tier1_failed" && (
@@ -157,6 +164,8 @@ function Tier1Form({ dark, status, profile, onSuccess }) {
         </div>
       </div>
 
+      <div style={{ marginBottom: 14 }}><KycConsent /></div>
+
       {error && (
         <div style={{ background: dark ? "#2a1111" : "#fef2f2", borderRadius: 8, padding: "10px 12px", marginBottom: 12, fontSize: 12, color: "#ef4444", lineHeight: 1.5 }}>
           {error}
@@ -168,8 +177,7 @@ function Tier1Form({ dark, status, profile, onSuccess }) {
       </PrimaryBtn>
 
       <div style={{ marginTop: 10, fontSize: 11, color: dark ? "#4b5563" : "#9ca3af", textAlign: "center", lineHeight: 1.5 }}>
-        🔒 Your NIN is transmitted securely and never stored in plain text.
-        {" "}Face/liveness verification coming soon (Dojah / Prembly integration).
+        🔒 Your NIN is sent securely. {instant ? "Once it is matched we keep only its last 4 digits." : "Only our verification team can see it."}
       </div>
     </Card>
   );
