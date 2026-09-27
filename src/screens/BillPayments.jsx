@@ -2112,6 +2112,9 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         const priced = r.plans.map(p => {
           const customPrice = action === "data-plans" && !p.priced ? lookupDataPrice(network, p.plan_name) : null;
           if (customPrice !== null) return { ...p, plan_amount: customPrice };
+          // A price set in the admin portal (p.priced) is the final selling price — the markup only applies to the
+          // provider's raw price for plans that have no selling price.
+          if (p.priced) return p;
           return markup > 1 ? { ...p, plan_amount: Math.ceil(p.plan_amount * markup) } : p;
         });
         setPlans(priced);
