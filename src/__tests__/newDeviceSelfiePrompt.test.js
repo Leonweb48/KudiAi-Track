@@ -4,6 +4,8 @@ import NewDeviceSelfiePrompt from "../components/NewDeviceSelfiePrompt";
 
 let mockSubmit;
 jest.mock("../utils/securitySelfie", () => ({ submitSecuritySelfie: (...a) => mockSubmit(...a) }));
+let mockSelfieOn = true;
+jest.mock("../hooks/usePlatformConfig", () => ({ usePlatformConfig: () => ({ securitySelfieEnabled: mockSelfieOn }) }));
 jest.mock("../components/SelfieCapture", () => (props) => (
   <div>
     <button type="button" onClick={() => props.onCapture("data:image/jpeg;base64,FAKE")}>MockCapture</button>
@@ -55,6 +57,15 @@ describe("NewDeviceSelfiePrompt", () => {
       await act(async () => { jest.advanceTimersByTime(2600); });
       expect(host.textContent).toBe("");
     } finally { jest.useRealTimers(); }
+  });
+
+  it("never opens while security selfies are paused (security_selfie_enabled off)", async () => {
+    mockSelfieOn = false;
+    try {
+      await act(async () => { root.render(<NewDeviceSelfiePrompt />); });
+      await fireNewDevice();
+      expect(host.textContent).toBe("");
+    } finally { mockSelfieOn = true; }
   });
 
   it("never opens during an admin access session (the admin is not the customer)", async () => {

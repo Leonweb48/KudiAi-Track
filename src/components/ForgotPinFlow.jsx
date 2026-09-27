@@ -3,6 +3,7 @@ import { supabase } from "../utils/supabase";
 import PinDots from "./PinDots";
 import SelfieCapture from "./SelfieCapture";
 import { submitSecuritySelfie } from "../utils/securitySelfie";
+import { usePlatformConfig } from "../hooks/usePlatformConfig";
 
 const BackspaceIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor"
@@ -34,6 +35,7 @@ const STEP_META = {
 const PAD = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 
 export default function ForgotPinFlow({ pinLock, onCancel }) {
+  const { securitySelfieEnabled } = usePlatformConfig();
   const [email,      setEmail]      = useState("");
   const [step,       setStep]       = useState("send");
   const [pin,        setPin]        = useState("");
@@ -98,7 +100,8 @@ export default function ForgotPinFlow({ pinLock, onCancel }) {
           if (!authData?.reset_token) throw new Error("Could not authorise PIN reset — please try again.");
           setResetToken(authData.reset_token);
           setPin("");
-          setStep("selfie");
+          // The security selfie step only runs while it's switched on (platform_config.security_selfie_enabled).
+          setStep(securitySelfieEnabled ? "selfie" : "new_app");
         } catch (err) {
           setPin("");
           setError(err.message || "Invalid or expired code.");
@@ -150,7 +153,7 @@ export default function ForgotPinFlow({ pinLock, onCancel }) {
         }
       }
     }, 150);
-  }, [pin, maxLen, loading, step, email, newAppPin, newTxnPin, resetToken, pinLock]);
+  }, [pin, maxLen, loading, step, email, newAppPin, newTxnPin, resetToken, pinLock, securitySelfieEnabled]);
 
   const handleDelete = useCallback(() => {
     setPin(p => p.slice(0, -1));

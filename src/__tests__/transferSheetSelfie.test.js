@@ -11,7 +11,7 @@ const { TransferSheet } = require("../components/WalletPanel");
 
 let mockSubmit, mockThreshold;
 jest.mock("../utils/securitySelfie", () => ({ submitSecuritySelfie: (...a) => mockSubmit(...a) }));
-jest.mock("../hooks/usePlatformConfig", () => ({ usePlatformConfig: () => ({ largeTransferSelfieThresholdKobo: mockThreshold }) }));
+jest.mock("../hooks/usePlatformConfig", () => ({ usePlatformConfig: () => ({ largeTransferSelfieThresholdKobo: mockThreshold, securitySelfieEnabled: true }) }));
 // Stub the heavy sub-components this test isn't about — each already has (or, for TransactionPinModal, pre-dates)
 // its own concerns; this file only exercises TransferSheet's OWN new selfie-step logic.
 jest.mock("../components/shared/BankSelect", () => (props) => (
