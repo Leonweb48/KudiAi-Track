@@ -66,7 +66,8 @@ jobs:
           [ -n "$YV_TOKEN" ] || { echo "The YOUVERIFY_TOKEN repository secret is not set."; exit 1; }
           # a well-known, completely inert 1x1 transparent PNG (public-domain test bytes, not derived from any photo) — used only to see whether the
           # provider ACCEPTS an image in a given shape, never to test real face-matching accuracy
-          PNG="iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+          PNG_TOO_SMALL="iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+          PNG="iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAX0lEQVR4nO3PMQ0AMAzAsPIHMLwFscOqFCNI5h03OuBXA1oDWgNaA1oDWgNaA1oDWgNaA1oDWgNaA1oDWgNaA1oDWgNaA1oDWgNaA1oDWgNaA1oDWgNaA1oDWgNaA9oC9EUhpTaZ+cUAAAAASUVORK5CYII="   # a hand-built, solid-grey 64x64 PNG — big enough that a real image check runs, still nothing personal
           try() {   # label, request body (as a jq-free heredoc)
             echo "== $1"
             code=$(curl -sS -m 45 -o resp.json -w '%{http_code}' -X POST "https://api.sandbox.youverify.co/v2/api/identity/ng/bvn" \
@@ -83,9 +84,10 @@ jobs:
               if (sv) console.log("  selfieVerification:", JSON.stringify(sv));
             '
           }
-          try "bare base64, nested validations.selfie.image"      "{\"id\":\"11111111111\",\"isSubjectConsent\":true,\"validations\":{\"selfie\":{\"image\":\"$PNG\"}}}"
-          try "data URI, nested validations.selfie.image"         "{\"id\":\"11111111111\",\"isSubjectConsent\":true,\"validations\":{\"selfie\":{\"image\":\"data:image/png;base64,$PNG\"}}}"
-          try "top-level selfieImage (fallback guess)"             "{\"id\":\"11111111111\",\"isSubjectConsent\":true,\"selfieImage\":\"$PNG\"}"
+          try "bare base64, nested validations.selfie.image"      "{\"id\":\"11111111111\",\"isSubjectConsent\":true,\"validations\":{\"selfie\":{\"image\":\"$PNG_TOO_SMALL\"}}}"
+          try "data URI, too-small image (expect a size error)"   "{\"id\":\"11111111111\",\"isSubjectConsent\":true,\"validations\":{\"selfie\":{\"image\":\"data:image/png;base64,$PNG_TOO_SMALL\"}}}"
+          try "top-level selfieImage (fallback guess)"             "{\"id\":\"11111111111\",\"isSubjectConsent\":true,\"selfieImage\":\"$PNG_TOO_SMALL\"}"
+          try "data URI, valid-sized 64x64 image — the real response shape" "{\"id\":\"11111111111\",\"isSubjectConsent\":true,\"validations\":{\"selfie\":{\"image\":\"data:image/png;base64,$PNG\"}}}"
           rm -f resp.json
           echo "Probe done — compare the three results above to see which shape the provider accepted."
 
