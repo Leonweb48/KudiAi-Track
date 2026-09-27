@@ -465,17 +465,24 @@ function parseDataPlan(planName) {
   } else if (n.includes("sme")) {
     category = "top deals";
   } else {
-    category = (durationDays > 0 && durationDays <= 7) ? "weekly" : "monthly";
+    category = (durationDays > 0 && durationDays <= 2) ? "daily"
+      : (durationDays > 0 && durationDays <= 7) ? "weekly" : "monthly";
   }
 
   return { size, unit, duration, category };
 }
 
-const DATA_TABS = ["All", "Awoof", "Top Deals", "Weekly", "Monthly"];
+const DATA_TABS = ["Awoof", "Top Deals", "Daily", "Weekly", "Monthly", "All"];
+
+// Open on the first tab (in the order above) that has plans for this network, so nobody lands on an empty tab.
+function firstDataTab(plans) {
+  const cats = new Set(plans.map(pl => parseDataPlan(pl.plan_name).category));
+  return DATA_TABS.find(t => t === "All" || cats.has(t.toLowerCase())) || "All";
+}
 
 function DataPlanGrid({ plans, selectedId, onSelect, loading, error, cashback = 0, pointsEnabled = false, netCfg = null }) {
-  const [activeTab, setActiveTab] = useState("All");
-  useEffect(() => { setActiveTab("All"); }, [plans]);
+  const [activeTab, setActiveTab] = useState(() => firstDataTab(plans));
+  useEffect(() => { setActiveTab(firstDataTab(plans)); }, [plans]);
 
   const filtered = useMemo(() => {
     if (activeTab === "All") return plans;
