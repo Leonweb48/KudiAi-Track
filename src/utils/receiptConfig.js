@@ -678,6 +678,15 @@ function senderIdentity(businessName, ownerName) {
 // PRIVATE ROWS — a field flagged `private: true` (the running balance on a bill or wallet receipt) is shown in the app but
 // left off everything that leaves it: ReceiptCard marks it data-private (stripped from the shared image by
 // captureReceiptCanvas) and the PDF layout skips it. `hideBalanceOnShare` tells the PDF not to print its own balance row.
+// The description the RECEIVING bank shows on its alert for a wallet transfer — built exactly like the flutterwave
+// function's flwDisburse(): "KudiAI Track KDT<first 8 of the withdrawal id> <the sender's own note>", 100 chars max.
+export function bankAlertNarration(withdrawalId, note = '') {
+  if (!withdrawalId) return '';
+  const shortRef = 'KDT' + String(withdrawalId).replace(/-/g, '').slice(0, 8).toUpperCase();
+  const userNarr = String(note || '').replace(/[^\w .,-]/g, ' ').trim();
+  return `KudiAI Track ${shortRef}${userNarr ? ` ${userNarr}` : ''}`.slice(0, 100).trim();
+}
+
 export function buildWalletReceipt(row, ctx = {}) {
   const credit = row.direction === 'credit';
   const src    = row.source;
@@ -697,6 +706,8 @@ export function buildWalletReceipt(row, ctx = {}) {
   const wd           = ctx.withdrawal || null;
   const rq           = ctx.request || null;
   const narration    = (wd?.narration || row.narration || '').trim();
+  // What the SENDER wrote on a transfer into the wallet (the bank's description — see flutterwave-webhook).
+  const senderNarr   = String(row.meta?.sender_narration || '').trim();
   // The wallet's running balance is for its owner, in the app — never on a shared image / PDF (see PRIVATE ROWS)
   const balRow = row.balance_after_kobo != null && { label: 'Account balance after', value: fmtAmt(row.balance_after_kobo / 100), private: true };
 
@@ -717,7 +728,10 @@ export function buildWalletReceipt(row, ctx = {}) {
       { label: 'Transaction Type', value: src === 'withdrawal_reversal' ? 'Transfer reversal — refunded to wallet' : 'Wallet transfer' },
       { label: 'Recipient Details', value: party(wd?.account_name || narration || 'Bank account', rcptBank, wd?.account_number) },
       { label: 'Sender Details',    value: sender },
-      narration && !/^transfer to bank$/i.test(narration) && { label: 'Narration', value: narration },
+      // What the recipient's bank shows on their alert (it includes the sender's own note, if any).
+      wd?.id && src === 'withdrawal'
+        ? { label: 'Description', value: bankAlertNarration(wd.id, /^transfer to bank$/i.test(narration) ? '' : narration) }
+        : (narration && !/^transfer to bank$/i.test(narration) && { label: 'Narration', value: narration }),
       wd?.fee_kobo ? { label: 'Fee', value: fmtAmt(wd.fee_kobo / 100) } : null,
       wd?.flw_transfer_id && { label: 'Transaction No.', value: wd.flw_transfer_id, copy: true },
       wd?.session_id      && { label: 'Session ID',      value: wd.session_id, copy: true },
@@ -734,6 +748,7 @@ export function buildWalletReceipt(row, ctx = {}) {
       { label: 'Transaction Type', value: 'Wallet funding (bank transfer)' },
       { label: 'Recipient Details', value: walletParty },
       { label: 'Sender Details',    value: party(ctx.originator || 'Bank transfer', fromBank?.name, '') },
+      senderNarr && { label: 'Description', value: senderNarr },
       grossKobo > 0 && { label: 'Amount received', value: fmtAmt(grossKobo / 100) },
       feeKobo > 0    && { label: 'CBN electronic transfer levy', value: fmtAmt(feeKobo / 100) },
       row.flw_reference && { label: 'Transaction No.', value: row.flw_reference, copy: true },
@@ -750,6 +765,7 @@ export function buildWalletReceipt(row, ctx = {}) {
       { label: 'Recipient Details', value: walletParty },
       { label: 'Sender Details',    value: party(rq?.customer_name || ctx.originator || 'Customer', fromBank?.name, '') },
       note && { label: 'For', value: note },
+      senderNarr && senderNarr !== note && { label: 'Description', value: senderNarr },
       row.flw_reference && { label: 'Transaction No.', value: row.flw_reference, copy: true },
       balRow,
       { label: 'Payment Method', value: 'Bank transfer' },

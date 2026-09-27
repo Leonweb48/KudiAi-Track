@@ -270,6 +270,9 @@ serve(async (req) => {
       // The SENDER's bank, as the bank reports it ("WEMA BANK PLC"). Kept on the ledger row so the receipt can name that bank
       // and show its logo — the app cleans the spelling up when it shows it.
       const originatorBank = String((pm.bank_transfer as Record<string, unknown>)?.originator_bank_name || "").trim().slice(0, 80);
+      // What the SENDER wrote on the transfer (their bank passes it through as the charge's description) — shown on the
+      // receipt as the payment's description. Plain text only, one line, capped.
+      const senderNarration = String(data.description ?? "").replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 140);
 
       if (pr) {
         const { data: saleRes, error: sErr } = await sb.rpc("wallet_record_sale", {
@@ -281,13 +284,14 @@ serve(async (req) => {
         const saleLedgerId = (saleRes as { ledger_id?: string } | null)?.ledger_id;
         // wallet_record_sale has no meta argument, so stamp who paid (name + bank) onto its ledger row afterwards. The sale is
         // already recorded by now — a failure here only costs the receipt its sender-bank line.
-        if (saleLedgerId && (originatorBank || originator !== "a customer")) {
+        if (saleLedgerId && (originatorBank || originator !== "a customer" || senderNarration)) {
           try {
             const { data: lr } = await sb.from("wallet_ledger").select("meta").eq("id", saleLedgerId).maybeSingle();
             const prev = ((lr?.meta ?? {}) as Record<string, unknown>);
             const stamp: Record<string, unknown> = {};
             if (originatorBank && !prev.originator_bank) stamp.originator_bank = originatorBank;
             if (originator !== "a customer" && !prev.originator) stamp.originator = originator;
+            if (senderNarration && !prev.sender_narration) stamp.sender_narration = senderNarration;
             if (Object.keys(stamp).length) await sb.from("wallet_ledger").update({ meta: { ...prev, ...stamp } }).eq("id", saleLedgerId);
           } catch (e) { console.warn("[flw-webhook] sale meta stamp:", (e as Error).message); }
         }
@@ -371,6 +375,7 @@ serve(async (req) => {
         p_meta: {
           originator: (pm.bank_transfer as Record<string, unknown>)?.originator_name || null,
           originator_bank: originatorBank || null,
+          sender_narration: senderNarration || null,
         },
       });
       if (error) { console.error("[flw-webhook] wallet_credit:", error.message); return bad("credit failed", 500); }
