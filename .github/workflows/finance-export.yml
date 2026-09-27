@@ -1,0 +1,52 @@
+name: Finance ledger check (encrypted export)
+
+# Manual only. Refreshes the platform finance books and reads the whole report (profit & loss, daily, bills / subscriptions by category, health,
+# memo figures and the latest ledger entries) with the service-role key, and stores it as an ENCRYPTED artifact that expires in a day. The repo is
+# public and these are the business's real earnings, so nothing but HTTP status codes is ever printed to the log and the JSON is never stored in the
+# clear; it can only be opened with the PRICE_EXPORT_PASSPHRASE secret:  openssl enc -d -aes-256-cbc -pbkdf2 -in finance-report.json.enc -out finance-report.json
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Read the finance report
+        env:
+          SUPABASE_URL: https://${{ secrets.SUPABASE_PROJECT_ID }}.supabase.co
+          SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          PASS: ${{ secrets.PRICE_EXPORT_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          # the same key goes in BOTH headers ("Conflicting API keys" otherwise)
+          rpc() {   # name, json body, output file
+            code=$(curl -sS -m 90 -o "$3" -w '%{http_code}' -X POST "$SUPABASE_URL/rest/v1/rpc/$1" \
+              -H "Authorization: Bearer $SERVICE_KEY" -H "apikey: $SERVICE_KEY" -H "Content-Type: application/json" -d "$2")
+            echo "$1 -> HTTP $code"
+            [ "$code" = "200" ] || { echo "failed (body not shown)"; exit 1; }
+          }
+          FROM='2026-01-01T00:00:00+01:00'
+          TO="$(date -u -d '+2 days' +%Y-%m-%d)T00:00:00+01:00"
+          A="\"p_from\":\"$FROM\",\"p_to\":\"$TO\""
+          rpc finance_sync   '{"p_full":false}'                                              sync.json
+          rpc finance_pl     "{$A,\"p_include_estimates\":true}"                              pl.json
+          rpc finance_pl     "{$A,\"p_include_estimates\":false}"                             pl_confirmed.json
+          rpc finance_daily  "{$A,\"p_include_estimates\":true}"                              daily.json
+          rpc finance_breakdown "{$A,\"p_stream\":\"bills\",\"p_include_estimates\":true}"    bills.json
+          rpc finance_breakdown "{$A,\"p_stream\":\"subscriptions\",\"p_include_estimates\":true}" subscriptions.json
+          rpc finance_breakdown "{$A,\"p_stream\":\"wallet\",\"p_include_estimates\":true}"   wallet.json
+          rpc finance_health '{}'                                                             health.json
+          rpc finance_memo   "{$A}"                                                           memo.json
+          rpc finance_entries_page "{$A,\"p_limit\":500,\"p_offset\":0,\"p_include_estimates\":true}" entries.json
+          node -e 'const fs=require("fs");const o={};for(const k of ["sync","pl","pl_confirmed","daily","bills","subscriptions","wallet","health","memo","entries"])o[k]=JSON.parse(fs.readFileSync(k+".json","utf8"));fs.writeFileSync("finance-report.json",JSON.stringify(o))'
+          openssl enc -aes-256-cbc -pbkdf2 -salt -in finance-report.json -out finance-report.json.enc -pass env:PASS
+          rm -f finance-report.json sync.json pl.json pl_confirmed.json daily.json bills.json subscriptions.json wallet.json health.json memo.json entries.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: finance-report-encrypted
+          path: finance-report.json.enc
+          retention-days: 1
