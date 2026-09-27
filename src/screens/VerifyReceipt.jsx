@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "../utils/supabase";
 import { formatWAT } from "../utils/wat";
 import { fmtNaira } from "../utils/receiptPdfLayout";
+import BarcodeScanner from "../components/BarcodeScanner";
 
 /**
  * Public page at /verify — where the "Verify at kudiai.app/verify" line on a receipt
@@ -14,6 +15,21 @@ import { fmtNaira } from "../utils/receiptPdfLayout";
  */
 const REF_RE = /^KDT-[0-9]{6}-[A-Z2-9]{8}$/;
 const FONT = "system-ui,-apple-system,'Segoe UI',sans-serif";
+
+/**
+ * The QR printed on a receipt (see receiptPdfLayout.js) encodes a full verify URL, but any 2D barcode
+ * reader — including a generic phone camera app someone used instead of this page's own scanner — could
+ * hand back just the bare reference. Handle both: pull ?ref= out of anything URL-shaped, else treat the
+ * decoded text as the reference itself.
+ */
+export function refFromScan(text) {
+  const raw = String(text || "").trim();
+  try {
+    const q = new URL(raw).searchParams.get("ref");
+    if (q) return q;
+  } catch { /* not a URL — fall through to treating it as a bare reference */ }
+  return raw;
+}
 
 function Row({ label, value }) {
   return (
@@ -77,6 +93,8 @@ export default function VerifyReceipt() {
               {busy ? "Checking…" : "Verify"}
             </button>
           </form>
+
+          <BarcodeScanner onScan={(text) => { const r = refFromScan(text).toUpperCase(); setRef(r); check(r); }} />
 
           {state.status === "invalid" && (
             <p role="alert" style={{ margin: "14px 0 0", fontSize: 13, color: "#b45309" }}>

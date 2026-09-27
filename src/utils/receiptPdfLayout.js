@@ -51,7 +51,7 @@ export function fmtNaira(n) {
  * @param data   receipt spec from receiptConfig.js
  * @param assets { logo?: dataURL, font: "NotoSans" | "helvetica" }
  */
-export function renderReceiptPdf(doc, data, { logo = null, providerLogo = null, font = "helvetica" } = {}) {
+export function renderReceiptPdf(doc, data, { logo = null, providerLogo = null, qr = null, font = "helvetica" } = {}) {
   const custom = font !== "helvetica";
   // helvetica has no naira sign — spell it out rather than print a broken glyph
   const t = (s) => (custom ? String(s ?? "") : String(s ?? "").replace(/₦/g, "NGN "));
@@ -206,6 +206,12 @@ export function renderReceiptPdf(doc, data, { logo = null, providerLogo = null, 
     if (y + 16 > 274) newPage();   // the block ends above the footer rule at 277
     doc.setFillColor(...PANEL); doc.setDrawColor(...HAIR); doc.setLineWidth(0.3);
     doc.roundedRect(ML, y, CW, 16, 2.5, 2.5, "FD");
+    // a scannable QR of the verify link — any phone's own camera app reads it, no KudiAI app or login needed,
+    // and it opens straight to the reference already filled in and checked (see VerifyReceipt.jsx's ?ref= handling)
+    if (qr?.dataUrl) {
+      const qSize = 14;
+      try { doc.addImage(qr.dataUrl, "PNG", RIGHT - 6 - qSize, y + 1, qSize, qSize); } catch (_) { /* the QR is a convenience; the text link below still works */ }
+    }
     // vector padlock (the built-in fonts have no lock glyph)
     const lx = ML + 6, ly = y + 5;
     doc.setDrawColor(...GREEN); doc.setLineWidth(0.5);
