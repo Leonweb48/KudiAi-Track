@@ -5,6 +5,7 @@ import { bankEmail, esc, cleanSubject, naira, appLink, htmlToText, type EmailRow
 import { parseCkAmount } from "../_shared/ckAmount.ts";
 import { applyDataPrices, parseDiscountPct, parseSellingPrices, type SellingPrices } from "../_shared/dataPricing.ts";
 import { checkBillGate, DEFAULT_CONFIG, PURCHASE_ACTIONS, type CouponRow, type GateConfig, type GateDeps, type GateMode } from "../_shared/billGate.ts";
+import { airtimeCost, dataCost, findPlanPrice, networkName, parseDiscounts, printAirtimeCost, type Cost, type Discounts } from "../_shared/billCost.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -161,6 +162,48 @@ function makeGateDeps(): GateDeps {
   };
 }
 
+// ── What this order cost US (logic + tests live in _shared/billCost.ts) ───────────────────────────────────────────
+// Written to the platform finance ledger the moment an airtime / data / print order is accepted, so the admin profit report can show the real
+// margin per order. It is best-effort by design: it runs after the response is on its way, never throws into a purchase, and a failure only
+// means that one order has no recorded cost (the report shows how much of the period is covered).
+let costDiscCache: { at: number; d: Discounts } | null = null;
+async function costDiscounts(): Promise<Discounts> {
+  if (costDiscCache && Date.now() - costDiscCache.at < 5 * 60_000) return costDiscCache.d;
+  const { data } = await createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } }).from("platform_config").select("value").eq("key", "ck_discounts").maybeSingle();
+  costDiscCache = { at: Date.now(), d: parseDiscounts((data as { value?: string } | null)?.value) };
+  return costDiscCache.d;
+}
+const planListCache = new Map<string, { at: number; resp: unknown }>();   // "<key label>:<network id>" -> the provider's plan list
+async function providerPlanPrice(label: string, apiKey: string, netId: string, network: string, planId: string): Promise<number | null> {
+  const ck_ = `${label}:${netId}`;
+  let hit = planListCache.get(ck_);
+  if (!hit || Date.now() - hit.at > 10 * 60_000) {
+    const resp = await ck("APIDatabundlePlansV2.asp", { APIKey: apiKey, MobileNetwork: netId }, { retries: 0, timeoutMs: 8000 });
+    hit = { at: Date.now(), resp };
+    planListCache.set(ck_, hit);
+  }
+  return findPlanPrice(hit.resp, network, planId);
+}
+async function recordBillCost(cat: string, rid: string, userId: string | null, resp: Record<string, unknown>, work: (d: Discounts) => Promise<Cost | null>) {
+  try {
+    if (!rid || !SUPABASE_URL || !SERVICE_KEY) return;
+    const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+    const cost = await work(await costDiscounts());
+    if (!cost) { console.warn(`[finance] no cost worked out for ${cat} order ${rid}`); return; }
+    const { error } = await db.rpc("finance_record_bill_cost", {
+      p_request_id: rid, p_cat: cat, p_cost_kobo: cost.costKobo, p_face_kobo: cost.faceKobo, p_basis: cost.basis, p_estimated: cost.estimated, p_user: userId,
+      // field NAMES only (never values) of the provider's response: shows whether it reports its own charge, so the estimate can be replaced by it
+      p_meta: { ck_fields: Object.keys(resp ?? {}).slice(0, 30) },
+    });
+    if (error) console.warn(`[finance] cost not recorded for ${rid}: ${error.message}`);
+  } catch (e) { console.warn(`[finance] cost not recorded for ${rid}: ${(e as Error).message}`); }
+}
+// Let the runtime finish the work after the customer already has their answer; where that is not available, it simply runs alongside.
+function afterResponse(p: Promise<unknown>) {
+  const er = (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime;
+  if (er?.waitUntil) er.waitUntil(p);
+}
+
 // Constant-time string comparison for secrets (avoids leaking a match prefix through timing).
 function timingSafeEqual(a: string, b: string): boolean {
   const ea = new TextEncoder().encode(a), eb = new TextEncoder().encode(b);
@@ -263,6 +306,7 @@ serve(async (req) => {
         MobileNumber: phone.replace(/\D/g, ""), RequestID: rid, CallBackURL: "https://kudiai.app/",
       });
       if (!isOk(data)) return json({ error: errMsg(data, "Airtime purchase failed"), _raw: data });
+      afterResponse(recordBillCost("airtime", rid, callerUser?.id ?? null, data, async (d) => airtimeCost(amount, networkName(network, netId), d, data)));
       return json({ status: "SUCCESS", reference: String(data.orderid ?? data.requestid ?? ""), message: String(data.status ?? "ORDER_RECEIVED") });
     }
 
@@ -349,6 +393,8 @@ serve(async (req) => {
       });
       console.log(`data purchase result:`, JSON.stringify(data).slice(0, 500));
       if (!isOk(data)) return json({ error: `${errMsg(data, "Data purchase failed")} [net:${netId} plan:${planId}]`, _raw: data });
+      afterResponse(recordBillCost("data", rid, callerUser?.id ?? null, data, async () =>
+        dataCost(await providerPlanPrice("data", DATA_K, netId, networkName(network, netId) ?? network, planId).catch(() => null), 1, data)));
       return json({ status: "SUCCESS", reference: String(data.orderid ?? data.requestid ?? ""), message: String(data.status ?? "ORDER_RECEIVED") });
     }
 
@@ -898,6 +944,7 @@ serve(async (req) => {
       });
       const pins = (data?.TXN_EPIN ?? []) as Record<string, unknown>[];
       if (!pins.length) return json({ error: isOk(data) ? "Airtime ePIN not returned — contact Clubkonnect support" : errMsg(data, "Print airtime failed"), _raw: data });
+      afterResponse(recordBillCost("print-airtime", rid, callerUser?.id ?? null, data, async (d) => printAirtimeCost(value, qty, networkName(network, netId), d, data)));
       return json({ status: "SUCCESS", reference: String(data?.batchno ?? data?.orderid ?? data?.requestid ?? ""), pins, message: "ORDER_RECEIVED" });
     }
 
@@ -916,6 +963,8 @@ serve(async (req) => {
       });
       const pins = (data?.TXN_EPIN_DATABUNDLE ?? []) as Record<string, unknown>[];
       if (!pins.length) return json({ error: isOk(data) ? "Data ePIN not returned — contact Clubkonnect support" : errMsg(data, "Print data failed"), _raw: data });
+      afterResponse(recordBillCost("print-data", rid, callerUser?.id ?? null, data, async () =>
+        dataCost(await providerPlanPrice("print-data", PRINT_DATA_K, netId, networkName(network, netId) ?? network, planId).catch(() => null), qty, data)));
       return json({ status: "SUCCESS", reference: String(data?.batchno ?? data?.orderid ?? data?.requestid ?? ""), pins, message: "ORDER_RECEIVED" });
     }
 
