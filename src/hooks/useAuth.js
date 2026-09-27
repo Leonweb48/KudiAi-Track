@@ -69,12 +69,9 @@ export async function logPlatformSession(supabaseClient, userId, userType, usern
     // Compare against last 20 sessions to flag new device or new city
     let isNewDevice = true, isNewLocation = true;
     try {
-      const { data: prev } = await supabaseClient
-        .from("platform_sessions")
-        .select("device_type, browser, city")
-        .eq("user_id", userId)
-        .order("created_at", { ascending: false })
-        .limit(20);
+      // platform_sessions is service-role only (it holds IPs), so a plain SELECT here always came back empty and
+      // flagged every login as a new device. my_recent_session_devices() returns just these fields, own rows only.
+      const { data: prev } = await supabaseClient.rpc("my_recent_session_devices");
       if (prev && prev.length > 0) {
         isNewDevice   = !prev.some(s => s.device_type === deviceType && s.browser === browser);
         isNewLocation = !!city && !prev.some(s => s.city === city);
