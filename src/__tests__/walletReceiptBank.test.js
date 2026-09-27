@@ -200,3 +200,44 @@ describe("the card and the shared image", () => {
     expect(host.textContent).toContain(BAL);
   });
 });
+
+describe("wallet receipts — the transfer's description", () => {
+  const base = { businessName: "Adaeze Fresh Mart", ownerName: "Adaeze Okafor" };
+  // eslint-disable-next-line global-require
+  const { bankAlertNarration } = require("../utils/receiptConfig");
+
+  test("a transfer shows exactly what the recipient's bank alert says, including the sender's note", () => {
+    const r = buildWalletReceipt(ledger({ source: "withdrawal" }), { ...base,
+      withdrawal: { id: "0a1b2c3d-4e5f-6789-abcd-ef0123456789", narration: "June rent", account_name: "ADA OBI", account_number: "0123456789", bank_code: "058" } });
+    expect(field(r, "Description").value).toBe("KudiAI Track KDT0A1B2C3D June rent");
+    expect(field(r, "Narration")).toBeUndefined();
+  });
+
+  test("a transfer with no note still shows the bank's description (not left blank)", () => {
+    const r = buildWalletReceipt(ledger({ source: "withdrawal" }), { ...base,
+      withdrawal: { id: "0a1b2c3d-4e5f-6789-abcd-ef0123456789", narration: "", account_number: "0123456789", bank_code: "058" } });
+    expect(field(r, "Description").value).toBe("KudiAI Track KDT0A1B2C3D");
+  });
+
+  test("the alert text matches the server's sanitising and 100-char cap", () => {
+    expect(bankAlertNarration("aaaaaaaa-bbbb", "pay/for #goods!")).toBe("KudiAI Track KDTAAAAAAAA pay for  goods");
+    expect(bankAlertNarration("aaaaaaaa", "x".repeat(200)).length).toBe(100);
+    expect(bankAlertNarration("", "note")).toBe("");
+  });
+
+  test("a deposit shows what the sender wrote", () => {
+    const r = buildWalletReceipt(ledger({ source: "topup", direction: "credit", meta: { originator: "JOHN DOE", sender_narration: "Money for stock" } }), base);
+    expect(field(r, "Description").value).toBe("Money for stock");
+  });
+
+  test("a deposit without a sender description has no empty Description row", () => {
+    const r = buildWalletReceipt(ledger({ source: "topup", direction: "credit", meta: { originator: "JOHN DOE" } }), base);
+    expect(field(r, "Description")).toBeUndefined();
+  });
+
+  test("a sale payment shows the sender's description when it differs from the sale note", () => {
+    const r = buildWalletReceipt(ledger({ source: "sale", direction: "credit", narration: "Sale — 2 bags rice", meta: { sender_narration: "rice payment" } }), base);
+    expect(field(r, "For").value).toBe("2 bags rice");
+    expect(field(r, "Description").value).toBe("rice payment");
+  });
+});
