@@ -7,9 +7,9 @@ import { applyDataPrices, parseDiscountPct, parseSellingPrices, type SellingPric
 import { checkBillGate, DEFAULT_CONFIG, PURCHASE_ACTIONS, type CouponRow, type GateConfig, type GateDeps, type GateMode } from "../_shared/billGate.ts";
 import { airtimeCost, dataCost, findPlanPrice, networkName, parseDiscounts, printAirtimeCost, type Cost, type Discounts } from "../_shared/billCost.ts";
 import { buyWithFallback, parseServiceList, probeVerdict, purchaseServiceState, V3_PATH, type CkResult, type Health, type Lookup, type RouteConfig, type RouteEvent } from "../_shared/ckRoute.ts";
-import { airtimeServiceId, dataServiceId, isVtPlan, parseVariations, vtCall, vtCode, vtConfigured, vtEnv, vtPlanCode, vtRequestId, vtTxn, vtTxnStatus, type VtCreds, type VtFetch, type VtResult } from "../_shared/vtpass.ts";
+import { airtimeServiceId, dataServiceId, isVtPlan, parseVariations, vtAirtimeBody, vtCall, vtCode, vtConfigured, vtDataBody, vtEnv, vtPlanCode, vtRequestId, vtTxn, vtTxnStatus, type VtCreds, type VtFetch, type VtResult } from "../_shared/vtpass.ts";
 import {
-  buyAcrossProviders, combineVerdicts, DEFAULT_PROVIDER_CONFIG, parseProviderConfig, PROVIDER_LABEL, providerOrder, vtCostKobo, vtMessage, vtProbeVerdict, vtVerify,
+  buyAcrossProviders, classifyVt, combineVerdicts, DEFAULT_PROVIDER_CONFIG, parseProviderConfig, PROVIDER_LABEL, providerOrder, vtCostKobo, vtMessage, vtProbeVerdict, vtVerify,
   VT_SERVICES, type BuyDeps, type BuyOutcome, type Provider, type ProviderConfig, type ProviderVerdict, type SwitchEvent,
 } from "../_shared/billProvider.ts";
 
@@ -656,7 +656,7 @@ serve(async (req) => {
   // service-role key. This function is deployed --no-verify-jwt, so the gateway does NOT check anything for us:
   // these MUST be gated here (they used to be reachable by anyone on the internet with no credentials at all).
   let callerUser: { id: string } | null = null;   // set for ordinary logged-in callers; stays null for server (service-role) calls
-  const SERVICE_ONLY = new Set(["wallet-balance", "connectivity-check", "wallet-balance-alert", "health-check", "data-probe", "refresh-ck-prices", "price-list", "route-check", "vtpass-probe", "provider-status"]);
+  const SERVICE_ONLY = new Set(["wallet-balance", "connectivity-check", "wallet-balance-alert", "health-check", "data-probe", "refresh-ck-prices", "price-list", "route-check", "vtpass-probe", "provider-status", "vtpass-sandbox-proof"]);
   // Public catalogue lookups (plan lists) stay open; purchase / write actions require the service key OR a user JWT.
   const READ_ONLY = new Set(["data-plans", "cabletv-plans"]);
   if (SERVICE_ONLY.has(action)) {
@@ -699,7 +699,7 @@ serve(async (req) => {
           APIKey: AIRTIME_K, MobileNetwork: netId, Amount: String(amount),
           MobileNumber: digits, RequestID: rid, CallBackURL: "https://kudiai.app/",
         }),
-        sid ? { serviceID: sid, amount: Number(amount), phone: digits } : null));
+        sid ? vtAirtimeBody(sid, Number(amount), digits) : null));
       if (out.via !== "clubkonnect") return vtAnswer("airtime", out, rid, callerUser?.id ?? null);
       const data = out.data;
       if (!isOk(data)) return json({ error: errMsg(data, "Airtime purchase failed"), _raw: data });
@@ -806,7 +806,7 @@ serve(async (req) => {
           APIKey: DATA_K, MobileNetwork: netId, DataPlan: planId,
           MobileNumber: digits, RequestID: rid, CallBackURL: "https://kudiai.app/",
         }),
-        vtPlan && sid ? { serviceID: sid, billersCode: digits, variation_code: vtPlanCode(planId), phone: digits } : null));
+        vtPlan && sid ? vtDataBody(sid, vtPlanCode(planId), digits) : null));
       if (out.via !== "clubkonnect") return vtAnswer("data", out, rid, callerUser?.id ?? null);
       const data = out.data;
       console.log(`data purchase result:`, JSON.stringify(data).slice(0, 500));
@@ -2023,6 +2023,40 @@ serve(async (req) => {
         routing: { airtime, data },
         checkedAt: new Date().toISOString(),
       });
+    }
+
+    // ── VTpass sandbox proof (service-only, SANDBOX ONLY) ─────────────────────
+    // VTpass grants live access only after seeing a successful sandbox order for each service we integrate. This places
+    // one per airtime + data service on every network through the SAME request-id builder and order bodies real orders
+    // use (vtRequestId, vtAirtimeBody, vtDataBody), to VTpass's sandbox success number, and confirms each by requery.
+    // Returns the request IDs to put on VTpass's "Request API access" form. Refuses outright once VTpass is live.
+    if (action === "vtpass-sandbox-proof") {
+      if (!vtConfigured(VT)) return json({ error: "VTpass keys are not configured" });
+      if (VT.env !== "sandbox") return json({ error: "Refused: VTpass is live — the proof only ever runs against the sandbox." });
+      const PHONE = "08011111111";   // VTpass's sandbox "success" test number
+      const now = Date.now();
+      let n = 0;
+      const one = async (service: string, serviceID: string, body: Record<string, unknown>, variation: string | null = null) => {
+        const requestId = vtRequestId(`KDT-BILL-${now + ++n}`, now);
+        const pay = await vtCall(vtFetch, VT, "POST", "/pay", { request_id: requestId, ...body }, 45_000);
+        const rq = await vtCall(vtFetch, VT, "POST", "/requery", { request_id: requestId }, 30_000);
+        return {
+          service, serviceID, variation, requestId,
+          payCode: vtCode(pay) || null, payDesc: String(pay.response_description ?? "").slice(0, 60) || null,
+          status: vtTxnStatus(rq) || vtTxnStatus(pay) || null, confirmed: classifyVt(rq) === "delivered",
+        };
+      };
+      const results = await Promise.all(["MTN", "Airtel", "Glo", "9mobile"].map(async (net) => {
+        const a = airtimeServiceId(net)!, d = dataServiceId(net)!;
+        const rows: Record<string, unknown>[] = [await one(`${net} Airtime VTU`, a, vtAirtimeBody(a, 100, PHONE))];
+        const plans = parseVariations(await vtCall(vtFetch, VT, "GET", `/service-variations?serviceID=${encodeURIComponent(d)}`, undefined, 20_000));
+        const cheapest = [...plans].sort((x, y) => x.plan_amount - y.plan_amount)[0];
+        rows.push(cheapest
+          ? await one(`${net} Data`, d, vtDataBody(d, vtPlanCode(cheapest.plan_id), PHONE), `${vtPlanCode(cheapest.plan_id)} — ${cheapest.plan_name}`)
+          : { service: `${net} Data`, serviceID: d, error: `no plans listed for ${d}` });
+        return rows;
+      }));
+      return json({ env: VT.env, phone: PHONE, results: results.flat() });
     }
 
     // ── VTpass contract probe (service-only) ─────────────────────────────────

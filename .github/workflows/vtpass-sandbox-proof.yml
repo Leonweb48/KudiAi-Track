@@ -1,0 +1,43 @@
+name: VTpass sandbox proof
+
+# For VTpass's "Request API access" form: places one SANDBOX order (play money, VTpass's test number 08011111111)
+# for each airtime + data service on every network — through the same request-id builder and order bodies real
+# orders use — confirms each by requery, and prints the request IDs to paste into the form.
+# Refuses to run once VTpass is live. Prints sandbox request IDs and statuses only — never keys.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb   # v1 (pinned)
+        with:
+          version: 2.107.0
+
+      - name: Sandbox orders
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ secrets.SUPABASE_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          FN="https://${REF}.supabase.co/functions/v1/clubkonnect"
+          SRK=$(supabase projects api-keys --project-ref "$REF" -o json | jq -r '.[] | select(.name=="service_role") | .api_key')
+          echo "::add-mask::$SRK"
+          code=$(curl -sS -m 200 -o out.json -w '%{http_code}' -X POST "$FN" -H "Content-Type: application/json" -H "Authorization: Bearer $SRK" \
+            -d '{"action":"vtpass-sandbox-proof"}' || echo "000")
+          echo "HTTP $code  $(jq -c '{env, phone, error}' out.json 2>/dev/null || head -c 300 out.json)"
+          echo ""
+          jq -r '.results[]? | "\(.service) | serviceID=\(.serviceID) | request_id=\(.requestId // "-") | \(.status // .error) | confirmed=\(.confirmed // false) | \(.variation // "")"' out.json
+          {
+            echo "### VTpass sandbox request IDs"
+            echo ""
+            echo "| Service | serviceID | Request ID | Status |"
+            echo "|---|---|---|---|"
+            jq -r '.results[]? | "| \(.service) | \(.serviceID) | `\(.requestId // "-")` | \(if .confirmed then "delivered ✅" else (.status // .error // "?") end) |"' out.json
+          } >> "$GITHUB_STEP_SUMMARY"

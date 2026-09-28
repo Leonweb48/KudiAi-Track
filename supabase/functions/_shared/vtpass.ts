@@ -63,6 +63,12 @@ export function dataServiceId(network: string): string | null {
   return a ? `${a}-data` : null;
 }
 
+// The /pay bodies (without request_id). Real orders and the sandbox proof both build them here, so what VTpass
+// approved in the sandbox is exactly what goes live.
+export const vtAirtimeBody = (serviceID: string, amount: number, phone: string) => ({ serviceID, amount, phone });
+export const vtDataBody = (serviceID: string, variationCode: string, phone: string) =>
+  ({ serviceID, billersCode: phone, variation_code: variationCode, phone });
+
 // A plan id the app got from a VTpass catalogue — lets the data purchase go to the provider that listed the plan.
 export const VT_PLAN_PREFIX = "vt:";
 export const isVtPlan = (planId: unknown) => String(planId ?? "").startsWith(VT_PLAN_PREFIX);
