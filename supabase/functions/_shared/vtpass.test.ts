@@ -2,7 +2,7 @@ import { assert, assertEquals, assertStrictEquals } from "https://deno.land/std@
 import {
   airtimeServiceId, dataServiceId, isVtPlan, lagosStamp, parseVariations, VT_CABLE, VT_ELECTRIC, vtCableBody, vtCall, vtCardDetails,
   vtConfigured, vtCustomer, vtElectricBody, vtElectricToken, vtElectricUnits, vtEnv, vtMeterType, vtPlanCode, vtRequestId, vtSmileBody,
-  vtWaecBody, type VtCreds,
+  vtWaecBody, NAMELESS_CUSTOMER, type VtCreds,
 } from "./vtpass.ts";
 
 Deno.test("vtEnv: only an explicit 'live' is live — anything else is the sandbox (play money)", () => {
@@ -182,4 +182,26 @@ Deno.test("vtCustomer: VTpass answers 000 either way — a bad number is content
   assertEquals(vtCustomer({ code: "087", response_description: "INVALID CREDENTIALS" }), { kind: "unavailable" });
   assertEquals(vtCustomer({ _raw: "<html>", _http: 502 }), { kind: "unavailable" });
   assertEquals(vtCustomer({ _unreachable: true }), { kind: "unavailable" });
+});
+
+Deno.test("electricity: discos name the fields differently — Jos 'Token'/'Units' with dashes, Kano 'null' strings", () => {
+  const jos = { code: "000", purchased_code: "Token : 3737-6908-5436-2208-2124", Token: "3737-6908-5436-2208-2124", Units: "4.5", CustomerName: "null" };
+  assertEquals(vtElectricToken(jos), "3737-6908-5436-2208-2124");
+  assertEquals(vtElectricUnits(jos), "4.5");
+  assertEquals(vtElectricToken({ Token: "3737-6908-5436-2208-2124" }), "3737-6908-5436-2208-2124");
+  const kano = { code: "000", purchased_code: "", Token: "null", Units: "null", Receipt: "null" };
+  assertEquals(vtElectricToken(kano), "");
+  assertEquals(vtElectricUnits(kano), "");
+  const ibadanPostpaid = { code: "000", purchased_code: "", Token: "null", Units: "null", ReceiptNumber: "5513250204160657" };
+  assertEquals(vtElectricToken(ibadanPostpaid), "");
+});
+
+Deno.test("vtCustomer: a matched meter with no name on record is verified (Jos); an empty answer tells us nothing", () => {
+  const jos = { code: "000", content: { Customer_Name: "", Address: "", Min_Purchase_Amount: "", MeterNumber: "1111111111111", Meter_Type: "prepaid" } };
+  assertEquals(vtCustomer(jos), { kind: "ok", name: NAMELESS_CUSTOMER, address: "" });
+  assertEquals(vtCustomer({ code: "000", content: {} }), { kind: "unavailable" });
+  assertEquals(vtCustomer({ code: "000", content: { Customer_Name: "null" } }), { kind: "unavailable" });
+  assertEquals(vtCustomer({ code: "000", content: { Customer_Name: "", MeterNumber: "1111111111111", WrongBillersCode: "true" } }).kind, "invalid");
+  const smile = { code: "000", content: { Customer_Name: "THE TESTER ITSELF", AccountList: { Account: [{ AccountId: "08011111111" }], NumberOfAccounts: 1 } } };
+  assertEquals(vtCustomer(smile).kind, "ok");
 });

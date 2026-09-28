@@ -86,18 +86,18 @@ export const VT_WAEC: Readonly<Record<string, { serviceID: string; variation: st
 };
 export const VT_SMILE = "smile-direct";
 
-/** A prepaid electricity token: VTpass sends "Token : 2636 2054 …" in token / purchased_code / mainToken. */
+// Discos differ in field names and casing (Ikeja: token/units; Jos: Token/Units; Kano: "Token":"null") — sandbox, 2026-09-28.
+const blank = (v: unknown) => { const s = String(v ?? "").trim(); return !s || /^(n\/?a|null|undefined)$/i.test(s) ? "" : s; };
+
+/** A prepaid electricity token: VTpass sends "Token : 2636 2054 …" (or "3737-6908-…") in token / Token / purchased_code / mainToken. */
 export function vtElectricToken(d: VtResult | null | undefined): string {
-  for (const k of ["token", "mainToken", "purchased_code"]) {
-    const v = String(d?.[k] ?? "").replace(/^\s*token\s*:?\s*/i, "").trim();
-    if (/\d{4}/.test(v) && !/^n\/?a$/i.test(v)) return v;
+  for (const k of ["token", "Token", "mainToken", "purchased_code"]) {
+    const v = blank(String(d?.[k] ?? "").replace(/^\s*token\s*:?\s*/i, ""));
+    if (/\d{4}/.test(v)) return v;
   }
   return "";
 }
-export const vtElectricUnits = (d: VtResult | null | undefined) => {
-  const u = String(d?.units ?? d?.mainTokenUnits ?? "").trim();
-  return u && !/^n\/?a$/i.test(u) ? u : "";
-};
+export const vtElectricUnits = (d: VtResult | null | undefined) => blank(d?.units ?? d?.Units ?? d?.mainTokenUnits);
 
 /** WAEC PINs as one line for the receipt: "Serial No: X, PIN: Y | …" (result checker) or "Token: X" (registration). */
 export function vtCardDetails(d: VtResult | null | undefined): string {
@@ -115,16 +115,21 @@ export function vtCardDetails(d: VtResult | null | undefined): string {
  * A /merchant-verify answer. VTpass answers code 000 either way — a bad number comes back as content.error
  * (with WrongBillersCode "true"), a good one with Customer_Name (+ Address for electricity).
  */
+export const NAMELESS_CUSTOMER = "Verified (no name on record)";
 export function vtCustomer(d: VtResult | null | undefined):
   { kind: "ok"; name: string; address: string } | { kind: "invalid"; message: string } | { kind: "unavailable" } {
   if (!d || d._unreachable || typeof d._raw === "string" || vtCode(d) !== "000") return { kind: "unavailable" };
   const c = (d.content ?? {}) as Record<string, unknown>;
-  const name = String(c.Customer_Name ?? "").trim();
-  if (c.error || String(c.WrongBillersCode ?? "") === "true" || !name) {
+  const name = blank(c.Customer_Name);
+  if (c.error || String(c.WrongBillersCode ?? "") === "true") {
     const msg = String(c.error ?? "").trim();
     return { kind: "invalid", message: msg && msg.length < 200 ? msg : "The number you entered could not be verified. Please check it and try again." };
   }
-  return { kind: "ok", name, address: String(c.Address ?? "").trim() };
+  // Some discos confirm the meter but hold no name for it (Jos in the sandbox: empty name, the meter number echoed back).
+  // A matched account with no name is still a match; an answer with neither can't tell us anything.
+  const matched = ["MeterNumber", "Meter_Number", "Customer_Number", "Smartcard_Number", "Account_Number", "AccountList"].some((k) => blank(c[k] as unknown) || (c[k] && typeof c[k] === "object"));
+  if (!name) return matched ? { kind: "ok", name: NAMELESS_CUSTOMER, address: blank(c.Address) } : { kind: "unavailable" };
+  return { kind: "ok", name, address: blank(c.Address) };
 }
 
 // The /pay bodies (without request_id). Real orders and the sandbox proof both build them here, so what VTpass

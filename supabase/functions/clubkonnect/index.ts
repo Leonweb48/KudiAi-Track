@@ -1081,7 +1081,9 @@ serve(async (req) => {
       if (bought.via === "vtpass") {
         const ref = String(bought.data.requestId ?? pd.vtRid());
         if (bought.state === "failed") return json({ error: bought.message, _provider: "vtpass", _vt: { code: vtCode(bought.data) || null } });
-        // pending, or a prepaid order delivered before its token → the app keeps asking electricity-query with this reference
+        // postpaid still processing → the app's usual "confirming your order" path (verify settles it; there's no token to wait for)
+        if (bought.state === "pending" && mt === "postpaid") return vtAnswer("electricity", bought, rid, callerUser?.id ?? null, ref);
+        // prepaid still processing, or delivered before its token → the app keeps asking electricity-query with this reference
         const token = vtElectricToken(bought.data), units = vtElectricUnits(bought.data);
         if (bought.state === "pending" || (mt === "prepaid" && !token)) {
           return json({ status: "PENDING", reference: ref, token: "", message: bought.state === "pending" ? "ORDER_RECEIVED" : "ORDER_COMPLETED_NO_TOKEN", provider: "vtpass" });
@@ -1176,10 +1178,8 @@ serve(async (req) => {
         const rq = await vtCall(vtFetch, VT, "POST", "/requery", { request_id: orderId }, 20_000);
         const st = classifyVt(rq), token = vtElectricToken(rq);
         if (token) return json({ status: "SUCCESS", reference: orderId, token, units: vtElectricUnits(rq), message: "ORDER_COMPLETED" });
-        // delivered with no token field at all = a postpaid payment (no token by nature); with the field = the token is still coming
-        if (st === "delivered") return json(("token" in rq || "mainToken" in rq)
-          ? { status: "PENDING", reference: orderId, token: "", message: "ORDER_COMPLETED_NO_TOKEN" }
-          : { status: "SUCCESS", reference: orderId, token: "", message: "ORDER_COMPLETED" });
+        // Only prepaid orders are polled here (a postpaid one takes the verify path), so delivered-without-token = token still coming.
+        if (st === "delivered") return json({ status: "PENDING", reference: orderId, token: "", message: "ORDER_COMPLETED_NO_TOKEN" });
         if (st === "failed" || vtCode(rq) === "019") return json({ status: "CANCELLED", reference: orderId, token: "", message: vtMessage(rq) });
         return json({ status: "PENDING", reference: orderId, token: "", message: st === "pending" ? "ORDER_RECEIVED" : "CHECKING" });
       }
@@ -2278,8 +2278,14 @@ serve(async (req) => {
           const c = vtCustomer(vr), content = (vr.content ?? {}) as Record<string, unknown>;
           const minimum = Math.max(1000, Number(content.Min_Purchase_Amount) || 0, Number(content.Minimum_Amount) || 0);
           if (i > 0) await sleep(9_000);
-          await order(sid, sid, vtElectricBody(sid, meter, mt, minimum, `080${51111111 + i}`),
-            { verified: c.kind === "ok", verifiedName: c.kind === "ok" ? c.name : c.kind === "invalid" ? `invalid: ${c.message.slice(0, 60)}` : "unavailable", variation: `${mt} ₦${minimum}` });
+          const checked = { verified: c.kind === "ok", verifiedName: c.kind === "ok" ? c.name : c.kind === "invalid" ? `invalid: ${c.message.slice(0, 60)}` : "unavailable" };
+          await order(sid, sid, vtElectricBody(sid, meter, mt, minimum, `080${51111111 + i}`), { ...checked, variation: `${mt} ₦${minimum}` });
+          // a disco whose minimum the meter check doesn't state (Ibadan, Kaduna in the sandbox) → once more, higher (013 placed nothing)
+          if (results[results.length - 1]?.payCode === "013") {
+            results.pop();
+            await sleep(16_000);
+            await order(sid, sid, vtElectricBody(sid, meter, mt, 5000, `080${51111111 + i}`), { ...checked, variation: `${mt} ₦5000` });
+          }
         }
       } else if (group === "education") {
         for (const [i, examType] of ["waecdirect", "waec-registration"].entries()) {
