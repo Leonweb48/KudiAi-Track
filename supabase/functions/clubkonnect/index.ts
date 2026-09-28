@@ -4,11 +4,12 @@ import nodemailer from "npm:nodemailer@6";
 import { bankEmail, esc, cleanSubject, naira, appLink, htmlToText, type EmailRow } from "../_shared/bankEmail.ts";
 import { parseCkAmount } from "../_shared/ckAmount.ts";
 import { applyDataPrices, parseDiscountPct, parseSellingPrices, type SellingPrices } from "../_shared/dataPricing.ts";
+import { findExamProduct, parseCkExamCatalogue, providerExamCode, type ExamProduct } from "../_shared/examCatalogue.ts";
 import { checkBillGate, DEFAULT_CONFIG, PURCHASE_ACTIONS, type CouponRow, type GateConfig, type GateDeps, type GateMode } from "../_shared/billGate.ts";
 import { airtimeCost, dataCost, findPlanPrice, networkName, parseDiscounts, printAirtimeCost, type Cost, type Discounts } from "../_shared/billCost.ts";
 import { buyWithFallback, parseServiceList, probeVerdict, purchaseServiceState, V3_PATH, type CkResult, type Health, type Lookup, type RouteConfig, type RouteEvent } from "../_shared/ckRoute.ts";
 import {
-  airtimeServiceId, dataServiceId, isVtPlan, parseVariations, VT_CABLE, VT_ELECTRIC, VT_SMILE, vtAirtimeBody, vtCableBody, vtCall, vtCardDetails, vtCode,
+  airtimeServiceId, dataServiceId, isVtPlan, parseVariations, VT_CABLE, VT_ELECTRIC, VT_SMILE, VT_WAEC, vtAirtimeBody, vtCableBody, vtCall, vtCardDetails, vtCode,
   vtConfigured, vtCustomer, vtDataBody, vtElectricBody, vtElectricToken, vtElectricUnits, vtEnv, vtMeterType, vtPlanCode, vtRequestId, vtSmileBody, vtTxn,
   vtTxnStatus, vtWaecBody, type VtCreds, type VtFetch, type VtResult,
 } from "../_shared/vtpass.ts";
@@ -661,6 +662,20 @@ function ckCustomer(d: Record<string, unknown>, invalidMessage: string): Custome
   return { kind: "ok", name, address };
 }
 const CHECK_UNAVAILABLE = "We couldn't check this number right now. Please try again shortly.";
+
+// ClubKonnect's WAEC / JAMB package lists (prices + product codes; logic + tests in _shared/examCatalogue.ts), cached 10
+// minutes. `ok` = ClubKonnect actually answered with a list (an empty JAMB list means nothing on sale, not an outage).
+const examCatCache = new Map<string, { at: number; ok: boolean; products: ExamProduct[] }>();
+async function ckExamCatalogue(exam: "waec" | "jamb"): Promise<{ ok: boolean; products: ExamProduct[] }> {
+  const hit = examCatCache.get(exam);
+  if (hit && Date.now() - hit.at < 10 * 60_000) return hit;
+  const raw = await ck(exam === "waec" ? "APIWAECPackagesV2.asp" : "APIJAMBPackagesV2.asp", { APIKey: exam === "waec" ? WAEC_K : JAMB_K },
+    { retries: 1, timeoutMs: 15000 }).catch(() => null);
+  const ok = !!raw && Array.isArray((raw as Record<string, unknown>).EXAM_TYPE);
+  const entry = { at: Date.now(), ok, products: ok ? parseCkExamCatalogue(raw) : [] };
+  if (ok) examCatCache.set(exam, entry);   // failures aren't cached, so the next ask tries again
+  return entry;
+}
 
 // A VTpass order's reference is its VTpass request_id ("<Lagos date+time>KDT…"): what VTpass support searches by, and
 // how electricity-query tells a VTpass order from a ClubKonnect one.
@@ -1321,6 +1336,27 @@ serve(async (req) => {
       return json({ status: "SUCCESS", reference: String(data.orderid ?? data.requestid ?? ""), message: String(data.status ?? "ORDER_RECEIVED") });
     }
 
+    // ── WAEC / JAMB price (public catalogue read) ─────────────────────────────
+    // The price of an exam PIN from the provider that would sell it right now — the app shows it and charges it (it used
+    // to have no price at all, so WAEC/JAMB checkout stopped at "Invalid amount"). JAMB is ClubKonnect only.
+    if (action === "exam-price") {
+      const exam = String((body as { exam?: unknown }).exam ?? "").toLowerCase().trim();
+      const examType = String((body as { examType?: unknown }).examType ?? "").trim();
+      if ((exam !== "waec" && exam !== "jamb") || !examType) return json({ error: "exam (waec or jamb) and examType required" });
+      if (exam === "waec" && VT_WAEC[examType] && (await catalogueProvider("waec")) === "vtpass") {
+        const w = VT_WAEC[examType];
+        const hit = (await vtCatalogue(w.serviceID)).find((p) => vtPlanCode(p.plan_id) === w.variation);
+        if (hit) return json({ amount: hit.plan_amount, name: hit.plan_name, provider: "vtpass" });
+      }
+      const cat = await ckExamCatalogue(exam);
+      if (!cat.ok) return json({ error: "We couldn't get the price right now. Please try again shortly." });
+      const product = findExamProduct(cat.products, examType);
+      if (!product) {
+        return json({ error: exam === "jamb" ? "JAMB PINs aren't on sale right now. Please check back later." : "This WAEC PIN isn't on sale right now. Please check back later." });
+      }
+      return json({ amount: product.amount, name: product.name, provider: "clubkonnect" });
+    }
+
     // ── WAEC packages ─────────────────────────────────────────────────────────
     if (action === "waec-packages") {
       const data = await ck("APIWAECPackagesV2.asp", { APIKey: WAEC_K });
@@ -1333,9 +1369,11 @@ serve(async (req) => {
       if (!examType || !phone) return json({ error: "examType and phone required" });
       // ClubKonnect or VTpass, with failover (the same fixed product on both).
       const vb = vtWaecBody(examType, phone.replace(/\D/g, ""));
+      // ClubKonnect's own code for the product (it spells registration "waec-registraion", the app "waec-registration")
+      const ckCode = providerExamCode((await ckExamCatalogue("waec")).products, examType);
       const pd = providerDeps("waec", rid, WAEC_K,
         () => ckBuy("waec", "APIWAECV1.asp", {
-          APIKey: WAEC_K, ExamType: examType,
+          APIKey: WAEC_K, ExamType: ckCode,
           PhoneNo: phone.replace(/\D/g, ""), RequestID: rid, CallBackURL: "https://kudiai.app/",
         }), vb);
       const out = await buyAcrossProviders("waec", vb ? await providerOrderFor("waec") : ["clubkonnect"], pd);

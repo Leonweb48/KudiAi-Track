@@ -251,6 +251,19 @@ function SelectInput({ label, value, onChange, options, placeholder = "Select…
   );
 }
 
+// The price of a WAEC / JAMB PIN, from the provider that would sell it (the clubkonnect "exam-price" action).
+function ExamPriceNote({ state }) {
+  if (state.status === "idle") return null;
+  if (state.status === "loading") return <p className="text-xs text-slate-500 dark:text-slate-400">Checking the price…</p>;
+  if (state.status === "error") return <p className="text-xs font-semibold text-red-600 dark:text-red-400">{state.message}</p>;
+  return (
+    <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3">
+      <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Price</span>
+      <span className="text-sm font-black text-slate-800 dark:text-white">₦{Number(state.amount).toLocaleString("en-NG")}</span>
+    </div>
+  );
+}
+
 function TextInput({ label, value, onChange, placeholder, type = "text" }) {
   return (
     <div>
@@ -1765,6 +1778,9 @@ export default function BillPayments({ store, plan, session = null, staffName = 
   const [pkgs,         setPkgs]         = useState([]);
   const [pkgsLoading,  setPkgsLoading]  = useState(false);
   const [pkgsError,    setPkgsError]    = useState("");
+  // WAEC / JAMB: the PIN's price (they had none, so checkout stopped at "Invalid amount"); the charge is this amount
+  const [examPrice,    setExamPrice]    = useState({ status: "idle", amount: 0, message: "" });   // idle | loading | ok | error
+  const examPriceSeq = useRef(0);   // a newer exam-type choice wins over a slower earlier answer
 
   const bills = useMemo(
     () => transactions.filter(t => t.payment_type === "bill_payment"),
@@ -1803,6 +1819,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                company: "", customerId: "", examType: "", profileId: "",
                accountNo: "", value: "100", quantity: "1", sets: "1", denom: "1000" });
     setError(""); setPins(null); resetVerify(); setPlans([]); setPlansError(""); setPkgs([]); setPkgsError("");
+    examPriceSeq.current++; setExamPrice({ status: "idle", amount: 0, message: "" });
     if (catId === "data") loadPlans("data-plans", { network: "MTN" });
     if (catId === "spectranet") loadPlans("spectranet-plans", {});
     if (catId === "smile") loadPlans("smile-plans", {});
@@ -2090,7 +2107,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     return () => { cancelled = true; clearTimeout(timer); };
   }, [fulfillResult?.elecOrderId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const closeSheet = () => { setSelectedCat(null); setForm({}); setError(""); resetVerify(); setUsePoints(false); setUseCashback(false); };
+  const closeSheet = () => { setSelectedCat(null); setForm({}); setError(""); resetVerify(); setUsePoints(false); setUseCashback(false); examPriceSeq.current++; setExamPrice({ status: "idle", amount: 0, message: "" }); };
 
   // Fill form from a saved beneficiary (user still needs to verify + pick amount)
   const applyBeneficiary = (ben) => {
@@ -2108,6 +2125,24 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     }));
     resetVerify();
     setError("");
+  };
+
+  const loadExamPrice = async (exam, examType) => {
+    const seq = ++examPriceSeq.current;
+    setForm(f => ({ ...f, amount: "" }));
+    if (!examType) { setExamPrice({ status: "idle", amount: 0, message: "" }); return; }
+    setExamPrice({ status: "loading", amount: 0, message: "" });
+    try {
+      const r = await clubkonnect("exam-price", { exam, examType });
+      if (seq !== examPriceSeq.current) return;
+      const amt = Number(r?.amount) || 0;
+      if (amt <= 0) throw new Error("We couldn't get the price right now. Please try again shortly.");
+      setForm(f => ({ ...f, amount: String(amt) }));
+      setExamPrice({ status: "ok", amount: amt, message: "" });
+    } catch (e) {
+      if (seq !== examPriceSeq.current) return;
+      setExamPrice({ status: "error", amount: 0, message: e?.message || "We couldn't get the price right now. Please try again shortly." });
+    }
   };
 
   const loadPlans = async (action, extra) => {
@@ -2265,6 +2300,8 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       if (selectedCat === "waec"        && (!form.examType || !form.phone))            throw new Error("Exam type and phone required");
       if (selectedCat === "jamb"        && (!form.examType || !form.phone))            throw new Error("Exam type and phone required");
       if (selectedCat === "jamb"        && form.profileId && verifyStatus !== "ok")    throw new Error("Please verify JAMB profile ID first");
+      if ((selectedCat === "waec" || selectedCat === "jamb") && !(parseFloat(form.amount) > 0))
+        throw new Error(examPrice.status === "error" && examPrice.message ? examPrice.message : "The price isn't available yet — please choose the exam type again.");
       if (selectedCat === "spectranet"  && (!form.accountNo || !form.planId))          throw new Error("Account number and plan required");
       if (selectedCat === "smile"       && (!form.accountNo || !form.planId))          throw new Error("Account number and plan required");
       if (selectedCat === "smile"       && verifyStatus !== "ok")                      throw new Error("Please verify Smile account first");
@@ -3539,7 +3576,8 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
               {/* ── WAEC ── */}
               {selectedCat === "waec" && <>
-                <SelectInput label="Exam Type *" value={form.examType} onChange={v => setF("examType", v)} options={WAEC_TYPES} placeholder="Select exam type…" />
+                <SelectInput label="Exam Type *" value={form.examType} onChange={v => { setF("examType", v); loadExamPrice("waec", v); }} options={WAEC_TYPES} placeholder="Select exam type…" />
+                <ExamPriceNote state={examPrice} />
                 <PhoneInput label="Phone Number *" value={form.phone} onChange={e => setF("phone", e.target.value)} placeholder="08012345678" />
                 {form.examType && (
                   <div className="bg-cyan-50 dark:bg-cyan-900/20 border border-cyan-200 dark:border-cyan-800 rounded-xl px-4 py-3">
@@ -3550,7 +3588,8 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
               {/* ── JAMB ── */}
               {selectedCat === "jamb" && <>
-                <SelectInput label="Exam Type *" value={form.examType} onChange={v => { setF("examType", v); resetVerify(); }} options={JAMB_TYPES} placeholder="Select exam type…" />
+                <SelectInput label="Exam Type *" value={form.examType} onChange={v => { setF("examType", v); resetVerify(); loadExamPrice("jamb", v); }} options={JAMB_TYPES} placeholder="Select exam type…" />
+                <ExamPriceNote state={examPrice} />
                 <PhoneInput label="Phone Number *" value={form.phone} onChange={e => setF("phone", e.target.value)} placeholder="08012345678" />
                 <TextInput label="JAMB Profile ID (optional — verify to confirm name)" value={form.profileId} onChange={v => { setF("profileId", v); resetVerify(); }} placeholder="Enter profile ID" />
                 {form.profileId && (
