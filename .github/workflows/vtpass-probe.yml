@@ -1,0 +1,43 @@
+name: VTpass contract probe
+
+# Calls the clubkonnect function's service-only `vtpass-probe` action, which records how VTpass REALLY answers the cases
+# the bill-provider routing relies on (a lookup of an order that doesn't exist, the request_id format, and — in the
+# SANDBOX only, play money, VTpass's published test numbers — delivered / pending / failed orders, a repeated
+# request_id and a data plan purchase). In live it only looks up made-up orders (free, places nothing).
+# Prints codes, statuses and field names only — never keys.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb   # v1 (pinned)
+        with:
+          version: 2.107.0
+
+      - name: Probe
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ secrets.SUPABASE_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          FN="https://${REF}.supabase.co/functions/v1/clubkonnect"
+          SRK=$(supabase projects api-keys --project-ref "$REF" -o json | jq -r '.[] | select(.name=="service_role") | .api_key')
+          echo "::add-mask::$SRK"
+          code=$(curl -sS -m 200 -o out.json -w '%{http_code}' -X POST "$FN" -H "Content-Type: application/json" -H "Authorization: Bearer $SRK" \
+            -d '{"action":"vtpass-probe"}' || echo "000")
+          echo "HTTP $code"
+          jq -c '{env, configured, publicKeySet, error}' out.json 2>/dev/null || head -c 300 out.json
+          echo "REQUERY-MADE-UP   $(jq -c '.requeryMadeUp' out.json)"
+          echo "REQUERY-MALFORMED $(jq -c '.requeryMalformed' out.json)"
+          echo "VARIATIONS        $(jq -c '.variations' out.json)"
+          jq -c '.cases[]?' out.json | while read -r c; do echo "CASE $c"; done
+          echo "REPEAT-SAME-ID    $(jq -c '.repeatSameRequestId' out.json)"
+          echo "ID-WITHOUT-DATE   $(jq -c '.requestIdWithoutDate' out.json)"
+          echo "SIDS              $(jq -c '{airtimeSids, dataSid}' out.json)"

@@ -7,6 +7,7 @@ import { applyDataPrices, parseDiscountPct, parseSellingPrices, type SellingPric
 import { checkBillGate, DEFAULT_CONFIG, PURCHASE_ACTIONS, type CouponRow, type GateConfig, type GateDeps, type GateMode } from "../_shared/billGate.ts";
 import { airtimeCost, dataCost, findPlanPrice, networkName, parseDiscounts, printAirtimeCost, type Cost, type Discounts } from "../_shared/billCost.ts";
 import { buyWithFallback, parseServiceList, probeVerdict, purchaseServiceState, V3_PATH, type Health, type Lookup, type RouteConfig, type RouteEvent } from "../_shared/ckRoute.ts";
+import { airtimeServiceId, dataServiceId, parseVariations, vtCall, vtCode, vtConfigured, vtEnv, vtRequestId, vtTxn, vtTxnStatus, type VtCreds, type VtResult } from "../_shared/vtpass.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -29,6 +30,14 @@ const SPECTRANET_K   = Deno.env.get("CK_SPECTRANET_KEY")    ?? "";
 const SMILE_K        = Deno.env.get("CK_SMILE_KEY")         ?? "";
 const PRINT_AIRTIME_K = Deno.env.get("CK_PRINT_AIRTIME_KEY") ?? "";
 const PRINT_DATA_K   = Deno.env.get("CK_PRINT_DATA_KEY")    ?? "";
+
+// VTpass — the second provider (see _shared/vtpass.ts). VTPASS_ENV is set together with the keys, so the environment always
+// matches them; anything but "live" is the sandbox (play money), which must never serve a real customer.
+const VT: VtCreds = {
+  apiKey: Deno.env.get("VTPASS_API_KEY") ?? "", secretKey: Deno.env.get("VTPASS_SECRET_KEY") ?? "",
+  publicKey: Deno.env.get("VTPASS_PUBLIC_KEY") ?? "", env: vtEnv(Deno.env.get("VTPASS_ENV")),
+  base: Deno.env.get("VTPASS_BASE") || undefined,   // overridable for testing only — never set in prod
+};
 
 const NET_ID: Record<string, string> = {
   MTN: "01", Glo: "02", "t2mobile": "03", "9mobile": "03", Airtel: "04",
@@ -494,7 +503,7 @@ serve(async (req) => {
   // service-role key. This function is deployed --no-verify-jwt, so the gateway does NOT check anything for us:
   // these MUST be gated here (they used to be reachable by anyone on the internet with no credentials at all).
   let callerUser: { id: string } | null = null;   // set for ordinary logged-in callers; stays null for server (service-role) calls
-  const SERVICE_ONLY = new Set(["wallet-balance", "connectivity-check", "wallet-balance-alert", "health-check", "data-probe", "refresh-ck-prices", "price-list", "route-check"]);
+  const SERVICE_ONLY = new Set(["wallet-balance", "connectivity-check", "wallet-balance-alert", "health-check", "data-probe", "refresh-ck-prices", "price-list", "route-check", "vtpass-probe"]);
   // Public catalogue lookups (plan lists) stay open; purchase / write actions require the service key OR a user JWT.
   const READ_ONLY = new Set(["data-plans", "cabletv-plans"]);
   if (SERVICE_ONLY.has(action)) {
@@ -1779,6 +1788,69 @@ serve(async (req) => {
       }
 
       return json({ ok: true, balance, discounts: { airtime: disc.airtime ?? {}, epin: disc.epin ?? {} } });
+    }
+
+    // ── VTpass contract probe (service-only) ─────────────────────────────────
+    // Records how VTpass REALLY answers each case the routing relies on, instead of trusting its docs: a lookup of an order
+    // that doesn't exist, the request_id format, and — in the SANDBOX only (play money, VTpass's published test numbers) —
+    // a delivered / pending / odd-answer / failed order, a repeat of the same request_id, and a data plan purchase.
+    // In live it only looks up made-up orders (free, places nothing). Returns codes, statuses and field NAMES — no keys.
+    if (action === "vtpass-probe") {
+      const out: Record<string, unknown> = { env: VT.env, configured: vtConfigured(VT), publicKeySet: !!VT.publicKey };
+      if (!vtConfigured(VT)) return json(out);
+      const f: typeof fetch = (u, i) => fetch(u, i);
+      const sum = (d: VtResult, rid?: string) => {
+        const c = (d.content ?? {}) as Record<string, unknown>, t = vtTxn(d);
+        return {
+          http: d._http ?? null, code: vtCode(d) || null, desc: String(d.response_description ?? "").slice(0, 90) || null,
+          txStatus: vtTxnStatus(d) || null, contentKeys: Object.keys(c).slice(0, 15), txKeys: Object.keys(t).slice(0, 30),
+          topKeys: Object.keys(d).filter((k) => !k.startsWith("_")).slice(0, 20),
+          ridEchoed: rid ? String(d.requestId ?? "") === rid : undefined,
+          totalAmount: t.total_amount ?? null, commission: t.commission ?? null, amount: t.amount ?? d.amount ?? null,
+          hasTxnId: !!(t.transactionId ?? d.transactionId),
+          raw: typeof d._raw === "string" ? d._raw.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 120) : undefined,
+          unreachable: d._unreachable ? String(d._error ?? "yes") : undefined,
+        };
+      };
+      const requery = (rid: string) => vtCall(f, VT, "POST", "/requery", { request_id: rid }, 30_000);
+      const now = Date.now();
+      const madeUp = vtRequestId(`KDT-BILL-${now}`, now) + "PROBE";
+      const [rqMadeUp, rqMalformed, variations] = await Promise.all([
+        requery(madeUp), requery("KUDIAIPROBE"), vtCall(f, VT, "GET", "/service-variations?serviceID=mtn-data", undefined, 30_000),
+      ]);
+      const plans = parseVariations(variations);
+      Object.assign(out, {
+        requeryMadeUp: sum(rqMadeUp, madeUp), requeryMalformed: sum(rqMalformed),
+        variations: { ...sum(variations), plans: plans.length, first: plans[0] ?? null },
+      });
+      if (VT.env !== "sandbox") return json(out);
+
+      // Sandbox purchases: each order gets its own KDT-BILL-<ms> reference, exactly as the app's orders do.
+      const buy = async (i: number, label: string, body: Record<string, unknown>) => {
+        const rid = vtRequestId(`KDT-BILL-${now + i}`, now);
+        const pay = await vtCall(f, VT, "POST", "/pay", { request_id: rid, ...body }, 45_000);
+        const rq = await requery(rid);
+        return { label, ridLength: rid.length, pay: sum(pay, rid), requery: sum(rq, rid), rid };
+      };
+      const cases = await Promise.all([
+        buy(1, "airtime 08011111111 (sandbox: success)", { serviceID: "mtn", amount: 100, phone: "08011111111" }),
+        buy(2, "airtime 201000000000 (sandbox: pending)", { serviceID: "mtn", amount: 100, phone: "201000000000" }),
+        buy(3, "airtime 500000000000 (sandbox: unexpected)", { serviceID: "mtn", amount: 100, phone: "500000000000" }),
+        buy(4, "airtime 08033333333 (sandbox: other number)", { serviceID: "mtn", amount: 100, phone: "08033333333" }),
+        plans[0] ? buy(5, "data first plan 08011111111", { serviceID: "mtn-data", billersCode: "08011111111", variation_code: plans[0].plan_id.slice(3), phone: "08011111111" })
+                 : Promise.resolve({ label: "data", skipped: "no plans" }),
+      ]);
+      // the same request_id again — VTpass must refuse to place it twice
+      const first = cases[0] as { rid: string };
+      const again = await vtCall(f, VT, "POST", "/pay", { request_id: first.rid, serviceID: "mtn", amount: 100, phone: "08011111111" }, 45_000);
+      // a request_id without the date prefix
+      const noDate = await vtCall(f, VT, "POST", "/pay", { request_id: `KDT${now}NODATE`, serviceID: "mtn", amount: 100, phone: "08011111111" }, 45_000);
+      Object.assign(out, {
+        cases: cases.map((c) => { const { rid: _r, ...rest } = c as Record<string, unknown>; return rest; }),
+        repeatSameRequestId: sum(again, first.rid), requestIdWithoutDate: sum(noDate),
+        airtimeSids: { MTN: airtimeServiceId("MTN"), "9mobile": airtimeServiceId("9mobile") }, dataSid: dataServiceId("Airtel"),
+      });
+      return json(out);
     }
 
     // ── Route check (service-only, read-only, free) ───────────────────────────
