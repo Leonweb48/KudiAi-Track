@@ -6,7 +6,7 @@ import { parseCkAmount } from "../_shared/ckAmount.ts";
 import { applyDataPrices, parseDiscountPct, parseSellingPrices, type SellingPrices } from "../_shared/dataPricing.ts";
 import { checkBillGate, DEFAULT_CONFIG, PURCHASE_ACTIONS, type CouponRow, type GateConfig, type GateDeps, type GateMode } from "../_shared/billGate.ts";
 import { airtimeCost, dataCost, findPlanPrice, networkName, parseDiscounts, printAirtimeCost, type Cost, type Discounts } from "../_shared/billCost.ts";
-import { buyWithFallback, parseServiceList, V3_PATH, type Lookup, type RouteConfig, type RouteEvent } from "../_shared/ckRoute.ts";
+import { buyWithFallback, parseServiceList, probeVerdict, purchaseServiceState, V3_PATH, type Health, type Lookup, type RouteConfig, type RouteEvent } from "../_shared/ckRoute.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -437,6 +437,31 @@ async function routeHealth(path: string): Promise<"up" | "down" | "unknown"> {
   } catch { state = "unknown"; }   // can't tell → never block on it
   finally { clearTimeout(timer); }
   healthCache.set(path, { at: Date.now(), state });
+  return state;
+}
+
+// Is ClubKonnect's purchase SERVICE up for OUR account? On 2026-09-28 evening the login check and lookups answered
+// normally while every real purchase got IIS 503 "The service is unavailable" — invisible to the made-up-account probe
+// above, which stops at the login check. So: two orders ClubKonnect must refuse, with our account, on two different
+// scripts — a data plan that doesn't exist, and airtime on a network code that doesn't exist — each also below the ₦50
+// minimum and to phone "0", so nothing can ever be placed. Cached 60s; "down" only when BOTH scripts fail.
+let svcHealth: { at: number; state: Health } | null = null;
+async function purchaseServiceHealth(): Promise<Health> {
+  if (svcHealth && Date.now() - svcHealth.at < 60_000) return svcHealth.state;
+  if (!USER_ID || !DATA_K || !AIRTIME_K) return "unknown";
+  const probe = async (path: string, params: Record<string, string>): Promise<Health> => {
+    try {
+      const d = await ck(path, { ...params, MobileNumber: "0", RequestID: `KUDIAI-HEALTH-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, CallBackURL: "https://kudiai.app/" }, { retries: 0, timeoutMs: 10000 });
+      if (isOk(d)) console.error(`[health] ClubKonnect ACCEPTED an unfulfillable health-probe order on ${path} — investigate`, JSON.stringify(d).slice(0, 200));
+      return probeVerdict(d);
+    } catch { return "unknown"; }
+  };
+  const [a, b] = await Promise.all([
+    probe("APIDatabundleV1.asp", { APIKey: DATA_K, MobileNetwork: "01", DataPlan: "KUDIAI-NO-SUCH-PLAN", Amount: "1" }),
+    probe("APIAirtimeV1.asp",    { APIKey: AIRTIME_K, MobileNetwork: "99", Amount: "1" }),
+  ]);
+  const state = purchaseServiceState(a, b);
+  svcHealth = { at: Date.now(), state };
   return state;
 }
 
@@ -1701,6 +1726,11 @@ serve(async (req) => {
             return json({ ok: false, reason: "provider_down", message: "This service is temporarily unavailable. Please try again later — you have not been charged." });
           }
         }
+        // …and is the purchase service behind the login check working for OUR account? (see purchaseServiceHealth)
+        if (!forced && (await purchaseServiceHealth()) === "down") {
+          afterResponse(sendRouteAlert({ svc, outcome: "blocked", detail: "purchase service down for our account (HTTP 5xx on real orders)" }));
+          return json({ ok: false, reason: "provider_down", message: "This service is temporarily unavailable. Please try again later — you have not been charged." });
+        }
       }
 
       const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
@@ -1756,10 +1786,11 @@ serve(async (req) => {
     // of an order that can't exist: shows ClubKonnect's real "no such order" reply, which the fallback depends on.
     // Returns statuses and field names only — never keys or customer data.
     if (action === "route-check") {
-      healthCache.clear();
+      healthCache.clear(); svcHealth = null;
       const paths = [...Object.keys(V3_PATH), ...Object.values(V3_PATH)];
       const canary: Record<string, string> = {};
       await Promise.all(paths.map(async (p) => { canary[p] = await routeHealth(p); }));
+      const purchaseService = await purchaseServiceHealth();
       const probe = await lookupOrder(AIRTIME_K, `KUDIAI-ROUTECHECK-${Date.now()}`);
       const q = probe.q ?? {};
       // Dry runs with OUR account — every one is an order ClubKonnect cannot fulfil (below the ₦50 minimum, a network code
@@ -1804,6 +1835,7 @@ serve(async (req) => {
       const cfg = await routeConfig();
       return json({
         canary,
+        purchaseService,
         dryRun: { airtimeV1: dryV1, airtimeV3: dryV3, airtimeV1BadNetwork: dryV1Net, dataV1BadPlan: dryV1Plan },
         keys,
         account: { userIdSet: !!USER_ID, userIdLooksLikeCk: /^CK\d+$/i.test(USER_ID), egressIp },

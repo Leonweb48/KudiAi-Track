@@ -1,5 +1,5 @@
 // Run: deno test supabase/functions/_shared/ckRoute.test.ts
-import { buyWithFallback, isProviderCrash, parseServiceList, PENDING_STATUS, V3_PATH, type CkResult, type Lookup, type RouteConfig, type RouteDeps, type RouteEvent } from "./ckRoute.ts";
+import { buyWithFallback, isProviderCrash, parseServiceList, PENDING_STATUS, probeVerdict, purchaseServiceState, V3_PATH, type CkResult, type Lookup, type RouteConfig, type RouteDeps, type RouteEvent } from "./ckRoute.ts";
 
 function eq(actual: unknown, expected: unknown, msg: string) {
   const a = JSON.stringify(actual), e = JSON.stringify(expected);
@@ -155,6 +155,23 @@ Deno.test("test mode (force V3): goes straight to V3, V1 never called", async ()
   const h = harness({ v3: [OK], cfg: { ...CFG_ON, forceV3: new Set(["airtime"]) } });
   eq(await buyWithFallback("airtime", "APIAirtimeV1.asp", PARAMS, h.deps), { ...OK, _via: "V3" }, "V3 answer");
   eq(h.calls, ["APIAirtimeV3.asp#KDT-BILL-1"], "only V3");
+});
+
+Deno.test("probeVerdict: a JSON refusal is 'up', a 5xx error page 'down', anything else 'unknown'", () => {
+  eq(probeVerdict({ status: "INVALID_DATAPLAN" }), "up", "a real refusal = the service works");
+  eq(probeVerdict({ _raw: "The service is unavailable.", _http: 503 }), "down", "IIS 503 (2026-09-28 evening)");
+  eq(probeVerdict(CRASH), "down", "IIS 500");
+  eq(probeVerdict({ _raw: "odd text", _http: 200 }), "unknown", "non-JSON 200");
+  eq(probeVerdict(null), "unknown", "no answer (network error)");
+});
+
+Deno.test("purchaseServiceState: 'down' ONLY when both scripts are down — one bad script can never pause every sale", () => {
+  eq(purchaseServiceState("down", "down"), "down", "both down");
+  eq(purchaseServiceState("down", "up"), "up", "one working = the service is up");
+  eq(purchaseServiceState("up", "down"), "up", "either order");
+  eq(purchaseServiceState("down", "unknown"), "unknown", "one down, one can't tell → never block");
+  eq(purchaseServiceState("unknown", "unknown"), "unknown", "can't tell");
+  eq(purchaseServiceState("up", "up"), "up", "healthy");
 });
 
 Deno.test("parseServiceList trims, lower-cases and drops blanks", () => {

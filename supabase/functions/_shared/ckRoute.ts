@@ -103,6 +103,26 @@ export async function buyWithFallback(
   return pending("V3");
 }
 
+export type Health = "up" | "down" | "unknown";
+
+/**
+ * Combine two probes of ClubKonnect's purchase service (with OUR account, orders it must refuse, on two different
+ * scripts). "down" only when BOTH scripts return an error page — so one script mishandling a bad input can never pause
+ * every sale. Any real (JSON) answer from either means the service is working. Anything else can't tell → never block.
+ */
+export function purchaseServiceState(a: Health, b: Health): Health {
+  if (a === "down" && b === "down") return "down";
+  if (a === "up" || b === "up") return "up";
+  return "unknown";
+}
+
+/** One probe's verdict from ClubKonnect's reply: a JSON answer = up; a 5xx error page = down; anything else = unknown. */
+export function probeVerdict(d: CkResult | null | undefined): Health {
+  if (!d) return "unknown";
+  if (typeof d._raw === "string") return Number(d._http) >= 500 ? "down" : "unknown";
+  return "up";
+}
+
 /** Parse the comma-separated service list stored in platform_config ("airtime, data" → Set{"airtime","data"}). */
 export function parseServiceList(v: string | null | undefined): Set<string> {
   return new Set(String(v ?? "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean));
