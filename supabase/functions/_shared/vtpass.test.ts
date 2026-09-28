@@ -1,7 +1,8 @@
 import { assert, assertEquals, assertStrictEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
-  airtimeServiceId, dataServiceId, isVtPlan, lagosStamp, parseVariations, vtCall, vtConfigured, vtEnv, vtPlanCode, vtRequestId,
-  type VtCreds,
+  airtimeServiceId, dataServiceId, isVtPlan, lagosStamp, parseVariations, VT_CABLE, VT_ELECTRIC, vtCableBody, vtCall, vtCardDetails,
+  vtConfigured, vtCustomer, vtElectricBody, vtElectricToken, vtElectricUnits, vtEnv, vtMeterType, vtPlanCode, vtRequestId, vtSmileBody,
+  vtWaecBody, type VtCreds,
 } from "./vtpass.ts";
 
 Deno.test("vtEnv: only an explicit 'live' is live — anything else is the sandbox (play money)", () => {
@@ -116,4 +117,69 @@ Deno.test("vtCall: a call that hangs is cut off at the timeout", async () => {
     (init.signal as AbortSignal).addEventListener("abort", () => rej(new DOMException("aborted", "AbortError")));
   }), creds, "POST", "/pay", {}, 20);
   assertEquals(d._unreachable, true);
+});
+
+// ── Cable, electricity, WAEC, Smile — fixtures are VTpass's own sandbox answers (vtpass-explore, 2026-09-28) ──────────
+
+Deno.test("electricity: every company the app offers maps to a VTpass disco; meter types map; anything else is refused", () => {
+  assertEquals(Object.keys(VT_ELECTRIC).sort(), ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"]);
+  assertEquals(VT_ELECTRIC["02"], "ikeja-electric");
+  assertEquals(VT_ELECTRIC["12"], "aba-electric");
+  assertEquals(new Set(Object.values(VT_ELECTRIC)).size, 12);
+  assertEquals(vtMeterType("01"), "prepaid");
+  assertEquals(vtMeterType("02"), "postpaid");
+  assertEquals(vtMeterType("prepaid"), null);
+  assertEquals(vtElectricBody("ikeja-electric", "1111111111111", "prepaid", 1000, "08051111111"),
+    { serviceID: "ikeja-electric", billersCode: "1111111111111", variation_code: "prepaid", amount: 1000, phone: "08051111111" });
+});
+
+Deno.test("electricity token: 'Token : 2636…' from token / purchased_code; postpaid (no token) and 'N/A' give none", () => {
+  const prepaid = { code: "000", purchased_code: "Token : 26362054405982757802", token: "Token : 26362054405982757802", units: "79.9 kWh", resetToken: "N/A" };
+  assertEquals(vtElectricToken(prepaid), "26362054405982757802");
+  assertEquals(vtElectricToken({ purchased_code: "Token : 1234 5678 9012 3456 7890" }), "1234 5678 9012 3456 7890");
+  assertEquals(vtElectricToken({ mainToken: "11112222333344445555" }), "11112222333344445555");
+  assertEquals(vtElectricUnits(prepaid), "79.9 kWh");
+  const postpaid = { code: "000", purchased_code: "", customerName: "NP NGEMA", meterNumber: "null" };
+  assertEquals(vtElectricToken(postpaid), "");
+  assertEquals(vtElectricToken({ token: "N/A" }), "");
+  assertEquals(vtElectricUnits({ units: "N/A" }), "");
+});
+
+Deno.test("WAEC: result-checker cards and registration tokens become one receipt line", () => {
+  const checker = {
+    purchased_code: "Serial No:WRN182135587, pin: 373820665258||Serial No:WRN182135588, pin: 373827897584",
+    cards: "[{\"Serial\":\"WRN182135587\",\"Pin\":\"373820665258\"},{\"Serial\":\"WRN182135588\",\"Pin\":\"373827897584\"}]",
+  };
+  assertEquals(vtCardDetails(checker), "Serial No: WRN182135587, PIN: 373820665258 | Serial No: WRN182135588, PIN: 373827897584");
+  assertEquals(vtCardDetails({ purchased_code: "Token: 0100070365657400875", tokens: "[\"0100070365657400875\"]" }), "Token: 0100070365657400875");
+  assertEquals(vtCardDetails({ purchased_code: "Serial No:A, pin: 1||Serial No:B, pin: 2" }), "Serial No:A, pin: 1 | Serial No:B, pin: 2");
+  assertEquals(vtCardDetails({}), "");
+  assertEquals(vtWaecBody("waecdirect", "0801"), { serviceID: "waec", variation_code: "waecdirect", quantity: 1, phone: "0801" });
+  assertEquals(vtWaecBody("waec-registration", "0801"), { serviceID: "waec-registration", variation_code: "waec-registraion", quantity: 1, phone: "0801" });
+  assertEquals(vtWaecBody("jamb", "0801"), null);
+});
+
+Deno.test("cable: DStv/GOtv buy the chosen bouquet as a 'change'; StarTimes doesn't; Showmax isn't carried", () => {
+  assertEquals(vtCableBody("dstv", "1212121212", "dstv-padi", "0802"),
+    { serviceID: "dstv", billersCode: "1212121212", variation_code: "dstv-padi", phone: "0802", subscription_type: "change", quantity: 1 });
+  assertEquals(vtCableBody("startimes", "1212121212", "nova", "0804"), { serviceID: "startimes", billersCode: "1212121212", variation_code: "nova", phone: "0804" });
+  assert(VT_CABLE.has("gotv") && !VT_CABLE.has("showmax"));
+  assertEquals(vtSmileBody("08011111111", "516", "08011111111"), { serviceID: "smile-direct", billersCode: "08011111111", variation_code: "516", phone: "08011111111" });
+});
+
+Deno.test("vtCustomer: VTpass answers 000 either way — a bad number is content.error, a good one has Customer_Name", () => {
+  const meter = { code: "000", content: { Customer_Name: "TESTMETER1", Address: "ABULE  EGBA BU ABULE", Meter_Type: "PREPAID", WrongBillersCode: "false" } };
+  assertEquals(vtCustomer(meter), { kind: "ok", name: "TESTMETER1", address: "ABULE  EGBA BU ABULE" });
+  assertEquals(vtCustomer({ code: "000", content: { Customer_Name: "TEST METER", Status: "ACTIVE" } }), { kind: "ok", name: "TEST METER", address: "" });
+  const badMeter = { code: "000", content: { error: "This meter is not correct or is not a valid Ikeja Electric prepaid meter. Please check and try again", WrongBillersCode: "true" } };
+  assertEquals(vtCustomer(badMeter), { kind: "invalid", message: badMeter.content.error });
+  const badCard = { code: "000", content: { error: "The Smartcard/Decoder Number you entered may be invalid, Please check and only proceed if you are sure it's valid." } };
+  assertEquals(vtCustomer(badCard).kind, "invalid");
+  assertEquals(vtCustomer({ code: "000", content: { WrongBillersCode: "true" } }).kind, "invalid");
+  // a name alongside an error flag is still a failed check
+  assertEquals(vtCustomer({ code: "000", content: { Customer_Name: "SOMEONE", WrongBillersCode: "true" } }).kind, "invalid");
+  assertEquals(vtCustomer({ code: "000", content: { Customer_Name: "SOMEONE", error: "Meter is blocked" } }), { kind: "invalid", message: "Meter is blocked" });
+  assertEquals(vtCustomer({ code: "087", response_description: "INVALID CREDENTIALS" }), { kind: "unavailable" });
+  assertEquals(vtCustomer({ _raw: "<html>", _http: 502 }), { kind: "unavailable" });
+  assertEquals(vtCustomer({ _unreachable: true }), { kind: "unavailable" });
 });

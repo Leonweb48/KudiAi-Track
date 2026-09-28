@@ -1,12 +1,17 @@
 name: VTpass sandbox proof
 
-# For VTpass's "Request API access" form: places one SANDBOX order (play money, VTpass's test number 08011111111)
-# for each airtime + data service on every network — through the same request-id builder and order bodies real
-# orders use — confirms each by requery, and prints the request IDs to paste into the form.
-# Refuses to run once VTpass is live. Prints sandbox request IDs and statuses only — never keys.
+# For VTpass's "Request API access" form: places one SANDBOX order (play money, VTpass's test numbers) per service we
+# integrate — airtime + data on every network, DStv/GOtv/StarTimes, all 12 electricity discos, WAEC (result checker +
+# registration) and Smile — through the same request-id builder, order bodies and mappings real orders use, checks the
+# smartcard / meter first where the form asks "was your biller code verification successful?", confirms each by requery,
+# and prints the request IDs to paste into the form. Refuses to run once VTpass is live. Never prints keys.
 
 on:
   workflow_dispatch:
+    inputs:
+      groups:
+        description: Which services (space-separated)
+        default: "airtime-data cable electricity-1 electricity-2 education smile"
 
 permissions:
   contents: read
@@ -14,7 +19,7 @@ permissions:
 jobs:
   proof:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 20
     steps:
       - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb   # v1 (pinned)
         with:
@@ -24,20 +29,23 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           REF: ${{ secrets.SUPABASE_PROJECT_ID }}
+          GROUPS: ${{ inputs.groups }}
         run: |
           set -euo pipefail
           FN="https://${REF}.supabase.co/functions/v1/clubkonnect"
           SRK=$(supabase projects api-keys --project-ref "$REF" -o json | jq -r '.[] | select(.name=="service_role") | .api_key')
           echo "::add-mask::$SRK"
-          code=$(curl -sS -m 200 -o out.json -w '%{http_code}' -X POST "$FN" -H "Content-Type: application/json" -H "Authorization: Bearer $SRK" \
-            -d '{"action":"vtpass-sandbox-proof"}' || echo "000")
-          echo "HTTP $code  $(jq -c '{env, phone, error}' out.json 2>/dev/null || head -c 300 out.json)"
-          echo ""
-          jq -r '.results[]? | "\(.service) | serviceID=\(.serviceID) | request_id=\(.requestId // "-") | \(.status // .error) | confirmed=\(.confirmed // false) | pay=\(.payCode // "-") \(.payDesc // "") | \(.variation // "")"' out.json
           {
             echo "### VTpass sandbox request IDs"
             echo ""
-            echo "| Service | serviceID | Request ID | Status |"
-            echo "|---|---|---|---|"
-            jq -r '.results[]? | "| \(.service) | \(.serviceID) | `\(.requestId // "-")` | \(if .confirmed then "delivered ✅" else (.status // .error // "?") end) |"' out.json
+            echo "| Service | serviceID | Request ID | Status | Customer check |"
+            echo "|---|---|---|---|---|"
           } >> "$GITHUB_STEP_SUMMARY"
+          for g in $GROUPS; do
+            case "$g" in airtime-data|cable|electricity-1|electricity-2|education|smile) ;; *) echo "skipping unknown group $g"; continue;; esac
+            code=$(curl -sS -m 280 -o "out-$g.json" -w '%{http_code}' -X POST "$FN" -H "Content-Type: application/json" -H "Authorization: Bearer $SRK" \
+              -d "{\"action\":\"vtpass-sandbox-proof\",\"group\":\"$g\"}" || echo "000")
+            echo "== $g: HTTP $code $(jq -c '{env, error}' "out-$g.json" 2>/dev/null || head -c 200 "out-$g.json")"
+            jq -r '.results[]? | "\(.service) | serviceID=\(.serviceID) | request_id=\(.requestId // "-") | \(.status // .error) | confirmed=\(.confirmed // false) | pay=\(.payCode // "-") \(.payDesc // "") | check=\(if .verified == null then "-" else (if .verified then "yes (\(.verifiedName))" else "no (\(.verifiedName // ""))" end) end) | token=\(.token // "-") pins=\(.pins // "-") | \(.variation // "")"' "out-$g.json"
+            jq -r '.results[]? | "| \(.service) | \(.serviceID) | `\(.requestId // "-")` | \(if .confirmed then "delivered ✅" else (.status // .payDesc // .error // "?") end) | \(if .verified == null then "-" elif .verified then "yes" else "no" end) |"' "out-$g.json" >> "$GITHUB_STEP_SUMMARY"
+          done

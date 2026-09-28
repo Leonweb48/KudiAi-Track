@@ -7,7 +7,11 @@ import { applyDataPrices, parseDiscountPct, parseSellingPrices, type SellingPric
 import { checkBillGate, DEFAULT_CONFIG, PURCHASE_ACTIONS, type CouponRow, type GateConfig, type GateDeps, type GateMode } from "../_shared/billGate.ts";
 import { airtimeCost, dataCost, findPlanPrice, networkName, parseDiscounts, printAirtimeCost, type Cost, type Discounts } from "../_shared/billCost.ts";
 import { buyWithFallback, parseServiceList, probeVerdict, purchaseServiceState, V3_PATH, type CkResult, type Health, type Lookup, type RouteConfig, type RouteEvent } from "../_shared/ckRoute.ts";
-import { airtimeServiceId, dataServiceId, isVtPlan, parseVariations, vtAirtimeBody, vtCall, vtCode, vtConfigured, vtDataBody, vtEnv, vtPlanCode, vtRequestId, vtTxn, vtTxnStatus, type VtCreds, type VtFetch, type VtResult } from "../_shared/vtpass.ts";
+import {
+  airtimeServiceId, dataServiceId, isVtPlan, parseVariations, VT_CABLE, VT_ELECTRIC, VT_SMILE, vtAirtimeBody, vtCableBody, vtCall, vtCardDetails, vtCode,
+  vtConfigured, vtCustomer, vtDataBody, vtElectricBody, vtElectricToken, vtElectricUnits, vtEnv, vtMeterType, vtPlanCode, vtRequestId, vtSmileBody, vtTxn,
+  vtTxnStatus, vtWaecBody, type VtCreds, type VtFetch, type VtResult,
+} from "../_shared/vtpass.ts";
 import {
   buyAcrossProviders, classifyVt, combineVerdicts, DEFAULT_PROVIDER_CONFIG, parseProviderConfig, PROVIDER_LABEL, providerOrder, vtCostKobo, vtMessage, vtProbeVerdict, vtVerify,
   VT_SERVICES, type BuyDeps, type BuyOutcome, type Provider, type ProviderConfig, type ProviderVerdict, type SwitchEvent,
@@ -603,7 +607,7 @@ function sendSwitchAlert(e: SwitchEvent) {
  * lookup, and VTpass /pay + /requery. VTpass is refused outright unless it's live — even for an order already claimed
  * for it (then it's held, never sent to the sandbox and never elsewhere).
  */
-function providerDeps(svc: string, rid: string, ckKey: string, ckCall: () => Promise<CkResult>, vtBody: Record<string, unknown> | null): BuyDeps {
+function providerDeps(svc: string, rid: string, ckKey: string, ckCall: () => Promise<CkResult>, vtBody: Record<string, unknown> | null): BuyDeps & { vtRid: () => string } {
   let vtRid = vtRequestId(rid, Date.now());
   const notLive: VtResult = { _unreachable: true, _error: "VTpass is not live" };
   return {
@@ -618,18 +622,62 @@ function providerDeps(svc: string, rid: string, ckKey: string, ckCall: () => Pro
     vtRequery: async () => (vtUsable() ? await vtCall(vtFetch, VT, "POST", "/requery", { request_id: vtRid }, 30_000) : notLive),
     isOk,
     alert: (e) => afterResponse(sendSwitchAlert(e)),
+    vtRid: () => vtRid,   // the VTpass request_id this order goes under (the stored one on a retry)
   };
 }
 
+/** Where catalogues and customer checks come from right now: the provider new orders of this service go to. */
+async function catalogueProvider(svc: string): Promise<Provider> {
+  return vtUsable() ? (await providerOrderFor(svc))[0] : "clubkonnect";
+}
+/** VTpass's catalogue for a service in the app's plan shape (ids tagged "vt:"); [] when it can't be read. */
+async function vtCatalogue(sid: string) {
+  return parseVariations(await vtCall(vtFetch, VT, "GET", `/service-variations?serviceID=${encodeURIComponent(sid)}`, undefined, 20_000));
+}
+
+type CustomerCheck = { kind: "ok"; name: string; address: string } | { kind: "invalid"; message: string } | { kind: "unavailable" };
+async function vtCheckCustomer(sid: string, billersCode: string, type?: string): Promise<CustomerCheck> {
+  if (!vtUsable()) return { kind: "unavailable" };
+  return vtCustomer(await vtCall(vtFetch, VT, "POST", "/merchant-verify", { billersCode, serviceID: sid, ...(type ? { type } : {}) }, 30_000));
+}
+/** Ask the provider in use first; if it can't answer (down, keys refused), ask the other. A clear "not a valid number" is final. */
+async function checkCustomer(svc: string, vtCheck: (() => Promise<CustomerCheck>) | null, ckCheck: () => Promise<CustomerCheck>): Promise<CustomerCheck> {
+  const order = !vtCheck ? [ckCheck] : (await catalogueProvider(svc)) === "vtpass" ? [vtCheck, ckCheck] : [ckCheck, vtCheck];
+  let last: CustomerCheck = { kind: "unavailable" };
+  for (const check of order) {
+    last = await check().catch((): CustomerCheck => ({ kind: "unavailable" }));
+    if (last.kind !== "unavailable") return last;
+  }
+  return last;
+}
+/** ClubKonnect's verify answer as a CustomerCheck: an error page / refused key says nothing about the number. */
+function ckCustomer(d: Record<string, unknown>, invalidMessage: string): CustomerCheck {
+  if (typeof d?._raw === "string") return { kind: "unavailable" };
+  const statusStr = String(d?.status ?? d?.Status ?? "").toUpperCase();
+  if (/INVALID_CREDENTIALS|INVALID_APICREDENTIALS|MISSING_CREDENTIALS|INVALID_KEY|UNAUTHORIZED/.test(statusStr)) return { kind: "unavailable" };
+  const name = String(d?.customer_name ?? d?.CustomerName ?? d?.CUSTOMER_NAME ?? "").trim();
+  if (!name || name.toUpperCase().includes("INVALID")) return { kind: "invalid", message: invalidMessage };
+  const address = String(d?.customer_address ?? d?.CustomerAddress ?? d?.CUSTOMER_ADDRESS ?? d?.address ?? d?.Address ?? d?.meter_address ?? "").trim();
+  return { kind: "ok", name, address };
+}
+const CHECK_UNAVAILABLE = "We couldn't check this number right now. Please try again shortly.";
+
+// A VTpass order's reference is its VTpass request_id ("<Lagos date+time>KDT…"): what VTpass support searches by, and
+// how electricity-query tells a VTpass order from a ClubKonnect one.
+const VT_REF = /^\d{12}KDT[A-Za-z0-9]*$/;
+
 /** A VTpass (or nothing-sent) outcome as the purchase answer the app and webhooks already understand. */
-function vtAnswer(cat: string, out: Exclude<BuyOutcome, { via: "clubkonnect" }>, rid: string, userId: string | null) {
+function vtAnswer(cat: string, out: Exclude<BuyOutcome, { via: "clubkonnect" }>, rid: string, userId: string | null, vtRid = "") {
   if (out.via === "none") return json({ error: out.message });
   if (out.state === "delivered") {
     const t = vtTxn(out.data);
     const cost = vtCostKobo(out.data);
     const face = Math.round((Number(t.amount ?? out.data.amount) || 0) * 100);
-    if (cost) afterResponse(recordBillCost(cat, rid, userId, out.data, async () => ({ costKobo: cost, faceKobo: face || cost, basis: "provider_reported", estimated: false }), { provider: "vtpass" }));
-    return json({ status: "SUCCESS", reference: String(t.transactionId ?? out.data.requestId ?? ""), message: "ORDER_COMPLETED", provider: "vtpass" });
+    // (only airtime and data record a per-order cost — every other bill's cost is derived from the sale, as for ClubKonnect)
+    if (cost && (cat === "airtime" || cat === "data")) afterResponse(recordBillCost(cat, rid, userId, out.data, async () => ({ costKobo: cost, faceKobo: face || cost, basis: "provider_reported", estimated: false }), { provider: "vtpass" }));
+    const reference = String(out.data.requestId ?? vtRid ?? t.transactionId ?? "");
+    const extra = cat === "waec" ? { cardDetails: vtCardDetails(out.data) } : {};
+    return json({ status: "SUCCESS", reference, ...extra, message: "ORDER_COMPLETED", provider: "vtpass" });
   }
   // pending: the wording matches the app's "confirming your order" pattern (PENDING_STATUS) → it holds and verifies.
   // failed: a clean message → the customer is refunded.
@@ -694,13 +742,14 @@ serve(async (req) => {
       // ClubKonnect or VTpass (the admin's main provider, with failover) — see "Bill provider switch" above
       const digits = phone.replace(/\D/g, "");
       const sid = airtimeServiceId(network);
-      const out = await buyAcrossProviders("airtime", sid ? await providerOrderFor("airtime") : ["clubkonnect"], providerDeps("airtime", rid, AIRTIME_K,
+      const pd = providerDeps("airtime", rid, AIRTIME_K,
         () => ckBuy("airtime", "APIAirtimeV1.asp", {
           APIKey: AIRTIME_K, MobileNetwork: netId, Amount: String(amount),
           MobileNumber: digits, RequestID: rid, CallBackURL: "https://kudiai.app/",
         }),
-        sid ? vtAirtimeBody(sid, Number(amount), digits) : null));
-      if (out.via !== "clubkonnect") return vtAnswer("airtime", out, rid, callerUser?.id ?? null);
+        sid ? vtAirtimeBody(sid, Number(amount), digits) : null);
+      const out = await buyAcrossProviders("airtime", sid ? await providerOrderFor("airtime") : ["clubkonnect"], pd);
+      if (out.via !== "clubkonnect") return vtAnswer("airtime", out, rid, callerUser?.id ?? null, pd.vtRid());
       const data = out.data;
       if (!isOk(data)) return json({ error: errMsg(data, "Airtime purchase failed"), _raw: data });
       afterResponse(recordBillCost("airtime", rid, callerUser?.id ?? null, data, async (d) => airtimeCost(amount, networkName(network, netId), d, data)));
@@ -713,9 +762,9 @@ serve(async (req) => {
       const isPrint = (body as { print?: unknown }).print === true || (body as { print?: unknown }).print === "true";
       // The catalogue comes from the provider new data orders go to right now; each plan id says which provider it
       // belongs to, so the purchase goes back there. Print Data (PINs) is ClubKonnect-only.
-      if (!isPrint && vtUsable() && (await providerOrderFor("data"))[0] === "vtpass") {
+      if (!isPrint && (await catalogueProvider("data")) === "vtpass") {
         const sid = dataServiceId(network);
-        const vtPlans = sid ? parseVariations(await vtCall(vtFetch, VT, "GET", `/service-variations?serviceID=${encodeURIComponent(sid)}`, undefined, 20_000)) : [];
+        const vtPlans = sid ? await vtCatalogue(sid) : [];
         if (vtPlans.length) {
           const cfg = await priceConfig();
           const priced = applyDataPrices(vtPlans, network, cfg.selling);
@@ -801,13 +850,14 @@ serve(async (req) => {
       const vtPlan = isVtPlan(planId);
       const sid = dataServiceId(network);
       if (vtPlan && (!vtUsable() || !sid)) return json({ error: "This data plan is no longer available. Please reload the plans and try again." });
-      const out = await buyAcrossProviders("data", vtPlan ? ["vtpass"] : ["clubkonnect"], providerDeps("data", rid, DATA_K,
+      const pd = providerDeps("data", rid, DATA_K,
         () => ckBuy("data", "APIDatabundleV1.asp", {
           APIKey: DATA_K, MobileNetwork: netId, DataPlan: planId,
           MobileNumber: digits, RequestID: rid, CallBackURL: "https://kudiai.app/",
         }),
-        vtPlan && sid ? vtDataBody(sid, vtPlanCode(planId), digits) : null));
-      if (out.via !== "clubkonnect") return vtAnswer("data", out, rid, callerUser?.id ?? null);
+        vtPlan && sid ? vtDataBody(sid, vtPlanCode(planId), digits) : null);
+      const out = await buyAcrossProviders("data", vtPlan ? ["vtpass"] : ["clubkonnect"], pd);
+      if (out.via !== "clubkonnect") return vtAnswer("data", out, rid, callerUser?.id ?? null, pd.vtRid());
       const data = out.data;
       console.log(`data purchase result:`, JSON.stringify(data).slice(0, 500));
       if (!isOk(data)) return json({ error: `${errMsg(data, "Data purchase failed")} [net:${netId} plan:${planId}]`, _raw: data });
@@ -842,6 +892,13 @@ serve(async (req) => {
     if (action === "cable-packages") {
       const { provider } = body as { provider: string };
       if (!provider) return json({ error: "provider required" });
+      // From the provider cable orders go to right now (DStv / GOtv / StarTimes can be VTpass; Showmax is ClubKonnect only).
+      // A VTpass bouquet's id is tagged "vt:", so the purchase goes back to VTpass.
+      if (VT_CABLE.has(provider) && (await catalogueProvider("cable")) === "vtpass") {
+        const vtPkgs = await vtCatalogue(provider);
+        if (vtPkgs.length) return json({ packages: vtPkgs.map((p) => ({ package_id: p.plan_id, package_name: p.plan_name, package_amount: p.plan_amount })), _provider: "vtpass" });
+        console.warn(`[cable-packages] VTpass catalogue empty for ${provider} — showing ClubKonnect's`);
+      }
       const data = await ck("APICableTVPackagesV2.asp", { APIKey: CABLETV_K, CableTV: provider });
       if (data?.status && String(data.status).includes("INVALID")) return json({ error: `Cable API key error: ${data.status}`, packages: [] });
 
@@ -881,21 +938,30 @@ serve(async (req) => {
     if (action === "cable-verify") {
       const { provider, smartcard } = body as { provider: string; smartcard: string };
       if (!provider || !smartcard) return json({ error: "provider and smartcard required" });
-      const data = await ck("APIVerifyCableTVV1.asp", { APIKey: CABLETV_K, CableTV: provider, SmartCardNo: smartcard });
-      console.log("cable-verify raw:", JSON.stringify(data).slice(0, 400));
-      const statusStr = String(data?.status ?? data?.Status ?? "").toUpperCase();
-      if (statusStr.includes("INVALID_CREDENTIALS") || statusStr.includes("INVALID_KEY") || statusStr.includes("UNAUTHORIZED"))
-        return json({ error: `Cable TV API key error: ${statusStr}` });
-      const name = String(data?.customer_name ?? data?.CustomerName ?? data?.CUSTOMER_NAME ?? "");
-      if (!name || name.toUpperCase() === "INVALID_SMARTCARDNO" || name.toUpperCase().includes("INVALID"))
-        return json({ error: `Smartcard not found (${smartcard}). Check the number and selected provider.`, _raw: data });
-      return json({ customer_name: name });
+      const r = await checkCustomer("cable",
+        VT_CABLE.has(provider) ? () => vtCheckCustomer(provider, smartcard) : null,
+        async () => {
+          const data = await ck("APIVerifyCableTVV1.asp", { APIKey: CABLETV_K, CableTV: provider, SmartCardNo: smartcard });
+          console.log("cable-verify raw:", JSON.stringify(data).slice(0, 400));
+          return ckCustomer(data, `Smartcard not found (${smartcard}). Check the number and selected provider.`);
+        });
+      if (r.kind === "ok") return json({ customer_name: r.name });
+      return json({ error: r.kind === "invalid" ? r.message : CHECK_UNAVAILABLE });
     }
 
     // ── Cable TV purchase ─────────────────────────────────────────────────────
     if (action === "cable") {
       const { provider, packageId, smartcard, phone } = body as { provider: string; packageId: string; smartcard: string; phone: string };
       if (!provider || !packageId || !smartcard || !phone) return json({ error: "provider, packageId, smartcard and phone required" });
+      // A bouquet from VTpass's list is bought on VTpass and only there (bouquet codes aren't interchangeable).
+      if (isVtPlan(packageId)) {
+        if (!vtUsable() || !VT_CABLE.has(provider)) return json({ error: "This package is no longer available. Please reload the packages and try again." });
+        const pd = providerDeps("cable", rid, CABLETV_K, () => Promise.reject(new Error("not a ClubKonnect package")),
+          vtCableBody(provider, smartcard.trim(), vtPlanCode(packageId), phone.replace(/\D/g, "")));
+        const out = await buyAcrossProviders("cable", ["vtpass"], pd);
+        if (out.via === "clubkonnect") return json({ error: "This package is no longer available. Please reload the packages and try again." });
+        return vtAnswer("cable", out, rid, callerUser?.id ?? null, pd.vtRid());
+      }
       const data = await ckBuy("cable", "APICableTVV1.asp", {
         APIKey: CABLETV_K, CableTV: provider, Package: packageId,
         SmartCardNo: smartcard, PhoneNo: phone.replace(/\D/g, ""),
@@ -915,20 +981,16 @@ serve(async (req) => {
     if (action === "electricity-verify") {
       const { company, meterNo, meterType } = body as { company: string; meterNo: string; meterType: string };
       if (!company || !meterNo || !meterType) return json({ error: "company, meterNo and meterType required" });
-      const data = await ck("APIVerifyElectricityV1.asp", { APIKey: ELECTRICITY_K, ElectricCompany: company, MeterNo: meterNo, MeterType: meterType });
-      console.log("electricity-verify raw:", JSON.stringify(data).slice(0, 400));
-      // API key / credential errors
-      const statusStr = String(data?.status ?? data?.Status ?? "").toUpperCase();
-      if (statusStr.includes("INVALID_CREDENTIALS") || statusStr.includes("INVALID_KEY") || statusStr.includes("UNAUTHORIZED"))
-        return json({ error: `Electricity API key error: ${statusStr}` });
-      const name = String(data?.customer_name ?? data?.CustomerName ?? data?.CUSTOMER_NAME ?? "");
-      if (!name || name.toUpperCase() === "INVALID_METERNO" || name.toUpperCase().includes("INVALID"))
-        return json({ error: `Meter not found (${meterNo}). Check the number and selected company.`, _raw: data });
-      const addr = String(
-        data?.customer_address ?? data?.CustomerAddress ?? data?.CUSTOMER_ADDRESS ??
-        data?.address         ?? data?.Address          ?? data?.meter_address   ?? ""
-      ).trim();
-      return json({ customer_name: name, customer_address: addr || null });
+      const sid = VT_ELECTRIC[company], mt = vtMeterType(meterType);
+      const r = await checkCustomer("electricity",
+        sid && mt ? () => vtCheckCustomer(sid, meterNo.trim(), mt) : null,
+        async () => {
+          const data = await ck("APIVerifyElectricityV1.asp", { APIKey: ELECTRICITY_K, ElectricCompany: company, MeterNo: meterNo, MeterType: meterType });
+          console.log("electricity-verify raw:", JSON.stringify(data).slice(0, 400));
+          return ckCustomer(data, `Meter not found (${meterNo}). Check the number and selected company.`);
+        });
+      if (r.kind === "ok") return json({ customer_name: r.name, customer_address: r.address || null });
+      return json({ error: r.kind === "invalid" ? r.message : CHECK_UNAVAILABLE });
     }
 
     // ── Electricity purchase ──────────────────────────────────────────────────
@@ -1004,11 +1066,29 @@ serve(async (req) => {
       if (amt < 1000) return json({ error: "Minimum electricity amount is ₦1,000" });
       if (amt > 200000) return json({ error: "Maximum electricity amount is ₦200,000" });
 
-      const data = await ckBuy("electricity", "APIElectricityV1.asp", {
-        APIKey: ELECTRICITY_K, ElectricCompany: company, MeterType: meterType,
-        MeterNo: meterNo, Amount: String(amount), PhoneNo: phone.replace(/\D/g, ""),
-        RequestID: rid, CallBackURL: "https://kudiai.app/",
-      });
+      // ClubKonnect or VTpass (the admin's main provider, with failover — an electricity order is amount-based, so it can
+      // move either way). ClubKonnect's answer carries on through its own token logic below, exactly as before.
+      const sid = VT_ELECTRIC[company], mt = vtMeterType(meterType);
+      const pd = providerDeps("electricity", rid, ELECTRICITY_K,
+        () => ckBuy("electricity", "APIElectricityV1.asp", {
+          APIKey: ELECTRICITY_K, ElectricCompany: company, MeterType: meterType,
+          MeterNo: meterNo, Amount: String(amount), PhoneNo: phone.replace(/\D/g, ""),
+          RequestID: rid, CallBackURL: "https://kudiai.app/",
+        }),
+        sid && mt ? vtElectricBody(sid, meterNo.trim(), mt, amt, phone.replace(/\D/g, "")) : null);
+      const bought = await buyAcrossProviders("electricity", sid && mt ? await providerOrderFor("electricity") : ["clubkonnect"], pd);
+      if (bought.via === "none") return json({ error: bought.message });
+      if (bought.via === "vtpass") {
+        const ref = String(bought.data.requestId ?? pd.vtRid());
+        if (bought.state === "failed") return json({ error: bought.message, _provider: "vtpass", _vt: { code: vtCode(bought.data) || null } });
+        // pending, or a prepaid order delivered before its token → the app keeps asking electricity-query with this reference
+        const token = vtElectricToken(bought.data), units = vtElectricUnits(bought.data);
+        if (bought.state === "pending" || (mt === "prepaid" && !token)) {
+          return json({ status: "PENDING", reference: ref, token: "", message: bought.state === "pending" ? "ORDER_RECEIVED" : "ORDER_COMPLETED_NO_TOKEN", provider: "vtpass" });
+        }
+        return json({ status: "SUCCESS", reference: ref, token, units, message: "ORDER_COMPLETED", provider: "vtpass" });   // postpaid: no token, by nature
+      }
+      const data = bought.data;
       console.log("electricity purchase response:", JSON.stringify(data));
 
       // CK electricity uses "transactionid" (not "orderid") — must check both
@@ -1090,6 +1170,19 @@ serve(async (req) => {
     if (action === "electricity-query") {
       const { orderId } = body as { orderId: string };
       if (!orderId) return json({ error: "orderId required" });
+      // A VTpass order (its reference is the VTpass request_id): ask VTpass.
+      if (VT_REF.test(orderId)) {
+        if (!vtUsable()) return json({ status: "PENDING", reference: orderId, token: "", message: "PROVIDER_UNAVAILABLE" });
+        const rq = await vtCall(vtFetch, VT, "POST", "/requery", { request_id: orderId }, 20_000);
+        const st = classifyVt(rq), token = vtElectricToken(rq);
+        if (token) return json({ status: "SUCCESS", reference: orderId, token, units: vtElectricUnits(rq), message: "ORDER_COMPLETED" });
+        // delivered with no token field at all = a postpaid payment (no token by nature); with the field = the token is still coming
+        if (st === "delivered") return json(("token" in rq || "mainToken" in rq)
+          ? { status: "PENDING", reference: orderId, token: "", message: "ORDER_COMPLETED_NO_TOKEN" }
+          : { status: "SUCCESS", reference: orderId, token: "", message: "ORDER_COMPLETED" });
+        if (st === "failed" || vtCode(rq) === "019") return json({ status: "CANCELLED", reference: orderId, token: "", message: vtMessage(rq) });
+        return json({ status: "PENDING", reference: orderId, token: "", message: st === "pending" ? "ORDER_RECEIVED" : "CHECKING" });
+      }
       const q = await ck("APIQueryV1.asp", { APIKey: ELECTRICITY_K, OrderID: orderId }, { retries: 1, timeoutMs: 15000 });
       console.log("electricity-query full response:", JSON.stringify(q));
       const qCode = elecStatusCode(q);
@@ -1132,7 +1225,8 @@ serve(async (req) => {
         return {
           provider: p, state,
           body: state === "SUCCESS"
-            ? { status: state, requestId: rid, reference: String(t.transactionId ?? rq.requestId ?? ""), token: String(rq.purchased_code ?? ""), cardDetails: "", message: "ORDER_COMPLETED", provider: p }
+            ? { status: state, requestId: rid, reference: String(rq.requestId ?? t.transactionId ?? ""), token: svc === "electricity" ? vtElectricToken(rq) : "",
+                cardDetails: svc === "waec" ? vtCardDetails(rq) : "", message: "ORDER_COMPLETED", provider: p }
             : { status: state, requestId: rid, message: state === "FAILED" ? vtMessage(rq) : state === "UNKNOWN" ? "VTpass unavailable" : state.toLowerCase(), provider: p, _vt: { code: vtCode(rq) || null, status: vtTxnStatus(rq) || null } },
         };
       }));
@@ -1237,10 +1331,16 @@ serve(async (req) => {
     if (action === "waec") {
       const { examType, phone } = body as { examType: string; phone: string };
       if (!examType || !phone) return json({ error: "examType and phone required" });
-      const data = await ckBuy("waec", "APIWAECV1.asp", {
-        APIKey: WAEC_K, ExamType: examType,
-        PhoneNo: phone.replace(/\D/g, ""), RequestID: rid, CallBackURL: "https://kudiai.app/",
-      });
+      // ClubKonnect or VTpass, with failover (the same fixed product on both).
+      const vb = vtWaecBody(examType, phone.replace(/\D/g, ""));
+      const pd = providerDeps("waec", rid, WAEC_K,
+        () => ckBuy("waec", "APIWAECV1.asp", {
+          APIKey: WAEC_K, ExamType: examType,
+          PhoneNo: phone.replace(/\D/g, ""), RequestID: rid, CallBackURL: "https://kudiai.app/",
+        }), vb);
+      const out = await buyAcrossProviders("waec", vb ? await providerOrderFor("waec") : ["clubkonnect"], pd);
+      if (out.via !== "clubkonnect") return vtAnswer("waec", out, rid, callerUser?.id ?? null, pd.vtRid());
+      const data = out.data;
       if (!isOk(data)) return json({ error: errMsg(data, "WAEC ePin purchase failed"), _raw: data });
       const waecDetails = String(data.carddetails ?? data.CardDetails ?? "");
       if (!waecDetails) return json({ error: "WAEC card details not returned — contact Clubkonnect support", _raw: data });
@@ -1318,6 +1418,12 @@ serve(async (req) => {
 
     // ── Smile plans ───────────────────────────────────────────────────────────
     if (action === "smile-plans") {
+      // From the provider Smile orders go to right now; a VTpass plan's id is tagged "vt:" so the purchase goes back there.
+      if ((await catalogueProvider("smile")) === "vtpass") {
+        const vtPlans = await vtCatalogue(VT_SMILE);
+        if (vtPlans.length) return json({ plans: vtPlans, _provider: "vtpass" });
+        console.warn("[smile-plans] VTpass catalogue empty — showing ClubKonnect's");
+      }
       const data = await ck("APISmilePackagesV2.asp", { APIKey: SMILE_K });
       if (data?.status && String(data.status).includes("INVALID")) return json({ error: `Smile API key error: ${data.status}`, plans: [] });
       const mobileNet = data?.MOBILE_NETWORK as Record<string, Record<string, unknown>[]> | undefined;
@@ -1346,17 +1452,28 @@ serve(async (req) => {
     if (action === "smile-verify") {
       const { accountNo } = body as { accountNo: string };
       if (!accountNo) return json({ error: "accountNo required" });
-      const data = await ck("APIVerifySmileV1.asp", { APIKey: SMILE_K, MobileNetwork: "smile-direct", MobileNumber: accountNo });
-      const name = String(data?.customer_name ?? data?.CustomerName ?? "");
-      if (!name || name === "INVALID_ACCOUNTNO" || name.toLowerCase().includes("invalid"))
-        return json({ error: "Invalid Smile account number" });
-      return json({ customer_name: name });
+      const r = await checkCustomer("smile",
+        () => vtCheckCustomer(VT_SMILE, accountNo.trim()),
+        async () => ckCustomer(await ck("APIVerifySmileV1.asp", { APIKey: SMILE_K, MobileNetwork: "smile-direct", MobileNumber: accountNo }), "Invalid Smile account number"));
+      if (r.kind === "ok") return json({ customer_name: r.name });
+      return json({ error: r.kind === "invalid" ? r.message : CHECK_UNAVAILABLE });
     }
 
     // ── Smile purchase ────────────────────────────────────────────────────────
     if (action === "smile") {
       const { accountNo, planId } = body as { accountNo: string; planId: string };
       if (!accountNo || !planId) return json({ error: "accountNo and planId required" });
+      if (isVtPlan(planId)) {
+        if (!vtUsable()) return json({ error: "This plan is no longer available. Please reload the plans and try again." });
+        // VTpass wants a phone number for its receipt SMS; the app only collects the Smile account, which is usually the
+        // Smile phone number — used when it looks like one.
+        const acct = accountNo.trim(), phoneLike = /^0\d{10}$/.test(acct.replace(/\D/g, "")) ? acct.replace(/\D/g, "") : "";
+        const pd = providerDeps("smile", rid, SMILE_K, () => Promise.reject(new Error("not a ClubKonnect plan")),
+          vtSmileBody(acct, vtPlanCode(planId), phoneLike || "08000000000"));
+        const out = await buyAcrossProviders("smile", ["vtpass"], pd);
+        if (out.via === "clubkonnect") return json({ error: "This plan is no longer available. Please reload the plans and try again." });
+        return vtAnswer("smile", out, rid, callerUser?.id ?? null, pd.vtRid());
+      }
       const data = await ckBuy("smile", "APISmileV1.asp", {
         APIKey: SMILE_K, MobileNetwork: "smile-direct", DataPlan: planId,
         MobileNumber: accountNo, RequestID: rid, CallBackURL: "https://kudiai.app/",
@@ -2012,15 +2129,16 @@ serve(async (req) => {
     if (action === "provider-status") {
       healthCache.clear(); svcHealth = null; vtHealthCache = null; provCfgCache = null;
       const cfg = await providerConfig();
-      const [ckAirtime, ckData, vt] = await Promise.all([ckHealth("airtime"), ckHealth("data"), vtHealth()]);
-      const [airtime, data] = await Promise.all([providerOrderFor("airtime"), providerOrderFor("data")]);
+      const services = [...VT_SERVICES];
+      const [ckHealths, vt] = await Promise.all([Promise.all(services.map((s) => ckHealth(s))), vtHealth()]);
+      const orders = await Promise.all(services.map((s) => providerOrderFor(s)));
       const rc = await routeConfig();
       return json({
         config: cfg,
-        services: [...VT_SERVICES],
+        services,
         vtpass: { configured: vtConfigured(VT), env: VT.env, live: vtUsable(), health: vtConfigured(VT) ? vt : "unknown" },
-        clubkonnect: { health: { airtime: ckAirtime, data: ckData }, healthCheckOn: rc.healthcheckOn },
-        routing: { airtime, data },
+        clubkonnect: { health: Object.fromEntries(services.map((s, i) => [s, ckHealths[i]])), healthCheckOn: rc.healthcheckOn },
+        routing: Object.fromEntries(services.map((s, i) => [s, orders[i]])),
         checkedAt: new Date().toISOString(),
       });
     }
@@ -2079,48 +2197,92 @@ serve(async (req) => {
     }
 
     // ── VTpass sandbox proof (service-only, SANDBOX ONLY) ─────────────────────
-    // VTpass grants live access only after seeing a successful sandbox order for each service we integrate. This places
-    // one per airtime + data service on every network through the SAME request-id builder and order bodies real orders
-    // use (vtRequestId, vtAirtimeBody, vtDataBody), to VTpass's sandbox success number, and confirms each by requery.
+    // VTpass grants live access only after seeing a successful sandbox order for each service we integrate. For one group
+    // per call (airtime-data, cable, electricity-1, electricity-2, education, smile) this places one order per service
+    // through the SAME request-id builder, order bodies and mappings real orders use, to VTpass's sandbox test numbers,
+    // checks the customer number first where the form asks about it, and confirms each order by requery.
     // Returns the request IDs to put on VTpass's "Request API access" form. Refuses outright once VTpass is live.
     if (action === "vtpass-sandbox-proof") {
       if (!vtConfigured(VT)) return json({ error: "VTpass keys are not configured" });
       if (VT.env !== "sandbox") return json({ error: "Refused: VTpass is live — the proof only ever runs against the sandbox." });
-      const PHONE = "08011111111";   // VTpass's sandbox "success" test number
+      const group = String((body as { group?: unknown }).group ?? "airtime-data");
       const now = Date.now();
       let n = 0;
-      const one = async (service: string, serviceID: string, body: Record<string, unknown>, variation: string | null = null) => {
+      const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+      const results: Record<string, unknown>[] = [];
+      // Every order goes through the production pieces: vtRequestId + the vt*Body builders + the same mappings.
+      const order = async (service: string, serviceID: string, payBody: Record<string, unknown>, extra: Record<string, unknown> = {}) => {
         const requestId = vtRequestId(`KDT-BILL-${now + ++n}`, now);
-        const pay = await vtCall(vtFetch, VT, "POST", "/pay", { request_id: requestId, ...body }, 45_000);
+        const pay = await vtCall(vtFetch, VT, "POST", "/pay", { request_id: requestId, ...payBody }, 60_000);
         const rq = await vtCall(vtFetch, VT, "POST", "/requery", { request_id: requestId }, 30_000);
-        return {
-          service, serviceID, variation, requestId,
+        results.push({
+          service, serviceID, requestId, ...extra,
           payCode: vtCode(pay) || null, payDesc: String(pay.response_description ?? "").slice(0, 60) || null,
           status: vtTxnStatus(rq) || vtTxnStatus(pay) || null, confirmed: classifyVt(rq) === "delivered",
-        };
+          token: serviceID.endsWith("-electric") ? (vtElectricToken(rq) ? "yes" : "none") : undefined,
+          pins: serviceID.startsWith("waec") ? (vtCardDetails(rq) ? "yes" : "none") : undefined,
+        });
       };
-      // One at a time, and no two orders for the same amount: VTpass refuses an order that looks like a recent one to
-      // the same number (019 LIKELY DUPLICATE — same number + amount within a short window).
-      const results: Record<string, unknown>[] = [];
-      const usedAmounts = new Set<number>();
-      const nets = ["MTN", "Airtel", "Glo", "9mobile"];
-      for (const [i, net] of nets.entries()) {
-        const a = airtimeServiceId(net)!;
-        const amount = 150 + 10 * i;
-        usedAmounts.add(amount);
-        results.push(await one(`${net} Airtime VTU`, a, vtAirtimeBody(a, amount, PHONE)));
-        await new Promise((r) => setTimeout(r, 1500));
+      const check = async (sid: string, code: string, type?: string) => {
+        const c = vtCustomer(await vtCall(vtFetch, VT, "POST", "/merchant-verify", { billersCode: code, serviceID: sid, ...(type ? { type } : {}) }, 30_000));
+        return { verified: c.kind === "ok", verifiedName: c.kind === "ok" ? c.name : c.kind === "invalid" ? `invalid: ${c.message.slice(0, 60)}` : "unavailable" };
+      };
+      const cheapest = async (sid: string, avoid = new Set<number>()) =>
+        (await vtCatalogue(sid)).sort((x, y) => x.plan_amount - y.plan_amount).find((p) => !avoid.has(p.plan_amount)) ?? null;
+      // VTpass refuses a second order to the same recipient within 15 s (019) — so recipients alternate and orders are spaced.
+      if (group === "airtime-data") {
+        const PHONE = "08011111111", used = new Set<number>(), nets = ["MTN", "Airtel", "Glo", "9mobile"];
+        for (const [i, net] of nets.entries()) {
+          const a = airtimeServiceId(net)!, amount = 150 + 10 * i;
+          used.add(amount);
+          await order(`${net} Airtime VTU`, a, vtAirtimeBody(a, amount, PHONE));
+          await sleep(16_000);
+        }
+        for (const net of nets) {
+          const d = dataServiceId(net)!, pick = await cheapest(d, used);
+          if (!pick) { results.push({ service: `${net} Data`, serviceID: d, error: "no plan listed" }); continue; }
+          used.add(pick.plan_amount);
+          await order(`${net} Data`, d, vtDataBody(d, vtPlanCode(pick.plan_id), PHONE), { variation: `${vtPlanCode(pick.plan_id)} — ${pick.plan_name}` });
+          await sleep(16_000);
+        }
+      } else if (group === "cable") {
+        const CARD = "1212121212";
+        for (const [i, provider] of ["dstv", "gotv", "startimes"].entries()) {
+          const v = await check(provider, CARD), pick = await cheapest(provider);
+          if (!pick) { results.push({ service: provider, serviceID: provider, error: "no bouquet listed", ...v }); continue; }
+          if (i > 0) await sleep(16_000);
+          await order(provider === "dstv" ? "DSTV Subscription" : provider === "gotv" ? "Gotv Payment" : "Startimes Subscription", provider,
+            vtCableBody(provider, CARD, vtPlanCode(pick.plan_id), `080${31111111 + i}`), { ...v, variation: `${vtPlanCode(pick.plan_id)} — ${pick.plan_name}` });
+        }
+      } else if (group === "electricity-1" || group === "electricity-2") {
+        const codes = group === "electricity-1" ? ["01", "02", "03", "04", "05", "06"] : ["07", "08", "09", "10", "11", "12"];
+        for (const [i, code] of codes.entries()) {
+          const sid = VT_ELECTRIC[code], prepaid = i % 2 === 0;   // alternate the two test meters: the same meter comes round every other order
+          const meter = prepaid ? "1111111111111" : "1010101010101", mt = prepaid ? "prepaid" as const : "postpaid" as const;
+          const v = await check(sid, meter, mt);
+          await order(sid, sid, vtElectricBody(sid, meter, mt, 1000, `080${51111111 + i}`), { ...v, variation: mt });
+          await sleep(9_000);
+        }
+      } else if (group === "education") {
+        for (const [i, examType] of ["waecdirect", "waec-registration"].entries()) {
+          const b = vtWaecBody(examType, `080${71111111 + i}`)!;
+          await order(examType === "waecdirect" ? "WAEC Result Checker PIN" : "WAEC Registration PIN", String(b.serviceID), b, { variation: String(b.variation_code) });
+          await sleep(3_000);
+        }
+      } else if (group === "smile") {
+        // In the sandbox only VTpass's test email verifies; the account to pay is the AccountId it lists.
+        const vr = await vtCall(vtFetch, VT, "POST", "/merchant-verify", { billersCode: "tester@sandbox.com", serviceID: VT_SMILE }, 30_000);
+        const c = vtCustomer(vr);
+        let acct = "";
+        try { acct = String(JSON.parse(String(((vr.content ?? {}) as Record<string, unknown>).AccountList ?? "{}"))?.Account?.[0]?.AccountId ?? ""); } catch { /* none */ }
+        const pick = await cheapest(VT_SMILE);
+        if (!acct || !pick) results.push({ service: "Smile Payment", serviceID: VT_SMILE, error: !acct ? "no account listed" : "no plan listed", verified: c.kind === "ok" });
+        else await order("Smile Payment", VT_SMILE, vtSmileBody(acct, vtPlanCode(pick.plan_id), acct),
+          { verified: c.kind === "ok", verifiedName: c.kind === "ok" ? c.name : null, variation: `${vtPlanCode(pick.plan_id)} — ${pick.plan_name}` });
+      } else {
+        return json({ error: `unknown group "${group}" (airtime-data, cable, electricity-1, electricity-2, education, smile)` });
       }
-      for (const net of nets) {
-        const d = dataServiceId(net)!;
-        const plans = parseVariations(await vtCall(vtFetch, VT, "GET", `/service-variations?serviceID=${encodeURIComponent(d)}`, undefined, 20_000));
-        const pick = [...plans].sort((x, y) => x.plan_amount - y.plan_amount).find((p) => !usedAmounts.has(p.plan_amount));
-        if (!pick) { results.push({ service: `${net} Data`, serviceID: d, error: `no usable plan listed for ${d}` }); continue; }
-        usedAmounts.add(pick.plan_amount);
-        results.push(await one(`${net} Data`, d, vtDataBody(d, vtPlanCode(pick.plan_id), PHONE), `${vtPlanCode(pick.plan_id)} — ${pick.plan_name}`));
-        await new Promise((r) => setTimeout(r, 1500));
-      }
-      return json({ env: VT.env, phone: PHONE, results });
+      return json({ env: VT.env, group, results });
     }
 
     // ── VTpass contract probe (service-only) ─────────────────────────────────

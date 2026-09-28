@@ -22,8 +22,11 @@ export type Provider = "clubkonnect" | "vtpass";
 export const PROVIDERS: readonly Provider[] = ["clubkonnect", "vtpass"];
 export const PROVIDER_LABEL: Readonly<Record<Provider, string>> = { clubkonnect: "ClubKonnect", vtpass: "VTpass" };
 
-/** Services VTpass can take today. Everything else (electricity, cable, betting, e-PINs, exams, Smile, Spectranet) stays on ClubKonnect. */
-export const VT_SERVICES: ReadonlySet<string> = new Set(["airtime", "data"]);
+/**
+ * Services VTpass can take. Betting, JAMB, Spectranet and printed PINs stay on ClubKonnect (not on VTpass's access
+ * form), as do Showmax (cable) — each purchase handler checks the specific product too.
+ */
+export const VT_SERVICES: ReadonlySet<string> = new Set(["airtime", "data", "cable", "electricity", "waec", "smile"]);
 
 export interface ProviderConfig { primary: Provider; failover: boolean }
 export const DEFAULT_PROVIDER_CONFIG: ProviderConfig = { primary: "clubkonnect", failover: true };
@@ -180,7 +183,10 @@ async function tryVtpass(deps: BuyDeps): Promise<Attempt> {
   if (r === "delivered") return { settled: { via: "vtpass", state: "delivered", data: rq, message: String(rq.response_description ?? "TRANSACTION SUCCESSFUL") } };
   if (r === "pending") return { settled: held(rq) };
   if (r === "failed") return { settled: { via: "vtpass", state: "failed", data: rq, message: vtMessage(rq) } };
-  if (r !== "not-found" || p === "duplicate") return { settled: held(r === "not-found" ? pay : rq) };   // can't confirm → hold
+  // A requery that repeats the purchase's own refusal (seen for 019 in the sandbox: pay 019 → requery 019) is VTpass's
+  // record of a REFUSED request — no order exists, same as "no such order".
+  const refusalOnRecord = r === "refused" && !!vtCode(pay) && vtCode(rq) === vtCode(pay);
+  if ((r !== "not-found" && !refusalOnRecord) || p === "duplicate") return { settled: held(r === "not-found" ? pay : rq) };   // can't confirm → hold
 
   // VTpass confirms it holds no order for this reference.
   const failed: BuyOutcome = { via: "vtpass", state: "failed", data: pay, message: vtMessage(pay) };
@@ -240,6 +246,7 @@ export function combineVerdicts(verdicts: ProviderVerdict[]): ProviderVerdict | 
 
 /** A VTpass /requery answer as a verify verdict. */
 export function vtVerify(rq: VtResult): VerifyState {
+  if (vtCode(rq) === "019") return "FAILED";   // the request was refused as a look-alike (its record says so) — nothing placed
   switch (classifyVt(rq)) {
     case "delivered": return "SUCCESS";
     case "pending": return "PENDING";

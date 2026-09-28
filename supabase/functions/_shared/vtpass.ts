@@ -63,11 +63,85 @@ export function dataServiceId(network: string): string | null {
   return a ? `${a}-data` : null;
 }
 
+// ── Cable TV, electricity, WAEC, Smile (codes verified against VTpass's sandbox by vtpass-explore, 2026-09-28) ──
+
+/** Cable providers VTpass carries for us (the app's codes are VTpass's serviceIDs). Showmax isn't on VTpass's access form → ClubKonnect only. */
+export const VT_CABLE: ReadonlySet<string> = new Set(["dstv", "gotv", "startimes"]);
+/** DStv and GOtv sell a chosen bouquet as a "change" subscription; StarTimes takes the bouquet alone. */
+export const vtCableNeedsChange = (provider: string) => provider === "dstv" || provider === "gotv";
+
+/** The app's electricity company codes (ClubKonnect's) → VTpass serviceIDs. */
+export const VT_ELECTRIC: Readonly<Record<string, string>> = {
+  "01": "eko-electric", "02": "ikeja-electric", "03": "abuja-electric", "04": "kano-electric", "05": "portharcourt-electric",
+  "06": "jos-electric", "07": "ibadan-electric", "08": "kaduna-electric", "09": "enugu-electric", "10": "benin-electric",
+  "11": "yola-electric", "12": "aba-electric",
+};
+/** The app's meter type ("01" prepaid, "02" postpaid) → VTpass's variation. */
+export const vtMeterType = (t: string): "prepaid" | "postpaid" | null => (t === "01" ? "prepaid" : t === "02" ? "postpaid" : null);
+
+/** The app's WAEC exam types → VTpass service + variation (VTpass spells the registration variation "waec-registraion"). */
+export const VT_WAEC: Readonly<Record<string, { serviceID: string; variation: string }>> = {
+  waecdirect: { serviceID: "waec", variation: "waecdirect" },
+  "waec-registration": { serviceID: "waec-registration", variation: "waec-registraion" },
+};
+export const VT_SMILE = "smile-direct";
+
+/** A prepaid electricity token: VTpass sends "Token : 2636 2054 …" in token / purchased_code / mainToken. */
+export function vtElectricToken(d: VtResult | null | undefined): string {
+  for (const k of ["token", "mainToken", "purchased_code"]) {
+    const v = String(d?.[k] ?? "").replace(/^\s*token\s*:?\s*/i, "").trim();
+    if (/\d{4}/.test(v) && !/^n\/?a$/i.test(v)) return v;
+  }
+  return "";
+}
+export const vtElectricUnits = (d: VtResult | null | undefined) => {
+  const u = String(d?.units ?? d?.mainTokenUnits ?? "").trim();
+  return u && !/^n\/?a$/i.test(u) ? u : "";
+};
+
+/** WAEC PINs as one line for the receipt: "Serial No: X, PIN: Y | …" (result checker) or "Token: X" (registration). */
+export function vtCardDetails(d: VtResult | null | undefined): string {
+  const parse = (v: unknown): unknown => { if (typeof v !== "string") return v; try { return JSON.parse(v); } catch { return null; } };
+  const cards = parse(d?.cards);
+  if (Array.isArray(cards) && cards.length) {
+    return cards.map((c: Record<string, unknown>) => `Serial No: ${c.Serial ?? c.serial ?? "-"}, PIN: ${c.Pin ?? c.pin ?? "-"}`).join(" | ");
+  }
+  const tokens = parse(d?.tokens);
+  if (Array.isArray(tokens) && tokens.length) return tokens.map((t) => `Token: ${t}`).join(" | ");
+  return String(d?.purchased_code ?? "").replace(/\|\|/g, " | ").trim();
+}
+
+/**
+ * A /merchant-verify answer. VTpass answers code 000 either way — a bad number comes back as content.error
+ * (with WrongBillersCode "true"), a good one with Customer_Name (+ Address for electricity).
+ */
+export function vtCustomer(d: VtResult | null | undefined):
+  { kind: "ok"; name: string; address: string } | { kind: "invalid"; message: string } | { kind: "unavailable" } {
+  if (!d || d._unreachable || typeof d._raw === "string" || vtCode(d) !== "000") return { kind: "unavailable" };
+  const c = (d.content ?? {}) as Record<string, unknown>;
+  const name = String(c.Customer_Name ?? "").trim();
+  if (c.error || String(c.WrongBillersCode ?? "") === "true" || !name) {
+    const msg = String(c.error ?? "").trim();
+    return { kind: "invalid", message: msg && msg.length < 200 ? msg : "The number you entered could not be verified. Please check it and try again." };
+  }
+  return { kind: "ok", name, address: String(c.Address ?? "").trim() };
+}
+
 // The /pay bodies (without request_id). Real orders and the sandbox proof both build them here, so what VTpass
 // approved in the sandbox is exactly what goes live.
 export const vtAirtimeBody = (serviceID: string, amount: number, phone: string) => ({ serviceID, amount, phone });
 export const vtDataBody = (serviceID: string, variationCode: string, phone: string) =>
   ({ serviceID, billersCode: phone, variation_code: variationCode, phone });
+export const vtCableBody = (provider: string, smartcard: string, variationCode: string, phone: string) =>
+  ({ serviceID: provider, billersCode: smartcard, variation_code: variationCode, phone, ...(vtCableNeedsChange(provider) ? { subscription_type: "change", quantity: 1 } : {}) });
+export const vtElectricBody = (serviceID: string, meterNo: string, meterType: "prepaid" | "postpaid", amount: number, phone: string) =>
+  ({ serviceID, billersCode: meterNo, variation_code: meterType, amount, phone });
+export const vtWaecBody = (examType: string, phone: string) => {
+  const w = VT_WAEC[examType];
+  return w ? { serviceID: w.serviceID, variation_code: w.variation, quantity: 1, phone } : null;
+};
+export const vtSmileBody = (accountId: string, variationCode: string, phone: string) =>
+  ({ serviceID: VT_SMILE, billersCode: accountId, variation_code: variationCode, phone });
 
 // A plan id the app got from a VTpass catalogue — lets the data purchase go to the provider that listed the plan.
 export const VT_PLAN_PREFIX = "vt:";

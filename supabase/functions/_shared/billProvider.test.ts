@@ -89,7 +89,7 @@ Deno.test("providerOrder: VTpass never serves customers unless it is usable (liv
 });
 
 Deno.test("providerOrder: services VTpass doesn't carry stay on ClubKonnect", () => {
-  for (const svc of ["electricity", "cable", "betting", "print-airtime", "waec", "smile"]) {
+  for (const svc of ["betting", "jamb", "spectranet", "print-airtime", "print-data", "airtime-bundle"]) {
     assertEquals(providerOrder(svc, { primary: "vtpass", failover: true }, st(true, "down")), ["clubkonnect"], svc);
   }
 });
@@ -307,17 +307,33 @@ Deno.test("buy: VTpass wallet empty + requery 'no such order' → moved to ClubK
 });
 
 Deno.test("buy: VTpass 'likely duplicate' (019, a DIFFERENT order that looks like a recent one) → requery confirms nothing → ClubKonnect", async () => {
-  const w = world({ pay: [VT.lookalike], requery: [VT.notFound], ck: [CK.ok] });
+  // the sandbox answers a requery of a 019'd request with 019 again — its record of the refusal (explore run, 2026-09-28)
+  const w = world({ pay: [VT.lookalike], requery: [VT.lookalike], ck: [CK.ok] });
   const out = await run(VT_FIRST, w);
   assertEquals(out, { via: "clubkonnect", data: CK.ok });
   assertEquals(w.calls, ["claim:vtpass<-[]", "vtPay", "vtRequery", "claim:clubkonnect<-[vtpass]", "ck"]);
 });
 
 Deno.test("buy: 019 with nowhere else to go → a clear 'wait a minute' message (nothing charged), not VTpass's wording", async () => {
-  const w = world({ pay: [VT.lookalike], requery: [VT.notFound] });
+  const w = world({ pay: [VT.lookalike], requery: [VT.lookalike] });
   const out = await buyAcrossProviders("data", ["vtpass"], deps(w));
   assertEquals((out as { state: string }).state, "failed");
   assertEquals((out as { message: string }).message, LOOKALIKE_MSG);
+});
+
+Deno.test("buy: 019 then a requery saying 'no such order' → also moved (either answer means nothing was placed)", async () => {
+  const w = world({ pay: [VT.lookalike], requery: [VT.notFound], ck: [CK.ok] });
+  assertEquals((await run(VT_FIRST, w)).via, "clubkonnect");
+});
+
+Deno.test("buy: a requery repeating the purchase's own refusal = refusal on record → moved; a DIFFERENT answer → held", async () => {
+  let w = world({ pay: [VT.lowWallet], requery: [VT.lowWallet], ck: [CK.ok] });
+  assertEquals((await run(VT_FIRST, w)).via, "clubkonnect");
+  w = world({ pay: [VT.lookalike], requery: [VT.lowWallet] });
+  assertEquals(((await run(VT_FIRST, w)) as { state: string }).state, "pending");
+  assert(!w.calls.includes("ck"));
+  w = world({ pay: [VT.sysError], requery: [VT.lowWallet] });   // a system error has no refusal of its own to echo
+  assertEquals(((await run(VT_FIRST, w)) as { state: string }).state, "pending");
 });
 
 Deno.test("buy: VTpass refuses the ORDER (below minimum) → customer told, ClubKonnect not tried", async () => {
@@ -433,6 +449,7 @@ Deno.test("vtVerify: requery answers map to the states the app and webhooks alre
   assertEquals(vtVerify(VT.notFound), "NOT_FOUND");
   assertEquals(vtVerify(VT.page), "UNKNOWN");
   assertEquals(vtVerify(VT.badCreds), "UNKNOWN");
+  assertEquals(vtVerify(VT.lookalike), "FAILED");   // the record of a refused look-alike: nothing was placed
 });
 
 Deno.test("vtCostKobo: VTpass's own 'total_amount' (what it took from our wallet)", () => {
