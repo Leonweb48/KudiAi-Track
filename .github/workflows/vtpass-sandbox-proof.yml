@@ -33,7 +33,7 @@ jobs:
             -d '{"action":"vtpass-sandbox-proof"}' || echo "000")
           echo "HTTP $code  $(jq -c '{env, phone, error}' out.json 2>/dev/null || head -c 300 out.json)"
           echo ""
-          jq -r '.results[]? | "\(.service) | serviceID=\(.serviceID) | request_id=\(.requestId // "-") | \(.status // .error) | confirmed=\(.confirmed // false) | \(.variation // "")"' out.json
+          jq -r '.results[]? | "\(.service) | serviceID=\(.serviceID) | request_id=\(.requestId // "-") | \(.status // .error) | confirmed=\(.confirmed // false) | pay=\(.payCode // "-") \(.payDesc // "") | \(.variation // "")"' out.json
           {
             echo "### VTpass sandbox request IDs"
             echo ""
