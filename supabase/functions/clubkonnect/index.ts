@@ -1769,7 +1769,12 @@ serve(async (req) => {
       const dry = async (path: string, key: string, extra: Record<string, string>) => {
         try {
           const d = await ck(path, { APIKey: key, MobileNumber: "08000000000", RequestID: `KUDIAI-DRYRUN-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, CallBackURL: "https://kudiai.app/", ...extra }, { retries: 0, timeoutMs: 15000 });
-          return typeof d._raw === "string" ? `crash page (HTTP ${d._http})` : String(d.status ?? d.Status ?? JSON.stringify(Object.keys(d)));
+          if (typeof d._raw === "string") {
+            // what the error page actually says (ClubKonnect's own text, tags stripped) — it may name the reason
+            const txt = d._raw.replace(/<style[\s\S]*?<\/style>|<script[\s\S]*?<\/script>/gi, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 240);
+            return `crash page (HTTP ${d._http}): ${txt}`;
+          }
+          return String(d.status ?? d.Status ?? JSON.stringify(Object.keys(d)));
         } catch (e) { return `unreachable: ${(e as Error).message}`; }
       };
       const [dryV1, dryV3, dryV1Net, dryV1Plan] = await Promise.all([
