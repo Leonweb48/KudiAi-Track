@@ -41,3 +41,7 @@ jobs:
           echo "REPEAT-SAME-ID    $(jq -c '.repeatSameRequestId' out.json)"
           echo "ID-WITHOUT-DATE   $(jq -c '.requestIdWithoutDate' out.json)"
           echo "SIDS              $(jq -c '{airtimeSids, dataSid}' out.json)"
+          curl -sS -m 120 -X POST "$FN" -H "Content-Type: application/json" -H "Authorization: Bearer $SRK" -d '{"action":"provider-status"}' > status.json || true
+          echo "PROVIDER-STATUS   $(jq -c '{config, services, vtpass, clubkonnect, routing}' status.json 2>/dev/null || head -c 300 status.json)"
+          # the retired first VTpass integration must refuse everything
+          echo "PEYFLEX-RETIRED   HTTP $(curl -sS -m 30 -o /dev/null -w '%{http_code}' -X POST "https://${REF}.supabase.co/functions/v1/peyflex" -H "Content-Type: application/json" -H "Authorization: Bearer $SRK" -d '{"action":"data-plans","payload":{"network":"mtn"}}' || echo 000)"
