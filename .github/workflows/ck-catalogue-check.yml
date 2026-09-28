@@ -1,0 +1,32 @@
+name: ClubKonnect catalogue check
+
+# Read-only: asks the clubkonnect function (service role) for ClubKonnect's WAEC and JAMB package lists — products and
+# prices, which are public price-list data — and prints them. Places nothing, never prints keys.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb   # v1 (pinned)
+        with:
+          version: 2.107.0
+      - name: Catalogues
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ secrets.SUPABASE_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          FN="https://${REF}.supabase.co/functions/v1/clubkonnect"
+          SRK=$(supabase projects api-keys --project-ref "$REF" -o json | jq -r '.[] | select(.name=="service_role") | .api_key')
+          echo "::add-mask::$SRK"
+          for a in waec-packages jamb-packages exam-price; do
+            curl -sS -m 60 -X POST "$FN" -H "Content-Type: application/json" -H "Authorization: Bearer $SRK" -d "{\"action\":\"$a\"}" > "$a.json" || true
+            echo "== $a: $(head -c 1500 "$a.json")"
+          done
