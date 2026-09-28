@@ -2046,17 +2046,28 @@ serve(async (req) => {
           status: vtTxnStatus(rq) || vtTxnStatus(pay) || null, confirmed: classifyVt(rq) === "delivered",
         };
       };
-      const results = await Promise.all(["MTN", "Airtel", "Glo", "9mobile"].map(async (net) => {
-        const a = airtimeServiceId(net)!, d = dataServiceId(net)!;
-        const rows: Record<string, unknown>[] = [await one(`${net} Airtime VTU`, a, vtAirtimeBody(a, 100, PHONE))];
+      // One at a time, and no two orders for the same amount: VTpass refuses an order that looks like a recent one to
+      // the same number (019 LIKELY DUPLICATE — same number + amount within a short window).
+      const results: Record<string, unknown>[] = [];
+      const usedAmounts = new Set<number>();
+      const nets = ["MTN", "Airtel", "Glo", "9mobile"];
+      for (const [i, net] of nets.entries()) {
+        const a = airtimeServiceId(net)!;
+        const amount = 150 + 10 * i;
+        usedAmounts.add(amount);
+        results.push(await one(`${net} Airtime VTU`, a, vtAirtimeBody(a, amount, PHONE)));
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+      for (const net of nets) {
+        const d = dataServiceId(net)!;
         const plans = parseVariations(await vtCall(vtFetch, VT, "GET", `/service-variations?serviceID=${encodeURIComponent(d)}`, undefined, 20_000));
-        const cheapest = [...plans].sort((x, y) => x.plan_amount - y.plan_amount)[0];
-        rows.push(cheapest
-          ? await one(`${net} Data`, d, vtDataBody(d, vtPlanCode(cheapest.plan_id), PHONE), `${vtPlanCode(cheapest.plan_id)} — ${cheapest.plan_name}`)
-          : { service: `${net} Data`, serviceID: d, error: `no plans listed for ${d}` });
-        return rows;
-      }));
-      return json({ env: VT.env, phone: PHONE, results: results.flat() });
+        const pick = [...plans].sort((x, y) => x.plan_amount - y.plan_amount).find((p) => !usedAmounts.has(p.plan_amount));
+        if (!pick) { results.push({ service: `${net} Data`, serviceID: d, error: `no usable plan listed for ${d}` }); continue; }
+        usedAmounts.add(pick.plan_amount);
+        results.push(await one(`${net} Data`, d, vtDataBody(d, vtPlanCode(pick.plan_id), PHONE), `${vtPlanCode(pick.plan_id)} — ${pick.plan_name}`));
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+      return json({ env: VT.env, phone: PHONE, results });
     }
 
     // ── VTpass contract probe (service-only) ─────────────────────────────────

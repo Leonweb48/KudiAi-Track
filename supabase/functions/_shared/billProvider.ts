@@ -63,11 +63,14 @@ export type VtOutcome = "delivered" | "pending" | "failed" | "not-found" | "dupl
 // Codes where VTpass refused the request up front for a reason that is OURS, not the customer's (so the other provider
 // may well succeed): wallet empty (018), account locked/suspended/API off/inactive (021-024), IP not whitelisted (027),
 // product not enabled for us (028), biller unreachable (030), service suspended/inactive (034/035), not processed (091),
-// bad request id (015/085 on a purchase), bad credentials (087).
-export const VT_PROVIDER_CODES: ReadonlySet<string> = new Set(["015", "018", "021", "022", "023", "024", "027", "028", "030", "034", "035", "085", "087", "091"]);
+// bad request id (015/085 on a purchase), bad credentials (087), and "likely duplicate" (019): VTpass refuses an order
+// that looks like a recent one (same number + amount within a short window — seen in the sandbox proof, 2026-09-28).
+// Our genuine repeats reuse the request_id and get 014, so a 019 is always a DIFFERENT order that merely looks alike —
+// safe to send to the other provider once VTpass confirms it holds nothing for it.
+export const VT_PROVIDER_CODES: ReadonlySet<string> = new Set(["015", "018", "019", "021", "022", "023", "024", "027", "028", "030", "034", "035", "085", "087", "091"]);
 // Codes where the ORDER itself is wrong — the other provider would refuse it too: no such plan/product (010, 012), bad
-// arguments (011), amount or quantity out of range (013, 017, 031, 032), the same order moments ago (019).
-export const VT_CUSTOMER_CODES: ReadonlySet<string> = new Set(["010", "011", "012", "013", "017", "019", "031", "032"]);
+// arguments (011), amount or quantity out of range (013, 017, 031, 032).
+export const VT_CUSTOMER_CODES: ReadonlySet<string> = new Set(["010", "011", "012", "013", "017", "031", "032"]);
 // Refused at VTpass's front door — our account or credentials — before any order can exist. A lookup would be refused
 // the same way, so these move on without one.
 export const VT_AUTH_CODES: ReadonlySet<string> = new Set(["021", "022", "023", "024", "027", "087"]);
@@ -105,7 +108,9 @@ export function ckAccountRefusal(d: CkResult | null | undefined): boolean {
 
 /** A short, customer-safe message for a VTpass answer. Account-level problems never reach the customer by name. */
 export const UNAVAILABLE_MSG = "This service is temporarily unavailable. Please try again shortly.";
+export const LOOKALIKE_MSG = "A purchase just like this one was made to the same number moments ago, so this one was stopped in case it was a repeat. You have not been charged — please wait a minute and try again.";
 export function vtMessage(d: VtResult | null | undefined): string {
+  if (vtCode(d) === "019") return LOOKALIKE_MSG;
   if (!vtCustomerRefusal(d) && vtCode(d) !== "016" && vtCode(d) !== "040") return UNAVAILABLE_MSG;
   const s = String(d?.response_description ?? "").trim();
   if (!s || s.length > 120 || /<[a-z!]/i.test(s)) return UNAVAILABLE_MSG;

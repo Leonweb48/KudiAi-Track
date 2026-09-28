@@ -1,7 +1,7 @@
 // Run: deno test supabase/functions/_shared/billProvider.test.ts
 import { assert, assertEquals, assertRejects } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
-  buyAcrossProviders, ckAccountRefusal, classifyVt, combineVerdicts, parseProviderConfig, providerOrder, RETRY_MSG,
+  buyAcrossProviders, ckAccountRefusal, classifyVt, combineVerdicts, LOOKALIKE_MSG, parseProviderConfig, providerOrder, RETRY_MSG,
   UNAVAILABLE_MSG, vtCostKobo, vtMessage, vtProbeVerdict, vtVerify, type BuyDeps, type BuyOutcome, type Provider,
   type ProviderState, type SwitchEvent,
 } from "./billProvider.ts";
@@ -20,6 +20,7 @@ const VT = {
   lowWallet: { _http: 200, code: "018", response_description: "LOW WALLET BALANCE" },
   badCreds:  { _http: 200, code: "087", response_description: "INVALID CREDENTIALS" },
   belowMin:  { _http: 200, code: "013", response_description: "BELOW MINIMUM AMOUNT ALLOWED" },
+  lookalike: { _http: 200, code: "019", response_description: "LIKELY DUPLICATE TRANSACTION" },   // sandbox proof, 2026-09-28
   page:      { _raw: "<html><body>502 Bad Gateway</body></html>", _http: 502 },
   dead:      { _unreachable: true, _error: "connection reset" },
 } satisfies Record<string, VtResult>;
@@ -303,6 +304,20 @@ Deno.test("buy: VTpass refuses our credentials / IP → moved on at once (a requ
 Deno.test("buy: VTpass wallet empty + requery 'no such order' → moved to ClubKonnect", async () => {
   const w = world({ pay: [VT.lowWallet], requery: [VT.notFound], ck: [CK.ok] });
   assertEquals((await run(VT_FIRST, w)).via, "clubkonnect");
+});
+
+Deno.test("buy: VTpass 'likely duplicate' (019, a DIFFERENT order that looks like a recent one) → requery confirms nothing → ClubKonnect", async () => {
+  const w = world({ pay: [VT.lookalike], requery: [VT.notFound], ck: [CK.ok] });
+  const out = await run(VT_FIRST, w);
+  assertEquals(out, { via: "clubkonnect", data: CK.ok });
+  assertEquals(w.calls, ["claim:vtpass<-[]", "vtPay", "vtRequery", "claim:clubkonnect<-[vtpass]", "ck"]);
+});
+
+Deno.test("buy: 019 with nowhere else to go → a clear 'wait a minute' message (nothing charged), not VTpass's wording", async () => {
+  const w = world({ pay: [VT.lookalike], requery: [VT.notFound] });
+  const out = await buyAcrossProviders("data", ["vtpass"], deps(w));
+  assertEquals((out as { state: string }).state, "failed");
+  assertEquals((out as { message: string }).message, LOOKALIKE_MSG);
 });
 
 Deno.test("buy: VTpass refuses the ORDER (below minimum) → customer told, ClubKonnect not tried", async () => {
