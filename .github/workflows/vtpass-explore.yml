@@ -6,6 +6,10 @@ name: VTpass explore
 
 on:
   workflow_dispatch:
+    inputs:
+      electric:
+        description: 'Optional JSON list of electricity cases, e.g. [["jos-electric","prepaid",1000]] (max 4)'
+        default: ""
 
 permissions:
   contents: read
@@ -22,14 +26,16 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           REF: ${{ secrets.SUPABASE_PROJECT_ID }}
+          ELECTRIC: ${{ inputs.electric }}
         run: |
           set -euo pipefail
           FN="https://${REF}.supabase.co/functions/v1/clubkonnect"
           SRK=$(supabase projects api-keys --project-ref "$REF" -o json | jq -r '.[] | select(.name=="service_role") | .api_key')
           echo "::add-mask::$SRK"
           code=$(curl -sS -m 300 -o out.json -w '%{http_code}' -X POST "$FN" -H "Content-Type: application/json" -H "Authorization: Bearer $SRK" \
-            -d '{"action":"vtpass-explore"}' || echo "000")
+            -d "$(jq -cn --arg e "$ELECTRIC" '{action:"vtpass-explore"} + (if $e == "" then {} else {electric: ($e|fromjson)} end)')" || echo "000")
           echo "HTTP $code $(jq -c '{env, error}' out.json 2>/dev/null || head -c 300 out.json)"
           jq -c '.catalogues[]?' out.json | while read -r c; do echo "CATALOGUE $c"; done
           jq -c '.verifies[]?' out.json | while read -r c; do echo "VERIFY $c"; done
           jq -c '.buys[]?' out.json | while read -r c; do echo "BUY $c"; done
+          jq -c '.electric[]?' out.json | while read -r c; do echo "ELECTRIC $c"; done

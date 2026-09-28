@@ -2168,12 +2168,25 @@ serve(async (req) => {
         ({ sid, billersCode, type: type ?? null, ...shape(await vtCall(vtFetch, VT, "POST", "/merchant-verify", { billersCode, serviceID: sid, ...(type ? { type } : {}) }, 30_000)) });
       const now = Date.now();
       let n = 0;
+      const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
       const buy = async (label: string, body: Record<string, unknown>) => {
         const requestId = vtRequestId(`KDT-BILL-${now + ++n}`, now);
         const pay = await vtCall(vtFetch, VT, "POST", "/pay", { request_id: requestId, ...body }, 60_000);
         const rq = await vtCall(vtFetch, VT, "POST", "/requery", { request_id: requestId }, 30_000);
         return { label, requestId, pay: shape(pay), requery: { code: vtCode(rq) || null, txStatus: vtTxnStatus(rq) || null, top: shape(rq).top } };
       };
+      // Optional: just these electricity cases — [serviceID, "prepaid"|"postpaid", amount] — verify + buy each (spaced for the 15 s rule).
+      const electric = (body as { electric?: unknown }).electric;
+      if (Array.isArray(electric) && electric.length) {
+        const out = [];
+        for (const [i, [sid, type, amount]] of (electric as [string, string, number][]).slice(0, 4).entries()) {
+          const meter = type === "prepaid" ? "1111111111111" : "1010101010101";
+          const v = await verify(sid, meter, type);
+          if (i > 0) await sleep(16_000);
+          out.push({ sid, type, amount, verify: v, buy: await buy(`${sid} ${type} ${amount}`, { serviceID: sid, billersCode: meter, variation_code: type, amount, phone: `080${61111111 + i}` }) });
+        }
+        return json({ env: VT.env, electric: out });
+      }
       const catalogues = await Promise.all(["dstv", "gotv", "startimes", "showmax", "waec", "waec-registration", "smile-direct", "ikeja-electric"].map(vars));
       const verifies = [];
       for (const [sid, code, type] of [["dstv", "1212121212"], ["gotv", "1212121212"], ["startimes", "1212121212"], ["dstv", "0000000001"],
