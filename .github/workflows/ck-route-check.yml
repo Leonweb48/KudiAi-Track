@@ -32,6 +32,8 @@ jobs:
             -d '{"action":"route-check"}' > out.json || true
           echo "CANARY $(jq -c '.canary' out.json)"
           echo "DRYRUN $(jq -c '.dryRun' out.json)"
+          echo "KEYS   $(jq -c '.keys' out.json)"
+          echo "ACCT   $(jq -c '.account' out.json)"
           echo "LOOKUP $(jq -c '.lookup' out.json)"
           echo "CONFIG $(jq -c '.config' out.json)"
           echo "ERROR  $(jq -c '.error // empty' out.json)"

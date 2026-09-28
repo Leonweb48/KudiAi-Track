@@ -1771,10 +1771,30 @@ serve(async (req) => {
         } catch (e) { return `unreachable: ${(e as Error).message}`; }
       };
       const [dryV1, dryV3] = await Promise.all([dry("APIAirtimeV1.asp"), dry("APIAirtimeV3.asp")]);
+      // Is each service's key accepted? The wallet-balance lookup checks UserID + APIKey (catalogue lists don't check
+      // credentials at all). Reports only "valid" or ClubKonnect's status — never the balance.
+      const KEYS: Record<string, string> = {
+        airtime: AIRTIME_K, data: DATA_K, cable: CABLETV_K, electricity: ELECTRICITY_K, betting: BETTING_K, waec: WAEC_K,
+        jamb: JAMB_K, spectranet: SPECTRANET_K, smile: SMILE_K, "print-airtime": PRINT_AIRTIME_K, "print-data": PRINT_DATA_K,
+      };
+      const keys: Record<string, string> = {};
+      await Promise.all(Object.entries(KEYS).map(async ([svc, k]) => {
+        if (!k) { keys[svc] = "not configured"; return; }
+        try {
+          const d = await ck("APIWalletBalanceV1.asp", { APIKey: k }, { retries: 0, timeoutMs: 15000 });
+          if (typeof d._raw === "string") { keys[svc] = `crash page (HTTP ${d._http})`; return; }
+          const s = String(d.status ?? d.Status ?? "").trim();
+          keys[svc] = s && /INVALID|MISSING|UNAUTHOR|DENIED|BLOCK|WHITELIST|\bIP\b/i.test(s) ? s : "valid";
+        } catch (e) { keys[svc] = `unreachable: ${(e as Error).message}`; }
+      }));
+      let egressIp = "unknown";
+      try { egressIp = (await (await fetch("https://api.ipify.org", { signal: AbortSignal.timeout(5000) })).text()).trim(); } catch { /* optional */ }
       const cfg = await routeConfig();
       return json({
         canary,
         dryRun: { airtimeV1: dryV1, airtimeV3: dryV3 },
+        keys,
+        account: { userIdSet: !!USER_ID, userIdLooksLikeCk: /^CK\d+$/i.test(USER_ID), egressIp },
         lookup: { kind: probe.kind, status: q.status ?? q.Status ?? null, statuscode: q.statuscode ?? q.StatusCode ?? null, fields: Object.keys(q) },
         config: { fallbackOn: cfg.fallbackOn, fallbackServices: [...cfg.fallbackServices], forceV3: [...cfg.forceV3], healthcheckOn: cfg.healthcheckOn },
       });
