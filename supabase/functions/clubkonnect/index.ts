@@ -656,7 +656,7 @@ serve(async (req) => {
   // service-role key. This function is deployed --no-verify-jwt, so the gateway does NOT check anything for us:
   // these MUST be gated here (they used to be reachable by anyone on the internet with no credentials at all).
   let callerUser: { id: string } | null = null;   // set for ordinary logged-in callers; stays null for server (service-role) calls
-  const SERVICE_ONLY = new Set(["wallet-balance", "connectivity-check", "wallet-balance-alert", "health-check", "data-probe", "refresh-ck-prices", "price-list", "route-check", "vtpass-probe", "provider-status", "vtpass-sandbox-proof"]);
+  const SERVICE_ONLY = new Set(["wallet-balance", "connectivity-check", "wallet-balance-alert", "health-check", "data-probe", "refresh-ck-prices", "price-list", "route-check", "vtpass-probe", "provider-status", "vtpass-sandbox-proof", "vtpass-explore"]);
   // Public catalogue lookups (plan lists) stay open; purchase / write actions require the service key OR a user JWT.
   const READ_ONLY = new Set(["data-plans", "cabletv-plans"]);
   if (SERVICE_ONLY.has(action)) {
@@ -2023,6 +2023,59 @@ serve(async (req) => {
         routing: { airtime, data },
         checkedAt: new Date().toISOString(),
       });
+    }
+
+    // ── VTpass explore (service-only, SANDBOX ONLY) ───────────────────────────
+    // Records VTpass's real answers for cable TV, electricity, WAEC and Smile — catalogues, customer checks and one
+    // sandbox purchase each (VTpass's published sandbox test numbers; play money) — before any routing relies on them.
+    if (action === "vtpass-explore") {
+      if (!vtConfigured(VT)) return json({ error: "VTpass keys are not configured" });
+      if (VT.env !== "sandbox") return json({ error: "Refused: VTpass is live — explore only ever runs against the sandbox." });
+      const clip = (v: unknown, n = 160) => { const s = typeof v === "string" ? v : JSON.stringify(v); return s == null ? null : s.length > n ? s.slice(0, n) + "…" : s; };
+      const shape = (d: VtResult) => {
+        const c = (d.content ?? {}) as Record<string, unknown>, t = vtTxn(d);
+        const top: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(d)) if (k !== "content" && !k.startsWith("_")) top[k] = clip(v);
+        const content: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(c)) if (k !== "transactions" && k !== "varations" && k !== "variations") content[k] = clip(v, 220);
+        return { http: d._http ?? null, top, content, txStatus: vtTxnStatus(d) || null, txKeys: Object.keys(t), raw: typeof d._raw === "string" ? clip(d._raw) : undefined };
+      };
+      const vars = async (sid: string) => {
+        const d = await vtCall(vtFetch, VT, "GET", `/service-variations?serviceID=${encodeURIComponent(sid)}`, undefined, 20_000);
+        const list = ((d.content as Record<string, unknown> | undefined)?.varations ?? (d.content as Record<string, unknown> | undefined)?.variations ?? []) as Record<string, unknown>[];
+        return { sid, http: d._http ?? null, desc: d.response_description ?? null, count: Array.isArray(list) ? list.length : 0,
+          sample: (Array.isArray(list) ? list : []).slice(0, 4).map((v) => ({ code: v.variation_code, name: clip(v.name, 60), amount: v.variation_amount, fixed: v.fixedPrice })) };
+      };
+      const verify = async (sid: string, billersCode: string, type?: string) =>
+        ({ sid, billersCode, type: type ?? null, ...shape(await vtCall(vtFetch, VT, "POST", "/merchant-verify", { billersCode, serviceID: sid, ...(type ? { type } : {}) }, 30_000)) });
+      const now = Date.now();
+      let n = 0;
+      const buy = async (label: string, body: Record<string, unknown>) => {
+        const requestId = vtRequestId(`KDT-BILL-${now + ++n}`, now);
+        const pay = await vtCall(vtFetch, VT, "POST", "/pay", { request_id: requestId, ...body }, 60_000);
+        const rq = await vtCall(vtFetch, VT, "POST", "/requery", { request_id: requestId }, 30_000);
+        return { label, requestId, pay: shape(pay), requery: { code: vtCode(rq) || null, txStatus: vtTxnStatus(rq) || null, top: shape(rq).top } };
+      };
+      const catalogues = await Promise.all(["dstv", "gotv", "startimes", "showmax", "waec", "waec-registration", "smile-direct", "ikeja-electric"].map(vars));
+      const verifies = [];
+      for (const [sid, code, type] of [["dstv", "1212121212"], ["gotv", "1212121212"], ["startimes", "1212121212"], ["dstv", "0000000001"],
+        ["ikeja-electric", "1111111111111", "prepaid"], ["ikeja-electric", "1010101010101", "postpaid"], ["ikeja-electric", "12345", "prepaid"],
+        ["smile-direct", "tester@sandbox.com"], ["smile-direct", "08011111111"]] as [string, string, string?][]) verifies.push(await verify(sid, code, type));
+      const cheapest = (sid: string) => { const c = catalogues.find((x) => x.sid === sid); return c?.sample?.length ? [...c.sample].sort((a, b) => Number(a.amount) - Number(b.amount))[0] : null; };
+      const buys = [];
+      const plan = (sid: string) => String(cheapest(sid)?.code ?? "");
+      const steps: [string, Record<string, unknown>][] = [
+        ["dstv change", { serviceID: "dstv", billersCode: "1212121212", variation_code: plan("dstv"), phone: "08021111111", subscription_type: "change", quantity: 1 }],
+        ["gotv change", { serviceID: "gotv", billersCode: "1212121212", variation_code: plan("gotv"), phone: "08031111111", subscription_type: "change", quantity: 1 }],
+        ["startimes", { serviceID: "startimes", billersCode: "1212121212", variation_code: plan("startimes"), phone: "08041111111" }],
+        ["electricity prepaid", { serviceID: "ikeja-electric", billersCode: "1111111111111", variation_code: "prepaid", amount: 1000, phone: "08051111111" }],
+        ["electricity postpaid", { serviceID: "ikeja-electric", billersCode: "1010101010101", variation_code: "postpaid", amount: 1000, phone: "08061111111" }],
+        ["waec result checker", { serviceID: "waec", variation_code: plan("waec"), quantity: 1, phone: "08071111111" }],
+        ["waec registration", { serviceID: "waec-registration", variation_code: plan("waec-registration"), quantity: 1, phone: "08081111111" }],
+        ["smile", { serviceID: "smile-direct", billersCode: "tester@sandbox.com", variation_code: plan("smile-direct"), phone: "08091111111" }],
+      ];
+      for (const [label, body] of steps) { buys.push(await buy(label, body)); await new Promise((r) => setTimeout(r, 1200)); }
+      return json({ env: VT.env, catalogues, verifies, buys });
     }
 
     // ── VTpass sandbox proof (service-only, SANDBOX ONLY) ─────────────────────

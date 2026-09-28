@@ -1,0 +1,35 @@
+name: VTpass explore
+
+# Records VTpass's real SANDBOX answers for cable TV, electricity, WAEC and Smile (catalogues, customer checks, one
+# play-money purchase each with VTpass's test numbers) via the clubkonnect function's service-only `vtpass-explore`
+# action. Refuses once VTpass is live. Prints answer shapes only — never keys.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  explore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb   # v1 (pinned)
+        with:
+          version: 2.107.0
+      - name: Explore
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ secrets.SUPABASE_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          FN="https://${REF}.supabase.co/functions/v1/clubkonnect"
+          SRK=$(supabase projects api-keys --project-ref "$REF" -o json | jq -r '.[] | select(.name=="service_role") | .api_key')
+          echo "::add-mask::$SRK"
+          code=$(curl -sS -m 300 -o out.json -w '%{http_code}' -X POST "$FN" -H "Content-Type: application/json" -H "Authorization: Bearer $SRK" \
+            -d '{"action":"vtpass-explore"}' || echo "000")
+          echo "HTTP $code $(jq -c '{env, error}' out.json 2>/dev/null || head -c 300 out.json)"
+          jq -c '.catalogues[]?' out.json | while read -r c; do echo "CATALOGUE $c"; done
+          jq -c '.verifies[]?' out.json | while read -r c; do echo "VERIFY $c"; done
+          jq -c '.buys[]?' out.json | while read -r c; do echo "BUY $c"; done
