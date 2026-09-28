@@ -6,8 +6,12 @@ import { parseCkAmount } from "../_shared/ckAmount.ts";
 import { applyDataPrices, parseDiscountPct, parseSellingPrices, type SellingPrices } from "../_shared/dataPricing.ts";
 import { checkBillGate, DEFAULT_CONFIG, PURCHASE_ACTIONS, type CouponRow, type GateConfig, type GateDeps, type GateMode } from "../_shared/billGate.ts";
 import { airtimeCost, dataCost, findPlanPrice, networkName, parseDiscounts, printAirtimeCost, type Cost, type Discounts } from "../_shared/billCost.ts";
-import { buyWithFallback, parseServiceList, probeVerdict, purchaseServiceState, V3_PATH, type Health, type Lookup, type RouteConfig, type RouteEvent } from "../_shared/ckRoute.ts";
-import { airtimeServiceId, dataServiceId, parseVariations, vtCall, vtCode, vtConfigured, vtEnv, vtRequestId, vtTxn, vtTxnStatus, type VtCreds, type VtResult } from "../_shared/vtpass.ts";
+import { buyWithFallback, parseServiceList, probeVerdict, purchaseServiceState, V3_PATH, type CkResult, type Health, type Lookup, type RouteConfig, type RouteEvent } from "../_shared/ckRoute.ts";
+import { airtimeServiceId, dataServiceId, isVtPlan, parseVariations, vtCall, vtCode, vtConfigured, vtEnv, vtPlanCode, vtRequestId, vtTxn, vtTxnStatus, type VtCreds, type VtFetch, type VtResult } from "../_shared/vtpass.ts";
+import {
+  buyAcrossProviders, combineVerdicts, DEFAULT_PROVIDER_CONFIG, parseProviderConfig, PROVIDER_LABEL, providerOrder, vtCostKobo, vtMessage, vtProbeVerdict, vtVerify,
+  VT_SERVICES, type BuyDeps, type BuyOutcome, type Provider, type ProviderConfig, type ProviderVerdict, type SwitchEvent,
+} from "../_shared/billProvider.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -220,7 +224,7 @@ async function providerPlanPrice(label: string, apiKey: string, netId: string, n
   }
   return findPlanPrice(hit.resp, network, planId);
 }
-async function recordBillCost(cat: string, rid: string, userId: string | null, resp: Record<string, unknown>, work: (d: Discounts) => Promise<Cost | null>) {
+async function recordBillCost(cat: string, rid: string, userId: string | null, resp: Record<string, unknown>, work: (d: Discounts) => Promise<Cost | null>, meta: Record<string, unknown> = {}) {
   try {
     if (!rid || !SUPABASE_URL || !SERVICE_KEY) return;
     const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
@@ -229,7 +233,7 @@ async function recordBillCost(cat: string, rid: string, userId: string | null, r
     const { error } = await db.rpc("finance_record_bill_cost", {
       p_request_id: rid, p_cat: cat, p_cost_kobo: cost.costKobo, p_face_kobo: cost.faceKobo, p_basis: cost.basis, p_estimated: cost.estimated, p_user: userId,
       // field NAMES only (never values) of the provider's response: shows whether it reports its own charge, so the estimate can be replaced by it
-      p_meta: { ck_fields: Object.keys(resp ?? {}).slice(0, 30) },
+      p_meta: { ck_fields: Object.keys(resp ?? {}).slice(0, 30), ...meta },
     });
     if (error) console.warn(`[finance] cost not recorded for ${rid}: ${error.message}`);
   } catch (e) { console.warn(`[finance] cost not recorded for ${rid}: ${(e as Error).message}`); }
@@ -395,14 +399,17 @@ const ROUTE_ALERT: Record<RouteAlert["outcome"], { type: string; title: string; 
   "pending":      { type: "warning", title: "ClubKonnect order held for confirmation", what: "An order may exist but isn't confirmed finished — it's held (not refunded) until reconciled." },
   "blocked":      { type: "error",   title: "ClubKonnect down — bill sales paused", what: "The pre-payment check found the purchase route down (and no working backup), so customers are told to try again later and are NOT charged." },
 };
-async function sendRouteAlert(e: RouteAlert) {
+// In-app + email to super/finance admins, at most once an hour per title.
+async function sendBillAlert(
+  a: { type: string; title: string; what: string; hint: string; emailHint: string },
+  e: { svc: string; outcome: string; detail?: string },
+) {
   try {
-    const a = ROUTE_ALERT[e.outcome];
     const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
     const { data: recent } = await sb.from("admin_notifications").select("id").eq("title", a.title)
       .gte("created_at", new Date(Date.now() - 60 * 60 * 1000).toISOString()).limit(1);
     if (recent && recent.length) return;
-    const message = `${a.what} Service: ${e.svc}${e.detail ? ` (${e.detail})` : ""}. Check ClubKonnect's status; the switches are ck_v3_fallback_enabled / ck_v3_fallback_services / ck_route_healthcheck_enabled in platform_config.`;
+    const message = `${a.what} Service: ${e.svc}${e.detail ? ` (${e.detail})` : ""}. ${a.hint}`;
     await sb.from("admin_notifications").insert({ type: a.type, category: "finance", title: a.title, message, metadata: { svc: e.svc, outcome: e.outcome, detail: e.detail ?? null } });
     const { data: admins } = await sb.from("admin_users")
       .select("email").in("role", ["super_admin", "finance_admin"]).eq("is_active", true).not("email", "is", null);
@@ -411,14 +418,21 @@ async function sendRouteAlert(e: RouteAlert) {
       icon: "⚠", title: a.title, subtitle: `Service: ${esc(e.svc)}`,
       body: `<p style="margin:0 0 12px;color:#334155;font-size:14px;line-height:1.6;">${esc(a.what)}</p>
              ${e.detail ? `<p style="margin:0 0 12px;color:#64748b;font-size:13px;">Detail: ${esc(e.detail)}</p>` : ""}
-             <p style="margin:0;color:#64748b;font-size:12px;line-height:1.6;">You'll get at most one of these an hour. Switches in platform_config: ck_v3_fallback_enabled, ck_v3_fallback_services, ck_route_healthcheck_enabled.</p>`,
+             <p style="margin:0;color:#64748b;font-size:12px;line-height:1.6;">You'll get at most one of these an hour. ${esc(a.emailHint)}</p>`,
     });
     for (const ad of (admins || [])) {
       if (!ad.email) continue;
       try { await sendEmail(sb, { to: ad.email, subject: `[KudiTrack] ${a.title}`, html }); }
-      catch (err) { console.error("route alert email failed:", (err as Error).message); }
+      catch (err) { console.error("bill alert email failed:", (err as Error).message); }
     }
-  } catch (err) { console.error("sendRouteAlert error:", (err as Error).message); }
+  } catch (err) { console.error("sendBillAlert error:", (err as Error).message); }
+}
+function sendRouteAlert(e: RouteAlert) {
+  return sendBillAlert({
+    ...ROUTE_ALERT[e.outcome],
+    hint: "Check ClubKonnect's status; the switches are ck_v3_fallback_enabled / ck_v3_fallback_services / ck_route_healthcheck_enabled in platform_config.",
+    emailHint: "Switches in platform_config: ck_v3_fallback_enabled, ck_v3_fallback_services, ck_route_healthcheck_enabled.",
+  }, e);
 }
 
 /** Every purchase goes through here: the main route, with the V3 fallback when it crashes (see _shared/ckRoute.ts). */
@@ -483,6 +497,145 @@ const PREFLIGHT_ROUTE: Record<string, [string, string]> = {
   "airtime-bundle": ["print-airtime", "APIEPINV1.asp"], "print-data": ["print-data", "APIDatabundleEPINV1.asp"],
 };
 
+// ── Bill provider switch: ClubKonnect or VTpass (logic + tests in _shared/billProvider.ts) ─────────────────────────
+// The admin picks the main provider for airtime and data (platform_config.bill_provider) and whether an order may move
+// to the other one when the main one is down (bill_provider_failover). Admin portal → Bill provider.
+
+/** VTpass may serve customers only with LIVE keys — the sandbox is play money. */
+const vtUsable = () => vtConfigured(VT) && VT.env === "live";
+const vtFetch: VtFetch = (u, i) => fetch(u, i);
+
+let provCfgCache: { at: number; cfg: ProviderConfig } | null = null;
+async function providerConfig(): Promise<ProviderConfig> {
+  if (provCfgCache && Date.now() - provCfgCache.at < 60_000) return provCfgCache.cfg;
+  try {
+    const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+    const { data, error } = await db.from("platform_config").select("key, value").in("key", ["bill_provider", "bill_provider_failover"]);
+    if (error) throw error;
+    const m: Record<string, string> = {};
+    for (const r of (data ?? []) as { key: string; value: string }[]) m[r.key] = r.value;
+    const cfg = parseProviderConfig(m);
+    provCfgCache = { at: Date.now(), cfg };
+    return cfg;
+  } catch (e) {
+    console.warn("[provider] config unavailable — ClubKonnect main, failover on:", (e as Error).message);
+    return DEFAULT_PROVIDER_CONFIG;   // not cached, so a DB blip doesn't stick for a minute
+  }
+}
+
+// VTpass health: a lookup of an order that can't exist — "no such order" = up; our account refused / error page = down.
+let vtHealthCache: { at: number; state: Health } | null = null;
+async function vtHealth(): Promise<Health> {
+  if (!vtConfigured(VT)) return "unknown";
+  if (vtHealthCache && Date.now() - vtHealthCache.at < 60_000) return vtHealthCache.state;
+  const now = Date.now();
+  const d = await vtCall(vtFetch, VT, "POST", "/requery", { request_id: vtRequestId(`KUDIAI-HEALTH-${now}`, now) }, 8000);
+  const state = vtProbeVerdict(d);
+  vtHealthCache = { at: Date.now(), state };
+  return state;
+}
+
+// ClubKonnect health for one service: its purchase script (made-up-account probe; a working V3 backup counts as up)
+// and the purchase service behind the login (purchaseServiceHealth). Off with the health-check switch → "unknown".
+async function ckHealth(svc: string): Promise<Health> {
+  const rc = await routeConfig();
+  if (!rc.healthcheckOn) return "unknown";
+  const route = PREFLIGHT_ROUTE[svc];
+  const [main, service] = await Promise.all([route ? routeHealth(route[1]) : Promise.resolve<Health>("unknown"), purchaseServiceHealth()]);
+  let mainDown = main === "down";
+  if (mainDown && route && rc.fallbackOn && rc.fallbackServices.has(route[0]) && (await routeHealth(V3_PATH[route[1]])) === "up") mainDown = false;
+  if (mainDown || service === "down") return "down";
+  return main === "up" && service === "up" ? "up" : "unknown";
+}
+
+/** Providers to try for a NEW order of this service, in order (a retry of an existing order follows its claim instead). */
+async function providerOrderFor(svc: string): Promise<Provider[]> {
+  const cfg = await providerConfig();
+  const usable = vtUsable();
+  const needHealth = usable && VT_SERVICES.has(svc) && cfg.failover;
+  const [ck_, vt_]: Health[] = needHealth ? await Promise.all([ckHealth(svc), vtHealth()]) : ["unknown", "unknown"];
+  return providerOrder(svc, cfg, { vtUsable: usable, health: { clubkonnect: ck_, vtpass: vt_ } });
+}
+
+// The claim row (bill_provider_attempts): null when it can't be read or written.
+async function claimProvider(rid: string, svc: string, provider: Provider, expect: Provider[], vtRid: string) {
+  try {
+    const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+    const { data, error } = await db.rpc("bill_provider_claim", { p_request_id: rid, p_service: svc, p_provider: provider, p_expect: expect, p_vt_request_id: vtRid });
+    if (error) throw error;
+    const r = data as { providers?: unknown[]; vt_request_id?: string | null } | null;
+    const providers = (r?.providers ?? []).filter((p): p is Provider => p === "clubkonnect" || p === "vtpass");
+    return providers.length ? { providers, vtRequestId: r?.vt_request_id ?? null } : null;
+  } catch (e) { console.warn(`[provider] claim failed for ${rid}:`, (e as Error).message); return null; }
+}
+async function readClaim(rid: string): Promise<{ providers: Provider[]; vtRequestId: string | null } | null | "error"> {
+  try {
+    const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+    const { data, error } = await db.from("bill_provider_attempts").select("providers, vt_request_id").eq("request_id", rid).maybeSingle();
+    if (error) {
+      if (/does not exist|schema cache|PGRST205|42P01/i.test(error.message)) return null;   // table not there yet = no claims yet
+      throw error;
+    }
+    if (!data) return null;
+    const providers = ((data as { providers?: unknown[] }).providers ?? []).filter((p): p is Provider => p === "clubkonnect" || p === "vtpass");
+    return providers.length ? { providers, vtRequestId: (data as { vt_request_id?: string | null }).vt_request_id ?? null } : null;
+  } catch (e) { console.warn(`[provider] claim read failed for ${rid}:`, (e as Error).message); return "error"; }
+}
+
+const SWITCH_HINT = "Admin portal → Bill provider shows both providers' health and switches the main one.";
+function sendSwitchAlert(e: SwitchEvent) {
+  if (e.outcome === "failover") {
+    return sendBillAlert({
+      type: "warning", title: "Bills moved to the backup provider",
+      what: `${PROVIDER_LABEL[e.to]} took a ${e.svc} order because ${PROVIDER_LABEL[e.from]} couldn't (it confirmed it holds no order for it).`,
+      hint: SWITCH_HINT, emailHint: SWITCH_HINT,
+    }, { svc: e.svc, outcome: e.outcome, detail: e.detail });
+  }
+  return sendBillAlert({
+    type: "error", title: `${PROVIDER_LABEL[e.provider]} is failing bill orders`,
+    what: `${PROVIDER_LABEL[e.provider]} couldn't take a ${e.svc} order for a reason on our side (an error page, our wallet, our keys …). No order was created there.`,
+    hint: SWITCH_HINT, emailHint: SWITCH_HINT,
+  }, { svc: e.svc, outcome: e.outcome, detail: e.detail });
+}
+
+/**
+ * Wiring for one order: the claim (keeping the STORED VTpass request_id for retries), the ClubKonnect purchase and
+ * lookup, and VTpass /pay + /requery. VTpass is refused outright unless it's live — even for an order already claimed
+ * for it (then it's held, never sent to the sandbox and never elsewhere).
+ */
+function providerDeps(svc: string, rid: string, ckKey: string, ckCall: () => Promise<CkResult>, vtBody: Record<string, unknown> | null): BuyDeps {
+  let vtRid = vtRequestId(rid, Date.now());
+  const notLive: VtResult = { _unreachable: true, _error: "VTpass is not live" };
+  return {
+    claim: async (p, expect) => {
+      const r = await claimProvider(rid, svc, p, expect, vtRid);
+      if (r?.vtRequestId) vtRid = r.vtRequestId;
+      return r ? r.providers : null;
+    },
+    ck: ckCall,
+    ckLookup: () => lookupOrder(ckKey, rid),
+    vtPay: async () => (vtUsable() && vtBody ? await vtCall(vtFetch, VT, "POST", "/pay", { request_id: vtRid, ...vtBody }, 60_000) : notLive),
+    vtRequery: async () => (vtUsable() ? await vtCall(vtFetch, VT, "POST", "/requery", { request_id: vtRid }, 30_000) : notLive),
+    isOk,
+    alert: (e) => afterResponse(sendSwitchAlert(e)),
+  };
+}
+
+/** A VTpass (or nothing-sent) outcome as the purchase answer the app and webhooks already understand. */
+function vtAnswer(cat: string, out: Exclude<BuyOutcome, { via: "clubkonnect" }>, rid: string, userId: string | null) {
+  if (out.via === "none") return json({ error: out.message });
+  if (out.state === "delivered") {
+    const t = vtTxn(out.data);
+    const cost = vtCostKobo(out.data);
+    const face = Math.round((Number(t.amount ?? out.data.amount) || 0) * 100);
+    if (cost) afterResponse(recordBillCost(cat, rid, userId, out.data, async () => ({ costKobo: cost, faceKobo: face || cost, basis: "provider_reported", estimated: false }), { provider: "vtpass" }));
+    return json({ status: "SUCCESS", reference: String(t.transactionId ?? out.data.requestId ?? ""), message: "ORDER_COMPLETED", provider: "vtpass" });
+  }
+  // pending: the wording matches the app's "confirming your order" pattern (PENDING_STATUS) → it holds and verifies.
+  // failed: a clean message → the customer is refunded.
+  return json({ error: out.message, _provider: "vtpass", _vt: { code: vtCode(out.data) || null, status: vtTxnStatus(out.data) || null } });
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
@@ -503,7 +656,7 @@ serve(async (req) => {
   // service-role key. This function is deployed --no-verify-jwt, so the gateway does NOT check anything for us:
   // these MUST be gated here (they used to be reachable by anyone on the internet with no credentials at all).
   let callerUser: { id: string } | null = null;   // set for ordinary logged-in callers; stays null for server (service-role) calls
-  const SERVICE_ONLY = new Set(["wallet-balance", "connectivity-check", "wallet-balance-alert", "health-check", "data-probe", "refresh-ck-prices", "price-list", "route-check", "vtpass-probe"]);
+  const SERVICE_ONLY = new Set(["wallet-balance", "connectivity-check", "wallet-balance-alert", "health-check", "data-probe", "refresh-ck-prices", "price-list", "route-check", "vtpass-probe", "provider-status"]);
   // Public catalogue lookups (plan lists) stay open; purchase / write actions require the service key OR a user JWT.
   const READ_ONLY = new Set(["data-plans", "cabletv-plans"]);
   if (SERVICE_ONLY.has(action)) {
@@ -538,10 +691,17 @@ serve(async (req) => {
       if (!phone || !network || !amount) return json({ error: "phone, network and amount required" });
       const netId = NET_ID[network];
       if (!netId) return json({ error: `Unknown network: ${network}` });
-      const data = await ckBuy("airtime", "APIAirtimeV1.asp", {
-        APIKey: AIRTIME_K, MobileNetwork: netId, Amount: String(amount),
-        MobileNumber: phone.replace(/\D/g, ""), RequestID: rid, CallBackURL: "https://kudiai.app/",
-      });
+      // ClubKonnect or VTpass (the admin's main provider, with failover) — see "Bill provider switch" above
+      const digits = phone.replace(/\D/g, "");
+      const sid = airtimeServiceId(network);
+      const out = await buyAcrossProviders("airtime", sid ? await providerOrderFor("airtime") : ["clubkonnect"], providerDeps("airtime", rid, AIRTIME_K,
+        () => ckBuy("airtime", "APIAirtimeV1.asp", {
+          APIKey: AIRTIME_K, MobileNetwork: netId, Amount: String(amount),
+          MobileNumber: digits, RequestID: rid, CallBackURL: "https://kudiai.app/",
+        }),
+        sid ? { serviceID: sid, amount: Number(amount), phone: digits } : null));
+      if (out.via !== "clubkonnect") return vtAnswer("airtime", out, rid, callerUser?.id ?? null);
+      const data = out.data;
       if (!isOk(data)) return json({ error: errMsg(data, "Airtime purchase failed"), _raw: data });
       afterResponse(recordBillCost("airtime", rid, callerUser?.id ?? null, data, async (d) => airtimeCost(amount, networkName(network, netId), d, data)));
       return json({ status: "SUCCESS", reference: String(data.orderid ?? data.requestid ?? ""), message: String(data.status ?? "ORDER_RECEIVED") });
@@ -550,6 +710,19 @@ serve(async (req) => {
     // ── Data plans ────────────────────────────────────────────────────────────
     if (action === "data-plans") {
       const { network } = body as { network: string };
+      const isPrint = (body as { print?: unknown }).print === true || (body as { print?: unknown }).print === "true";
+      // The catalogue comes from the provider new data orders go to right now; each plan id says which provider it
+      // belongs to, so the purchase goes back there. Print Data (PINs) is ClubKonnect-only.
+      if (!isPrint && vtUsable() && (await providerOrderFor("data"))[0] === "vtpass") {
+        const sid = dataServiceId(network);
+        const vtPlans = sid ? parseVariations(await vtCall(vtFetch, VT, "GET", `/service-variations?serviceID=${encodeURIComponent(sid)}`, undefined, 20_000)) : [];
+        if (vtPlans.length) {
+          const cfg = await priceConfig();
+          const priced = applyDataPrices(vtPlans, network, cfg.selling);
+          return json({ plans: priced, _count: priced.length, _provider: "vtpass" });
+        }
+        console.warn(`[data-plans] VTpass catalogue empty for ${network} — showing ClubKonnect's`);   // its plans buy on ClubKonnect
+      }
       const netId = NET_ID[network] ?? "01";
       const data = await ck("APIDatabundlePlansV2.asp", { APIKey: DATA_K, MobileNetwork: netId });
       if (data?.status && String(data.status).includes("INVALID")) return json({ error: `Data API key error: ${data.status}`, plans: [] });
@@ -612,7 +785,6 @@ serve(async (req) => {
       }
       // What customers pay: the owner's selling price (Print Data: minus the print discount), not the provider price. cost_amount keeps the provider price.
       const cfg = await priceConfig();
-      const isPrint = (body as { print?: unknown }).print === true || (body as { print?: unknown }).print === "true";
       const priced = applyDataPrices(plans, network, cfg.selling, { print: isPrint, printDiscountPct: cfg.printPct });
       return json({ plans: priced, _count: priced.length, _sample: _sampleProduct });
     }
@@ -624,10 +796,19 @@ serve(async (req) => {
       const netId = NET_ID[network];
       if (!netId) return json({ error: `Unknown network: ${network}` });
       console.log(`data purchase: net=${netId} plan=${planId} phone=${phone.replace(/\D/g,"").slice(-4)}`);
-      const data = await ckBuy("data", "APIDatabundleV1.asp", {
-        APIKey: DATA_K, MobileNetwork: netId, DataPlan: planId,
-        MobileNumber: phone.replace(/\D/g, ""), RequestID: rid, CallBackURL: "https://kudiai.app/",
-      });
+      // A plan belongs to the provider whose catalogue listed it ("vt:…" = VTpass), so the order goes there and only there.
+      const digits = phone.replace(/\D/g, "");
+      const vtPlan = isVtPlan(planId);
+      const sid = dataServiceId(network);
+      if (vtPlan && (!vtUsable() || !sid)) return json({ error: "This data plan is no longer available. Please reload the plans and try again." });
+      const out = await buyAcrossProviders("data", vtPlan ? ["vtpass"] : ["clubkonnect"], providerDeps("data", rid, DATA_K,
+        () => ckBuy("data", "APIDatabundleV1.asp", {
+          APIKey: DATA_K, MobileNetwork: netId, DataPlan: planId,
+          MobileNumber: digits, RequestID: rid, CallBackURL: "https://kudiai.app/",
+        }),
+        vtPlan && sid ? { serviceID: sid, billersCode: digits, variation_code: vtPlanCode(planId), phone: digits } : null));
+      if (out.via !== "clubkonnect") return vtAnswer("data", out, rid, callerUser?.id ?? null);
+      const data = out.data;
       console.log(`data purchase result:`, JSON.stringify(data).slice(0, 500));
       if (!isOk(data)) return json({ error: `${errMsg(data, "Data purchase failed")} [net:${netId} plan:${planId}]`, _raw: data });
       afterResponse(recordBillCost("data", rid, callerUser?.id ?? null, data, async () =>
@@ -936,6 +1117,31 @@ serve(async (req) => {
     if (action === "verify") {
       const svc     = String((body as Record<string, unknown>).service ?? "").toLowerCase().trim();
       const orderId = String((body as Record<string, unknown>).orderId ?? "").trim();
+      // Which provider(s) was this order sent to? No record = ClubKonnect only (every order from before the provider
+      // switch, and every bill VTpass doesn't carry). The provider it was sent to LAST decides (see combineVerdicts).
+      const claimRow = orderId ? null : await readClaim(rid);
+      if (claimRow === "error") return json({ status: "UNKNOWN", requestId: rid, message: "verify unavailable: order record unreadable" });
+      const providers: Provider[] = claimRow?.providers ?? ["clubkonnect"];
+      const verdicts: ProviderVerdict[] = await Promise.all(providers.map(async (p): Promise<ProviderVerdict> => {
+        if (p === "clubkonnect") { const b = await ckVerify(svc, orderId, rid); return { provider: p, state: b.status as ProviderVerdict["state"], body: b }; }
+        const rq: VtResult = vtUsable()
+          ? await vtCall(vtFetch, VT, "POST", "/requery", { request_id: claimRow?.vtRequestId ?? vtRequestId(rid, Date.now()) }, 30_000)
+          : { _unreachable: true, _error: "VTpass is not live" };
+        const state = vtVerify(rq);
+        const t = vtTxn(rq);
+        return {
+          provider: p, state,
+          body: state === "SUCCESS"
+            ? { status: state, requestId: rid, reference: String(t.transactionId ?? rq.requestId ?? ""), token: String(rq.purchased_code ?? ""), cardDetails: "", message: "ORDER_COMPLETED", provider: p }
+            : { status: state, requestId: rid, message: state === "FAILED" ? vtMessage(rq) : state === "UNKNOWN" ? "VTpass unavailable" : state.toLowerCase(), provider: p, _vt: { code: vtCode(rq) || null, status: vtTxnStatus(rq) || null } },
+        };
+      }));
+      return json(combineVerdicts(verdicts)!.body);
+    }
+
+    // ClubKonnect's side of `verify`: its lookup of one order (by RequestID, or OrderID when given). Fails safe — can't
+    // reach ClubKonnect or can't read the answer → UNKNOWN / PENDING, so the caller HOLDS rather than refunding.
+    async function ckVerify(svc: string, orderId: string, rid: string): Promise<Record<string, unknown>> {
       const KEY_BY_SVC: Record<string, string> = {
         airtime: AIRTIME_K, data: DATA_K, cable: CABLETV_K, electricity: ELECTRICITY_K,
         betting: BETTING_K, waec: WAEC_K, jamb: JAMB_K, spectranet: SPECTRANET_K,
@@ -949,7 +1155,7 @@ serve(async (req) => {
       try {
         q = await ck("APIQueryV1.asp", qp, { retries: 2, timeoutMs: 20000 });
       } catch (e) {
-        return json({ status: "UNKNOWN", requestId: rid, message: `verify unavailable: ${(e as Error).message}` });
+        return { status: "UNKNOWN", requestId: rid, message: `verify unavailable: ${(e as Error).message}` };
       }
 
       const code = String(q?.statuscode ?? q?.StatusCode ?? "").trim();
@@ -962,12 +1168,12 @@ serve(async (req) => {
 
       // No order exists for this id — genuinely nothing was placed (same test the purchase fallback relies on)
       if (queryNotFound(q)) {
-        return json({ status: "NOT_FOUND", requestId: rid, _raw: q });
+        return { status: "NOT_FOUND", requestId: rid, _raw: q };
       }
 
       // Explicit failure / cancellation
       if (FAIL_PATTERNS.some(p => stat.includes(p)) || stat.includes("CANCEL") || code.startsWith("5")) {
-        return json({ status: "FAILED", requestId: rid, message: errMsg(q, "Order failed"), _raw: q });
+        return { status: "FAILED", requestId: rid, message: errMsg(q, "Order failed"), _raw: q };
       }
 
       // Delivered
@@ -977,7 +1183,7 @@ serve(async (req) => {
         stat === "ORDER_COMPLETED" || stat === "ORDER_RECEIVED" ||
         stat === "SUCCESSFUL" || stat === "SUCCESS"
       ) {
-        return json({
+        return {
           status: "SUCCESS", requestId: rid,
           reference: String(q.orderid ?? q.OrderID ?? q.transactionid ?? q.TransactionID ?? orderId ?? ""),
           token: token || "",
@@ -985,11 +1191,11 @@ serve(async (req) => {
           pins: Array.isArray(vPins) && vPins.length ? vPins : undefined,
           message: stat || "ORDER_COMPLETED",
           _raw: q,
-        });
+        };
       }
 
       // Order exists but still working, or shape we don't recognise — hold, don't refund
-      return json({ status: "PENDING", requestId: rid, message: stat || "processing", _raw: q });
+      return { status: "PENDING", requestId: rid, message: stat || "processing", _raw: q };
     }
 
     // ── Betting providers ─────────────────────────────────────────────────────
@@ -1721,26 +1927,34 @@ serve(async (req) => {
       // Outage check: is ClubKonnect's purchase route for this service actually up? If it's crashing (as on
       // 2026-09-28) the customer would be debited, the order would fail and they'd be refunded — stop BEFORE charging
       // instead, unless the backup (V3) route is enabled for this service and is itself up. Unknown never blocks.
+      // With the provider switch, airtime and data may also go to VTpass: the sale is only paused when EVERY provider this
+      // order could go to is down.
       const routeCfg = await routeConfig();
       const route = PREFLIGHT_ROUTE[cat];
-      if (route && routeCfg.healthcheckOn) {
+      const order: Provider[] = VT_SERVICES.has(cat) ? await providerOrderFor(cat) : ["clubkonnect"];
+      let ckDown: string | null = null;   // why ClubKonnect can't take it right now (null = it can, or we can't tell)
+      if (order.includes("clubkonnect") && route && routeCfg.healthcheckOn) {
         const [svc, mainPath] = route;
         const forced = routeCfg.forceV3.has(svc);
         const main = await routeHealth(forced ? V3_PATH[mainPath] : mainPath);
         if (main === "down") {
           const backupUp = !forced && routeCfg.fallbackOn && routeCfg.fallbackServices.has(svc) &&
             (await routeHealth(V3_PATH[mainPath])) === "up";
-          if (!backupUp) {
-            afterResponse(sendRouteAlert({ svc, outcome: "blocked", detail: forced ? "backup route (test mode)" : "main route" }));
-            return json({ ok: false, reason: "provider_down", message: "This service is temporarily unavailable. Please try again later — you have not been charged." });
-          }
+          if (!backupUp) ckDown = forced ? "backup route (test mode)" : "main route";
         }
         // …and is the purchase service behind the login check working for OUR account? (see purchaseServiceHealth)
-        if (!forced && (await purchaseServiceHealth()) === "down") {
-          afterResponse(sendRouteAlert({ svc, outcome: "blocked", detail: "purchase service down for our account (HTTP 5xx on real orders)" }));
-          return json({ ok: false, reason: "provider_down", message: "This service is temporarily unavailable. Please try again later — you have not been charged." });
-        }
+        if (!ckDown && !forced && (await purchaseServiceHealth()) === "down") ckDown = "purchase service down for our account (HTTP 5xx on real orders)";
       }
+      const vtDown = order.includes("vtpass") && (await vtHealth()) === "down";
+      const available = order.filter((p) => (p === "vtpass" ? !vtDown : !ckDown));
+      if (!available.length) {
+        const detail = [ckDown && (order.length > 1 ? `ClubKonnect: ${ckDown}` : ckDown), vtDown && "VTpass: down"].filter(Boolean).join("; ");
+        afterResponse(sendRouteAlert({ svc: route?.[0] ?? cat, outcome: "blocked", detail }));
+        return json({ ok: false, reason: "provider_down", message: "This service is temporarily unavailable. Please try again later — you have not been charged." });
+      }
+      // VTpass takes it (ClubKonnect's wallet and discounts don't apply; an empty VTpass wallet moves the order back).
+      if (available[0] === "vtpass") return json({ ok: true, balance: null, provider: "vtpass", discounts: { airtime: {}, epin: {} } });
+      const vtBackup = available.includes("vtpass");   // a ClubKonnect refusal for an empty wallet would move the order to VTpass
 
       const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
       const { data: cfgRows } = await sb.from("platform_config").select("key, value").in("key", ["ck_discounts", "ck_discounts_updated", "ck_wallet_min_buffer"]);
@@ -1774,13 +1988,15 @@ serve(async (req) => {
         }
       }
 
-      // Wallet: block (and alert) if it can't cover the order.
+      // Wallet: alert, and block if it can't cover the order — unless VTpass can take it instead (then ClubKonnect's
+      // "insufficient balance" moves the order there; the admins still hear that the wallet is low).
       const balance = await readWalletBalance();
       if (balance !== null && balance < cost + buffer) {
         const label = cat === "airtime-bundle" ? `bundle set${denom ? ` (₦${denom})` : ""}`
           : cat === "print-airtime" ? "airtime print"
           : cat === "print-data" ? "data print" : cat;
         await notifyWalletLow(balance, cost + buffer, label);
+        if (vtBackup) return json({ ok: true, balance, provider: "vtpass", discounts: { airtime: disc.airtime ?? {}, epin: disc.epin ?? {} } });
         return json({
           ok: false, reason: "wallet_low",
           message: "This service is temporarily unavailable. Please try again later — you have not been charged.",
@@ -1788,6 +2004,25 @@ serve(async (req) => {
       }
 
       return json({ ok: true, balance, discounts: { airtime: disc.airtime ?? {}, epin: disc.epin ?? {} } });
+    }
+
+    // ── Bill provider status (service-only; the admin portal's Bill provider page) ──
+    // Fresh health of both providers, the switches, and where a new airtime / data order would go right now.
+    // Statuses only — never keys, balances or customer data.
+    if (action === "provider-status") {
+      healthCache.clear(); svcHealth = null; vtHealthCache = null; provCfgCache = null;
+      const cfg = await providerConfig();
+      const [ckAirtime, ckData, vt] = await Promise.all([ckHealth("airtime"), ckHealth("data"), vtHealth()]);
+      const [airtime, data] = await Promise.all([providerOrderFor("airtime"), providerOrderFor("data")]);
+      const rc = await routeConfig();
+      return json({
+        config: cfg,
+        services: [...VT_SERVICES],
+        vtpass: { configured: vtConfigured(VT), env: VT.env, live: vtUsable(), health: vtConfigured(VT) ? vt : "unknown" },
+        clubkonnect: { health: { airtime: ckAirtime, data: ckData }, healthCheckOn: rc.healthcheckOn },
+        routing: { airtime, data },
+        checkedAt: new Date().toISOString(),
+      });
     }
 
     // ── VTpass contract probe (service-only) ─────────────────────────────────

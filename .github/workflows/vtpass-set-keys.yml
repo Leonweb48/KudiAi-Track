@@ -1,0 +1,83 @@
+name: VTpass live keys
+
+# Turns VTpass (the second bill provider) on for real customers, or off again.
+#
+#   install-live-keys — copies the LIVE keys from the repository secrets VTPASS_LIVE_API_KEY, VTPASS_LIVE_SECRET_KEY
+#                       (and VTPASS_LIVE_PUBLIC_KEY if set) into the clubkonnect function's VTPASS_* secrets, sets
+#                       VTPASS_ENV=live, redeploys the function, then checks VTpass accepts the keys (a free lookup of
+#                       an order that can't exist — nothing is bought) and prints the provider status.
+#   disable-live      — sets VTPASS_ENV=sandbox: VTpass stops serving customers at once (keys stay in place). Orders
+#                       already placed on VTpass are then held for confirmation until it is turned back on.
+#
+# Get the keys from vtpass.com → Settings → API Keys (live account, KYC approved and funded). Keys are written to a
+# 0600 file, never to a command line, and never printed. Which provider is the MAIN one is chosen separately, in the
+# admin portal → Bill provider.
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: What to do
+        type: choice
+        options: [install-live-keys, disable-live]
+        default: install-live-keys
+
+permissions:
+  contents: read
+
+jobs:
+  vtpass:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb   # v1 (pinned)
+        with:
+          version: 2.107.0
+
+      - name: Write the function secrets
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ secrets.SUPABASE_PROJECT_ID }}
+          ACTION: ${{ inputs.action }}
+          API_KEY: ${{ secrets.VTPASS_LIVE_API_KEY }}
+          SECRET_KEY: ${{ secrets.VTPASS_LIVE_SECRET_KEY }}
+          PUBLIC_KEY: ${{ secrets.VTPASS_LIVE_PUBLIC_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          : > vt.env
+          if [ "$ACTION" = "install-live-keys" ]; then
+            [ -n "$API_KEY" ] && [ -n "$SECRET_KEY" ] || { echo "Set the VTPASS_LIVE_API_KEY and VTPASS_LIVE_SECRET_KEY repository secrets first."; exit 1; }
+            printf 'VTPASS_API_KEY=%s\nVTPASS_SECRET_KEY=%s\n' "$API_KEY" "$SECRET_KEY" >> vt.env
+            [ -z "$PUBLIC_KEY" ] || printf 'VTPASS_PUBLIC_KEY=%s\n' "$PUBLIC_KEY" >> vt.env
+            echo 'VTPASS_ENV=live' >> vt.env
+          else
+            echo 'VTPASS_ENV=sandbox' >> vt.env
+          fi
+          supabase secrets set --env-file vt.env --project-ref "$REF"
+          rm -f vt.env
+          echo "VTpass secrets updated ($ACTION)."
+
+      - name: Redeploy the clubkonnect function
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ secrets.SUPABASE_PROJECT_ID }}
+        run: supabase functions deploy clubkonnect --no-verify-jwt --project-ref "$REF"
+
+      - name: Check
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ secrets.SUPABASE_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          sleep 15   # let the new deployment take traffic
+          FN="https://${REF}.supabase.co/functions/v1/clubkonnect"
+          SRK=$(supabase projects api-keys --project-ref "$REF" -o json | jq -r '.[] | select(.name=="service_role") | .api_key')
+          echo "::add-mask::$SRK"
+          post() { curl -sS -m 150 -X POST "$FN" -H "Content-Type: application/json" -H "Authorization: Bearer $SRK" -d "$1" || true; }
+          post '{"action":"vtpass-probe"}' > probe.json
+          echo "VTPASS      $(jq -c '{env, configured}' probe.json)"
+          echo "KEYS-CHECK  $(jq -c '.requeryMadeUp | {code, desc}' probe.json)   (015 INVALID REQUEST ID = keys accepted; 087 = keys refused; 027 = our IP not allowed)"
+          post '{"action":"provider-status"}' > status.json
+          echo "STATUS      $(jq -c '{config, vtpass, clubkonnect, routing}' status.json)"
