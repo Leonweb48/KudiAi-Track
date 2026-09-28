@@ -23,9 +23,10 @@ jobs:
           TESTER_PASSWORD: ${{ secrets.DEMO_TESTER_PASSWORD }}
         run: |
           set -uo pipefail
-          TOKEN=$(curl -sS -m 30 -X POST "$SB_URL/auth/v1/token?grant_type=password" -H "apikey: $ANON" -H "Content-Type: application/json" \
-            -d "$(jq -n --arg p "$TESTER_PASSWORD" '{email:"test.upgrade@kudiai.app", password:$p}')" | jq -r '.access_token // empty')
-          [ -n "$TOKEN" ] || { echo "SIGN-IN failed (tester account)"; exit 1; }
+          AUTH=$(curl -sS -m 30 -X POST "$SB_URL/auth/v1/token?grant_type=password" -H "apikey: $ANON" -H "Content-Type: application/json" \
+            -d "$(jq -n --arg p "$TESTER_PASSWORD" '{email:"test.upgrade@kudiai.app", password:$p}')")
+          TOKEN=$(echo "$AUTH" | jq -r '.access_token // empty')
+          [ -n "$TOKEN" ] || { echo "SIGN-IN failed (tester account): $(echo "$AUTH" | jq -c '{code, error_code, error, msg, error_description}' 2>/dev/null || echo "$AUTH" | head -c 200)"; exit 1; }
           echo "::add-mask::$TOKEN"
           echo "SIGN-IN ok"
           FN="$SB_URL/functions/v1/peyflex"
