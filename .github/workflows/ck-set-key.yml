@@ -1,0 +1,65 @@
+name: ClubKonnect set API key
+
+# Installs a new ClubKonnect API key: copies the CK_API_KEY repository secret into every ClubKonnect key the
+# clubkonnect function reads (CK_AIRTIME_KEY … CK_PRINT_DATA_KEY — ClubKonnect issues ONE key per account; the
+# "Generate API Key" button on clubkonnect.com invalidates the old one), redeploys the function so it can't keep
+# running with the old key, then runs the route check and prints whether each key is now accepted.
+# The key is written to a file (never a command line) and never printed. CK_USER_ID is left as it is.
+#
+# Use: generate the key on clubkonnect.com → Developer's API, save it as the CK_API_KEY repository secret, run this.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  set-key:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb   # v1 (pinned)
+        with:
+          version: 2.107.0
+
+      - name: Copy CK_API_KEY into the function's secrets
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ secrets.SUPABASE_PROJECT_ID }}
+          CK_KEY: ${{ secrets.CK_API_KEY }}
+        run: |
+          set -euo pipefail
+          [ -n "$CK_KEY" ] || { echo "The CK_API_KEY repository secret is not set."; exit 1; }
+          umask 077
+          : > ck.env
+          for n in AIRTIME DATA CABLETV ELECTRICITY BETTING WAEC JAMB SPECTRANET SMILE PRINT_AIRTIME PRINT_DATA; do
+            printf 'CK_%s_KEY=%s\n' "$n" "$CK_KEY" >> ck.env
+          done
+          supabase secrets set --env-file ck.env --project-ref "$REF"
+          rm -f ck.env
+          echo "11 ClubKonnect key secrets updated."
+
+      - name: Redeploy the clubkonnect function
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ secrets.SUPABASE_PROJECT_ID }}
+        run: supabase functions deploy clubkonnect --no-verify-jwt --project-ref "$REF"
+
+      - name: Check the new key is accepted
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ secrets.SUPABASE_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          sleep 15   # let the new deployment take traffic
+          FN="https://${REF}.supabase.co/functions/v1/clubkonnect"
+          SRK=$(supabase projects api-keys --project-ref "$REF" -o json | jq -r '.[] | select(.name=="service_role") | .api_key')
+          echo "::add-mask::$SRK"
+          curl -sS -m 120 -X POST "$FN" -H "Content-Type: application/json" -H "Authorization: Bearer $SRK" \
+            -d '{"action":"route-check"}' > out.json || true
+          echo "KEYS   $(jq -c '.keys' out.json)"
+          echo "DRYRUN $(jq -c '.dryRun' out.json)"
+          echo "LOOKUP $(jq -c '.lookup' out.json)"
+          echo "ERROR  $(jq -c '.error // empty' out.json)"
