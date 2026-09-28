@@ -706,7 +706,7 @@ serve(async (req) => {
   let callerUser: { id: string } | null = null;   // set for ordinary logged-in callers; stays null for server (service-role) calls
   const SERVICE_ONLY = new Set(["wallet-balance", "connectivity-check", "wallet-balance-alert", "health-check", "data-probe", "refresh-ck-prices", "price-list", "route-check", "vtpass-probe", "provider-status", "vtpass-sandbox-proof", "vtpass-explore"]);
   // Public catalogue lookups (plan lists) stay open; purchase / write actions require the service key OR a user JWT.
-  const READ_ONLY = new Set(["data-plans", "cabletv-plans"]);
+  const READ_ONLY = new Set(["data-plans", "cabletv-plans", "waec-packages", "jamb-packages", "exam-price"]);
   if (SERVICE_ONLY.has(action)) {
     const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
     if (!(await isServiceCall(token))) return unauthorized();
