@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Capacitor } from "@capacitor/core";
 
 // A live, front-facing selfie for identity verification — NEVER a gallery photo (a photo of a photo defeats the point of a live check). Native: the
@@ -90,8 +91,10 @@ export default function SelfieCapture({ value, onCapture, onClear, label = "Take
         <CameraGlyph /> {busy && !open ? "Opening camera…" : label}
       </button>
       {error && <p className="text-[12px] text-red-500 mt-1.5">{error}</p>}
-      {open && (
-        <div className="fixed inset-0 z-[500] bg-black flex flex-col items-center justify-center">
+      {/* Portal to <body>: a parent with a CSS transform (e.g. the new-device card) would otherwise trap this
+          "fixed inset-0" layer inside itself, so the camera showed squashed in the card instead of full screen. */}
+      {open && createPortal(
+        <div className="fixed inset-0 z-[2147483001] bg-black flex flex-col items-center justify-center">
           <div className="relative w-full max-w-sm aspect-square overflow-hidden">
             <video ref={videoRef} playsInline muted className="w-full h-full object-cover" style={{ transform: "scaleX(-1)" }} />
             <div className="pointer-events-none absolute inset-6 rounded-full border-2 border-white/70" />
@@ -101,7 +104,8 @@ export default function SelfieCapture({ value, onCapture, onClear, label = "Take
             <button type="button" onClick={cancel} className="text-white/70 text-[13px] font-semibold px-4 py-2">Cancel</button>
             <button type="button" onClick={shoot} className="w-16 h-16 rounded-full bg-white ring-4 ring-white/30" aria-label="Capture" />
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

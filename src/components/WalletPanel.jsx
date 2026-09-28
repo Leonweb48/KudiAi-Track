@@ -296,7 +296,7 @@ export function FundWalletSheet({ open, onClose, wallet, testMode, api, business
 
 // ── Transfer — bank-transfer style, PIN-confirmed, instant ─────────────────
 export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKobo = 0, dailyUsedKobo = 0, banks, api, businessName, ownerName, ownerId, onDone }) {
-  const { largeTransferSelfieThresholdKobo } = usePlatformConfig();
+  const { largeTransferSelfieThresholdKobo, securitySelfieEnabled } = usePlatformConfig();
   const [step, setStep] = useState("to");     // to | amount | review | pin | selfie | done
   const [pendingPin, setPendingPin] = useState("");   // held between the PIN step and a required selfie step, for a large transfer
   const [selfie, setSelfie] = useState("");
@@ -446,7 +446,7 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
   // A large transfer asks for a quick security selfie first — evidence only, never a match/verdict (see
   // utils/securitySelfie.js) — right after the PIN is approved and before the money actually moves.
   const handlePinApproved = (pin) => {
-    if (largeTransferSelfieThresholdKobo > 0 && kobo >= largeTransferSelfieThresholdKobo) {
+    if (securitySelfieEnabled && largeTransferSelfieThresholdKobo > 0 && kobo >= largeTransferSelfieThresholdKobo) {
       setPendingPin(pin); setSelfieErr(""); setStep("selfie");
     } else {
       doTransfer(pin);
