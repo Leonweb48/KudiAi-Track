@@ -6,6 +6,7 @@ import { parseCkAmount } from "../_shared/ckAmount.ts";
 import { applyDataPrices, parseDiscountPct, parseSellingPrices, type SellingPrices } from "../_shared/dataPricing.ts";
 import { checkBillGate, DEFAULT_CONFIG, PURCHASE_ACTIONS, type CouponRow, type GateConfig, type GateDeps, type GateMode } from "../_shared/billGate.ts";
 import { airtimeCost, dataCost, findPlanPrice, networkName, parseDiscounts, printAirtimeCost, type Cost, type Discounts } from "../_shared/billCost.ts";
+import { buyWithFallback, parseServiceList, V3_PATH, type Lookup, type RouteConfig, type RouteEvent } from "../_shared/ckRoute.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -272,6 +273,182 @@ function unauthorized() {
   });
 }
 
+// ── Shared email helper ───────────────────────────────────────────────────────
+const sendEmail = async (
+  sb: ReturnType<typeof createClient>,
+  opts: { to: string; subject: string; html: string }
+) => {
+  const { data: smtp } = await sb.from("smtp_config").select("*").limit(1).maybeSingle();
+  if (!smtp) { console.error("sendEmail: no SMTP config found"); return; }
+  const transport = nodemailer.createTransport({
+    host: smtp.host,
+    port: smtp.port,
+    secure: smtp.encryption === "ssl",
+    auth: { user: smtp.username, pass: smtp.password },
+  });
+  await transport.sendMail({
+    from: `"${smtp.from_name}" <${smtp.from_email}>`,
+    to:   opts.to,
+    subject: cleanSubject(opts.subject),
+    html: opts.html,
+    text: htmlToText(opts.html),
+  });
+};
+
+// ── Branded email layout helper (shared by all bill email templates) ──────
+const billEmailHtml = (opts: { accentColor: string; icon?: string; title: string; subtitle?: string; body: string }) =>
+  `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f8fafc;padding:16px;">
+    <div style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.08);">
+      <div style="background:linear-gradient(135deg,#0F1D42 0%,#1B2A5E 100%);padding:24px;text-align:center;">
+        <img src="https://kudiai.app/logo.png" alt="KudiAI Track" width="52" style="display:block;margin:0 auto 12px;border-radius:10px;box-shadow:0 4px 14px rgba(0,0,0,0.3);"/>
+        <h1 style="color:#fff;margin:0 0 2px;font-size:20px;font-weight:900;letter-spacing:-0.3px;">KudiAI Track</h1>
+        <p style="color:rgba(255,255,255,0.45);margin:0;font-size:10px;letter-spacing:2px;text-transform:uppercase;">Business Management Platform</p>
+      </div>
+      <div style="background:${opts.accentColor};padding:16px 24px;text-align:center;">
+        ${opts.icon ? `<p style="margin:0 0 6px;font-size:26px;">${opts.icon}</p>` : ""}
+        <h2 style="color:#fff;margin:0 0 3px;font-size:19px;font-weight:800;">${opts.title}</h2>
+        ${opts.subtitle ? `<p style="color:rgba(255,255,255,0.85);margin:0;font-size:13px;">${opts.subtitle}</p>` : ""}
+      </div>
+      <div style="padding:26px 24px;background:#fff;">${opts.body}</div>
+      <div style="background:#f8fafc;padding:18px 24px;text-align:center;border-top:1px solid #e2e8f0;">
+        <p style="margin:0 0 5px;color:#64748b;font-size:11px;line-height:1.5;">For support reach out to: <a href="mailto:support@kudiai.app" style="color:#4f46e5;text-decoration:none;font-weight:600;">support@kudiai.app</a></p>
+        <p style="margin:0 0 3px;color:#94a3b8;font-size:11px;line-height:1.5;">A product of AMAYA &amp; Co. Technologies — all rights reserved &copy; ${new Date().getFullYear()}</p>
+        <p style="margin:0;color:#cbd5e1;font-size:10px;line-height:1.5;">This is an automated message — please do not reply directly to this email.</p>
+      </div>
+    </div>
+  </div>`;
+
+// ── Purchase routing: ClubKonnect's main route (V1) with an automatic V3 fallback ─────────────────────────────────
+// The decision logic and its tests live in _shared/ckRoute.ts; this wires in the real ClubKonnect calls, the switches
+// (platform_config, cached 60s, fail-safe = off) and the admin alerts. Every purchase call site goes through ckBuy().
+
+// ClubKonnect's "there is no order with this RequestID" answer (shared with the `verify` action).
+function queryNotFound(q: Record<string, unknown>): boolean {
+  const stat = String(q?.status ?? q?.Status ?? q?.transactionstatus ?? q?.TransactionStatus ?? "").toUpperCase().trim();
+  const rawU = JSON.stringify(q).toUpperCase();
+  return stat.includes("INVALID_REQUESTID") || stat.includes("INVALID_ORDERID") ||
+         stat.includes("ORDER_NOT_FOUND")   || stat.includes("NOT_FOUND") ||
+         rawU.includes("INVALID REQUESTID") || rawU.includes("NO TRANSACTION") ||
+         rawU.includes("INVALID_REQUESTID");
+}
+
+// Ground truth for the fallback: does an order exist for this RequestID, and in what state? Never throws.
+async function lookupOrder(apiKey: string, requestId: string): Promise<Lookup> {
+  let q: Record<string, unknown>;
+  try { q = await ck("APIQueryV1.asp", { APIKey: apiKey, RequestID: requestId }, { retries: 1, timeoutMs: 15000 }); }
+  catch { return { kind: "unknown" }; }
+  if (typeof q?._raw === "string") return { kind: "unknown", q };
+  if (queryNotFound(q)) return { kind: "not-found", q };
+  const code = String(q?.statuscode ?? q?.StatusCode ?? "").trim();
+  const stat = String(q?.status ?? q?.Status ?? q?.transactionstatus ?? q?.TransactionStatus ?? "").toUpperCase().trim();
+  // a lookup we couldn't make (credentials etc.) says nothing about the order
+  if (/INVALID_CREDENTIALS|MISSING_CREDENTIALS|INVALID_KEY|INVALID KEY|INVALID USER|UNAUTHORIZED/.test(stat)) return { kind: "unknown", q };
+  if (FAIL_PATTERNS.some((p) => stat.includes(p)) || stat.includes("CANCEL") || code.startsWith("5")) return { kind: "found-failed", q };
+  const pins = q?.TXN_EPIN ?? q?.TXN_EPIN_DATABUNDLE;
+  if (isOk(q) || q?.carddetails || q?.CardDetails || (Array.isArray(pins) && pins.length)) return { kind: "found-ok", q };
+  return { kind: (q?.orderid ?? q?.OrderID ?? q?.transactionid ?? q?.TransactionID) ? "found-pending" : "unknown", q };
+}
+
+type FullRouteConfig = RouteConfig & { healthcheckOn: boolean };
+const ROUTE_OFF: FullRouteConfig = { fallbackOn: false, fallbackServices: new Set(), forceV3: new Set(), healthcheckOn: false };
+let routeCfgCache: { at: number; cfg: FullRouteConfig } | null = null;
+async function routeConfig(): Promise<FullRouteConfig> {
+  if (routeCfgCache && Date.now() - routeCfgCache.at < 60_000) return routeCfgCache.cfg;
+  try {
+    const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+    const { data, error } = await db.from("platform_config").select("key, value")
+      .in("key", ["ck_v3_fallback_enabled", "ck_v3_fallback_services", "ck_v3_force_services", "ck_route_healthcheck_enabled"]);
+    if (error) throw error;
+    const m: Record<string, string> = {};
+    for (const r of (data ?? []) as { key: string; value: string }[]) m[r.key] = r.value;
+    const cfg: FullRouteConfig = {
+      fallbackOn: m.ck_v3_fallback_enabled === "true",
+      fallbackServices: parseServiceList(m.ck_v3_fallback_services),
+      forceV3: parseServiceList(m.ck_v3_force_services),
+      healthcheckOn: m.ck_route_healthcheck_enabled === "true",
+    };
+    routeCfgCache = { at: Date.now(), cfg };
+    return cfg;
+  } catch (e) {
+    console.warn("[route] config unavailable — fallback and health check off:", (e as Error).message);
+    return ROUTE_OFF;   // not cached, so a DB blip doesn't switch the fallback off for a minute
+  }
+}
+
+// Admins hear about it — in-app + email to super/finance admins, at most once an hour per kind of problem.
+type RouteAlert = RouteEvent | { svc: string; outcome: "blocked"; detail?: string };
+const ROUTE_ALERT: Record<RouteAlert["outcome"], { type: string; title: string; what: string }> = {
+  "v3-ok":        { type: "warning", title: "ClubKonnect main route down — backup route in use", what: "The main purchase route crashed; the order went through on the backup (V3) route." },
+  "v3-recovered": { type: "warning", title: "ClubKonnect main route down — backup route in use", what: "The main purchase route crashed; the backup (V3) route delivered the order (confirmed by lookup)." },
+  "v1-recovered": { type: "warning", title: "ClubKonnect main route unstable", what: "The main purchase route crashed but the order had gone through (confirmed by lookup) — no second attempt made." },
+  "v3-rejected":  { type: "error",   title: "ClubKonnect main route down — backup route refusing orders", what: "The main route crashed and the backup (V3) route refused the order. The customer was refunded." },
+  "v3-failed":    { type: "error",   title: "ClubKonnect main AND backup routes down", what: "Both purchase routes failed and no order was created. The customer was refunded." },
+  "pending":      { type: "warning", title: "ClubKonnect order held for confirmation", what: "An order may exist but isn't confirmed finished — it's held (not refunded) until reconciled." },
+  "blocked":      { type: "error",   title: "ClubKonnect down — bill sales paused", what: "The pre-payment check found the purchase route down (and no working backup), so customers are told to try again later and are NOT charged." },
+};
+async function sendRouteAlert(e: RouteAlert) {
+  try {
+    const a = ROUTE_ALERT[e.outcome];
+    const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+    const { data: recent } = await sb.from("admin_notifications").select("id").eq("title", a.title)
+      .gte("created_at", new Date(Date.now() - 60 * 60 * 1000).toISOString()).limit(1);
+    if (recent && recent.length) return;
+    const message = `${a.what} Service: ${e.svc}${e.detail ? ` (${e.detail})` : ""}. Check ClubKonnect's status; the switches are ck_v3_fallback_enabled / ck_v3_fallback_services / ck_route_healthcheck_enabled in platform_config.`;
+    await sb.from("admin_notifications").insert({ type: a.type, category: "finance", title: a.title, message, metadata: { svc: e.svc, outcome: e.outcome, detail: e.detail ?? null } });
+    const { data: admins } = await sb.from("admin_users")
+      .select("email").in("role", ["super_admin", "finance_admin"]).eq("is_active", true).not("email", "is", null);
+    const html = billEmailHtml({
+      accentColor: a.type === "error" ? "linear-gradient(135deg,#dc2626,#b91c1c)" : "linear-gradient(135deg,#d97706,#b45309)",
+      icon: "⚠", title: a.title, subtitle: `Service: ${esc(e.svc)}`,
+      body: `<p style="margin:0 0 12px;color:#334155;font-size:14px;line-height:1.6;">${esc(a.what)}</p>
+             ${e.detail ? `<p style="margin:0 0 12px;color:#64748b;font-size:13px;">Detail: ${esc(e.detail)}</p>` : ""}
+             <p style="margin:0;color:#64748b;font-size:12px;line-height:1.6;">You'll get at most one of these an hour. Switches in platform_config: ck_v3_fallback_enabled, ck_v3_fallback_services, ck_route_healthcheck_enabled.</p>`,
+    });
+    for (const ad of (admins || [])) {
+      if (!ad.email) continue;
+      try { await sendEmail(sb, { to: ad.email, subject: `[KudiTrack] ${a.title}`, html }); }
+      catch (err) { console.error("route alert email failed:", (err as Error).message); }
+    }
+  } catch (err) { console.error("sendRouteAlert error:", (err as Error).message); }
+}
+
+/** Every purchase goes through here: the main route, with the V3 fallback when it crashes (see _shared/ckRoute.ts). */
+function ckBuy(svc: string, path: string, params: Record<string, string>) {
+  return buyWithFallback(svc, path, params, {
+    ck: (p, q) => ck(p, q), lookup: lookupOrder, config: routeConfig, isOk,
+    alert: (e) => afterResponse(sendRouteAlert(e)),
+  });
+}
+
+// Free health probe for a purchase script: a made-up account gets ClubKonnect's "invalid credentials" JSON when the
+// script is healthy and the crash page when it's broken. Never touches our account, never places anything.
+const healthCache = new Map<string, { at: number; state: "up" | "down" | "unknown" }>();
+async function routeHealth(path: string): Promise<"up" | "down" | "unknown"> {
+  const hit = healthCache.get(path);
+  if (hit && Date.now() - hit.at < 60_000) return hit.state;
+  let state: "up" | "down" | "unknown" = "unknown";
+  const ctrl = new AbortController(), timer = setTimeout(() => ctrl.abort(), 8000);
+  try {
+    const qs = new URLSearchParams({ UserID: "CK000000", APIKey: "KUDIAI-HEALTHCHECK", RequestID: "KUDIAI-HEALTHCHECK", CallBackURL: "https://kudiai.app/" });
+    const res = await fetch(`${BASE}${path}?${qs}`, { headers: { Accept: "application/json" }, signal: ctrl.signal });
+    const text = await res.text();
+    let isJson = true; try { JSON.parse(text); } catch { isJson = false; }
+    state = isJson ? "up" : res.status >= 500 ? "down" : "unknown";
+  } catch { state = "unknown"; }   // can't tell → never block on it
+  finally { clearTimeout(timer); }
+  healthCache.set(path, { at: Date.now(), state });
+  return state;
+}
+
+// bill-preflight category → [purchase service, main-route script]
+const PREFLIGHT_ROUTE: Record<string, [string, string]> = {
+  airtime: ["airtime", "APIAirtimeV1.asp"], data: ["data", "APIDatabundleV1.asp"], cable: ["cable", "APICableTVV1.asp"],
+  electricity: ["electricity", "APIElectricityV1.asp"], betting: ["betting", "APIBettingV1.asp"],
+  waec: ["waec", "APIWAECV1.asp"], jamb: ["jamb", "APIJAMBV1.asp"], spectranet: ["spectranet", "APISpectranetV1.asp"],
+  smile: ["smile", "APISmileV1.asp"], "print-airtime": ["print-airtime", "APIEPINV1.asp"],
+  "airtime-bundle": ["print-airtime", "APIEPINV1.asp"], "print-data": ["print-data", "APIDatabundleEPINV1.asp"],
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
@@ -292,7 +469,7 @@ serve(async (req) => {
   // service-role key. This function is deployed --no-verify-jwt, so the gateway does NOT check anything for us:
   // these MUST be gated here (they used to be reachable by anyone on the internet with no credentials at all).
   let callerUser: { id: string } | null = null;   // set for ordinary logged-in callers; stays null for server (service-role) calls
-  const SERVICE_ONLY = new Set(["wallet-balance", "connectivity-check", "wallet-balance-alert", "health-check", "data-probe", "refresh-ck-prices", "price-list"]);
+  const SERVICE_ONLY = new Set(["wallet-balance", "connectivity-check", "wallet-balance-alert", "health-check", "data-probe", "refresh-ck-prices", "price-list", "route-check"]);
   // Public catalogue lookups (plan lists) stay open; purchase / write actions require the service key OR a user JWT.
   const READ_ONLY = new Set(["data-plans", "cabletv-plans"]);
   if (SERVICE_ONLY.has(action)) {
@@ -327,7 +504,7 @@ serve(async (req) => {
       if (!phone || !network || !amount) return json({ error: "phone, network and amount required" });
       const netId = NET_ID[network];
       if (!netId) return json({ error: `Unknown network: ${network}` });
-      const data = await ck("APIAirtimeV1.asp", {
+      const data = await ckBuy("airtime", "APIAirtimeV1.asp", {
         APIKey: AIRTIME_K, MobileNetwork: netId, Amount: String(amount),
         MobileNumber: phone.replace(/\D/g, ""), RequestID: rid, CallBackURL: "https://kudiai.app/",
       });
@@ -413,7 +590,7 @@ serve(async (req) => {
       const netId = NET_ID[network];
       if (!netId) return json({ error: `Unknown network: ${network}` });
       console.log(`data purchase: net=${netId} plan=${planId} phone=${phone.replace(/\D/g,"").slice(-4)}`);
-      const data = await ck("APIDatabundleV1.asp", {
+      const data = await ckBuy("data", "APIDatabundleV1.asp", {
         APIKey: DATA_K, MobileNetwork: netId, DataPlan: planId,
         MobileNumber: phone.replace(/\D/g, ""), RequestID: rid, CallBackURL: "https://kudiai.app/",
       });
@@ -504,7 +681,7 @@ serve(async (req) => {
     if (action === "cable") {
       const { provider, packageId, smartcard, phone } = body as { provider: string; packageId: string; smartcard: string; phone: string };
       if (!provider || !packageId || !smartcard || !phone) return json({ error: "provider, packageId, smartcard and phone required" });
-      const data = await ck("APICableTVV1.asp", {
+      const data = await ckBuy("cable", "APICableTVV1.asp", {
         APIKey: CABLETV_K, CableTV: provider, Package: packageId,
         SmartCardNo: smartcard, PhoneNo: phone.replace(/\D/g, ""),
         RequestID: rid, CallBackURL: "https://kudiai.app/",
@@ -612,7 +789,7 @@ serve(async (req) => {
       if (amt < 1000) return json({ error: "Minimum electricity amount is ₦1,000" });
       if (amt > 200000) return json({ error: "Maximum electricity amount is ₦200,000" });
 
-      const data = await ck("APIElectricityV1.asp", {
+      const data = await ckBuy("electricity", "APIElectricityV1.asp", {
         APIKey: ELECTRICITY_K, ElectricCompany: company, MeterType: meterType,
         MeterNo: meterNo, Amount: String(amount), PhoneNo: phone.replace(/\D/g, ""),
         RequestID: rid, CallBackURL: "https://kudiai.app/",
@@ -745,18 +922,12 @@ serve(async (req) => {
       const stat = String(
         q?.status ?? q?.Status ?? q?.transactionstatus ?? q?.TransactionStatus ?? "",
       ).toUpperCase().trim();
-      const rawU = JSON.stringify(q).toUpperCase();
       const token = extractElecToken(q);
       const cardDetails = String(q?.carddetails ?? q?.CardDetails ?? "");
       const vPins = (q?.TXN_EPIN ?? q?.TXN_EPIN_DATABUNDLE ?? []) as unknown[];
 
-      // No order exists for this id — genuinely nothing was placed
-      if (
-        stat.includes("INVALID_REQUESTID") || stat.includes("INVALID_ORDERID") ||
-        stat.includes("ORDER_NOT_FOUND")   || stat.includes("NOT_FOUND") ||
-        rawU.includes("INVALID REQUESTID") || rawU.includes("NO TRANSACTION") ||
-        rawU.includes("INVALID_REQUESTID")
-      ) {
+      // No order exists for this id — genuinely nothing was placed (same test the purchase fallback relies on)
+      if (queryNotFound(q)) {
         return json({ status: "NOT_FOUND", requestId: rid, _raw: q });
       }
 
@@ -808,7 +979,7 @@ serve(async (req) => {
     if (action === "betting") {
       const { company, customerId, amount } = body as { company: string; customerId: string; amount: string };
       if (!company || !customerId || !amount) return json({ error: "company, customerId and amount required" });
-      const data = await ck("APIBettingV1.asp", {
+      const data = await ckBuy("betting", "APIBettingV1.asp", {
         APIKey: BETTING_K, BettingCompany: company, CustomerID: customerId,
         Amount: String(amount), RequestID: rid, CallBackURL: "https://kudiai.app/",
       });
@@ -826,7 +997,7 @@ serve(async (req) => {
     if (action === "waec") {
       const { examType, phone } = body as { examType: string; phone: string };
       if (!examType || !phone) return json({ error: "examType and phone required" });
-      const data = await ck("APIWAECV1.asp", {
+      const data = await ckBuy("waec", "APIWAECV1.asp", {
         APIKey: WAEC_K, ExamType: examType,
         PhoneNo: phone.replace(/\D/g, ""), RequestID: rid, CallBackURL: "https://kudiai.app/",
       });
@@ -857,7 +1028,7 @@ serve(async (req) => {
     if (action === "jamb") {
       const { examType, phone } = body as { examType: string; phone: string };
       if (!examType || !phone) return json({ error: "examType and phone required" });
-      const data = await ck("APIJAMBV1.asp", {
+      const data = await ckBuy("jamb", "APIJAMBV1.asp", {
         APIKey: JAMB_K, ExamType: examType,
         PhoneNo: phone.replace(/\D/g, ""), RequestID: rid, CallBackURL: "https://kudiai.app/",
       });
@@ -897,7 +1068,7 @@ serve(async (req) => {
     if (action === "spectranet") {
       const { accountNo, planId } = body as { accountNo: string; planId: string };
       if (!accountNo || !planId) return json({ error: "accountNo and planId required" });
-      const data = await ck("APISpectranetV1.asp", {
+      const data = await ckBuy("spectranet", "APISpectranetV1.asp", {
         APIKey: SPECTRANET_K, MobileNetwork: "spectranet", DataPlan: planId,
         MobileNumber: accountNo, RequestID: rid, CallBackURL: "https://kudiai.app/",
       });
@@ -946,7 +1117,7 @@ serve(async (req) => {
     if (action === "smile") {
       const { accountNo, planId } = body as { accountNo: string; planId: string };
       if (!accountNo || !planId) return json({ error: "accountNo and planId required" });
-      const data = await ck("APISmileV1.asp", {
+      const data = await ckBuy("smile", "APISmileV1.asp", {
         APIKey: SMILE_K, MobileNetwork: "smile-direct", DataPlan: planId,
         MobileNumber: accountNo, RequestID: rid, CallBackURL: "https://kudiai.app/",
       });
@@ -964,7 +1135,7 @@ serve(async (req) => {
       const qty = parseInt(quantity, 10);
       if (qty < 1 || qty > 100) return json({ error: "Quantity must be between 1 and 100" });
       if (!["100", "200", "300", "500", "1000"].includes(String(value))) return json({ error: "Value must be 100, 200, 300, 500 or 1000" });
-      const data = await ck("APIEPINV1.asp", {
+      const data = await ckBuy("print-airtime", "APIEPINV1.asp", {
         APIKey: PRINT_AIRTIME_K, MobileNetwork: netId, Value: String(value),
         Quantity: String(qty), RequestID: rid, CallBackURL: "https://kudiai.app/",
       });
@@ -983,7 +1154,7 @@ serve(async (req) => {
       if (!netId) return json({ error: `Unknown network: ${network}` });
       const qty = parseInt(quantity, 10);
       if (qty < 1 || qty > 100) return json({ error: "Quantity must be between 1 and 100" });
-      const data = await ck("APIDatabundleEPINV1.asp", {
+      const data = await ckBuy("print-data", "APIDatabundleEPINV1.asp", {
         APIKey: PRINT_DATA_K, MobileNetwork: netId, DataPlan: planId,
         Quantity: String(qty), RequestID: rid, CallBackURL: "https://kudiai.app/",
       });
@@ -993,51 +1164,6 @@ serve(async (req) => {
         dataCost(await providerPlanPrice("print-data", PRINT_DATA_K, netId, networkName(network, netId) ?? network, planId).catch(() => null), qty, data)));
       return json({ status: "SUCCESS", reference: String(data?.batchno ?? data?.orderid ?? data?.requestid ?? ""), pins, message: "ORDER_RECEIVED" });
     }
-
-    // ── Shared email helper ───────────────────────────────────────────────────────
-    const sendEmail = async (
-      sb: ReturnType<typeof createClient>,
-      opts: { to: string; subject: string; html: string }
-    ) => {
-      const { data: smtp } = await sb.from("smtp_config").select("*").limit(1).maybeSingle();
-      if (!smtp) { console.error("sendEmail: no SMTP config found"); return; }
-      const transport = nodemailer.createTransport({
-        host: smtp.host,
-        port: smtp.port,
-        secure: smtp.encryption === "ssl",
-        auth: { user: smtp.username, pass: smtp.password },
-      });
-      await transport.sendMail({
-        from: `"${smtp.from_name}" <${smtp.from_email}>`,
-        to:   opts.to,
-        subject: cleanSubject(opts.subject),
-        html: opts.html,
-        text: htmlToText(opts.html),
-      });
-    };
-
-    // ── Branded email layout helper (shared by all bill email templates) ──────
-    const billEmailHtml = (opts: { accentColor: string; icon?: string; title: string; subtitle?: string; body: string }) =>
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f8fafc;padding:16px;">
-        <div style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.08);">
-          <div style="background:linear-gradient(135deg,#0F1D42 0%,#1B2A5E 100%);padding:24px;text-align:center;">
-            <img src="https://kudiai.app/logo.png" alt="KudiAI Track" width="52" style="display:block;margin:0 auto 12px;border-radius:10px;box-shadow:0 4px 14px rgba(0,0,0,0.3);"/>
-            <h1 style="color:#fff;margin:0 0 2px;font-size:20px;font-weight:900;letter-spacing:-0.3px;">KudiAI Track</h1>
-            <p style="color:rgba(255,255,255,0.45);margin:0;font-size:10px;letter-spacing:2px;text-transform:uppercase;">Business Management Platform</p>
-          </div>
-          <div style="background:${opts.accentColor};padding:16px 24px;text-align:center;">
-            ${opts.icon ? `<p style="margin:0 0 6px;font-size:26px;">${opts.icon}</p>` : ""}
-            <h2 style="color:#fff;margin:0 0 3px;font-size:19px;font-weight:800;">${opts.title}</h2>
-            ${opts.subtitle ? `<p style="color:rgba(255,255,255,0.85);margin:0;font-size:13px;">${opts.subtitle}</p>` : ""}
-          </div>
-          <div style="padding:26px 24px;background:#fff;">${opts.body}</div>
-          <div style="background:#f8fafc;padding:18px 24px;text-align:center;border-top:1px solid #e2e8f0;">
-            <p style="margin:0 0 5px;color:#64748b;font-size:11px;line-height:1.5;">For support reach out to: <a href="mailto:support@kudiai.app" style="color:#4f46e5;text-decoration:none;font-weight:600;">support@kudiai.app</a></p>
-            <p style="margin:0 0 3px;color:#94a3b8;font-size:11px;line-height:1.5;">A product of AMAYA &amp; Co. Technologies — all rights reserved &copy; ${new Date().getFullYear()}</p>
-            <p style="margin:0;color:#cbd5e1;font-size:10px;line-height:1.5;">This is an automated message — please do not reply directly to this email.</p>
-          </div>
-        </div>
-      </div>`;
 
     // ── Bill failure alert — create critical support ticket + email admins & user ─
     if (action === "bill-failure-alert") {
@@ -1558,6 +1684,25 @@ serve(async (req) => {
       const cost = Number(amount) || 0;
       if (!cat || cost <= 0) return json({ ok: false, reason: "bad_request", message: "Invalid request." });
 
+      // Outage check: is ClubKonnect's purchase route for this service actually up? If it's crashing (as on
+      // 2026-09-28) the customer would be debited, the order would fail and they'd be refunded — stop BEFORE charging
+      // instead, unless the backup (V3) route is enabled for this service and is itself up. Unknown never blocks.
+      const routeCfg = await routeConfig();
+      const route = PREFLIGHT_ROUTE[cat];
+      if (route && routeCfg.healthcheckOn) {
+        const [svc, mainPath] = route;
+        const forced = routeCfg.forceV3.has(svc);
+        const main = await routeHealth(forced ? V3_PATH[mainPath] : mainPath);
+        if (main === "down") {
+          const backupUp = !forced && routeCfg.fallbackOn && routeCfg.fallbackServices.has(svc) &&
+            (await routeHealth(V3_PATH[mainPath])) === "up";
+          if (!backupUp) {
+            afterResponse(sendRouteAlert({ svc, outcome: "blocked", detail: forced ? "backup route (test mode)" : "main route" }));
+            return json({ ok: false, reason: "provider_down", message: "This service is temporarily unavailable. Please try again later — you have not been charged." });
+          }
+        }
+      }
+
       const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
       const { data: cfgRows } = await sb.from("platform_config").select("key, value").in("key", ["ck_discounts", "ck_discounts_updated", "ck_wallet_min_buffer"]);
       const cfg: Record<string, string> = {};
@@ -1604,6 +1749,35 @@ serve(async (req) => {
       }
 
       return json({ ok: true, balance, discounts: { airtime: disc.airtime ?? {}, epin: disc.epin ?? {} } });
+    }
+
+    // ── Route check (service-only, read-only, free) ───────────────────────────
+    // Health of every main + backup purchase script (made-up account — never ours), plus a lookup, with OUR account,
+    // of an order that can't exist: shows ClubKonnect's real "no such order" reply, which the fallback depends on.
+    // Returns statuses and field names only — never keys or customer data.
+    if (action === "route-check") {
+      healthCache.clear();
+      const paths = [...Object.keys(V3_PATH), ...Object.values(V3_PATH)];
+      const canary: Record<string, string> = {};
+      await Promise.all(paths.map(async (p) => { canary[p] = await routeHealth(p); }));
+      const probe = await lookupOrder(AIRTIME_K, `KUDIAI-ROUTECHECK-${Date.now()}`);
+      const q = probe.q ?? {};
+      // Dry run with OUR account on both routes: a ₦1 airtime order is below ClubKonnect's ₦50 minimum, so it's refused
+      // without anything being placed — the refusal shows whether each route accepts our credentials and parameter names.
+      const dry = async (path: string) => {
+        try {
+          const d = await ck(path, { APIKey: AIRTIME_K, MobileNetwork: "01", Amount: "1", MobileNumber: "08000000000", RequestID: `KUDIAI-DRYRUN-${Date.now()}-${path.slice(3, 10)}`, CallBackURL: "https://kudiai.app/" }, { retries: 0, timeoutMs: 15000 });
+          return typeof d._raw === "string" ? `crash page (HTTP ${d._http})` : String(d.status ?? d.Status ?? JSON.stringify(Object.keys(d)));
+        } catch (e) { return `unreachable: ${(e as Error).message}`; }
+      };
+      const [dryV1, dryV3] = await Promise.all([dry("APIAirtimeV1.asp"), dry("APIAirtimeV3.asp")]);
+      const cfg = await routeConfig();
+      return json({
+        canary,
+        dryRun: { airtimeV1: dryV1, airtimeV3: dryV3 },
+        lookup: { kind: probe.kind, status: q.status ?? q.Status ?? null, statuscode: q.statuscode ?? q.StatusCode ?? null, fields: Object.keys(q) },
+        config: { fallbackOn: cfg.fallbackOn, fallbackServices: [...cfg.fallbackServices], forceV3: [...cfg.forceV3], healthcheckOn: cfg.healthcheckOn },
+      });
     }
 
     // ── Health check — test every service key in parallel ─────────────────────
