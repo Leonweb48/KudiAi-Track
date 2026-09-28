@@ -11,7 +11,7 @@ on:
     inputs:
       groups:
         description: Which services (space-separated)
-        default: "airtime-data cable electricity-1 electricity-2 education smile"
+        default: "airtime data cable electricity-1 electricity-2 electricity-3 electricity-4 education smile"
 
 permissions:
   contents: read
@@ -42,7 +42,7 @@ jobs:
             echo "|---|---|---|---|---|"
           } >> "$GITHUB_STEP_SUMMARY"
           for g in $GROUPS; do
-            case "$g" in airtime-data|cable|electricity-1|electricity-2|education|smile) ;; *) echo "skipping unknown group $g"; continue;; esac
+            case "$g" in airtime|data|cable|electricity-[1-4]|education|smile) ;; *) echo "skipping unknown group $g"; continue;; esac
             code=$(curl -sS -m 280 -o "out-$g.json" -w '%{http_code}' -X POST "$FN" -H "Content-Type: application/json" -H "Authorization: Bearer $SRK" \
               -d "{\"action\":\"vtpass-sandbox-proof\",\"group\":\"$g\"}" || echo "000")
             echo "== $g: HTTP $code $(jq -c '{env, error}' "out-$g.json" 2>/dev/null || head -c 200 "out-$g.json")"

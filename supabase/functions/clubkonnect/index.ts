@@ -2198,14 +2198,14 @@ serve(async (req) => {
 
     // ── VTpass sandbox proof (service-only, SANDBOX ONLY) ─────────────────────
     // VTpass grants live access only after seeing a successful sandbox order for each service we integrate. For one group
-    // per call (airtime-data, cable, electricity-1, electricity-2, education, smile) this places one order per service
+    // per call (airtime, data, cable, electricity-1..4, education, smile) this places one order per service
     // through the SAME request-id builder, order bodies and mappings real orders use, to VTpass's sandbox test numbers,
     // checks the customer number first where the form asks about it, and confirms each order by requery.
     // Returns the request IDs to put on VTpass's "Request API access" form. Refuses outright once VTpass is live.
     if (action === "vtpass-sandbox-proof") {
       if (!vtConfigured(VT)) return json({ error: "VTpass keys are not configured" });
       if (VT.env !== "sandbox") return json({ error: "Refused: VTpass is live — the proof only ever runs against the sandbox." });
-      const group = String((body as { group?: unknown }).group ?? "airtime-data");
+      const group = String((body as { group?: unknown }).group ?? "airtime");
       const now = Date.now();
       let n = 0;
       const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -2230,20 +2230,21 @@ serve(async (req) => {
       const cheapest = async (sid: string, avoid = new Set<number>()) =>
         (await vtCatalogue(sid)).sort((x, y) => x.plan_amount - y.plan_amount).find((p) => !avoid.has(p.plan_amount)) ?? null;
       // VTpass refuses a second order to the same recipient within 15 s (019) — so recipients alternate and orders are spaced.
-      if (group === "airtime-data") {
+      if (group === "airtime") {
+        const PHONE = "08011111111", nets = ["MTN", "Airtel", "Glo", "9mobile"];
+        for (const [i, net] of nets.entries()) {
+          const a = airtimeServiceId(net)!;
+          if (i > 0) await sleep(16_000);
+          await order(`${net} Airtime VTU`, a, vtAirtimeBody(a, 150 + 10 * i, PHONE));
+        }
+      } else if (group === "data") {
         const PHONE = "08011111111", used = new Set<number>(), nets = ["MTN", "Airtel", "Glo", "9mobile"];
         for (const [i, net] of nets.entries()) {
-          const a = airtimeServiceId(net)!, amount = 150 + 10 * i;
-          used.add(amount);
-          await order(`${net} Airtime VTU`, a, vtAirtimeBody(a, amount, PHONE));
-          await sleep(16_000);
-        }
-        for (const net of nets) {
+          if (i > 0) await sleep(16_000);
           const d = dataServiceId(net)!, pick = await cheapest(d, used);
           if (!pick) { results.push({ service: `${net} Data`, serviceID: d, error: "no plan listed" }); continue; }
           used.add(pick.plan_amount);
           await order(`${net} Data`, d, vtDataBody(d, vtPlanCode(pick.plan_id), PHONE), { variation: `${vtPlanCode(pick.plan_id)} — ${pick.plan_name}` });
-          await sleep(16_000);
         }
       } else if (group === "cable") {
         const CARD = "1212121212";
@@ -2254,14 +2255,18 @@ serve(async (req) => {
           await order(provider === "dstv" ? "DSTV Subscription" : provider === "gotv" ? "Gotv Payment" : "Startimes Subscription", provider,
             vtCableBody(provider, CARD, vtPlanCode(pick.plan_id), `080${31111111 + i}`), { ...v, variation: `${vtPlanCode(pick.plan_id)} — ${pick.plan_name}` });
         }
-      } else if (group === "electricity-1" || group === "electricity-2") {
-        const codes = group === "electricity-1" ? ["01", "02", "03", "04", "05", "06"] : ["07", "08", "09", "10", "11", "12"];
+      } else if (/^electricity-[1-4]$/.test(group)) {
+        const codes = [["01", "02", "03"], ["04", "05", "06"], ["07", "08", "09"], ["10", "11", "12"]][Number(group.slice(-1)) - 1];
         for (const [i, code] of codes.entries()) {
           const sid = VT_ELECTRIC[code], prepaid = i % 2 === 0;   // alternate the two test meters: the same meter comes round every other order
           const meter = prepaid ? "1111111111111" : "1010101010101", mt = prepaid ? "prepaid" as const : "postpaid" as const;
-          const v = await check(sid, meter, mt);
-          await order(sid, sid, vtElectricBody(sid, meter, mt, 1000, `080${51111111 + i}`), { ...v, variation: mt });
-          await sleep(9_000);
+          // each disco has its own minimum — the meter check says what it is
+          const vr = await vtCall(vtFetch, VT, "POST", "/merchant-verify", { billersCode: meter, serviceID: sid, type: mt }, 30_000);
+          const c = vtCustomer(vr), content = (vr.content ?? {}) as Record<string, unknown>;
+          const minimum = Math.max(1000, Number(content.Min_Purchase_Amount) || 0, Number(content.Minimum_Amount) || 0);
+          if (i > 0) await sleep(9_000);
+          await order(sid, sid, vtElectricBody(sid, meter, mt, minimum, `080${51111111 + i}`),
+            { verified: c.kind === "ok", verifiedName: c.kind === "ok" ? c.name : c.kind === "invalid" ? `invalid: ${c.message.slice(0, 60)}` : "unavailable", variation: `${mt} ₦${minimum}` });
         }
       } else if (group === "education") {
         for (const [i, examType] of ["waecdirect", "waec-registration"].entries()) {
@@ -2274,13 +2279,17 @@ serve(async (req) => {
         const vr = await vtCall(vtFetch, VT, "POST", "/merchant-verify", { billersCode: "tester@sandbox.com", serviceID: VT_SMILE }, 30_000);
         const c = vtCustomer(vr);
         let acct = "";
-        try { acct = String(JSON.parse(String(((vr.content ?? {}) as Record<string, unknown>).AccountList ?? "{}"))?.Account?.[0]?.AccountId ?? ""); } catch { /* none */ }
+        try {
+          const raw = ((vr.content ?? {}) as Record<string, unknown>).AccountList;
+          const list = (typeof raw === "string" ? JSON.parse(raw) : raw) as { Account?: { AccountId?: unknown }[] } | undefined;
+          acct = String(list?.Account?.[0]?.AccountId ?? "");
+        } catch { /* none */ }
         const pick = await cheapest(VT_SMILE);
         if (!acct || !pick) results.push({ service: "Smile Payment", serviceID: VT_SMILE, error: !acct ? "no account listed" : "no plan listed", verified: c.kind === "ok" });
         else await order("Smile Payment", VT_SMILE, vtSmileBody(acct, vtPlanCode(pick.plan_id), acct),
           { verified: c.kind === "ok", verifiedName: c.kind === "ok" ? c.name : null, variation: `${vtPlanCode(pick.plan_id)} — ${pick.plan_name}` });
       } else {
-        return json({ error: `unknown group "${group}" (airtime-data, cable, electricity-1, electricity-2, education, smile)` });
+        return json({ error: `unknown group "${group}" (airtime, data, cable, electricity-1..4, education, smile)` });
       }
       return json({ env: VT.env, group, results });
     }
