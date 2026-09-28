@@ -1,0 +1,38 @@
+name: VTpass sandbox check
+
+# One-off, read-only: does the old VTpass integration (supabase/functions/peyflex — pointed at sandbox.vtpass.com, not
+# used by the app since June 2026) still work against VTpass's SANDBOX? Signs in as the fictional free-plan tester
+# (test.upgrade@kudiai.app — see scripts/demo-account), asks for MTN data plans, and places ONE sandbox airtime order
+# (VTpass sandbox = play money; the function's base URL is hard-coded to the sandbox). Prints statuses and messages only.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Sandbox check
+        env:
+          SB_URL: https://${{ secrets.SUPABASE_PROJECT_ID }}.supabase.co
+          ANON: ${{ secrets.REACT_APP_SUPABASE_ANON_KEY }}
+          TESTER_PASSWORD: ${{ secrets.DEMO_TESTER_PASSWORD }}
+        run: |
+          set -uo pipefail
+          TOKEN=$(curl -sS -m 30 -X POST "$SB_URL/auth/v1/token?grant_type=password" -H "apikey: $ANON" -H "Content-Type: application/json" \
+            -d "$(jq -n --arg p "$TESTER_PASSWORD" '{email:"test.upgrade@kudiai.app", password:$p}')" | jq -r '.access_token // empty')
+          [ -n "$TOKEN" ] || { echo "SIGN-IN failed (tester account)"; exit 1; }
+          echo "::add-mask::$TOKEN"
+          echo "SIGN-IN ok"
+          FN="$SB_URL/functions/v1/peyflex"
+          call() { curl -sS -m 60 -X POST "$FN" -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d "$1" -w '\n%{http_code}'; }
+
+          out=$(call '{"action":"data-plans","payload":{"network":"mtn"}}'); code=$(echo "$out" | tail -1); body=$(echo "$out" | sed '$d')
+          echo "DATA-PLANS HTTP $code $(echo "$body" | jq -c '{status, plans: ((.plans // []) | length), first: ((.plans // [])[0].plan_name), error}' 2>/dev/null || echo "$body" | head -c 200)"
+
+          out=$(call '{"action":"airtime","payload":{"network":"mtn","phone":"08011111111","amount":"100"}}'); code=$(echo "$out" | tail -1); body=$(echo "$out" | sed '$d')
+          echo "AIRTIME(sandbox) HTTP $code $(echo "$body" | jq -c '{status, message, amount, hasReference: (.reference != null), error}' 2>/dev/null || echo "$body" | head -c 200)"
