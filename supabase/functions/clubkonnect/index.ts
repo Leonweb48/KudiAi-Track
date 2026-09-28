@@ -1762,15 +1762,22 @@ serve(async (req) => {
       await Promise.all(paths.map(async (p) => { canary[p] = await routeHealth(p); }));
       const probe = await lookupOrder(AIRTIME_K, `KUDIAI-ROUTECHECK-${Date.now()}`);
       const q = probe.q ?? {};
-      // Dry run with OUR account on both routes: a ₦1 airtime order is below ClubKonnect's ₦50 minimum, so it's refused
-      // without anything being placed — the refusal shows whether each route accepts our credentials and parameter names.
-      const dry = async (path: string) => {
+      // Dry runs with OUR account — every one is an order ClubKonnect cannot fulfil (below the ₦50 minimum, a network code
+      // that doesn't exist, a plan that doesn't exist), so it's refused with nothing placed. A JSON refusal = the script
+      // got past our login and is working; a crash page = it's broken for real (authenticated) orders, which the
+      // made-up-account probe can't see.
+      const dry = async (path: string, key: string, extra: Record<string, string>) => {
         try {
-          const d = await ck(path, { APIKey: AIRTIME_K, MobileNetwork: "01", Amount: "1", MobileNumber: "08000000000", RequestID: `KUDIAI-DRYRUN-${Date.now()}-${path.slice(3, 10)}`, CallBackURL: "https://kudiai.app/" }, { retries: 0, timeoutMs: 15000 });
+          const d = await ck(path, { APIKey: key, MobileNumber: "08000000000", RequestID: `KUDIAI-DRYRUN-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, CallBackURL: "https://kudiai.app/", ...extra }, { retries: 0, timeoutMs: 15000 });
           return typeof d._raw === "string" ? `crash page (HTTP ${d._http})` : String(d.status ?? d.Status ?? JSON.stringify(Object.keys(d)));
         } catch (e) { return `unreachable: ${(e as Error).message}`; }
       };
-      const [dryV1, dryV3] = await Promise.all([dry("APIAirtimeV1.asp"), dry("APIAirtimeV3.asp")]);
+      const [dryV1, dryV3, dryV1Net, dryV1Plan] = await Promise.all([
+        dry("APIAirtimeV1.asp", AIRTIME_K, { MobileNetwork: "01", Amount: "1" }),
+        dry("APIAirtimeV3.asp", AIRTIME_K, { MobileNetwork: "01", Amount: "1" }),
+        dry("APIAirtimeV1.asp", AIRTIME_K, { MobileNetwork: "99", Amount: "50" }),
+        dry("APIDatabundleV1.asp", DATA_K, { MobileNetwork: "01", DataPlan: "KUDIAI-NO-SUCH-PLAN" }),
+      ]);
       // Is each service's key accepted? The wallet-balance lookup checks UserID + APIKey (catalogue lists don't check
       // credentials at all). Reports only "valid" or ClubKonnect's status — never the balance.
       const KEYS: Record<string, string> = {
@@ -1792,7 +1799,7 @@ serve(async (req) => {
       const cfg = await routeConfig();
       return json({
         canary,
-        dryRun: { airtimeV1: dryV1, airtimeV3: dryV3 },
+        dryRun: { airtimeV1: dryV1, airtimeV3: dryV3, airtimeV1BadNetwork: dryV1Net, dataV1BadPlan: dryV1Plan },
         keys,
         account: { userIdSet: !!USER_ID, userIdLooksLikeCk: /^CK\d+$/i.test(USER_ID), egressIp },
         lookup: { kind: probe.kind, status: q.status ?? q.Status ?? null, statuscode: q.statuscode ?? q.StatusCode ?? null, fields: Object.keys(q) },
