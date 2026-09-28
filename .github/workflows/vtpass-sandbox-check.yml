@@ -1,8 +1,8 @@
 name: VTpass sandbox check
 
 # One-off, read-only: does the old VTpass integration (supabase/functions/peyflex — pointed at sandbox.vtpass.com, not
-# used by the app since June 2026) still work against VTpass's SANDBOX? Signs in as the fictional free-plan tester
-# (test.upgrade@kudiai.app — see scripts/demo-account), asks for MTN data plans, and places ONE sandbox airtime order
+# used by the app since June 2026) still work against VTpass's SANDBOX? Signs in as the fictional Play demo reviewer
+# (demo.reviewer@kudiai.app — see scripts/demo-account), asks for MTN data plans, and places ONE sandbox airtime order
 # (VTpass sandbox = play money; the function's base URL is hard-coded to the sandbox). Prints statuses and messages only.
 
 on:
@@ -20,13 +20,13 @@ jobs:
         env:
           SB_URL: https://${{ secrets.SUPABASE_PROJECT_ID }}.supabase.co
           ANON: ${{ secrets.REACT_APP_SUPABASE_ANON_KEY }}
-          TESTER_PASSWORD: ${{ secrets.DEMO_TESTER_PASSWORD }}
+          TESTER_PASSWORD: ${{ secrets.DEMO_REVIEWER_PASSWORD }}
         run: |
           set -uo pipefail
           AUTH=$(curl -sS -m 30 -X POST "$SB_URL/auth/v1/token?grant_type=password" -H "apikey: $ANON" -H "Content-Type: application/json" \
-            -d "$(jq -n --arg p "$TESTER_PASSWORD" '{email:"test.upgrade@kudiai.app", password:$p}')")
+            -d "$(jq -n --arg p "$TESTER_PASSWORD" '{email:"demo.reviewer@kudiai.app", password:$p}')")
           TOKEN=$(echo "$AUTH" | jq -r '.access_token // empty')
-          [ -n "$TOKEN" ] || { echo "SIGN-IN failed (tester account): $(echo "$AUTH" | jq -c '{code, error_code, error, msg, error_description}' 2>/dev/null || echo "$AUTH" | head -c 200)"; exit 1; }
+          [ -n "$TOKEN" ] || { echo "SIGN-IN failed (demo reviewer account): $(echo "$AUTH" | jq -c '{code, error_code, error, msg, error_description}' 2>/dev/null || echo "$AUTH" | head -c 200)"; exit 1; }
           echo "::add-mask::$TOKEN"
           echo "SIGN-IN ok"
           FN="$SB_URL/functions/v1/peyflex"
