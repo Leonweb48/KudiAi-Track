@@ -15,7 +15,7 @@ const CORS = {
 const json = (d: unknown) =>
   new Response(JSON.stringify(d), { status: 200, headers: { ...CORS, "Content-Type": "application/json" } });
 
-const BASE           = "https://www.nellobytesystems.com/";
+const BASE           = Deno.env.get("CK_BASE") || "https://www.nellobytesystems.com/";   // overridable for testing only — never set in prod
 const USER_ID        = Deno.env.get("CK_USER_ID")           ?? "";
 const AIRTIME_K      = Deno.env.get("CK_AIRTIME_KEY")       ?? "";
 const DATA_K         = Deno.env.get("CK_DATA_KEY")          ?? "";
@@ -58,8 +58,19 @@ async function ck(
       clearTimeout(timer);
       const text = await res.text();
       console.log(`CK ${path} try=${attempt} status=${res.status} body=${text.slice(0, 400)}`);
-      try { return JSON.parse(text) as Record<string, unknown>; }
-      catch { return { _raw: text, _http: res.status }; }
+      let parsed: Record<string, unknown>;
+      try { parsed = JSON.parse(text) as Record<string, unknown>; }
+      catch { parsed = { _raw: text, _http: res.status }; }
+      // A 5xx with a body that isn't even JSON reads as a transient upstream blip (an IIS/proxy error page —
+      // not a real "your request was rejected" answer from ClubKonnect itself) — worth one more try, the same
+      // as a network failure, before we give up and report it. A 5xx that DID parse as JSON is a real answer
+      // and is returned as-is, not retried.
+      if (res.status >= 500 && "_raw" in parsed && attempt < retries) {
+        lastErr = new Error(`CK ${path} HTTP ${res.status} with no JSON body`);
+        console.warn(`CK ${path} try=${attempt} got HTTP ${res.status} with no JSON body — retrying`);
+        continue;
+      }
+      return parsed;
     } catch (e) {
       clearTimeout(timer);
       lastErr = e;
@@ -89,12 +100,27 @@ function isOk(data: Record<string, unknown>): boolean {
          stat === "SUCCESSFUL" || stat === "SUCCESS";
 }
 
+// A provider outage (e.g. an IIS 500 page, a CDN error page, a WAF block page) never comes back as JSON —
+// ck()'s JSON.parse fails and the whole raw page ends up in data._raw. Customers were seeing that verbatim
+// (a full <!DOCTYPE html>…</html> dump as their "error message"): errMsg()'s fallback chain used to end in
+// data?._raw, and every real-world non-JSON response tripped it. _raw/_http stay on the response for admin/log
+// diagnosis (still attached via `_raw: data` at every call site) — they just never become the CUSTOMER-facing string.
+const LOOKS_LIKE_RAW_DUMP = /<!DOCTYPE|<html[\s>]|<body[\s>]/i;
+function looksLikeRawProviderJunk(s: string): boolean {
+  const t = s.trim();
+  return t.length > 300 || LOOKS_LIKE_RAW_DUMP.test(t);
+}
+
 function errMsg(data: Record<string, unknown>, fallback: string): string {
+  if (typeof data?._raw === "string") return "The bill payment service is temporarily unavailable. Please try again shortly.";
   const raw = data?.status ?? data?.Status ?? data?.message ?? data?.Message ??
               data?.description ?? data?.Description ?? data?.Response ?? data?.response ??
               data?.StatusMessage ?? data?.statusmessage ?? data?.error ?? data?.Error ??
-              data?._raw ?? fallback;
-  return String(raw);
+              fallback;
+  const msg = String(raw);
+  // Defense in depth: whichever field this actually came from, never forward something that looks like a raw
+  // HTML page or an unreasonably long dump — fall back to the clean, generic message instead.
+  return looksLikeRawProviderJunk(msg) ? fallback : msg;
 }
 
 const SUPABASE_URL  = Deno.env.get("SUPABASE_URL")              ?? "";
