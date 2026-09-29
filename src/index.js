@@ -8,6 +8,7 @@ import { CapacitorUpdater } from "@capgo/capacitor-updater";
 import { Capacitor } from "@capacitor/core";
 import { consumeAdminAccessLink, AdminAccessBannerHost } from "./utils/adminAccess";
 import NewDeviceSelfiePrompt from "./components/NewDeviceSelfiePrompt";
+import IosInstallPrompt from "./components/IosInstallPrompt";
 
 // Key used to carry a downloaded bundle ID across the WebView reload boundary.
 // localStorage persists across webView.loadUrl() calls (same https://localhost origin).
@@ -67,6 +68,7 @@ async function boot() {
           <App />
           <AdminAccessBannerHost />
           <NewDeviceSelfiePrompt />
+          <IosInstallPrompt />
         </ToastProvider>
       </LanguageProvider>
     </BrowserRouter>

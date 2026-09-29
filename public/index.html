@@ -10,6 +10,13 @@
     <link rel="icon" href="%PUBLIC_URL%/logo-bimi.svg" type="image/svg+xml" />
     <link rel="icon" href="%PUBLIC_URL%/logo.png" type="image/png" sizes="any" />
     <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo.png" />
+    <!-- Home Screen app: iPhone/iPad have no native app yet, so the web app installs full screen (see components/IosInstallPrompt.jsx).
+         The manifest points Android users to the Play Store app instead of installing the web version. -->
+    <link rel="manifest" href="%PUBLIC_URL%/manifest.webmanifest" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="KudiAI Track" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <!-- Non-blocking font load: fetched at low priority via the "print" media
