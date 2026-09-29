@@ -719,7 +719,7 @@ serve(async (req) => {
   // service-role key. This function is deployed --no-verify-jwt, so the gateway does NOT check anything for us:
   // these MUST be gated here (they used to be reachable by anyone on the internet with no credentials at all).
   let callerUser: { id: string } | null = null;   // set for ordinary logged-in callers; stays null for server (service-role) calls
-  const SERVICE_ONLY = new Set(["wallet-balance", "connectivity-check", "wallet-balance-alert", "health-check", "data-probe", "refresh-ck-prices", "price-list", "route-check", "vtpass-probe", "provider-status", "vtpass-sandbox-proof", "vtpass-explore"]);
+  const SERVICE_ONLY = new Set(["wallet-balance", "connectivity-check", "wallet-balance-alert", "health-check", "data-probe", "refresh-ck-prices", "price-list", "route-check", "vtpass-probe", "provider-status", "vtpass-sandbox-proof", "vtpass-explore", "ck-variants"]);
   // Public catalogue lookups (plan lists) stay open; purchase / write actions require the service key OR a user JWT.
   const READ_ONLY = new Set(["data-plans", "cabletv-plans", "waec-packages", "jamb-packages", "exam-price"]);
   if (SERVICE_ONLY.has(action)) {
@@ -2159,6 +2159,44 @@ serve(async (req) => {
       }
 
       return json({ ok: true, balance, discounts: { airtime: disc.airtime ?? {}, epin: disc.epin ?? {} } });
+    }
+
+    // ── ClubKonnect request variants (service-only diagnostic) ─────────────────
+    // Since 2026-09-28 ~20:30 UTC every purchase from our account gets IIS 503 "The service is unavailable" while the same
+    // order on ClubKonnect's website works. This sends ONE order ClubKonnect must refuse (network 99, ₦1, phone "0") in
+    // several shapes — host, scheme, callback, user agent, method — to find any that gets a real (JSON) answer. Returns
+    // statuses only; with includeUser the UserID too, for the workflow's test from another IP (it masks it at once).
+    if (action === "ck-variants") {
+      const rid = () => `KUDIAI-HEALTH-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      const params = (extra: Record<string, string | null> = {}) => {
+        const p: Record<string, string> = { UserID: USER_ID, APIKey: AIRTIME_K, MobileNetwork: "99", Amount: "1", MobileNumber: "0", RequestID: rid(), CallBackURL: "https://kudiai.app/" };
+        for (const [k, v] of Object.entries(extra)) { if (v === null) delete p[k]; else p[k] = v; }
+        return p;
+      };
+      const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Safari/537.36";
+      const variants: [string, string, "GET" | "POST", Record<string, string | null>, Record<string, string>][] = [
+        ["as-is", "https://www.nellobytesystems.com/APIAirtimeV1.asp", "GET", {}, { Accept: "application/json" }],
+        ["no-callback", "https://www.nellobytesystems.com/APIAirtimeV1.asp", "GET", { CallBackURL: null }, { Accept: "application/json" }],
+        ["no-www", "https://nellobytesystems.com/APIAirtimeV1.asp", "GET", {}, { Accept: "application/json" }],
+        ["http", "http://www.nellobytesystems.com/APIAirtimeV1.asp", "GET", {}, { Accept: "application/json" }],
+        ["browser-ua", "https://www.nellobytesystems.com/APIAirtimeV1.asp", "GET", {}, { "User-Agent": UA, Accept: "text/html,application/json,*/*" }],
+        ["post-form", "https://www.nellobytesystems.com/APIAirtimeV1.asp", "POST", {}, { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" }],
+        ["clubkonnect-host", "https://www.clubkonnect.com/APIAirtimeV1.asp", "GET", {}, { Accept: "application/json" }],
+        ["data-script", "https://www.nellobytesystems.com/APIDatabundleV1.asp", "GET", { MobileNetwork: "01", DataPlan: "KUDIAI-NO-SUCH-PLAN" }, { Accept: "application/json" }],
+      ];
+      const results = await Promise.all(variants.map(async ([name, url, method, extra, headers]) => {
+        const qs = new URLSearchParams(params(extra)).toString();
+        try {
+          const res = await fetch(method === "GET" ? `${url}?${qs}` : url, { method, headers, body: method === "POST" ? qs : undefined, signal: AbortSignal.timeout(15_000), redirect: "manual" });
+          const text = await res.text();
+          let status = "";
+          try { const j = JSON.parse(text); status = String(j.status ?? j.Status ?? JSON.stringify(j).slice(0, 80)); }
+          catch { status = "page: " + text.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 80); }
+          return { name, http: res.status, location: res.headers.get("location") ?? undefined, status };
+        } catch (e) { return { name, http: 0, status: `unreachable: ${(e as Error).message.slice(0, 60)}` }; }
+      }));
+      if (results.some((r) => /^(ORDER_RECEIVED|ORDER_COMPLETED)/.test(r.status))) console.error("[ck-variants] ClubKonnect ACCEPTED an unfulfillable test order — investigate", JSON.stringify(results));
+      return json({ results, ...((body as { includeUser?: unknown }).includeUser === true ? { userId: USER_ID } : {}) });
     }
 
     // ── Bill provider status (service-only; the admin portal's Bill provider page) ──

@@ -1,0 +1,47 @@
+name: ClubKonnect IP and request test
+
+# Diagnostic for the "HTTP 503 The service is unavailable" on every API purchase from our account (ClubKonnect's website
+# works). Sends ONE order ClubKonnect must refuse (network 99, N1, phone "0" — never fulfillable):
+#   1. from our bill server in several request shapes (host, scheme, callback, user agent, method) — ck-variants action
+#   2. from THIS GitHub runner (a different IP) with the same account + the CK_API_KEY secret
+# A JSON answer (e.g. INVALID_MOBILENETWORK) = the purchase service works for that shape / IP; a 503 page = it doesn't.
+# Prints statuses only; the UserID is masked, the API key is a masked secret.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb   # v1 (pinned)
+        with:
+          version: 2.107.0
+      - name: Test
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ secrets.SUPABASE_PROJECT_ID }}
+          CK_KEY: ${{ secrets.CK_API_KEY }}
+        run: |
+          set -euo pipefail
+          FN="https://${REF}.supabase.co/functions/v1/clubkonnect"
+          SRK=$(supabase projects api-keys --project-ref "$REF" -o json | jq -r '.[] | select(.name=="service_role") | .api_key')
+          echo "::add-mask::$SRK"
+          curl -sS -m 90 -X POST "$FN" -H "Content-Type: application/json" -H "Authorization: Bearer $SRK" -d '{"action":"ck-variants","includeUser":true}' > v.json || true
+          UID_=$(jq -r '.userId // empty' v.json)
+          [ -n "$UID_" ] && echo "::add-mask::$UID_"
+          echo "FROM OUR BILL SERVER:"
+          jq -c '.results[]?' v.json
+          echo "FROM GITHUB (a different IP: $(curl -s -m 10 https://api.ipify.org || echo unknown)):"
+          [ -n "$UID_" ] && [ -n "$CK_KEY" ] || { echo "missing user id or key"; exit 0; }
+          for u in "https://www.nellobytesystems.com/APIAirtimeV1.asp" "https://www.nellobytesystems.com/APIDatabundleV1.asp"; do
+            extra="MobileNetwork=99"; case "$u" in *Databundle*) extra="MobileNetwork=01&DataPlan=KUDIAI-NO-SUCH-PLAN";; esac
+            out=$(curl -sS -m 20 -o body.txt -w '%{http_code}' "$u?UserID=$UID_&APIKey=$CK_KEY&$extra&Amount=1&MobileNumber=0&RequestID=KUDIAI-HEALTH-GH-$RANDOM$RANDOM&CallBackURL=https%3A%2F%2Fkudiai.app%2F" || echo 000)
+            s=$(jq -r '.status // .Status // empty' body.txt 2>/dev/null || true)
+            [ -n "$s" ] || s="page: $(sed -e 's/<[^>]*>/ /g' body.txt | tr -s ' \n' ' ' | cut -c1-80)"
+            echo "  $(basename "$u"): HTTP $out $s"
+          done
