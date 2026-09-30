@@ -7,9 +7,11 @@ export function usePermissions() {
     if (!Capacitor.isNativePlatform()) return;
 
     async function requestAll() {
-      // Camera + photo library
+      // Camera only. The photo-library permissions (READ_MEDIA_IMAGES / _VIDEO) are removed from the manifest for Play's
+      // photo & video policy, and Capacitor rejects the WHOLE request when any asked-for permission is undeclared — so
+      // asking for "photos" here would silently skip the camera prompt too.
       try {
-        await Camera.requestPermissions({ permissions: ["camera", "photos"] });
+        await Camera.requestPermissions({ permissions: ["camera"] });
       } catch (_) {}
 
       // Microphone — getUserMedia triggers the RECORD_AUDIO dialog on Android
