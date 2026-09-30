@@ -45,3 +45,16 @@ jobs:
             [ -n "$s" ] || s="page: $(sed -e 's/<[^>]*>/ /g' body.txt | tr -s ' \n' ' ' | cut -c1-80)"
             echo "  $(basename "$u"): HTTP $out $s"
           done
+
+          # The raw reply, exactly as ClubKonnect sends it: status line, headers (cookies left out) and the whole body.
+          raw() {
+            curl -sS -i -m 20 "$1" | sed -E '/^[Ss]et-[Cc]ookie:/d'
+            echo; echo "---"
+          }
+          echo "RAW REPLY — our account (UserID and APIKey masked), airtime order ClubKonnect must refuse:"
+          echo "GET https://www.nellobytesystems.com/APIAirtimeV1.asp?UserID=***&APIKey=***&MobileNetwork=99&Amount=1&MobileNumber=0&RequestID=KUDIAI-HEALTH-GH-…&CallBackURL=https%3A%2F%2Fkudiai.app%2F"
+          raw "https://www.nellobytesystems.com/APIAirtimeV1.asp?UserID=$UID_&APIKey=$CK_KEY&MobileNetwork=99&Amount=1&MobileNumber=0&RequestID=KUDIAI-HEALTH-GH-$RANDOM$RANDOM&CallBackURL=https%3A%2F%2Fkudiai.app%2F"
+          echo "RAW REPLY — our account, wallet balance (a lookup, for comparison):"
+          raw "https://www.nellobytesystems.com/APIWalletBalanceV1.asp?UserID=$UID_&APIKey=$CK_KEY" | sed -E 's/("(balance|Balance|WalletBalance|commission)"[^,}]*)/"<hidden>"/g'
+          echo "RAW REPLY — a made-up account (CK000000), same airtime order (for comparison):"
+          raw "https://www.nellobytesystems.com/APIAirtimeV1.asp?UserID=CK000000&APIKey=INVALIDKEY&MobileNetwork=99&Amount=1&MobileNumber=0&RequestID=KUDIAI-HEALTH-GH-$RANDOM&CallBackURL=https%3A%2F%2Fkudiai.app%2F"
