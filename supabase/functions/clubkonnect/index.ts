@@ -2169,6 +2169,29 @@ serve(async (req) => {
     // order on ClubKonnect's website works. This sends ONE order ClubKonnect must refuse (network 99, ₦1, phone "0") in
     // several shapes — host, scheme, callback, user agent, method — to find any that gets a real (JSON) answer. Returns
     // statuses only; with includeUser the UserID too, for the workflow's test from another IP (it masks it at once).
+    //
+    // mode "insufficient": a VALID order that can't be paid for — MTN airtime of (wallet balance + ₦5,000), capped at
+    // ₦49,000 (skipped above that), to the account's own number. Accepted credentials → INSUFFICIENT_BALANCE (nothing
+    // bought); rejected → INVALID_CREDENTIALS. Returns statuses + short SHA-256 fingerprints of the key / UserID (to compare
+    // with the GitHub secret) — never the key, the balance or the number.
+    if (action === "ck-variants" && (body as { mode?: unknown }).mode === "insufficient") {
+      const fp = async (v: string) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(v)))].slice(0, 6).map((b) => b.toString(16).padStart(2, "0")).join("");
+      const bal = await ck("APIWalletBalanceV1.asp", { APIKey: AIRTIME_K }, { retries: 0, timeoutMs: 15000 }).catch(() => ({} as Record<string, unknown>));
+      const balance = parseCkAmount(bal.balance ?? bal.Balance ?? bal.WalletBalance);
+      const phone = String(bal.phoneno ?? bal.PhoneNo ?? "").replace(/\D/g, "");
+      const base = { keyFp: await fp(AIRTIME_K), userFp: await fp(USER_ID), balanceRead: balance !== null, phoneRead: phone.length >= 10 };
+      if (balance === null || phone.length < 10) return json({ ...base, skipped: "could not read the balance / number" });
+      const amount = Math.ceil((balance + 5000) / 100) * 100;
+      if (amount > 49_000) return json({ ...base, skipped: "balance too high for a safe unpayable order" });
+      let reply: Record<string, unknown>;
+      try {
+        reply = await ck("APIAirtimeV1.asp", { APIKey: AIRTIME_K, MobileNetwork: "01", Amount: String(amount), MobileNumber: phone, RequestID: `KDT-PROBE-${Date.now()}`, CallBackURL: "https://kudiai.app/" }, { retries: 0, timeoutMs: 20000 });
+      } catch (e) { return json({ ...base, http: 0, status: `unreachable: ${(e as Error).message}` }); }
+      if (isOk(reply)) console.error("[ck-variants] an order meant to be unpayable was ACCEPTED — investigate", JSON.stringify({ ...reply, walletbalance: "<hidden>" }));
+      return json({ ...base, amountRule: "balance + N5,000", http: reply._http ?? 200,
+        status: typeof reply._raw === "string" ? `page: ${String(reply._raw).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 60)}` : String(reply.status ?? reply.Status ?? "(no status)") });
+    }
+
     if (action === "ck-variants") {
       const rid = () => `KUDIAI-HEALTH-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
       const params = (extra: Record<string, string | null> = {}) => {
