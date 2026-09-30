@@ -546,11 +546,12 @@ async function ckHealth(svc: string): Promise<Health> {
   const rc = await routeConfig();
   if (!rc.healthcheckOn) return "unknown";
   const route = PREFLIGHT_ROUTE[svc];
-  const [main, service] = await Promise.all([route ? routeHealth(route[1]) : Promise.resolve<Health>("unknown"), purchaseServiceHealth()]);
+  // Only the made-up-account probe decides (see bill-preflight: the must-refuse-order probe gives false "down"s).
+  const main = route ? await routeHealth(route[1]) : "unknown";
   let mainDown = main === "down";
   if (mainDown && route && rc.fallbackOn && rc.fallbackServices.has(route[0]) && (await routeHealth(V3_PATH[route[1]])) === "up") mainDown = false;
-  if (mainDown || service === "down") return "down";
-  return main === "up" && service === "up" ? "up" : "unknown";
+  if (mainDown) return "down";
+  return main === "up" ? "up" : "unknown";
 }
 
 /** Providers to try for a NEW order of this service, in order (a retry of an existing order follows its claim instead). */
@@ -2098,7 +2099,9 @@ serve(async (req) => {
           if (!backupUp) ckDown = forced ? "backup route (test mode)" : "main route";
         }
         // …and is the purchase service behind the login check working for OUR account? (see purchaseServiceHealth)
-        if (!ckDown && !forced && (await purchaseServiceHealth()) === "down") ckDown = "purchase service down for our account (HTTP 5xx on real orders)";
+        // (No longer asks purchaseServiceHealth: on 2026-09-30 a real N50 airtime order went through while its must-refuse
+        // test orders still got IIS 503 — ClubKonnect answers INVALID orders from a real account with that page, so the
+        // probe paused every sale for ~36 h while ClubKonnect was taking orders. Diagnostic only now, in route-check.)
       }
       const vtDown = order.includes("vtpass") && (await vtHealth()) === "down";
       const available = order.filter((p) => (p === "vtpass" ? !vtDown : !ckDown));

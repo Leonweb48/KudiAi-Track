@@ -35,13 +35,13 @@ jobs:
           PHONE=$(curl -sS -m 20 "https://www.nellobytesystems.com/APIWalletBalanceV1.asp?UserID=$UID_&APIKey=$CK_KEY" | jq -r '.phoneno // empty')
           [ -n "$PHONE" ] || { echo "could not read the account's registered phone number"; exit 1; }
           echo "::add-mask::$PHONE"
-          hide() { jq 'if type == "object" then with_entries(if (.key | test("balance|commission"; "i")) then .value = "<hidden>" else . end) else . end' 2>/dev/null || cat; }
+          hide() { jq 'if type == "object" then with_entries(if (.key | test("balance|commission"; "i")) then .value = "<hidden>" else . end) else . end' 2>/dev/null || sed -E 's/[0-9]{3,}(.[0-9]+)?/<number>/g'; }
           RID="KDT-SUPPORT-$(date -u +%Y%m%d%H%M%S)"
           echo "REQUEST ($(date -u '+%a, %d %b %Y %H:%M:%S GMT')):"
           echo "GET https://www.nellobytesystems.com/APIAirtimeV1.asp?UserID=***&APIKey=***&MobileNetwork=01&Amount=50&MobileNumber=<account's registered MTN number>&RequestID=$RID&CallBackURL=https%3A%2F%2Fkudiai.app%2F"
           echo ""
           echo "REPLY:"
-          curl -sS -i -m 45 -D hdr.txt -o body.txt "https://www.nellobytesystems.com/APIAirtimeV1.asp?UserID=$UID_&APIKey=$CK_KEY&MobileNetwork=01&Amount=50&MobileNumber=$PHONE&RequestID=$RID&CallBackURL=https%3A%2F%2Fkudiai.app%2F" || echo "(no reply: curl exit $?)"
+          curl -sS -m 45 -D hdr.txt -o body.txt "https://www.nellobytesystems.com/APIAirtimeV1.asp?UserID=$UID_&APIKey=$CK_KEY&MobileNetwork=01&Amount=50&MobileNumber=$PHONE&RequestID=$RID&CallBackURL=https%3A%2F%2Fkudiai.app%2F" || echo "(no reply: curl exit $?)"
           sed -E '/^[Ss]et-[Cc]ookie:/d' hdr.txt
           hide < body.txt; echo
           echo ""
