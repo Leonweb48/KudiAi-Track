@@ -62,3 +62,73 @@ describe("VerifyReceipt — scanner wiring", () => {
     expect(mockRpc).toHaveBeenCalledWith("verify_receipt", { p_ref: "KDT-202609-X7K2M9PQ" });
   });
 });
+
+describe("VerifyReceipt — transaction type and status", () => {
+  const check = async (answer) => {
+    mockRpc = jest.fn(async () => ({ data: { found: true, amount: 100, occurred_at: "2026-09-30T08:00:00Z", business: "Ada Fresh Mart", ...answer }, error: null }));
+    await act(async () => { root.render(<VerifyReceipt />); });
+    const input = host.querySelector("input");
+    await act(async () => {
+      const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+      set.call(input, "KDT-202609-X7K2M9PQ");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => { host.querySelector("form").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); await Promise.resolve(); await Promise.resolve(); });
+    const rows = Object.fromEntries([...host.querySelectorAll("div > span:first-child")].map((s) => [s.textContent, s.nextSibling?.textContent]));
+    return { rows, banner: host.querySelector('[data-testid="receipt-banner"]').textContent, pill: host.querySelector('[data-testid="receipt-status"]') };
+  };
+
+  it("successful: the specific type, a green Successful status, and 'Receipt verified'", async () => {
+    const { rows, banner, pill } = await check({ kind: "Airtime purchase", status: "successful" });
+    expect(rows["Transaction type"]).toBe("Airtime purchase");
+    expect(rows.Status).toBe("Successful");
+    expect(pill.style.color).toBe("rgb(22, 101, 52)");
+    expect(banner).toMatch(/Receipt verified/);
+    expect(banner).toMatch(/completed successfully/);
+  });
+
+  it("pending: Pending status, and the banner says not to treat it as paid yet", async () => {
+    const { rows, banner } = await check({ kind: "Transfer", status: "pending" });
+    expect(rows["Transaction type"]).toBe("Transfer");
+    expect(rows.Status).toBe("Pending");
+    expect(banner).toMatch(/payment pending/);
+    expect(banner).not.toMatch(/Receipt verified/);
+    expect(banner).toMatch(/Don't treat it as paid/);
+  });
+
+  it("failed: Failed status, and the banner says it is not proof of payment", async () => {
+    const { rows, banner, pill } = await check({ kind: "Data purchase", status: "failed" });
+    expect(rows.Status).toBe("Failed");
+    expect(pill.style.color).toBe("rgb(153, 27, 27)");
+    expect(banner).toMatch(/transaction failed/);
+    expect(banner).toMatch(/not proof of payment/);
+    expect(banner).not.toMatch(/Receipt verified/);
+  });
+
+  it("reversed: Reversed status, money returned, not proof of payment", async () => {
+    const { rows, banner } = await check({ kind: "Transfer", status: "reversed" });
+    expect(rows.Status).toBe("Reversed");
+    expect(banner).toMatch(/reversed and the money returned/);
+  });
+
+  it("an answer without a status (older server) keeps the old banner and shows no Status row", async () => {
+    const { rows, banner, pill } = await check({ kind: "Wallet debit" });
+    expect(rows["Transaction type"]).toBe("Wallet debit");
+    expect(rows.Status).toBeUndefined();
+    expect(pill).toBeNull();
+    expect(banner).toMatch(/Receipt verified/);
+    expect(banner).toMatch(/This transaction was recorded on KudiAI Track\.$/);
+  });
+
+  it("an unknown status word is not dressed up as a status", async () => {
+    const { rows, banner } = await check({ kind: "Sale", status: "weird" });
+    expect(rows.Status).toBeUndefined();
+    expect(banner).toMatch(/Receipt verified/);
+  });
+
+  it("business and amount are still shown", async () => {
+    const { rows } = await check({ kind: "Sale", status: "successful" });
+    expect(rows.Business).toBe("Ada Fresh Mart");
+    expect(rows.Amount).toMatch(/100/);
+  });
+});

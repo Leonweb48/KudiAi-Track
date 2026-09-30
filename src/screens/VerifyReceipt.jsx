@@ -9,9 +9,10 @@ import BarcodeScanner from "../components/BarcodeScanner";
  * leads. Takes a transaction reference (KDT-YYYYMM-XXXXXXXX) and confirms it is real.
  *
  * Reached with no session (anyone holding a receipt can check it), so it only ever
- * shows non-identifying facts — the kind of transaction, the amount, when it was
- * recorded and by which business — via the verify_receipt RPC, which deliberately
- * returns no names, balances or contact details.
+ * shows non-identifying facts — the type of transaction, whether it went through
+ * (successful / pending / failed / reversed), the amount, when it was recorded and by
+ * which business — via the verify_receipt RPC, which deliberately returns no names,
+ * balances or contact details.
  */
 const REF_RE = /^KDT-[0-9]{6}-[A-Z2-9]{8}$/;
 const FONT = "system-ui,-apple-system,'Segoe UI',sans-serif";
@@ -29,6 +30,53 @@ export function refFromScan(text) {
     if (q) return q;
   } catch { /* not a URL — fall through to treating it as a bare reference */ }
   return raw;
+}
+
+/**
+ * How the page presents each status verify_receipt returns (migration 20270247). A receipt for a payment that failed, is
+ * still pending or was reversed is real — but it is not proof of payment, so it must not read as a plain green "verified".
+ * An answer with no status (a server from before the status existed) gets the old banner and no Status row.
+ */
+export const RECEIPT_STATUS = {
+  successful: {
+    label: "Successful", bg: "#f0fdf4", border: "#bbf7d0", ink: "#166534", dot: "#16a34a", pillBg: "#dcfce7",
+    title: "Receipt verified", note: "This transaction was recorded on KudiAI Track and completed successfully.",
+  },
+  pending: {
+    label: "Pending", bg: "#fffbeb", border: "#fde68a", ink: "#92400e", dot: "#d97706", pillBg: "#fef3c7",
+    title: "Receipt found — payment pending", note: "This transaction is on KudiAI Track but hasn't completed yet. Don't treat it as paid until it shows Successful.",
+  },
+  failed: {
+    label: "Failed", bg: "#fef2f2", border: "#fecaca", ink: "#991b1b", dot: "#dc2626", pillBg: "#fee2e2",
+    title: "Receipt found — transaction failed", note: "This transaction is on KudiAI Track but it did not go through, so it is not proof of payment.",
+  },
+  reversed: {
+    label: "Reversed", bg: "#f8fafc", border: "#e2e8f0", ink: "#334155", dot: "#64748b", pillBg: "#e2e8f0",
+    title: "Receipt found — transaction reversed", note: "This transaction was reversed and the money returned, so it is not proof of payment.",
+  },
+};
+const LEGACY_FOUND = { ...RECEIPT_STATUS.successful, note: "This transaction was recorded on KudiAI Track." };
+
+function StatusIcon({ status, color }) {
+  const stroke = { stroke: "#fff", strokeWidth: 2.4, strokeLinecap: "round", strokeLinejoin: "round", fill: "none" };
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ flexShrink: 0 }}>
+      <circle cx="12" cy="12" r="11" fill={color} />
+      {status === "pending" ? <path d="M12 6.5V12l3.5 2" {...stroke} />
+        : status === "failed" ? <path d="M8.5 8.5l7 7M15.5 8.5l-7 7" {...stroke} />
+        : status === "reversed" ? <path d="M9 8.5L6 11.5l3 3M6.5 11.5h7a4 4 0 010 8H12" {...stroke} />
+        : <path d="M7 12.5l3.2 3.2L17 9" {...stroke} />}
+    </svg>
+  );
+}
+
+function StatusPill({ look }) {
+  return (
+    <span data-testid="receipt-status" style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 10px", borderRadius: 999, background: look.pillBg, color: look.ink, fontSize: 12, fontWeight: 700 }}>
+      <span style={{ width: 7, height: 7, borderRadius: "50%", background: look.dot }} />
+      {look.label}
+    </span>
+  );
 }
 
 function Row({ label, value }) {
@@ -112,18 +160,22 @@ export default function VerifyReceipt() {
               </div>
             </div>
           )}
-          {state.status === "found" && (
+          {state.status === "found" && (() => {
+            const look = RECEIPT_STATUS[state.result.status];
+            const banner = look || LEGACY_FOUND;
+            return (
             <div style={{ marginTop: 16 }}>
-              <div style={{ padding: 14, borderRadius: 12, background: "#f0fdf4", border: "1px solid #bbf7d0", display: "flex", gap: 10, alignItems: "center" }}>
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#16a34a" /><path d="M7 12.5l3.2 3.2L17 9" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              <div data-testid="receipt-banner" style={{ padding: 14, borderRadius: 12, background: banner.bg, border: `1px solid ${banner.border}`, display: "flex", gap: 10, alignItems: "center" }}>
+                <StatusIcon status={look ? state.result.status : "successful"} color={banner.dot} />
                 <div>
-                  <div style={{ fontWeight: 700, color: "#166534", fontSize: 14 }}>Receipt verified</div>
-                  <div style={{ color: "#166534", fontSize: 12 }}>This transaction was recorded on KudiAI Track.</div>
+                  <div style={{ fontWeight: 700, color: banner.ink, fontSize: 14 }}>{banner.title}</div>
+                  <div style={{ color: banner.ink, fontSize: 12, lineHeight: 1.45 }}>{banner.note}</div>
                 </div>
               </div>
               <div style={{ marginTop: 6 }}>
                 <Row label="Reference" value={<span style={{ fontFamily: "ui-monospace,Menlo,Consolas,monospace" }}>{state.ref}</span>} />
-                <Row label="Type" value={state.result.kind} />
+                <Row label="Transaction type" value={state.result.kind} />
+                {look && <Row label="Status" value={<StatusPill look={look} />} />}
                 <Row label="Amount" value={fmtNaira(state.result.amount)} />
                 <Row label="Recorded" value={formatWAT(state.result.occurred_at)} />
                 {state.result.business && <Row label="Business" value={state.result.business} />}
@@ -132,7 +184,8 @@ export default function VerifyReceipt() {
                 For privacy, names, balances and contact details are not shown here.
               </p>
             </div>
-          )}
+            );
+          })()}
         </div>
 
         <p style={{ textAlign: "center", fontSize: 11, color: "#94a3b8", margin: "18px 0 0" }}>
