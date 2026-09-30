@@ -1,0 +1,52 @@
+name: ClubKonnect live airtime test
+
+# ONE real N50 MTN airtime order through ClubKonnect's API, to show their support team the exact reply. The recipient is
+# the ClubKonnect account's OWN registered phone number (read from the account and masked — it never appears in inputs or
+# logs). No retries: exactly one order per run, with its own RequestID. Prints the raw reply (status, headers, body) with
+# any balance fields hidden, then ClubKonnect's own record of that RequestID (status fields only).
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb   # v1 (pinned)
+        with:
+          version: 2.107.0
+      - name: One N50 MTN airtime order
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ secrets.SUPABASE_PROJECT_ID }}
+          CK_KEY: ${{ secrets.CK_API_KEY }}
+        run: |
+          set -uo pipefail
+          FN="https://${REF}.supabase.co/functions/v1/clubkonnect"
+          SRK=$(supabase projects api-keys --project-ref "$REF" -o json | jq -r '.[] | select(.name=="service_role") | .api_key')
+          echo "::add-mask::$SRK"
+          UID_=$(curl -sS -m 90 -X POST "$FN" -H "Content-Type: application/json" -H "Authorization: Bearer $SRK" -d '{"action":"ck-variants","includeUser":true}' | jq -r '.userId // empty')
+          [ -n "$UID_" ] && [ -n "$CK_KEY" ] || { echo "missing user id or key"; exit 1; }
+          echo "::add-mask::$UID_"
+          PHONE=$(curl -sS -m 20 "https://www.nellobytesystems.com/APIWalletBalanceV1.asp?UserID=$UID_&APIKey=$CK_KEY" | jq -r '.phoneno // empty')
+          [ -n "$PHONE" ] || { echo "could not read the account's registered phone number"; exit 1; }
+          echo "::add-mask::$PHONE"
+          hide() { jq 'if type == "object" then with_entries(if (.key | test("balance|commission"; "i")) then .value = "<hidden>" else . end) else . end' 2>/dev/null || cat; }
+          RID="KDT-SUPPORT-$(date -u +%Y%m%d%H%M%S)"
+          echo "REQUEST ($(date -u '+%a, %d %b %Y %H:%M:%S GMT')):"
+          echo "GET https://www.nellobytesystems.com/APIAirtimeV1.asp?UserID=***&APIKey=***&MobileNetwork=01&Amount=50&MobileNumber=<account's registered MTN number>&RequestID=$RID&CallBackURL=https%3A%2F%2Fkudiai.app%2F"
+          echo ""
+          echo "REPLY:"
+          curl -sS -i -m 45 -D hdr.txt -o body.txt "https://www.nellobytesystems.com/APIAirtimeV1.asp?UserID=$UID_&APIKey=$CK_KEY&MobileNetwork=01&Amount=50&MobileNumber=$PHONE&RequestID=$RID&CallBackURL=https%3A%2F%2Fkudiai.app%2F" || echo "(no reply: curl exit $?)"
+          sed -E '/^[Ss]et-[Cc]ookie:/d' hdr.txt
+          hide < body.txt; echo
+          echo ""
+          sleep 10
+          echo "CLUBKONNECT'S RECORD OF RequestID=$RID (10 s later):"
+          curl -sS -m 30 "https://www.nellobytesystems.com/APIQueryV1.asp?UserID=$UID_&APIKey=$CK_KEY&RequestID=$RID" > q.json || true
+          jq -c '{status: (.status // .Status), statuscode: (.statuscode // .StatusCode), orderid: (.orderid // .OrderID), remark: (.remark // .Remark), amountcharged: (.amountcharged // .AmountCharged)}' q.json 2>/dev/null || { echo -n "not JSON: "; head -c 200 q.json; echo; }
+          rm -f body.txt q.json hdr.txt
