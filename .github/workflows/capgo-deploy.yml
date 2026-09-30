@@ -90,8 +90,9 @@ jobs:
           ask() {  # $1 = running version_name, $2 = app (native) version
             curl -s --max-time 20 -X POST https://api.capgo.app/updates -H "content-type: application/json" \
               -d "{\"app_id\":\"$APP_ID\",\"device_id\":\"00000000-0000-4000-8000-00000000d1a9\",\"version_name\":\"$1\",\"version_build\":\"$2\",\"version_os\":\"14\",\"platform\":\"android\",\"plugin_version\":\"8.50.1\",\"is_emulator\":false,\"is_prod\":true,\"custom_id\":\"\",\"defaultChannel\":\"\"}" \
-              | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const j=JSON.parse(s);console.log(j.version||j.error||j.message||"none")}catch{console.log("unreadable")}})'
-          }
+              | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const j=JSON.parse(s);console.log(j.error?"blocked:"+j.error:(j.version||j.message||"none"))}catch{console.log("unreadable")}})'
+          }   # a BLOCKED answer still names the bundle it refused (j.version), so read j.error first
+          sleep 30   # channel settings take a moment to reach Capgo's update servers
           fail=0
           check() { got=$(ask "$1" "$2"); if [ "$got" = "$3" ]; then echo "ok   $4: $got"; else echo "FAIL $4: got '$got', expected '$3'"; fail=1; fi; }
           below="1.0.$(( OLDEST - 1 ))"
