@@ -28,6 +28,7 @@ import { createReportPdf } from "../utils/generateReportPdf";
 import { captureReceiptCanvas } from "../utils/captureReceipt";
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
+import { detectNetwork } from "../utils/phoneNetwork";
 import { getProviderLogo, getProviderBadge } from "../utils/logoMap";
 import { billVisual } from "../utils/historyEntries";
 import { HistoryAvatar } from "../components/shared/HistoryRow";
@@ -134,22 +135,6 @@ function fmtDT(iso) {
     + " · " + d.toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" });
 }
 
-function detectNetwork(phone) {
-  const clean = phone.replace(/\D/g, "");
-  let prefix;
-  if (clean.startsWith("234") && clean.length >= 6) prefix = "0" + clean.slice(3, 6);
-  else if (clean.length >= 4) prefix = clean.slice(0, 4);
-  else return null;
-  const MTN    = ["0703","0706","0803","0806","0810","0813","0814","0816","0903","0906","0913","0916"];
-  const AIRTEL = ["0701","0708","0802","0808","0812","0901","0902","0904","0907","0911","0912","0917"];
-  const GLO    = ["0705","0805","0807","0811","0815","0905","0915"];
-  const NMOB   = ["0809","0817","0818","0908","0909","0919"];
-  if (MTN.includes(prefix))    return "MTN";
-  if (AIRTEL.includes(prefix)) return "Airtel";
-  if (GLO.includes(prefix))    return "Glo";
-  if (NMOB.includes(prefix))   return "9mobile";
-  return null;
-}
 
 /* ─── Icons ───────────────────────────────────────────────────────────────── */
 
