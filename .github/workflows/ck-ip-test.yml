@@ -54,7 +54,11 @@ jobs:
           echo "RAW REPLY — our account (UserID and APIKey masked), airtime order ClubKonnect must refuse:"
           echo "GET https://www.nellobytesystems.com/APIAirtimeV1.asp?UserID=***&APIKey=***&MobileNetwork=99&Amount=1&MobileNumber=0&RequestID=KUDIAI-HEALTH-GH-…&CallBackURL=https%3A%2F%2Fkudiai.app%2F"
           raw "https://www.nellobytesystems.com/APIAirtimeV1.asp?UserID=$UID_&APIKey=$CK_KEY&MobileNetwork=99&Amount=1&MobileNumber=0&RequestID=KUDIAI-HEALTH-GH-$RANDOM$RANDOM&CallBackURL=https%3A%2F%2Fkudiai.app%2F"
-          echo "RAW REPLY — our account, wallet balance (a lookup, for comparison):"
-          raw "https://www.nellobytesystems.com/APIWalletBalanceV1.asp?UserID=$UID_&APIKey=$CK_KEY" | sed -E 's/("(balance|Balance|WalletBalance|commission)"[^,}]*)/"<hidden>"/g'
+          echo "OUR ACCOUNT'S WALLET-BALANCE LOOKUP (for comparison) — status line, headers and field NAMES only (the body holds the account's phone number and balance):"
+          curl -sS -D hdr.txt -o bal.json -m 20 "https://www.nellobytesystems.com/APIWalletBalanceV1.asp?UserID=$UID_&APIKey=$CK_KEY" || true
+          sed -E '/^[Ss]et-[Cc]ookie:/d' hdr.txt
+          echo "body: $(wc -c < bal.json) bytes, JSON fields: $(jq -r 'keys | join(", ")' bal.json 2>/dev/null || echo 'not JSON')"
+          rm -f bal.json
+          echo "---"
           echo "RAW REPLY — a made-up account (CK000000), same airtime order (for comparison):"
           raw "https://www.nellobytesystems.com/APIAirtimeV1.asp?UserID=CK000000&APIKey=INVALIDKEY&MobileNetwork=99&Amount=1&MobileNumber=0&RequestID=KUDIAI-HEALTH-GH-$RANDOM&CallBackURL=https%3A%2F%2Fkudiai.app%2F"
