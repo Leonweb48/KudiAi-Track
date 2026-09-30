@@ -1,0 +1,34 @@
+name: Bill preflight check
+
+# Read-only: signs in as the fictional Play demo reviewer and asks the clubkonnect function's pre-charge check
+# (bill-preflight — the same call the app makes before taking payment) whether each bill type is open for sale.
+# Nothing is bought or charged. Prints ok / reason only.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Preflight
+        env:
+          SB_URL: https://${{ secrets.SUPABASE_PROJECT_ID }}.supabase.co
+          ANON: ${{ secrets.REACT_APP_SUPABASE_ANON_KEY }}
+          PW: ${{ secrets.DEMO_REVIEWER_PASSWORD }}
+        run: |
+          set -uo pipefail
+          TOKEN=$(curl -sS -m 30 -X POST "$SB_URL/auth/v1/token?grant_type=password" -H "apikey: $ANON" -H "Content-Type: application/json" \
+            -d "$(jq -n --arg p "$PW" '{email:"demo.reviewer@kudiai.app", password:$p}')" | jq -r '.access_token // empty')
+          [ -n "$TOKEN" ] || { echo "sign-in failed"; exit 1; }
+          echo "::add-mask::$TOKEN"
+          for q in '{"cat":"airtime","network":"MTN","amount":100}' '{"cat":"data","network":"MTN","amount":500}' '{"cat":"cable","amount":4000}' \
+                   '{"cat":"electricity","amount":1000}' '{"cat":"betting","amount":500}' '{"cat":"waec","amount":5350}'; do
+            body=$(jq -c --argjson q "$q" -n '{action:"bill-preflight"} + $q')
+            out=$(curl -sS -m 60 -X POST "$SB_URL/functions/v1/clubkonnect" -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d "$body")
+            echo "$(echo "$q" | jq -r .cat): $(echo "$out" | jq -c '{ok, reason, provider, message}' 2>/dev/null || echo "$out" | head -c 200)"
+          done
