@@ -26,6 +26,7 @@ jobs:
           CK_KEY: ${{ secrets.CK_API_KEY }}
         run: |
           set -uo pipefail
+          CK_KEY=$(printf '%s' "$CK_KEY" | tr -d '[:space:]')   # a pasted key often carries a newline or spaces
           FN="https://${REF}.supabase.co/functions/v1/clubkonnect"
           SRK=$(supabase projects api-keys --project-ref "$REF" -o json | jq -r '.[] | select(.name=="service_role") | .api_key')
           echo "::add-mask::$SRK"

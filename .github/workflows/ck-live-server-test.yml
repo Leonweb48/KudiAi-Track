@@ -1,0 +1,31 @@
+name: ClubKonnect live server test
+
+# ONE real N50 MTN airtime order from our bill server (the path customers' orders take) to the ClubKonnect account's own
+# registered number — the clubkonnect function's service-only ck-variants mode "live50". Prints ClubKonnect's status and
+# order id, then its own record 10 s later. Never prints the number or the balance.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb   # v1 (pinned)
+        with:
+          version: 2.107.0
+      - name: One N50 order from the bill server
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ secrets.SUPABASE_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          FN="https://${REF}.supabase.co/functions/v1/clubkonnect"
+          SRK=$(supabase projects api-keys --project-ref "$REF" -o json | jq -r '.[] | select(.name=="service_role") | .api_key')
+          echo "::add-mask::$SRK"
+          curl -sS -m 90 -X POST "$FN" -H "Content-Type: application/json" -H "Authorization: Bearer $SRK" -d '{"action":"ck-variants","mode":"live50"}' > out.json || true
+          echo "RESULT: $(jq -c '.' out.json 2>/dev/null || head -c 300 out.json)"

@@ -31,6 +31,7 @@ jobs:
           CK_KEY: ${{ secrets.CK_API_KEY }}
         run: |
           set -euo pipefail
+          CK_KEY=$(printf '%s' "$CK_KEY" | tr -d '[:space:]')   # a pasted key often carries a newline or spaces
           [ -n "$CK_KEY" ] || { echo "The CK_API_KEY repository secret is not set."; exit 1; }
           umask 077
           : > ck.env

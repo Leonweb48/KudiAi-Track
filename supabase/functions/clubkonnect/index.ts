@@ -2174,6 +2174,27 @@ serve(async (req) => {
     // ₦49,000 (skipped above that), to the account's own number. Accepted credentials → INSUFFICIENT_BALANCE (nothing
     // bought); rejected → INVALID_CREDENTIALS. Returns statuses + short SHA-256 fingerprints of the key / UserID (to compare
     // with the GitHub secret) — never the key, the balance or the number.
+    //
+    // mode "live50": ONE real ₦50 MTN airtime order from THIS server (the path customers' orders take) to the account's
+    // own registered number — the only way to prove purchases work, since ClubKonnect answers every refused order with
+    // the same 503 page. Fixed amount, fixed recipient, no retries. Returns ClubKonnect's status + order id, then its own
+    // record of the order 10 s later (status fields only, never the balance).
+    if (action === "ck-variants" && (body as { mode?: unknown }).mode === "live50") {
+      const bal = await ck("APIWalletBalanceV1.asp", { APIKey: AIRTIME_K }, { retries: 0, timeoutMs: 15000 }).catch(() => ({} as Record<string, unknown>));
+      const phone = String(bal.phoneno ?? bal.PhoneNo ?? "").replace(/\D/g, "");
+      if (phone.length < 10) return json({ skipped: "could not read the account's number", balanceStatus: String(bal.status ?? bal.Status ?? "") || null });
+      const rid = `KDT-SUPPORT-SRV-${Date.now()}`;
+      let reply: Record<string, unknown>;
+      try { reply = await ck("APIAirtimeV1.asp", { APIKey: AIRTIME_K, MobileNetwork: "01", Amount: "50", MobileNumber: phone, RequestID: rid, CallBackURL: "https://kudiai.app/" }, { retries: 0, timeoutMs: 30000 }); }
+      catch (e) { return json({ requestId: rid, http: 0, status: `unreachable: ${(e as Error).message}` }); }
+      const first = typeof reply._raw === "string"
+        ? { http: reply._http, status: `page: ${String(reply._raw).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 60)}` }
+        : { http: reply._http ?? 200, status: String(reply.status ?? reply.Status ?? ""), statuscode: String(reply.statuscode ?? reply.StatusCode ?? ""), orderid: String(reply.orderid ?? reply.OrderID ?? "") || null };
+      await new Promise((r) => setTimeout(r, 10_000));
+      const q = await ck("APIQueryV1.asp", { APIKey: AIRTIME_K, RequestID: rid }, { retries: 0, timeoutMs: 15000 }).catch(() => ({} as Record<string, unknown>));
+      return json({ requestId: rid, reply: first, record: { status: q.status ?? q.Status ?? null, statuscode: q.statuscode ?? q.StatusCode ?? null, orderid: q.orderid ?? q.OrderID ?? null, remark: q.remark ?? q.Remark ?? null, amountcharged: q.amountcharged ?? null } });
+    }
+
     if (action === "ck-variants" && (body as { mode?: unknown }).mode === "insufficient") {
       const fp = async (v: string) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(v)))].slice(0, 6).map((b) => b.toString(16).padStart(2, "0")).join("");
       const bal = await ck("APIWalletBalanceV1.asp", { APIKey: AIRTIME_K }, { retries: 0, timeoutMs: 15000 }).catch(() => ({} as Record<string, unknown>));
