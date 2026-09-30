@@ -1,70 +1,103 @@
 name: Deploy OTA Update to Capgo
 
+# Sends the app's web code (src/, public/) to installed Android apps over the air, like the website deploy does for the web.
+# Native changes (plugins, Android Java) still need a new APK from build-apk.yml — the version step refuses to publish a
+# bundle whose native side no APK has yet. Versioning and the per-bundle minimum app version: .github/scripts/ota-version.mjs
+
 on:
   push:
-    branches:
-      - main
+    branches: [main]
+    paths: ["src/**", "public/**", "package.json", "package-lock.json"]
+  workflow_dispatch:
+
+concurrency:
+  group: capgo-ota
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      CAPGO_CLI: "@capgo/cli@8.68.2"
+      APP_ID: com.amayatechnologies.kuditrack
+      CHANNEL: production
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # the version step compares this commit's native side with every APK build's
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
 
+      - name: Work out bundle version and minimum app version
+        id: ver
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OTA_RUN: ${{ github.run_number }}
+        run: node .github/scripts/ota-version.mjs
+
       - name: Install dependencies
         run: npm ci
 
+      # Same build as build-apk.yml's web step, so the bundle is exactly what an APK would contain.
       - name: Build React app
+        run: npm run build
         env:
           CI: false
           REACT_APP_SUPABASE_URL: ${{ secrets.REACT_APP_SUPABASE_URL }}
           REACT_APP_SUPABASE_ANON_KEY: ${{ secrets.REACT_APP_SUPABASE_ANON_KEY }}
           REACT_APP_PAYSTACK_PUBLIC_KEY: ${{ secrets.REACT_APP_PAYSTACK_PUBLIC_KEY }}
-        run: npm run build
+          REACT_APP_RECAPTCHA_SITE_KEY: 6Lcn6xEtAAAAAJgO5pBxFoqS2z25fSkhUodU1mqO
+          REACT_APP_RECAPTCHA_V2_SITE_KEY: 6Lf18xEtAAAAAHtyNHK4eH3b99zuhPG63ELl7izq
 
-      - name: Ensure APK deep-link is in Supabase redirect allowlist
-        continue-on-error: true
+      - name: Stamp OTA version (Settings shows it)
         run: |
-          node -e "
-          const https = require('https');
-          const DEEP_LINK = 'com.amayatechnologies.kuditrack://login-callback';
-          const token = process.env.SUPABASE_ACCESS_TOKEN;
-          const project = process.env.SUPABASE_PROJECT_ID;
-          function req(method, path, body) {
-            return new Promise((resolve, reject) => {
-              const opts = {
-                hostname: 'api.supabase.com',
-                path, method,
-                headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }
-              };
-              const r = https.request(opts, res => {
-                let d = ''; res.on('data', c => d += c); res.on('end', () => resolve(JSON.parse(d)));
-              });
-              r.on('error', reject);
-              if (body) r.write(JSON.stringify(body));
-              r.end();
-            });
-          }
-          async function main() {
-            const cfg = await req('GET', '/v1/projects/' + project + '/config/auth');
-            const urls = Array.isArray(cfg.additional_redirect_urls) ? cfg.additional_redirect_urls : [];
-            if (urls.includes(DEEP_LINK)) { console.log('Redirect URL already set'); return; }
-            urls.push(DEEP_LINK);
-            await req('PATCH', '/v1/projects/' + project + '/config/auth', { additional_redirect_urls: urls });
-            console.log('Added deep-link to Supabase redirect allowlist');
-          }
-          main().catch(e => console.error('Warning (non-fatal):', e.message));
-          "
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+          echo "{\"version\":\"$(date -u +%Y%m%d)-ota-${{ steps.ver.outputs.bundle }}\",\"builtAt\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"commit\":\"${{ github.sha }}\"}" > build/build-info.json
+          cat build/build-info.json
 
       - name: Upload bundle to Capgo
+        env:
+          CAPGO_KEY: ${{ secrets.CAPGO_API_KEY }}
         run: |
-          BUNDLE_VER="1.0.$(( ${{ github.run_number }} + 100 ))"
-          npx @capgo/cli@latest bundle upload -a ${{ secrets.CAPGO_API_KEY }} -c production --bundle "$BUNDLE_VER" --ignore-metadata-check
+          npx -y "$CAPGO_CLI" bundle upload "$APP_ID" -a "$CAPGO_KEY" -c "$CHANNEL" \
+            --bundle "${{ steps.ver.outputs.bundle }}" \
+            --min-update-version "${{ steps.ver.outputs.min }}" \
+            --ignore-metadata-check \
+            --comment "${{ github.sha }}"
+
+      # metadata = honour each bundle's minimum app version; no-downgrade = never replace newer built-in code with an older bundle.
+      - name: Lock channel safety settings
+        env:
+          CAPGO_KEY: ${{ secrets.CAPGO_API_KEY }}
+        run: |
+          npx -y "$CAPGO_CLI" channel set "$CHANNEL" "$APP_ID" -a "$CAPGO_KEY" \
+            --bundle "${{ steps.ver.outputs.bundle }}" --disable-auto-update metadata --no-downgrade --android
+
+      # Ask Capgo what it now sends, the way a phone asks. One fixed test device id (counts once).
+      - name: Verify what phones are offered
+        env:
+          BUNDLE: ${{ steps.ver.outputs.bundle }}
+          MIN: ${{ steps.ver.outputs.min }}
+          LATEST: ${{ steps.ver.outputs.latest_apk }}
+          OLDEST: ${{ steps.ver.outputs.oldest_apk }}
+        run: |
+          ask() {  # $1 = running version_name, $2 = app (native) version
+            curl -s --max-time 20 -X POST https://api.capgo.app/updates -H "content-type: application/json" \
+              -d "{\"app_id\":\"$APP_ID\",\"device_id\":\"00000000-0000-4000-8000-00000000d1a9\",\"version_name\":\"$1\",\"version_build\":\"$2\",\"version_os\":\"14\",\"platform\":\"android\",\"plugin_version\":\"8.50.1\",\"is_emulator\":false,\"is_prod\":true,\"custom_id\":\"\",\"defaultChannel\":\"\"}" \
+              | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const j=JSON.parse(s);console.log(j.version||j.error||j.message||"none")}catch{console.log("unreadable")}})'
+          }
+          fail=0
+          check() { got=$(ask "$1" "$2"); if [ "$got" = "$3" ]; then echo "ok   $4: $got"; else echo "FAIL $4: got '$got', expected '$3'"; fail=1; fi; }
+          below="1.0.$(( OLDEST - 1 ))"
+          check builtin "$LATEST" "$BUNDLE" "latest APK ($LATEST)"
+          check builtin "$MIN" "$BUNDLE" "oldest compatible APK ($MIN)"
+          check 1.0.800 "$LATEST" "$BUNDLE" "phone already on the July bundle 1.0.800"
+          got=$(ask builtin "$below"); if [ "$got" = "$BUNDLE" ]; then echo "FAIL APK older than the minimum ($below) was offered $got"; fail=1; else echo "ok   APK older than the minimum ($below): not offered ($got)"; fi
+          got=$(ask builtin "1.999.0"); if [ "$got" = "$BUNDLE" ]; then echo "FAIL a NEWER APK (1.999.0) would be downgraded to $got"; fail=1; else echo "ok   newer APK (1.999.0): not downgraded ($got)"; fi
+          exit $fail

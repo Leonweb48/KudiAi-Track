@@ -168,9 +168,12 @@ jobs:
           BUILD_NUM=${{ github.run_number }}
           # assembleRelease → APK (sideload / direct install)
           # bundleRelease   → AAB (required for Play Store new submissions)
+          # versionName 1.<run>.0 (was 1.0.<run> up to #185): Capgo OTA bundles are 1.<latest APK run>.<ota run>, so a new
+          # APK outranks every bundle made before it and the channel's no-downgrade rule keeps stale OTA code off it.
+          # Keep in step with apkVersionName() in .github/scripts/ota-version.mjs.
           ./gradlew assembleRelease bundleRelease \
             -PversionCode=$BUILD_NUM \
-            -PversionName="1.0.$BUILD_NUM" \
+            -PversionName="1.$BUILD_NUM.0" \
             --no-daemon --stacktrace
         env:
           ANDROID_KEYSTORE_FILE: ${{ env.ANDROID_KEYSTORE_FILE }}
