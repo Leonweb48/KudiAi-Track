@@ -9,7 +9,12 @@ on:
       - ".github/workflows/deploy-functions.yml"
 
 jobs:
+  # The bill-payment regression tests must pass before anything is deployed (docs/BILL-PAYMENTS.md).
+  bill-tests:
+    uses: ./.github/workflows/bills-tests.yml
+
   deploy:
+    needs: bill-tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

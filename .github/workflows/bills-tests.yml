@@ -1,0 +1,42 @@
+name: Bill payments regression tests
+
+# The bill server's protections (docs/BILL-PAYMENTS.md) are enforced here: the shared Deno unit tests and the end-to-end
+# suites in tests/bills, which run the REAL clubkonnect function and the REAL fixed-IP relay against fake providers.
+# deploy-functions.yml runs this first and does not deploy if it fails. No secrets are used.
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "supabase/functions/clubkonnect/**"
+      - "supabase/functions/_shared/**"
+      - "flw-relay/**"
+      - "tests/bills/**"
+      - ".github/workflows/bills-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "flw-relay/**"
+      - "tests/bills/**"
+      - ".github/workflows/bills-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  bills:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Shared unit tests (payment check, provider routing, costs, …)
+        run: deno test --no-lock --node-modules-dir=none --allow-env supabase/functions/_shared/
+      - name: End-to-end bill suites (real function + relay vs fake providers)
+        run: node tests/bills/run-all.mjs
