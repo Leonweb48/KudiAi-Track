@@ -20,18 +20,27 @@ if (!REPO || !TOKEN || !OTA_RUN) throw new Error("GITHUB_REPOSITORY, GH_TOKEN an
 
 function git(...args) { return execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }); }
 
-// What JavaScript can call natively: the Capacitor plugins (name + major version) and our own Java plugins.
+// Plugins the JavaScript only ever calls inside a try/catch that does nothing when the plugin is missing, so an APK
+// without them runs today's code fine and still gets OTA updates. @capacitor/haptics: every call is in src/utils/haptics.js
+// (guarded). Added 2026-10-01 so APK #170–#172 (built the day before the 18 Sept notification redesign, no haptics) can
+// receive it over the air instead of being stuck on the old notification drawer. Only add a plugin here after checking
+// EVERY call site is guarded like that.
+const OPTIONAL_PLUGINS = new Set(["@capacitor/haptics"]);
+
+// What JavaScript can call natively: the Capacitor plugins (name + major version), our own Java plugins, and the raw
+// resources the JS names (notification sounds: the push channels created in usePushNotifications.js use raw/kudiai.mp3).
 export function nativeFingerprint(sha) {
   try {
     const pkg = JSON.parse(git("show", `${sha}:package.json`));
     const deps = { ...pkg.dependencies, ...pkg.devDependencies };
     const plugins = Object.keys(deps)
-      .filter((n) => /^@(capacitor|capgo|capacitor-community)\//.test(n) && n !== "@capacitor/cli")
+      .filter((n) => /^@(capacitor|capgo|capacitor-community)\//.test(n) && n !== "@capacitor/cli" && !OPTIONAL_PLUGINS.has(n))
       .sort()
       .map((n) => `${n}@${String(deps[n]).replace(/^[^\d]*/, "").split(".")[0]}`);
-    let java = "none";
+    let java = "none", raw = "none";
     try { java = git("rev-parse", `${sha}:android/app/src/main/java`).trim(); } catch { /* no Java tree */ }
-    return JSON.stringify({ plugins, java });
+    try { raw = git("rev-parse", `${sha}:android/app/src/main/res/raw`).trim(); } catch { /* no raw resources */ }
+    return JSON.stringify({ plugins, java, raw });
   } catch {
     return null;   // commit not in history — never counts as a match
   }
