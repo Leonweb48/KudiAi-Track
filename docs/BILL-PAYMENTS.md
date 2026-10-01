@@ -39,6 +39,13 @@ A reply without the expected data is not a failure. That covers no PINs, no toke
 - Code: `ckFailedOrHeld`, `settleEpinOrder`, `cardDetailsLater`, the lookups in `ckRoute.buyWithFallback`.
 - **Why:** on 1 Oct 2026, three Print Airtime orders were shown as "failed" while ClubKonnect had issued all 41
   PINs. They were recovered by hand.
+- **A lookup ClubKonnect refused to run is not an answer.** That covers our key being rejected (`INVALID_CREDENTIALS`
+  and similar) or its own "network error" / "service unavailable" words: hold the order. In a *purchase* reply, the
+  same words are a refusal (nothing was bought), and the customer is refunded.
+  - Code: `ckLookupUnusable`. `ckOrderDead` is for lookups, `ckSaysFailed` for purchase replies.
+  - **Why:** on the evening of 1 Oct the key stopped working while the sweep, `electricity-query`, `verify` and the
+    print-PIN settle all read `INVALID_CREDENTIALS` as "order failed". Any order they looked up would have been
+    refunded, even a delivered one.
 
 ### 2. "Refunded", "cancelled" and "failed" mean the order is dead, and the customer must be refunded
 
@@ -109,6 +116,10 @@ every bill fails with `INVALID_CREDENTIALS`. To recover:
 3. Run **ClubKonnect set API key** (`ck-set-key.yml`).
 4. Run **ClubKonnect route check**: every service must say `valid`.
 
+While the key is rejected, purchases are refused and refunded, and orders already placed stay held (rule 1). Nothing is
+lost, but no bill sells until the new key is in. It has been reset three times (28 Sept, and twice on 1 Oct), so
+check who uses the clubkonnect.com login.
+
 ### 10. Phone network detection
 
 `src/utils/phoneNetwork.js` maps prefixes to networks. **0704 and 07025/07026 are MTN.** A missing prefix makes the
@@ -146,8 +157,8 @@ Production data is read through read-only `RAISE NOTICE` migrations (`supabase/m
 | Suite | Protects |
 |---|---|
 | `unclear-replies` | Rule 1: lookups before failing; clear refusals still fail; WAEC card details |
-| `print-pins`, `print-pin-recovery` | Rules 1 and 11: print orders and their recovery |
-| `electricity` | Rules 2, 3 and 11: refunds, the ~23 s wait, the sweep, no secrets in logs |
+| `print-pins`, `print-pin-recovery` | Rules 1 and 11: print orders and their recovery, lookups refused for our key |
+| `electricity` | Rules 1, 2, 3 and 11: refunds, the ~23 s wait, the sweep, lookups refused for our key, no secrets in logs |
 | `route-fallback`, `provider-switch` | Rules 5, 6 and 7: V1/V3 routing, ClubKonnect ⇄ VTpass |
 | `fixed-ip-relay`, `relay-server` | Rule 8 |
 | `supabase/functions/_shared/*.test.ts` | Rule 4 and the pure logic behind the rest |

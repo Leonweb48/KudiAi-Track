@@ -109,6 +109,17 @@ try {
   reset(null, [{ ORDER_ID: "9012", TXN_EPIN_DATABUNDLE: pins(2) }]);
   r = await call({ action: "verify", requestId: "D3", service: "print-data" });
   ok(r?.status === "SUCCESS" && r.pins?.length === 2, "…and the app's confirm step (verify) collects the PINs", JSON.stringify(r).slice(0, 160));
+
+  // our key refused for the LOOKUPS (1 Oct evening: the key was reset on clubkonnect.com) — says nothing about the order
+  reset({ ORDER_ID: "9013" }, [{ status: "INVALID_CREDENTIALS" }]);
+  r = await printAirtime("P10");
+  ok(held(r), "order taken, then every lookup refused for our key → HELD, not failed", JSON.stringify(r));
+  reset(null, [{ status: "INVALID_CREDENTIALS" }]);
+  r = await call({ action: "verify", requestId: "P10", service: "print-airtime" });
+  ok(r?.status === "PENDING", "verify: lookup refused for our key → PENDING (app keeps the order), not FAILED", JSON.stringify(r));
+  reset({ status: "INVALID_CREDENTIALS" });
+  r = await printAirtime("P11");
+  ok(refunded(r), "the PURCHASE refused for our key → still failed (nothing was bought; the app refunds)", JSON.stringify(r));
 } finally { cleanup(); }
 console.log(fails ? `\n${fails} of ${checks} checks FAILED` : `\nall ${checks} checks passed`);
 process.exit(fails ? 1 : 0);

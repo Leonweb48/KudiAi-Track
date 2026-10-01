@@ -139,6 +139,24 @@ try {
 
   ok(adminNotes.some((a) => /48 hours/.test(a.title) && a.metadata?.txn_id === "t4") && patches.some((p) => p.q.id === "eq.t4" && p.body.bill_details?.sweep_alerted === true), "waiting > 48 h: admins alerted once (flag set)", JSON.stringify(adminNotes.map((a) => a.title)));
   ok(!adminNotes.concat(notifies).some((x) => JSON.stringify(x).includes("1234-5678") || JSON.stringify(x).includes("45012345678")), "no token or meter number in any alert or notification");
+
+  // ── our key refused for the LOOKUP (1 Oct evening: the key was reset on clubkonnect.com) — says nothing about the order ──
+  txRows = [row("t5", "ORD-S5", 30)]; ledger = { t5: { id: "led-5", status: "completed" } };
+  states = { "ORD-S5": [{ status: "INVALID_CREDENTIALS" }] };
+  patches = []; rpcs = []; notifies = []; adminNotes = [];
+  s = await call({ action: "electricity-sweep" }, { "x-cron-secret": "good-secret" });
+  ok(s.j?.waiting === 1 && s.j.refundedToWallet === 0 && s.j.manualRefund === 0 && !rpcs.some((x) => x.rpc === "wallet_reverse_bill") &&
+    !patches.some((p) => p.body.bill_status === "failed") && notifies.length === 0, "sweep: lookup refused for our key → still waiting, NOT refunded", JSON.stringify([s.j, rpcs.map((x) => x.rpc), patches.length]));
+  states = { "ORD-Q2": [{ status: "INVALID_CREDENTIALS" }] };
+  r = (await call({ action: "electricity-query", orderId: "ORD-Q2" })).j;
+  ok(r?.status === "PENDING", "query: lookup refused for our key → PENDING, not CANCELLED", JSON.stringify(r));
+  states = { "ORD-E5": [{ status: "ORDER_RECEIVED", statuscode: "100" }, { status: "INVALID_CREDENTIALS" }] };
+  r = (await buyElec("E5")).j;
+  ok(r?.status === "PENDING" && !r.error, "purchase taken, then the key is refused for the follow-up lookups → PENDING (the sweep finishes it), not a refund", JSON.stringify(r));
+  buy = { E6: { status: "INVALID_CREDENTIALS" } };
+  r = (await buyElec("E6")).j;
+  ok(r?.error && !CK_NET_ERR.test(r.error), "the PURCHASE refused for our key → still a refusal the app refunds (nothing was bought)", JSON.stringify(r));
+  buy = {};
 } finally { cleanup(); }
 console.log(fails ? `\n${fails} of ${checks} checks FAILED` : `\nall ${checks} checks passed`);
 process.exit(fails ? 1 : 0);

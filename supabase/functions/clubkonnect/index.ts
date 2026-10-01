@@ -427,13 +427,30 @@ async function lookupOrder(apiKey: string, requestId: string): Promise<Lookup> {
   return { kind: (q?.orderid ?? q?.OrderID ?? q?.transactionid ?? q?.TransactionID) ? "found-pending" : "unknown", q };
 }
 
-// ClubKonnect's record of an order that did NOT deliver and will not: cancelled, failed, or REFUNDED back to our ClubKonnect
-// wallet ("ORDER_REFUNDED", statuscode 899 — seen 2026-10-01 on an electricity order the DISCO could not vend, which we had
-// left as "Token loading..." for days while the customer's money was gone). The customer must be refunded.
-function ckOrderDead(q: Record<string, unknown> | null | undefined): boolean {
+// A PURCHASE reply that refuses the order (nothing was bought): ClubKonnect's failure words — our key refused included —
+// or cancelled / refunded. Use ckOrderDead for a LOOKUP's answer.
+function ckSaysFailed(q: Record<string, unknown> | null | undefined): boolean {
   const stat = String(q?.status ?? q?.Status ?? q?.STATUS ?? q?.transactionstatus ?? q?.TransactionStatus ?? "").toUpperCase();
   const code = String(q?.statuscode ?? q?.StatusCode ?? "").trim();
   return code === "899" || /REFUND|REVERS|CANCEL/.test(stat) || FAIL_PATTERNS.some((p) => stat.includes(p));
+}
+
+// A lookup ClubKonnect would not run for us — our key / account refused (INVALID_CREDENTIALS…: the key is reset whenever
+// someone presses "Generate API Key" or changes the password on clubkonnect.com — 28 Sept, 1 Oct twice), or its own
+// "network error" / "service unavailable" words. It says NOTHING about the order. On 1 Oct evening the key stopped working
+// while the electricity sweep, electricity-query, `verify` and the print-PIN settle all read INVALID_CREDENTIALS (a
+// FAIL_PATTERNS word) as "order failed" — any order they looked up then would have been refunded even if it was delivered.
+function ckLookupUnusable(q: Record<string, unknown> | null | undefined): boolean {
+  const stat = String(q?.status ?? q?.Status ?? q?.STATUS ?? q?.transactionstatus ?? q?.TransactionStatus ?? "").toUpperCase();
+  return /CREDENTIAL|INVALID_KEY|INVALID KEY|INVALID USER|UNAUTHORI|NETWORK ERROR|SERVICE UNAVAILABLE/.test(stat);
+}
+
+// ClubKonnect's record (a lookup) of an order that did NOT deliver and will not: cancelled, failed, or REFUNDED back to our
+// ClubKonnect wallet ("ORDER_REFUNDED", statuscode 899 — seen 2026-10-01 on an electricity order the DISCO could not vend,
+// which we had left as "Token loading..." for days while the customer's money was gone). The customer must be refunded.
+// A lookup ClubKonnect refused to run is never "dead" (ckLookupUnusable).
+function ckOrderDead(q: Record<string, unknown> | null | undefined): boolean {
+  return !ckLookupUnusable(q) && ckSaysFailed(q);
 }
 const ELEC_DEAD_MSG = "The electricity company could not issue a token for this meter, so the order was cancelled. Your money is refunded — please check the meter details and try again.";
 
@@ -468,7 +485,7 @@ async function ckFailedOrHeld(data: Record<string, unknown>, key: string, rid: s
   if (!key || !rid || typeof data?._raw === "string") return "failed";
   const stat = String(data?.status ?? data?.Status ?? data?.STATUS ?? "").toUpperCase();
   const exists = /DUPLICATE|TXN_HISTORY|ON_HOLD|PROCESSING|PENDING/.test(stat);
-  if (!exists && (ckOrderDead(data) || /INVALID|MISSING|UNAUTHOR|DENIED|NOT.?ALLOWED|DISABLED|BLOCK/.test(stat))) return "failed";
+  if (!exists && (ckSaysFailed(data) || /INVALID|MISSING|UNAUTHOR|DENIED|NOT.?ALLOWED|DISABLED|BLOCK/.test(stat))) return "failed";
   for (const wait of [0, 3000]) {
     if (wait) await new Promise((r) => setTimeout(r, wait));
     const lk = await lookupOrder(key, rid);
@@ -503,9 +520,8 @@ async function settleEpinOrder(
   waits: number[] = [0, 2000, 4000, 7000],
 ): Promise<EpinOutcome> {
   const pinsOf = (d: Record<string, unknown> | null | undefined) => (Array.isArray(d?.[listKey]) ? d![listKey] : []) as Record<string, unknown>[];
-  const refused = (d: Record<string, unknown>) => ckOrderDead(d);
   if (pinsOf(first).length) return { ok: true, pins: pinsOf(first), data: first };
-  if (typeof first?._raw !== "string" && refused(first)) return { ok: false, error: errMsg(first, fallback), data: first };
+  if (typeof first?._raw !== "string" && ckSaysFailed(first)) return { ok: false, error: errMsg(first, fallback), data: first };
 
   let sawOrder = false, notFound = 0, lastQ: Record<string, unknown> | null = null;
   for (const w of waits) {
@@ -517,7 +533,8 @@ async function settleEpinOrder(
     if (pinsOf(q).length) return { ok: true, pins: pinsOf(q), data: { ...first, ...q } };
     if (typeof q?._raw === "string") continue;
     if (queryNotFound(q)) { notFound++; continue; }
-    if (refused(q)) return { ok: false, error: errMsg(q, fallback), data: q };
+    if (ckLookupUnusable(q)) continue;   // our key refused for the lookup — says nothing about the order
+    if (ckOrderDead(q)) return { ok: false, error: errMsg(q, fallback), data: q };
     sawOrder = true;   // ClubKonnect has the order, the PINs just aren't there yet
   }
   // Every lookup said "no such order" → nothing was placed: the order failed (the app refunds).
