@@ -2252,6 +2252,58 @@ serve(async (req) => {
     // own registered number — the only way to prove purchases work, since ClubKonnect answers every refused order with
     // the same 503 page. Fixed amount, fixed recipient, no retries. Returns ClubKonnect's status + order id, then its own
     // record of the order 10 s later (status fields only, never the balance).
+    //
+    // mode "epin-recover" — one-off repair (2026-10-01): print orders recorded "failed" whose PINs ClubKonnect DID issue
+    // (see settleEpinOrder). For each failed print order of the last 72 h, fetch its PINs by RequestID; only with
+    // apply:true write them into the order exactly as the app records a delivered print order (note …__PINS__[…] +
+    // bill_details.pins, paid_via as the app writes a fully-covered order), mark it successful and record its provider
+    // cost. Counts only in the answer — never a PIN.
+    if (action === "ck-variants" && (body as { mode?: unknown }).mode === "epin-recover") {
+      const apply = (body as { apply?: unknown }).apply === true;
+      const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+      const { data: rows, error: selErr } = await db.from("transactions").select("id, user_id, category, amount, note, created_at")
+        .in("category", ["print-airtime", "print-data"]).eq("bill_status", "failed")
+        .gt("created_at", new Date(Date.now() - 72 * 3600 * 1000).toISOString()).order("created_at", { ascending: true }).limit(10);
+      if (selErr) return json({ error: selErr.message });
+      const results: Record<string, unknown>[] = [];
+      for (const r of (rows ?? []) as { id: string; user_id: string | null; category: string; amount: number; note: string | null; created_at: string }[]) {
+        const ref = /PS: (KDT-BILL-[A-Za-z0-9]+)/.exec(String(r.note ?? ""))?.[1];
+        const out: Record<string, unknown> = { at: r.created_at, cat: r.category, ref: ref ? "…" + ref.slice(-4) : null };
+        if (!ref) { results.push({ ...out, skipped: "no payment reference on the order" }); continue; }
+        const isData = r.category === "print-data";
+        let q: Record<string, unknown>;
+        try { q = await ck("APIQueryV1.asp", { APIKey: isData ? PRINT_DATA_K : PRINT_AIRTIME_K, RequestID: ref }, { retries: 1, timeoutMs: 15000 }); }
+        catch (e) { results.push({ ...out, skipped: `lookup failed: ${(e as Error).message}` }); continue; }
+        const list = (isData ? q?.TXN_EPIN_DATABUNDLE : q?.TXN_EPIN) as Record<string, unknown>[] | undefined;
+        if (!Array.isArray(list) || !list.length) { results.push({ ...out, skipped: "ClubKonnect has no PINs for this order", keys: Object.keys(q ?? {}) }); continue; }
+        const p0 = list[0] ?? {};
+        const net = networkName(p0.network ?? p0.mobilenetwork ?? p0.MobileNetwork ?? p0.Network, p0.mobilenetwork ?? p0.MobileNetwork) ?? "";
+        const qty = list.length;
+        const value = Number(p0.amount ?? p0.Amount ?? p0.value ?? 0) || Math.round(Number(r.amount) / qty);
+        const pins = list.map((p) => ({ ...p, network: net || p.network || p.mobilenetwork }));
+        const orderId = String(q?.ORDER_ID ?? q?.orderid ?? q?.OrderID ?? "");
+        const head = isData
+          ? `Network: ${net || "?"} | Data PINs x${qty}${orderId ? ` | Ref: ${orderId}` : ""} | Recovered from ClubKonnect`
+          : `Network: ${net || "?"} | Value: ₦${value} x${qty}${orderId ? ` | Ref: ${orderId}` : ""} | Recovered from ClubKonnect`;
+        Object.assign(out, { pins: qty, network: net || "?", value, fieldsPerPin: Object.keys(p0) });
+        if (apply) {
+          const { error, count } = await db.from("transactions").update({
+            bill_status: "success",
+            item_name: isData ? `${net} Data Print x${qty}` : `${net} ₦${value} Airtime Print x${qty}`,
+            customer_name: `${qty} pins`,
+            note: `${head}__PINS__${JSON.stringify(pins)}`,
+            bill_details: { pins, paid_via: "cashback", recovered: "clubkonnect-lookup" },
+          }, { count: "exact" }).eq("id", r.id).eq("bill_status", "failed");
+          out.updated = error ? `error: ${error.message}` : count;
+          if (!error && count && !isData) {
+            afterResponse(recordBillCost(r.category, ref, r.user_id, q, async (d) => printAirtimeCost(value, qty, net || null, d, q)));
+          }
+        }
+        results.push(out);
+      }
+      return json({ apply, results });
+    }
+
     // Free print-PIN diagnosis (2026-10-01, "Print Airtime / Print Data not working"): what ClubKonnect holds for the recent
     // FAILED print orders (looked up by their RequestID = the payment reference), and how it answers a print order it must
     // refuse (quantity 0) through the same route real orders take. Shapes only: field names, status words, PIN COUNTS —

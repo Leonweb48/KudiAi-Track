@@ -1,0 +1,40 @@
+name: ClubKonnect print-PIN recovery
+
+# Print orders recorded "failed" (last 72 h) whose PINs ClubKonnect actually issued: fetches the PINs by order reference
+# and — only when "apply" is ticked — writes them into those orders as normal delivered print orders. Prints counts,
+# networks and values only. Never a PIN. Run once without "apply" to preview.
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Write the PINs into the orders (leave unticked to preview)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb   # v1 (pinned)
+        with:
+          version: 2.107.0
+      - name: Recover
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ secrets.SUPABASE_PROJECT_ID }}
+          APPLY: ${{ inputs.apply }}
+        run: |
+          set -euo pipefail
+          FN="https://${REF}.supabase.co/functions/v1/clubkonnect"
+          SRK=$(supabase projects api-keys --project-ref "$REF" -o json | jq -r '.[] | select(.name=="service_role") | .api_key')
+          echo "::add-mask::$SRK"
+          BODY=$(jq -nc --argjson apply "$APPLY" '{action:"ck-variants", mode:"epin-recover", apply:$apply}')
+          curl -sS -m 120 -X POST "$FN" -H "Content-Type: application/json" -H "Authorization: Bearer $SRK" -d "$BODY" > out.json || true
+          echo "APPLY   $(jq -r '.apply' out.json 2>/dev/null)"
+          jq -c '.results[]?' out.json | while read -r o; do echo "ORDER   $o"; done
+          echo "ERROR   $(jq -c '.error // empty' out.json 2>/dev/null || head -c 300 out.json)"
