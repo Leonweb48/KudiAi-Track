@@ -1,0 +1,44 @@
+name: Electricity sweep (by hand)
+
+# Runs the clubkonnect function's electricity-sweep — the same job pg_cron runs every 2 minutes — by hand, usually as a
+# PREVIEW: which prepaid electricity orders still say "Token loading...", and what the provider says about each (token
+# found / cancelled-refunded → refund by wallet or by hand / still waiting). Prints counts and outcomes only — never a
+# token, meter, name or number. Untick "preview" to let it act (save tokens, refund, notify), exactly as the cron does.
+
+on:
+  workflow_dispatch:
+    inputs:
+      since_hours:
+        description: "Look back this many hours (1-336). The cron uses 72."
+        default: "72"
+      preview:
+        description: "Preview only — change nothing"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb   # v1 (pinned)
+        with:
+          version: 2.107.0
+      - name: Sweep
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ secrets.SUPABASE_PROJECT_ID }}
+          SINCE: ${{ inputs.since_hours }}
+          PREVIEW: ${{ inputs.preview }}
+        run: |
+          set -euo pipefail
+          FN="https://${REF}.supabase.co/functions/v1/clubkonnect"
+          SRK=$(supabase projects api-keys --project-ref "$REF" -o json | jq -r '.[] | select(.name=="service_role") | .api_key')
+          echo "::add-mask::$SRK"
+          BODY=$(jq -nc --argjson h "${SINCE:-72}" --argjson dry "$PREVIEW" '{action:"electricity-sweep", sinceHours:$h, dryRun:$dry}')
+          curl -sS -m 200 -X POST "$FN" -H "Content-Type: application/json" -H "Authorization: Bearer $SRK" -d "$BODY" > out.json || true
+          echo "SUMMARY $(jq -c 'del(.items)' out.json 2>/dev/null || head -c 300 out.json)"
+          jq -c '.items[]?' out.json | while read -r o; do echo "ORDER   $o"; done
