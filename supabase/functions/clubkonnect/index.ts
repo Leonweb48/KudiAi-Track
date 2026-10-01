@@ -7,7 +7,7 @@ import { applyDataPrices, parseDiscountPct, parseSellingPrices, type SellingPric
 import { findExamProduct, parseCkExamCatalogue, providerExamCode, type ExamProduct } from "../_shared/examCatalogue.ts";
 import { checkBillGate, DEFAULT_CONFIG, PURCHASE_ACTIONS, type CouponRow, type GateConfig, type GateDeps, type GateMode } from "../_shared/billGate.ts";
 import { airtimeCost, dataCost, findPlanPrice, networkName, parseDiscounts, printAirtimeCost, type Cost, type Discounts } from "../_shared/billCost.ts";
-import { buyWithFallback, parseServiceList, probeVerdict, purchaseServiceState, V3_PATH, type CkResult, type Health, type Lookup, type RouteConfig, type RouteEvent } from "../_shared/ckRoute.ts";
+import { buyWithFallback, parseServiceList, PENDING_STATUS, probeVerdict, purchaseServiceState, V3_PATH, type CkResult, type Health, type Lookup, type RouteConfig, type RouteEvent } from "../_shared/ckRoute.ts";
 import {
   airtimeServiceId, dataServiceId, isVtPlan, parseVariations, VT_CABLE, VT_ELECTRIC, VT_SMILE, VT_WAEC, vtAirtimeBody, vtCableBody, vtCall, vtCardDetails, vtCode,
   vtConfigured, vtCustomer, vtDataBody, vtElectricBody, vtElectricToken, vtElectricUnits, vtEnv, vtMeterType, vtPlanCode, vtRequestId, vtSmileBody, vtTxn,
@@ -400,6 +400,42 @@ async function lookupOrder(apiKey: string, requestId: string): Promise<Lookup> {
   const pins = q?.TXN_EPIN ?? q?.TXN_EPIN_DATABUNDLE;
   if (isOk(q) || q?.carddetails || q?.CardDetails || (Array.isArray(pins) && pins.length)) return { kind: "found-ok", q };
   return { kind: (q?.orderid ?? q?.OrderID ?? q?.transactionid ?? q?.TransactionID) ? "found-pending" : "unknown", q };
+}
+
+// A print order (airtime / data PINs) whose first reply carries no PINs is NOT necessarily a failure: on 2026-10-01 three
+// Print Airtime orders were reported "failed" here while ClubKonnect had issued all 41 PINs (its record: ORDER_ID +
+// TXN_EPIN). So unless ClubKonnect explicitly refused, look the order up by its RequestID for ~15 s: PINs → delivered;
+// "no such order" → really failed (refund); an order but no PINs yet / can't tell → HELD (the app's confirm path fetches
+// the PINs via `verify`), never "failed".
+type EpinOutcome = { ok: true; pins: Record<string, unknown>[]; data: Record<string, unknown> } | { ok: false; error: string; data: Record<string, unknown> };
+async function settleEpinOrder(
+  first: Record<string, unknown>, key: string, rid: string, listKey: "TXN_EPIN" | "TXN_EPIN_DATABUNDLE", fallback: string,
+  waits: number[] = [0, 2000, 4000, 7000],
+): Promise<EpinOutcome> {
+  const pinsOf = (d: Record<string, unknown> | null | undefined) => (Array.isArray(d?.[listKey]) ? d![listKey] : []) as Record<string, unknown>[];
+  const refused = (d: Record<string, unknown>) => {
+    const stat = String(d?.status ?? d?.Status ?? d?.STATUS ?? d?.transactionstatus ?? "").toUpperCase();
+    return FAIL_PATTERNS.some((p) => stat.includes(p)) || stat.includes("CANCEL");
+  };
+  if (pinsOf(first).length) return { ok: true, pins: pinsOf(first), data: first };
+  if (typeof first?._raw !== "string" && refused(first)) return { ok: false, error: errMsg(first, fallback), data: first };
+
+  let sawOrder = false, notFound = 0, lastQ: Record<string, unknown> | null = null;
+  for (const w of waits) {
+    if (w) await new Promise((r) => setTimeout(r, w));
+    let q: Record<string, unknown>;
+    try { q = await ck("APIQueryV1.asp", { APIKey: key, RequestID: rid }, { retries: 1, timeoutMs: 15000 }); }
+    catch { continue; }
+    lastQ = q;
+    if (pinsOf(q).length) return { ok: true, pins: pinsOf(q), data: { ...first, ...q } };
+    if (typeof q?._raw === "string") continue;
+    if (queryNotFound(q)) { notFound++; continue; }
+    if (refused(q)) return { ok: false, error: errMsg(q, fallback), data: q };
+    sawOrder = true;   // ClubKonnect has the order, the PINs just aren't there yet
+  }
+  // Every lookup said "no such order" → nothing was placed: the order failed (the app refunds).
+  if (!sawOrder && notFound > 0 && notFound === waits.length) return { ok: false, error: errMsg(first, fallback), data: first };
+  return { ok: false, error: PENDING_STATUS, data: lastQ ?? first };
 }
 
 type FullRouteConfig = RouteConfig & { healthcheckOn: boolean };
@@ -1566,12 +1602,13 @@ serve(async (req) => {
       const qty = parseInt(quantity, 10);
       if (qty < 1 || qty > 100) return json({ error: "Quantity must be between 1 and 100" });
       if (!["100", "200", "300", "500", "1000"].includes(String(value))) return json({ error: "Value must be 100, 200, 300, 500 or 1000" });
-      const data = await ckBuy("print-airtime", "APIEPINV1.asp", {
+      const first = await ckBuy("print-airtime", "APIEPINV1.asp", {
         APIKey: PRINT_AIRTIME_K, MobileNetwork: netId, Value: String(value),
         Quantity: String(qty), RequestID: rid, CallBackURL: "https://kudiai.app/",
       });
-      const pins = (data?.TXN_EPIN ?? []) as Record<string, unknown>[];
-      if (!pins.length) return json({ error: isOk(data) ? "Airtime ePIN not returned — contact Clubkonnect support" : errMsg(data, "Print airtime failed"), _raw: data });
+      const settled = await settleEpinOrder(first, PRINT_AIRTIME_K, rid, "TXN_EPIN", "Print airtime failed");
+      if (!settled.ok) return json({ error: settled.error, _raw: settled.data });
+      const { data, pins } = settled;
       afterResponse(recordBillCost("print-airtime", rid, callerUser?.id ?? null, data, async (d) => printAirtimeCost(value, qty, networkName(network, netId), d, data)));
       return json({ status: "SUCCESS", reference: String(data?.batchno ?? data?.orderid ?? data?.requestid ?? ""), pins, message: "ORDER_RECEIVED" });
     }
@@ -1585,12 +1622,13 @@ serve(async (req) => {
       if (!netId) return json({ error: `Unknown network: ${network}` });
       const qty = parseInt(quantity, 10);
       if (qty < 1 || qty > 100) return json({ error: "Quantity must be between 1 and 100" });
-      const data = await ckBuy("print-data", "APIDatabundleEPINV1.asp", {
+      const first = await ckBuy("print-data", "APIDatabundleEPINV1.asp", {
         APIKey: PRINT_DATA_K, MobileNetwork: netId, DataPlan: planId,
         Quantity: String(qty), RequestID: rid, CallBackURL: "https://kudiai.app/",
       });
-      const pins = (data?.TXN_EPIN_DATABUNDLE ?? []) as Record<string, unknown>[];
-      if (!pins.length) return json({ error: isOk(data) ? "Data ePIN not returned — contact Clubkonnect support" : errMsg(data, "Print data failed"), _raw: data });
+      const settled = await settleEpinOrder(first, PRINT_DATA_K, rid, "TXN_EPIN_DATABUNDLE", "Print data failed");
+      if (!settled.ok) return json({ error: settled.error, _raw: settled.data });
+      const { data, pins } = settled;
       afterResponse(recordBillCost("print-data", rid, callerUser?.id ?? null, data, async () =>
         dataCost(await providerPlanPrice("print-data", PRINT_DATA_K, netId, networkName(network, netId) ?? network, planId).catch(() => null), qty, data)));
       return json({ status: "SUCCESS", reference: String(data?.batchno ?? data?.orderid ?? data?.requestid ?? ""), pins, message: "ORDER_RECEIVED" });
