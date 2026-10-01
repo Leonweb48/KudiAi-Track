@@ -66,15 +66,24 @@ async function ck(
 ): Promise<Record<string, unknown>> {
   const { timeoutMs = 45000, retries = 2 } = opts;
   const qs  = new URLSearchParams({ UserID: USER_ID, ...params });
-  const url = `${BASE}${path}?${qs}`;
+  const relay = await ckViaRelay();
+  const url = relay ? `${RELAY_URL}/ck/${path}?${qs}` : `${BASE}${path}?${qs}`;
+  const headers: Record<string, string> = { "Accept": "application/json" };
+  if (relay) headers["x-relay-key"] = RELAY_KEY;
   let lastErr: unknown;
   for (let attempt = 0; attempt <= retries; attempt++) {
     if (attempt > 0) await new Promise(r => setTimeout(r, 1500 * attempt));
     const ctrl  = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
-      const res  = await fetch(url, { headers: { "Accept": "application/json" }, signal: ctrl.signal });
+      const res  = await fetch(url, { headers, signal: ctrl.signal });
       clearTimeout(timer);
+      // The relay's own failure (couldn't reach ClubKonnect, or refused us) is NOT an answer from ClubKonnect: treat it as
+      // a network error — retry with the same RequestID, then "unreachable", so an order is held, never wrongly failed.
+      if (relay && res.headers.get("x-relay-error")) {
+        await res.body?.cancel();
+        throw new Error(`relay HTTP ${res.status}`);
+      }
       const text = await res.text();
       console.log(`CK ${path} try=${attempt} status=${res.status} body=${text.slice(0, 400)}`);
       let parsed: Record<string, unknown>;
@@ -96,7 +105,33 @@ async function ck(
       console.warn(`CK ${path} try=${attempt} network error: ${(e as Error).message}`);
     }
   }
-  throw lastErr ?? new Error(`CK ${path} unreachable`);
+  // Worded as a CONNECTION failure on purpose: the app (BillPayments CK_NET_ERR) then holds the order and confirms it with
+  // ClubKonnect instead of treating it as a refusal and refunding — the order may have gone through before the line dropped.
+  // (A bare "fetch failed" matched none of its words.)
+  throw new Error(`ClubKonnect connection failed (${path}): ${(lastErr as Error)?.message ?? "unreachable"}`);
+}
+
+// ClubKonnect accepts our account's API calls only from the IPs whitelisted on clubkonnect.com, and Supabase has no fixed
+// outgoing IP. With platform_config.ck_via_relay = "true", every call made with our account goes out through the payout
+// relay (flw-relay on Fly.io, fixed IP 209.71.82.233 — the address to whitelist). Off, or relay not configured = direct.
+// Cached 60s; a database blip keeps the last known setting. (The made-up-account health probe stays direct: the
+// whitelist is per account.)
+const RELAY_URL = (Deno.env.get("FLW_RELAY_URL") || "").replace(/\/$/, "");
+const RELAY_KEY = Deno.env.get("FLW_RELAY_KEY") ?? "";
+let relayCfg: { at: number; on: boolean } | null = null;
+async function ckViaRelay(): Promise<boolean> {
+  if (!RELAY_URL || !RELAY_KEY) return false;
+  if (relayCfg && Date.now() - relayCfg.at < 60_000) return relayCfg.on;
+  try {
+    const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+    const { data, error } = await db.from("platform_config").select("value").eq("key", "ck_via_relay").maybeSingle();
+    if (error) throw error;
+    relayCfg = { at: Date.now(), on: String((data as { value?: unknown } | null)?.value ?? "") === "true" };
+    return relayCfg.on;
+  } catch (e) {
+    console.warn("[ck relay] setting unavailable — keeping the last known:", (e as Error).message);
+    return relayCfg?.on ?? false;
+  }
 }
 
 // Statuses that always mean failure regardless of statuscode
@@ -2550,13 +2585,34 @@ serve(async (req) => {
       }));
       let egressIp = "unknown";
       try { egressIp = (await (await fetch("https://api.ipify.org", { signal: AbortSignal.timeout(5000) })).text()).trim(); } catch { /* optional */ }
+      // The fixed-IP route, tested whether or not the ck_via_relay switch is on: the relay's outgoing address, and whether
+      // ClubKonnect accepts our airtime key when the call comes from it. "valid" or ClubKonnect's status — never the balance.
+      const relay: Record<string, unknown> = { configured: !!(RELAY_URL && RELAY_KEY), switchOn: await ckViaRelay() };
+      if (relay.configured) {
+        try {
+          const w = await fetch(`${RELAY_URL}/whoami`, { headers: { "x-relay-key": RELAY_KEY }, signal: AbortSignal.timeout(8000) });
+          relay.egressIp = w.ok ? String(((await w.json()) as { ip?: string }).ip ?? "?") : `HTTP ${w.status}`;
+        } catch (e) { relay.egressIp = `unreachable: ${(e as Error).message}`; }
+        try {
+          const r = await fetch(`${RELAY_URL}/ck/APIWalletBalanceV1.asp?${new URLSearchParams({ UserID: USER_ID, APIKey: AIRTIME_K })}`,
+            { headers: { Accept: "application/json", "x-relay-key": RELAY_KEY }, signal: AbortSignal.timeout(15000) });
+          const t = await r.text();
+          if (r.headers.get("x-relay-error")) relay.airtimeKey = `relay error HTTP ${r.status}: ${t.slice(0, 80)}`;
+          else {
+            let d: Record<string, unknown> | null = null;
+            try { d = JSON.parse(t); } catch { relay.airtimeKey = `crash page (HTTP ${r.status})`; }
+            if (d) { const s = String(d.status ?? d.Status ?? "").trim(); relay.airtimeKey = s && /INVALID|MISSING|UNAUTHOR|DENIED|BLOCK|WHITELIST|\bIP\b/i.test(s) ? s : "valid"; }
+          }
+        } catch (e) { relay.airtimeKey = `unreachable: ${(e as Error).message}`; }
+      }
       const cfg = await routeConfig();
       return json({
         canary,
         purchaseService,
         dryRun: { airtimeV1: dryV1, airtimeV3: dryV3, airtimeV1BadNetwork: dryV1Net, dataV1BadPlan: dryV1Plan },
         keys,
-        account: { userIdSet: !!USER_ID, userIdLooksLikeCk: /^CK\d+$/i.test(USER_ID), egressIp },
+        relay,
+        account: { userIdSet: !!USER_ID, userIdLooksLikeCk: /^CK\d+$/i.test(USER_ID), egressIp, callsGoVia: relay.switchOn ? "relay" : "direct" },
         lookup: { kind: probe.kind, status: q.status ?? q.Status ?? null, statuscode: q.statuscode ?? q.StatusCode ?? null, fields: Object.keys(q) },
         config: { fallbackOn: cfg.fallbackOn, fallbackServices: [...cfg.fallbackServices], forceV3: [...cfg.forceV3], healthcheckOn: cfg.healthcheckOn },
       });
