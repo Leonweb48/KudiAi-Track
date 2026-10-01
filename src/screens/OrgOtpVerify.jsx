@@ -120,7 +120,7 @@ export default function OrgOtpVerify({ org }) {
         <div className="text-center mb-7">
           <div className="flex justify-center mb-4">
             <div className="bg-white/90 rounded-2xl p-2 shadow-lg">
-              <AppLogo className="h-10 w-auto" />
+              <AppLogo portal="public" className="h-10 w-auto" />
             </div>
           </div>
           <div className="inline-flex items-center justify-center w-10 h-10 rounded-2xl mb-3 bg-green-500/20 border border-green-500/30">

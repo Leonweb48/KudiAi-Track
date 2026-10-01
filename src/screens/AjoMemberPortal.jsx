@@ -5771,7 +5771,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
         {/* Header */}
         <header className="flex-none z-sticky bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shadow-sm">
           <div className="h-14 flex items-center justify-between px-4">
-          <AppLogo businessName={ownerInfo?.owner?.business_name} iconUrl={ownerInfo?.owner?.logo_url} />
+          <AppLogo portal="ajo_client" businessName={ownerInfo?.owner?.business_name} iconUrl={ownerInfo?.owner?.logo_url} />
 
           <div className="flex-none flex items-center gap-2">
             {loadingData && <div className="w-3.5 h-3.5 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />}

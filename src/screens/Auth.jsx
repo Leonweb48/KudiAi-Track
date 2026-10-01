@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { supabase, supabaseConfigured, SUPABASE_DIRECT_URL, SUPABASE_PROXY_URL } from "../utils/supabase";
 import { friendlyError } from "../utils/errorMessage";
 import AppLogo from "../components/AppLogo";
+import HolidayCap, { useHolidayCap } from "../components/HolidayCap";
 import { AuthShell, AuthCard } from "../components/AuthShell";
 import { Capacitor } from "@capacitor/core";
 import { Browser } from "@capacitor/browser";
@@ -32,7 +33,7 @@ function SetupNotice() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 flex items-center justify-center px-4">
       <div className="w-full max-w-sm bg-white rounded-2xl shadow-lg p-8 text-center">
-        <AppLogo className="h-16 w-auto mx-auto mb-4" />
+        <AppLogo portal="public" className="h-16 w-auto mx-auto mb-4" />
         <h1 className="text-xl font-bold text-gray-800 mb-2">Supabase not configured</h1>
         <p className="text-sm text-gray-500 mb-4">
           Create a <code className="bg-gray-100 px-1 rounded">.env</code> file with your Supabase credentials.
@@ -49,6 +50,7 @@ function SetupNotice() {
 /* ── Full-screen photo background wrapper ─────────────────────────── */
 function BgLayout({ children, center = false }) {
   const t = useT();
+  const cap = useHolidayCap("public");
   return (
     <div className="fixed inset-0 flex flex-col">
       {/* Portrait photo — fills entire screen, anchored top to show face */}
@@ -65,7 +67,10 @@ function BgLayout({ children, center = false }) {
       <div className="relative z-10 flex-shrink-0 px-5 pb-2 flex items-center gap-3"
         style={{ paddingTop: "max(40px, env(safe-area-inset-top, 40px))" }}>
         <div className="bg-white/90 rounded-xl p-2 shadow-lg flex-shrink-0">
-          <img src="/logo-tp.png" alt="KudiAI Track" className="h-12 w-12 object-contain" />
+          <span className="relative inline-flex">
+            {cap && <HolidayCap preset={cap.preset} title={cap.title} size={48} />}
+            <img src="/logo-tp.png" alt="KudiAI Track" className="h-12 w-12 object-contain" />
+          </span>
         </div>
         <div>
           <p className="text-white font-extrabold text-lg leading-tight tracking-wide drop-shadow-lg">KudiAI Track</p>
@@ -214,7 +219,7 @@ function OtpScreen({ email, onBack, onVerified, otpType = "signup", onSubmit, in
       {/* Header */}
       <div className="text-center mb-8">
           <div className="flex justify-center mb-4">
-            <AppLogo className="h-10 w-auto" />
+            <AppLogo portal="public" className="h-10 w-auto" />
           </div>
           <div className="inline-flex items-center justify-center w-10 h-10 rounded-2xl mb-3 bg-indigo-500/20 border border-indigo-500/30">
             <svg width="18" height="18" fill="none" stroke="rgb(129,140,248)" strokeWidth="2" viewBox="0 0 24 24">

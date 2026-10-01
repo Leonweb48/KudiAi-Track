@@ -130,7 +130,7 @@ export function CoopMemberFirstLogin({ member }) {
       <div className="bg-white dark:bg-[#0b120e] border-b border-slate-100 dark:border-[#162218] px-5 pt-14 pb-6">
         <div className="flex justify-center mb-5">
           <div className="bg-white/90 dark:bg-white/10 rounded-2xl p-2 shadow">
-            <AppLogo className="h-9 w-auto" />
+            <AppLogo portal="coop_member" className="h-9 w-auto" />
           </div>
         </div>
         <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4 bg-[linear-gradient(135deg,#3DA829,#065f46)]">
@@ -3405,7 +3405,7 @@ export default function CoopMemberPortal({ member: initialMember, pinLock }) {
 
         {/* ── Header — matches org portal h-14 ── */}
         <header className="flex-none z-30 min-h-[56px] flex items-center justify-between px-4 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shadow-sm" style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
-          <AppLogo />
+          <AppLogo portal="coop_member" />
           <div className="flex items-center gap-2 flex-shrink-0">
               <NotificationCenter
                 userId={member?.user_id ?? null}

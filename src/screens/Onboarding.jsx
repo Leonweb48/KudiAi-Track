@@ -256,7 +256,7 @@ export default function Onboarding({ session, onComplete }) {
           }}
         >
           <div className="bg-white/20 backdrop-blur-sm rounded-2xl px-4 py-2 shadow-sm mb-4">
-            <AppLogo className="h-8 w-auto" />
+            <AppLogo portal="public" className="h-8 w-auto" />
           </div>
 
           {/* Progress indicator */}

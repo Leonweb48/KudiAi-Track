@@ -711,7 +711,7 @@ export default function App() {
           {/* Owner portal header */}
           <header className="flex-none z-sticky bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shadow-sm">
             <div className="h-14 flex items-center justify-between px-4">
-            <AppLogo businessName={store.profile?.business_name} />
+            <AppLogo portal="owner" businessName={store.profile?.business_name} />
             <div className="flex-none flex items-center gap-2">
               <NotificationCenter
                 userId={userId}

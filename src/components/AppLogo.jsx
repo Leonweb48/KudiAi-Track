@@ -1,4 +1,5 @@
 import { useState } from "react";
+import HolidayCap, { useHolidayCap } from "./HolidayCap";
 
 function Wordmark() {
   return (
@@ -16,14 +17,19 @@ function Wordmark() {
   );
 }
 
-export default function AppLogo({ businessName, iconUrl, className = "" }) {
+// `portal` (owner | staff | manager | ajo_client | coop_admin | coop_member | public) turns on the holiday cap the admin
+// scheduled for that portal (admin portal → Settings → Holiday Logo Caps). No portal = never a cap.
+export default function AppLogo({ businessName, iconUrl, className = "", portal }) {
   const [imgFailed, setImgFailed]       = useState(false);
   const [customFailed, setCustomFailed] = useState(false);
+  const cap = useHolidayCap(portal);
 
   const showCustom = iconUrl && !customFailed;
 
   return (
     <div className={`flex items-center gap-2 flex-none min-w-0 ${className}`}>
+      <span className="relative inline-flex flex-shrink-0">
+      {cap && <HolidayCap preset={cap.preset} title={cap.title} />}
       {showCustom ? (
         <img
           src={iconUrl}
@@ -43,6 +49,7 @@ export default function AppLogo({ businessName, iconUrl, className = "" }) {
           onError={() => setImgFailed(true)}
         />
       )}
+      </span>
 
       {businessName ? (
         <p className="text-[15px] font-black text-slate-800 dark:text-white leading-tight truncate max-w-[160px]">

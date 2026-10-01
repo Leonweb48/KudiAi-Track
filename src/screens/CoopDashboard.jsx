@@ -3591,7 +3591,7 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
 
           {/* ── Header ── */}
           <header className="flex-none z-30 min-h-[56px] flex items-center justify-between px-4 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shadow-sm" style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
-            <AppLogo />
+            <AppLogo portal="coop_admin" />
             <div className="flex items-center gap-2 flex-shrink-0">
               <NotificationCenter
                 userId={userId ?? org?.owner_id ?? null}

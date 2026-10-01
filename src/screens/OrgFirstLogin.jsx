@@ -70,7 +70,7 @@ export default function OrgFirstLogin({ org }) {
       <AuthPageHeader accent="green">
         <div className="flex justify-center mb-5">
           <div className="bg-white/90 dark:bg-white/10 rounded-2xl p-2 shadow">
-            <AppLogo className="h-9 w-auto" />
+            <AppLogo portal="public" className="h-9 w-auto" />
           </div>
         </div>
         <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4 bg-gradient-to-br from-[#3DA829] to-[#065f46]">
