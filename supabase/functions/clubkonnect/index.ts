@@ -2304,6 +2304,39 @@ serve(async (req) => {
       return json({ apply, results });
     }
 
+    // Free electricity diagnosis (2026-10-01, "tokens not generated immediately"): ClubKonnect's record of the recent
+    // electricity orders, looked up by their order id. Field NAMES, types, lengths and whether each value is token-shaped
+    // (20 digits) — never a value, token, meter or name (logs are public). Nothing is bought.
+    if (action === "ck-variants" && (body as { mode?: unknown }).mode === "elec-probe") {
+      const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+      const { data: rows } = await db.from("transactions").select("created_at, bill_status, bill_details, note")
+        .eq("category", "electricity").gt("created_at", new Date(Date.now() - 21 * 24 * 3600 * 1000).toISOString())
+        .order("created_at", { ascending: false }).limit(8);
+      const describe = (d: Record<string, unknown>) => Object.fromEntries(Object.entries(d ?? {}).map(([k, v]) => {
+        const s = typeof v === "object" ? JSON.stringify(v) : String(v ?? "");
+        return [k, { type: Array.isArray(v) ? "array" : typeof v, len: s.length, token20: /^\d{20}$/.test(s.replace(/[\s-]/g, "")), hasDigitGroups: /\d{4}[\s-]\d{4}/.test(s) }];
+      }));
+      const orders: Record<string, unknown>[] = [];
+      for (const r of (rows ?? []) as { created_at: string; bill_status: string; bill_details: Record<string, unknown> | null; note: string | null }[]) {
+        const orderId = String(r.bill_details?.orderId ?? "").trim();
+        const out: Record<string, unknown> = {
+          at: r.created_at, st: r.bill_status, savedToken: !!String(r.bill_details?.token ?? "").trim() || /Token:\s*\d/.test(String(r.note ?? "")),
+          loading: /Token loading/.test(String(r.note ?? "")), orderIdLen: orderId.length,
+        };
+        if (orderId) {
+          try {
+            const q = await ck("APIQueryV1.asp", { APIKey: ELECTRICITY_K, OrderID: orderId }, { retries: 0, timeoutMs: 15000 });
+            out.ckFields = describe(q);
+            out.ckStatus = String(q?.status ?? q?.Status ?? "").slice(0, 40);
+            out.ckStatusCode = String(q?.statuscode ?? q?.StatusCode ?? "").slice(0, 10);
+            out.ourExtractorFindsToken = !!extractElecToken(q);
+          } catch (e) { out.ckError = (e as Error).message.slice(0, 120); }
+        }
+        orders.push(out);
+      }
+      return json({ via: (await ckViaRelay()) ? "relay" : "direct", orders });
+    }
+
     // Free print-PIN diagnosis (2026-10-01, "Print Airtime / Print Data not working"): what ClubKonnect holds for the recent
     // FAILED print orders (looked up by their RequestID = the payment reference), and how it answers a print order it must
     // refuse (quantity 0) through the same route real orders take. Shapes only: field names, status words, PIN COUNTS —

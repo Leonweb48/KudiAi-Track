@@ -1,0 +1,44 @@
+name: ClubKonnect order probe
+
+# FREE, read-only: ClubKonnect's record of recent orders, through the bill server (the route real orders take).
+#   elec-probe — recent electricity orders: field names/types/lengths, whether a token-shaped value exists, whether our
+#                extractor finds it. Never a token, meter, name or number.
+#   epin-probe — recent FAILED print orders: field names, status words, PIN counts. Never a PIN.
+# Nothing is bought.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "What to probe"
+        type: choice
+        options: [elec-probe, epin-probe]
+        default: elec-probe
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb   # v1 (pinned)
+        with:
+          version: 2.107.0
+      - name: Probe
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ secrets.SUPABASE_PROJECT_ID }}
+          MODE: ${{ inputs.mode }}
+        run: |
+          set -euo pipefail
+          FN="https://${REF}.supabase.co/functions/v1/clubkonnect"
+          SRK=$(supabase projects api-keys --project-ref "$REF" -o json | jq -r '.[] | select(.name=="service_role") | .api_key')
+          echo "::add-mask::$SRK"
+          BODY=$(jq -nc --arg mode "$MODE" '{action:"ck-variants", mode:$mode}')
+          curl -sS -m 200 -X POST "$FN" -H "Content-Type: application/json" -H "Authorization: Bearer $SRK" -d "$BODY" > out.json || true
+          echo "VIA     $(jq -r '.via // empty' out.json)"
+          jq -c '.orders[]?' out.json | while read -r o; do echo "ORDER   $o"; done
+          echo "REFUSAL $(jq -c '.refusal // empty' out.json 2>/dev/null)"
+          echo "ERROR   $(jq -c '.error // empty' out.json 2>/dev/null || head -c 300 out.json)"
