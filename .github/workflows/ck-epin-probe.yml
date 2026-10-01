@@ -1,0 +1,34 @@
+name: ClubKonnect print-PIN probe
+
+# FREE diagnosis for Print Airtime / Print Data: asks ClubKonnect (through the bill server, the route real orders take)
+# what it holds for the recent failed print orders, and how it answers a print order it must refuse (quantity 0).
+# Prints shapes only — field names, status words, PIN counts. Never a PIN, a number or the balance. Nothing is bought.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb   # v1 (pinned)
+        with:
+          version: 2.107.0
+      - name: Probe
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ secrets.SUPABASE_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          FN="https://${REF}.supabase.co/functions/v1/clubkonnect"
+          SRK=$(supabase projects api-keys --project-ref "$REF" -o json | jq -r '.[] | select(.name=="service_role") | .api_key')
+          echo "::add-mask::$SRK"
+          curl -sS -m 120 -X POST "$FN" -H "Content-Type: application/json" -H "Authorization: Bearer $SRK" -d '{"action":"ck-variants","mode":"epin-probe"}' > out.json || true
+          echo "VIA     $(jq -r '.via // empty' out.json)"
+          jq -c '.orders[]?' out.json | while read -r o; do echo "ORDER   $o"; done
+          echo "REFUSAL $(jq -c '.refusal' out.json 2>/dev/null || head -c 300 out.json)"
+          echo "ERROR   $(jq -c '.error // empty' out.json 2>/dev/null)"

@@ -2214,6 +2214,42 @@ serve(async (req) => {
     // own registered number — the only way to prove purchases work, since ClubKonnect answers every refused order with
     // the same 503 page. Fixed amount, fixed recipient, no retries. Returns ClubKonnect's status + order id, then its own
     // record of the order 10 s later (status fields only, never the balance).
+    // Free print-PIN diagnosis (2026-10-01, "Print Airtime / Print Data not working"): what ClubKonnect holds for the recent
+    // FAILED print orders (looked up by their RequestID = the payment reference), and how it answers a print order it must
+    // refuse (quantity 0) through the same route real orders take. Shapes only: field names, status words, PIN COUNTS —
+    // never a PIN, number or balance (logs are public). Nothing is bought.
+    if (action === "ck-variants" && (body as { mode?: unknown }).mode === "epin-probe") {
+      const mask = (s: unknown) => String(s ?? "").replace(/\d{5,}/g, "#").slice(0, 160);
+      const shape = (d: Record<string, unknown>) => typeof d?._raw === "string"
+        ? { http: d._http, page: mask(String(d._raw).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 120)) }
+        : {
+            keys: Object.keys(d ?? {}),
+            status: mask(d?.status ?? d?.Status ?? d?.transactionstatus ?? ""), statuscode: mask(d?.statuscode ?? d?.StatusCode ?? ""),
+            remark: mask(d?.remark ?? d?.Remark ?? d?.message ?? d?.Message ?? d?.description ?? ""),
+            airtimePins: Array.isArray(d?.TXN_EPIN) ? (d.TXN_EPIN as unknown[]).length : undefined,
+            dataPins: Array.isArray(d?.TXN_EPIN_DATABUNDLE) ? (d.TXN_EPIN_DATABUNDLE as unknown[]).length : undefined,
+          };
+      const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+      const { data: rows } = await db.from("transactions").select("category, note, created_at")
+        .in("category", ["print-airtime", "print-data"]).eq("bill_status", "failed")
+        .gt("created_at", new Date(Date.now() - 48 * 3600 * 1000).toISOString()).order("created_at", { ascending: false }).limit(6);
+      const orders: Record<string, unknown>[] = [];
+      for (const r of (rows ?? []) as { category: string; note: string | null; created_at: string }[]) {
+        const ref = /PS: (KDT-BILL-[A-Za-z0-9]+)/.exec(String(r.note ?? ""))?.[1];
+        if (!ref) { orders.push({ at: r.created_at, cat: r.category, ref: null }); continue; }
+        const key = r.category === "print-data" ? PRINT_DATA_K : PRINT_AIRTIME_K;
+        let query: unknown;
+        try { query = shape(await ck("APIQueryV1.asp", { APIKey: key, RequestID: ref }, { retries: 0, timeoutMs: 15000 })); }
+        catch (e) { query = { error: (e as Error).message }; }
+        orders.push({ at: r.created_at, cat: r.category, ref: "…" + ref.slice(-4), query });
+      }
+      let refusal: unknown;
+      try {
+        refusal = shape(await ck("APIEPINV1.asp", { APIKey: PRINT_AIRTIME_K, MobileNetwork: "01", Value: "100", Quantity: "0", RequestID: `KUDIAI-EPINPROBE-${Date.now()}`, CallBackURL: "https://kudiai.app/" }, { retries: 0, timeoutMs: 20000 }));
+      } catch (e) { refusal = { error: (e as Error).message }; }
+      return json({ via: (await ckViaRelay()) ? "relay" : "direct", orders, refusal });
+    }
+
     if (action === "ck-variants" && (body as { mode?: unknown }).mode === "live50") {
       const bal = await ck("APIWalletBalanceV1.asp", { APIKey: AIRTIME_K }, { retries: 0, timeoutMs: 15000 }).catch(() => ({} as Record<string, unknown>));
       const phone = String(bal.phoneno ?? bal.PhoneNo ?? "").replace(/\D/g, "");
