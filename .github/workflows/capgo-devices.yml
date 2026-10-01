@@ -1,0 +1,36 @@
+name: Capgo device versions
+
+# Read-only: which app code the installed Android apps report running (Capgo's device list) — counts per bundle and per
+# APK version, and when they last checked in. Never a device id or anything identifying.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  devices:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Count devices by version
+        env:
+          CAPGO_KEY: ${{ secrets.CAPGO_API_KEY }}
+        run: |
+          set -uo pipefail
+          curl -sS -m 60 "https://api.capgo.app/device?app_id=com.amayatechnologies.kuditrack" -H "authorization: $CAPGO_KEY" > devices.json || true
+          node -e '
+            const raw = require("fs").readFileSync("devices.json", "utf8");
+            let j; try { j = JSON.parse(raw); } catch { console.log("unreadable answer:", raw.slice(0, 200).replace(/[A-Za-z0-9-]{20,}/g, "#")); process.exit(0); }
+            const list = Array.isArray(j) ? j : (j.data ?? j.devices ?? []);
+            if (!Array.isArray(list)) { console.log("answer keys:", Object.keys(j)); process.exit(0); }
+            console.log("devices:", list.length, "| fields:", Object.keys(list[0] ?? {}).join(","));
+            const by = {};
+            for (const d of list) {
+              const k = `running ${d.version_name ?? d.version ?? "?"} on APK ${d.version_build ?? "?"} (${d.platform ?? "?"})`;
+              const seen = Date.parse(d.updated_at ?? d.created_at ?? "") || 0;
+              by[k] = by[k] ?? { n: 0, last: 0 }; by[k].n++; by[k].last = Math.max(by[k].last, seen);
+            }
+            for (const [k, v] of Object.entries(by).sort((a, b) => b[1].last - a[1].last)) console.log(`${String(v.n).padStart(3)} × ${k} — last seen ${v.last ? new Date(v.last).toISOString().slice(0, 16) : "?"}`);
+          '
