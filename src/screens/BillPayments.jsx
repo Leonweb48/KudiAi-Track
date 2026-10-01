@@ -2081,7 +2081,10 @@ export default function BillPayments({ store, plan, session = null, staffName = 
           return;
         }
         if (q.status === "CANCELLED") {
-          setFulfillResult(prev => prev ? { ...prev, elecOrderId: "", txnHistoryPending: true } : prev);
+          // The electricity company could not vend, so the provider cancelled / refunded the order. It is NOT "check your
+          // meter": no token exists. The server's electricity sweep (every 2 min) refunds the customer's wallet, marks the
+          // order failed and notifies them — show the "refund initiated" screen, keeping the payment reference.
+          setFulfillResult(prev => prev ? { ok: false, label: prev.label, detail: q.message || "", psRef: prev.psRef, cat: prev.cat, amount: prev.amount } : prev);
           elecPendingCbRef.current = null;
           return;
         }

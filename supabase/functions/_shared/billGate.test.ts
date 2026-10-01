@@ -1,6 +1,6 @@
 // Run: deno test supabase/functions/_shared/billGate.test.ts
 import {
-  checkBillGate, couponAllowance, DEFAULT_CONFIG, faceKobo, parseRequestRef, paramsHash,
+  checkBillGate, couponAllowance, couponCoversAnyPrice, DEFAULT_CONFIG, faceKobo, parseRequestRef, paramsHash,
   type CouponRow, type GateConfig, type GateDeps,
 } from "./billGate.ts";
 
@@ -57,7 +57,7 @@ Deno.test("couponAllowance mirrors the app's coupon rules", () => {
 });
 
 // ── the gate, with fake dependencies ───────────────────────────────────────────
-interface Fake { walletPaid?: number; paystack?: { success: boolean; amountKobo: number; isBill: boolean } | null; coupon?: CouponRow | null; claim?: Record<string, unknown>; claimError?: string; config?: Partial<GateConfig>; configThrows?: boolean }
+interface Fake { planFace?: number | (() => Promise<number>); walletPaid?: number; paystack?: { success: boolean; amountKobo: number; isBill: boolean } | null; coupon?: CouponRow | null; claim?: Record<string, unknown>; claimError?: string; config?: Partial<GateConfig>; configThrows?: boolean }
 function deps(f: Fake) {
   const calls = { rpc: [] as [string, Record<string, unknown>][], logs: [] as Record<string, unknown>[], paystack: 0 };
   const d: GateDeps = {
@@ -71,6 +71,7 @@ function deps(f: Fake) {
     coupon: () => Promise.resolve(f.coupon ?? null),
     paystack: () => { calls.paystack++; return Promise.resolve(f.paystack ?? null); },
     log: (row) => { calls.logs.push(row); return Promise.resolve(); },
+    ...(f.planFace !== undefined ? { planFace: () => (typeof f.planFace === "function" ? f.planFace() : Promise.resolve(f.planFace as number)) } : {}),
   };
   return { d, calls };
 }
@@ -207,4 +208,58 @@ Deno.test("refusal messages never look like network errors the app would retry b
       assert(!NET.test((r as { message: string }).message), `${reason} message must not trigger the app's network retry: ${(r as { message: string }).message}`);
     }
   })();
+});
+
+// ── 2026-10-01: Data paid entirely by a coupon was refused as "no payment" (plan-priced → no face → coupon unprovable) ──
+const dataBody = { requestId: "KDT-BILL-1758812345678", phone: "0803", network: "MTN", planId: "1000", couponCode: "free100" };
+
+Deno.test("gate: a Data order paid entirely by a 100% coupon passes, with or without a catalogue price", async () => {
+  let r = await checkBillGate(deps({ coupon: coupon() }).d, U, "data", dataBody);
+  assert(r.ok, "no planFace dep (old deploy shape): a 100% coupon covers any price");
+  r = await checkBillGate(deps({ coupon: coupon(), planFace: 0 }).d, U, "data", dataBody);
+  assert(r.ok, "catalogue price unknown: a 100% coupon still covers it");
+  const { d, calls } = deps({ coupon: coupon(), planFace: 35000 });
+  r = await checkBillGate(d, U, "data", dataBody);
+  assert(r.ok, "catalogue price known");
+  eq(calls.rpc.find((c) => c[0] === "bill_gate_claim")![1].p_face_kobo, 35000, "the catalogue price is the face used for the claim");
+});
+
+Deno.test("gate: with a catalogue price, a fixed coupon covering it is payment; one that does not cover it is not", async () => {
+  let r = await checkBillGate(deps({ coupon: coupon({ type: "fixed", value: 500 }), planFace: 35000 }).d, U, "data", dataBody);
+  assert(r.ok, "NGN500 off a NGN350 plan covers it");
+  r = await checkBillGate(deps({ coupon: coupon({ type: "fixed", value: 200 }), planFace: 35000 }).d, U, "data", dataBody);
+  assert(!r.ok && r.reason === "no_payment", "NGN200 off a NGN350 plan with nothing else paid");
+  r = await checkBillGate(deps({ coupon: coupon({ value: 50 }), planFace: 35000 }).d, U, "data", dataBody);
+  assert(!r.ok && r.reason === "no_payment", "50% with nothing else paid");
+});
+
+Deno.test("gate: without a catalogue price only a coupon that is free whatever the price counts", async () => {
+  for (const c of [coupon({ type: "fixed", value: 1e6 }), coupon({ value: 99 }), coupon({ min_amount: 100 }), coupon({ applies_to: ["subscriptions"] }), coupon({ is_active: false }), coupon({ max_uses: 1, used_count: 1 })]) {
+    const r = await checkBillGate(deps({ coupon: c, planFace: 0 }).d, U, "data", dataBody);
+    assert(!r.ok && r.reason === "no_payment", JSON.stringify(c));
+  }
+});
+
+Deno.test("gate: a catalogue lookup that throws never blocks a wallet-paid order and never invents a price", async () => {
+  const { d, calls } = deps({ walletPaid: 35000, planFace: () => Promise.reject(new Error("CK down")) });
+  const r = await checkBillGate(d, U, "data", { ...dataBody, couponCode: undefined });
+  assert(r.ok, "wallet proof still passes");
+  eq(calls.rpc.find((c) => c[0] === "bill_gate_claim")![1].p_face_kobo, 0, "face stays unknown");
+});
+
+Deno.test("gate: planFace is never asked for orders whose request states the price", async () => {
+  let asked = 0;
+  const { d } = deps({ walletPaid: 100000, planFace: () => { asked++; return Promise.resolve(1); } });
+  await checkBillGate(d, U, "airtime", body);
+  eq(asked, 0, "airtime carries its own amount");
+});
+
+Deno.test("couponCoversAnyPrice: only an active, current, bills-scope, 100% coupon with no minimum and uses left", () => {
+  assert(couponCoversAnyPrice(coupon()), "plain 100%");
+  assert(couponCoversAnyPrice(coupon({ applies_to: ["bills", "subscriptions"] })), "bills in scope");
+  assert(!couponCoversAnyPrice(null), "none");
+  assert(!couponCoversAnyPrice(coupon({ type: "fixed", value: 1e9 })), "fixed, however big");
+  assert(!couponCoversAnyPrice(coupon({ valid_until: "2000-01-01T00:00:00Z" })), "expired");
+  assert(!couponCoversAnyPrice(coupon({ valid_from: "2999-01-01T00:00:00Z" })), "not started");
+  assert(!couponCoversAnyPrice(coupon({ min_amount: 1 })), "has a minimum we cannot check");
 });

@@ -135,3 +135,23 @@ export function findPlanPrice(resp: unknown, network: string, planId: unknown): 
   // Two different prices under one id would be a guess — book nothing rather than the wrong cost.
   return found.size === 1 ? [...found][0] : null;
 }
+
+/** The plan entry (id, name, provider price) for one plan id — the shape applyDataPrices takes; null unless exactly one. */
+export function findPlan(resp: unknown, network: string, planId: unknown): { plan_id: string; plan_name: string; plan_amount: number } | null {
+  const price = findPlanPrice(resp, network, planId);
+  if (price === null) return null;
+  const mn = (resp as { MOBILE_NETWORK?: Record<string, unknown> }).MOBILE_NETWORK as Record<string, unknown>;
+  const squash = (s: string) => s.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+  const want = squash(network);
+  const aliases = want === "9MOBILE" ? ["9MOBILE", "M9MOBILE", "ETISALAT", "EMTS", "T2MOBILE"] : [want];
+  const key = Object.keys(mn).find((k) => aliases.includes(squash(k)))!;
+  const id = String(planId ?? "").trim();
+  for (const g of (Array.isArray(mn[key]) ? mn[key] : []) as Record<string, unknown>[]) {
+    for (const p of (Array.isArray(g?.PRODUCT) ? g.PRODUCT : []) as Record<string, unknown>[]) {
+      if (String(p?.PRODUCT_ID ?? p?.DataPlan ?? "").trim() === id) {
+        return { plan_id: id, plan_name: String(p.PRODUCT_NAME ?? p.DataPlanName ?? ""), plan_amount: price };
+      }
+    }
+  }
+  return null;
+}

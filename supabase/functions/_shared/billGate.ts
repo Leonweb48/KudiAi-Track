@@ -69,6 +69,21 @@ export function couponAllowance(c: CouponRow | null, faceKobo: number, now = new
   return { allowanceKobo, full: allowanceKobo >= faceKobo };
 }
 
+/**
+ * A coupon that is free whatever the price — valid now, for bills, 100% off, no minimum — so it covers an order whose price
+ * the server could not work out (a plan-priced bill without a known catalogue price). Before 2026-10-01 such orders (Data
+ * paid entirely by a coupon) were refused as "no payment" because the coupon check needs a price.
+ */
+export function couponCoversAnyPrice(c: CouponRow | null, now = new Date()): boolean {
+  if (!c || !c.is_active || c.type !== "percentage" || Number(c.value) < 100) return false;
+  if (c.valid_from && new Date(c.valid_from) > now) return false;
+  if (c.valid_until && new Date(c.valid_until) < now) return false;
+  if (c.max_uses != null && (c.used_count ?? 0) >= c.max_uses) return false;
+  const scope = c.applies_to ?? [];
+  if (scope.length > 0 && !scope.includes("bills")) return false;
+  return !(Number(c.min_amount ?? 0) > 0);
+}
+
 export interface GateDeps {
   config(): Promise<GateConfig>;
   rpc(name: string, args: Record<string, unknown>): Promise<{ data: unknown; error: { message: string } | null }>;
@@ -76,6 +91,9 @@ export interface GateDeps {
   // Paystack's own answer for a reference: null when it cannot be verified at all
   paystack(reference: string): Promise<{ success: boolean; amountKobo: number; isBill: boolean } | null>;
   log(row: Record<string, unknown>): Promise<void>;
+  // The price (kobo) the customer sees for a plan-priced order (Data / Print Data: the owner's selling price) — 0 when
+  // unknown. Optional: without it, plan-priced orders keep a face of 0 (price checks skipped, as before).
+  planFace?(action: string, body: Body): Promise<number>;
 }
 
 export type GateResult = { ok: true; verdict: string } | { ok: false; reason: string; message: string };
@@ -107,7 +125,11 @@ export async function checkBillGate(deps: GateDeps, user: { id: string }, action
   const ref = parseRequestRef(body.requestId);
   if (!ref) { await deps.log({ ...base, request_id: String(body.requestId ?? "").slice(0, 64), reason: "bad_ref", enforced: enforce }); return enforce ? fail("bad_ref") : { ok: true, verdict: "log_bad_ref" }; }
 
-  const face = faceKobo(action, body);
+  let face = faceKobo(action, body);
+  // plan-priced (Data, Print Data…): the request carries no price — ask the catalogue, so a coupon can be checked against it
+  if (face === 0 && deps.planFace) {
+    try { const f = Math.round(Number(await deps.planFace(action, body))); face = Number.isFinite(f) && f > 0 ? f : 0; } catch { face = 0; }
+  }
   const couponCode = typeof body.couponCode === "string" ? body.couponCode.trim().slice(0, 40) : "";
 
   try {
@@ -128,8 +150,9 @@ export async function checkBillGate(deps: GateDeps, user: { id: string }, action
     if (couponCode) {
       coupon = await deps.coupon(couponCode);
       allowance = couponAllowance(coupon, face).allowanceKobo;
-      // a coupon that covers the whole order is itself the "payment"
-      if (!source && coupon && face > 0 && couponAllowance(coupon, face).full) { paid = 0; source = "coupon"; }
+      // a coupon that covers the whole order is itself the "payment" — checked against the price when we know it, or, when we
+      // don't (a plan-priced bill), only a coupon that is free whatever the price counts
+      if (!source && coupon && (face > 0 ? couponAllowance(coupon, face).full : couponCoversAnyPrice(coupon))) { paid = 0; source = "coupon"; }
     }
     if (!source) { await deps.log({ ...base, request_id: ref.requestId, reason: "no_payment", face_kobo: face, enforced: enforce }); return enforce ? fail("no_payment") : { ok: true, verdict: "log_no_payment" }; }
 

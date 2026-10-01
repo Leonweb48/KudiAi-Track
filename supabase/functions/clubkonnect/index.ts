@@ -6,7 +6,7 @@ import { parseCkAmount } from "../_shared/ckAmount.ts";
 import { applyDataPrices, parseDiscountPct, parseSellingPrices, type SellingPrices } from "../_shared/dataPricing.ts";
 import { findExamProduct, parseCkExamCatalogue, providerExamCode, type ExamProduct } from "../_shared/examCatalogue.ts";
 import { checkBillGate, DEFAULT_CONFIG, PURCHASE_ACTIONS, type CouponRow, type GateConfig, type GateDeps, type GateMode } from "../_shared/billGate.ts";
-import { airtimeCost, dataCost, findPlanPrice, networkName, parseDiscounts, printAirtimeCost, type Cost, type Discounts } from "../_shared/billCost.ts";
+import { airtimeCost, dataCost, findPlan, findPlanPrice, networkName, parseDiscounts, printAirtimeCost, type Cost, type Discounts } from "../_shared/billCost.ts";
 import { buyWithFallback, parseServiceList, PENDING_STATUS, probeVerdict, purchaseServiceState, V3_PATH, type CkResult, type Health, type Lookup, type RouteConfig, type RouteEvent } from "../_shared/ckRoute.ts";
 import {
   airtimeServiceId, dataServiceId, isVtPlan, parseVariations, VT_CABLE, VT_ELECTRIC, VT_SMILE, VT_WAEC, vtAirtimeBody, vtCableBody, vtCall, vtCardDetails, vtCode,
@@ -52,6 +52,12 @@ const NET_ID: Record<string, string> = {
   MTN: "01", Glo: "02", "t2mobile": "03", "9mobile": "03", Airtel: "04",
 };
 
+// Provider replies carry tokens, PINs, meter / phone numbers and our balance: logs keep the shape, never those digits.
+function forLog(v: unknown, max = 400): string {
+  const t = typeof v === "string" ? v : JSON.stringify(v ?? null);
+  return t.replace(/\d(?:[\d\s-]{2,}\d)/g, (m) => (m.replace(/\D/g, "").length >= 4 ? "#" : m)).slice(0, max);
+}
+
 const reqId = () => `KDT${Date.now()}${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
 
 // A network failure mid-request does NOT mean the order failed — ClubKonnect may
@@ -85,7 +91,7 @@ async function ck(
         throw new Error(`relay HTTP ${res.status}`);
       }
       const text = await res.text();
-      console.log(`CK ${path} try=${attempt} status=${res.status} body=${text.slice(0, 400)}`);
+      console.log(`CK ${path} try=${attempt} status=${res.status} body=${forLog(text)}`);
       let parsed: Record<string, unknown>;
       try { parsed = JSON.parse(text) as Record<string, unknown>; }
       catch { parsed = { _raw: text, _http: res.status }; }
@@ -239,6 +245,22 @@ function makeGateDeps(): GateDeps {
       return { success: j.data.status === "success", amountKobo: Number(j.data.amount ?? 0), isBill: j.data.metadata?.payment_type === "bill" };
     },
     async log(row) { await db.from("bill_gate_log").insert(row); },
+    // Data / Print Data carry no price, so a coupon paying the whole order could never be proven (4 Data orders refused as
+    // "no payment" in Sept 2026). The price the customer sees — the owner's selling price, Print Data minus its discount —
+    // from the same cached provider plan list the cost records use. 0 = unknown (VTpass plans, lookup failure).
+    async planFace(action, body) {
+      if (action !== "data" && action !== "print-data") return 0;
+      const network = String(body.network ?? ""), planId = String(body.planId ?? "");
+      const netId = NET_ID[network];
+      if (!netId || !planId || isVtPlan(planId)) return 0;
+      const resp = await providerPlanList(action, action === "print-data" ? PRINT_DATA_K : DATA_K, netId);
+      const entry = findPlan(resp, networkName(network, netId) ?? network, planId);
+      if (!entry) return 0;
+      const cfg = await priceConfig();
+      const [priced] = applyDataPrices([entry], network, cfg.selling, { print: action === "print-data", printDiscountPct: cfg.printPct });
+      const naira = Number(priced?.plan_amount ?? 0);
+      return naira > 0 ? Math.round(naira * 100) : 0;
+    },
   };
 }
 
@@ -254,7 +276,7 @@ async function costDiscounts(): Promise<Discounts> {
   return costDiscCache.d;
 }
 const planListCache = new Map<string, { at: number; resp: unknown }>();   // "<key label>:<network id>" -> the provider's plan list
-async function providerPlanPrice(label: string, apiKey: string, netId: string, network: string, planId: string): Promise<number | null> {
+async function providerPlanList(label: string, apiKey: string, netId: string): Promise<unknown> {
   const ck_ = `${label}:${netId}`;
   let hit = planListCache.get(ck_);
   if (!hit || Date.now() - hit.at > 10 * 60_000) {
@@ -262,7 +284,10 @@ async function providerPlanPrice(label: string, apiKey: string, netId: string, n
     hit = { at: Date.now(), resp };
     planListCache.set(ck_, hit);
   }
-  return findPlanPrice(hit.resp, network, planId);
+  return hit.resp;
+}
+async function providerPlanPrice(label: string, apiKey: string, netId: string, network: string, planId: string): Promise<number | null> {
+  return findPlanPrice(await providerPlanList(label, apiKey, netId), network, planId);
 }
 async function recordBillCost(cat: string, rid: string, userId: string | null, resp: Record<string, unknown>, work: (d: Discounts) => Promise<Cost | null>, meta: Record<string, unknown> = {}) {
   try {
@@ -396,10 +421,75 @@ async function lookupOrder(apiKey: string, requestId: string): Promise<Lookup> {
   const stat = String(q?.status ?? q?.Status ?? q?.transactionstatus ?? q?.TransactionStatus ?? "").toUpperCase().trim();
   // a lookup we couldn't make (credentials etc.) says nothing about the order
   if (/INVALID_CREDENTIALS|MISSING_CREDENTIALS|INVALID_KEY|INVALID KEY|INVALID USER|UNAUTHORIZED/.test(stat)) return { kind: "unknown", q };
-  if (FAIL_PATTERNS.some((p) => stat.includes(p)) || stat.includes("CANCEL") || code.startsWith("5")) return { kind: "found-failed", q };
+  if (ckOrderDead(q) || code.startsWith("5")) return { kind: "found-failed", q };
   const pins = q?.TXN_EPIN ?? q?.TXN_EPIN_DATABUNDLE;
   if (isOk(q) || q?.carddetails || q?.CardDetails || (Array.isArray(pins) && pins.length)) return { kind: "found-ok", q };
   return { kind: (q?.orderid ?? q?.OrderID ?? q?.transactionid ?? q?.TransactionID) ? "found-pending" : "unknown", q };
+}
+
+// ClubKonnect's record of an order that did NOT deliver and will not: cancelled, failed, or REFUNDED back to our ClubKonnect
+// wallet ("ORDER_REFUNDED", statuscode 899 — seen 2026-10-01 on an electricity order the DISCO could not vend, which we had
+// left as "Token loading..." for days while the customer's money was gone). The customer must be refunded.
+function ckOrderDead(q: Record<string, unknown> | null | undefined): boolean {
+  const stat = String(q?.status ?? q?.Status ?? q?.STATUS ?? q?.transactionstatus ?? q?.TransactionStatus ?? "").toUpperCase();
+  const code = String(q?.statuscode ?? q?.StatusCode ?? "").trim();
+  return code === "899" || /REFUND|REVERS|CANCEL/.test(stat) || FAIL_PATTERNS.some((p) => stat.includes(p));
+}
+const ELEC_DEAD_MSG = "The electricity company could not issue a token for this meter, so the order was cancelled. Your money is refunded — please check the meter details and try again.";
+
+// In-app + push notification to a customer (notify-send, service key). Best-effort: never throws.
+async function notifyCustomer(userId: string | null | undefined, n: { type: string; title: string; body: string; priority?: string }): Promise<void> {
+  if (!userId || !SUPABASE_URL || !SERVICE_KEY) return;
+  await fetch(`${SUPABASE_URL}/functions/v1/notify-send`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}` },
+    body: JSON.stringify({ action: "notify", userId, type: n.type, title: n.title, body: n.body, priority: n.priority ?? "high", deepLink: { tab: "bills" }, category: "bills" }),
+  }).catch(() => null);
+}
+
+// Cron-driven actions: pg_cron → pg_net sends the Vault's cron_secret in x-cron-secret (checked by the service-only
+// verify_cron_secret RPC, which never returns the secret — same pattern as flutterwave / notify-send). The service key works too.
+const CRON_ACTIONS = new Set(["electricity-sweep"]);
+async function cronAuthorized(req: Request): Promise<boolean> {
+  const provided = req.headers.get("x-cron-secret") ?? "";
+  if (!provided || !SUPABASE_URL || !SERVICE_KEY) return false;
+  try {
+    const { data } = await createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } }).rpc("verify_cron_secret", { p_secret: provided });
+    return data === true;
+  } catch { return false; }
+}
+
+// A purchase reply that is neither a success nor a clear refusal — no status we know (a new reply shape, a holding state like
+// ORDER_ON_HOLD), or "this RequestID already exists" (DUPLICATE / TXN_HISTORY, what a retry of a held order gets) — is NOT
+// proof that nothing was bought (the 1 Oct print PINs). Ask ClubKonnect for the order first: no such order / failed / refunded
+// → "failed" (the customer is refunded); anything else → "hold": the app confirms via `verify`, which returns what was
+// delivered. An error page (_raw) or an explicit refusal (INVALID_…, MISSING_…, insufficient balance…) stays "failed" at once.
+async function ckFailedOrHeld(data: Record<string, unknown>, key: string, rid: string): Promise<"failed" | "hold"> {
+  if (!key || !rid || typeof data?._raw === "string") return "failed";
+  const stat = String(data?.status ?? data?.Status ?? data?.STATUS ?? "").toUpperCase();
+  const exists = /DUPLICATE|TXN_HISTORY|ON_HOLD|PROCESSING|PENDING/.test(stat);
+  if (!exists && (ckOrderDead(data) || /INVALID|MISSING|UNAUTHOR|DENIED|NOT.?ALLOWED|DISABLED|BLOCK/.test(stat))) return "failed";
+  for (const wait of [0, 3000]) {
+    if (wait) await new Promise((r) => setTimeout(r, wait));
+    const lk = await lookupOrder(key, rid);
+    if (lk.kind === "not-found" || lk.kind === "found-failed") return "failed";
+    if (lk.kind === "found-ok" || lk.kind === "found-pending") return "hold";
+  }
+  return "hold";
+}
+
+// WAEC / JAMB: ClubKonnect accepted the order but its reply had no card details — fetch them by RequestID for a few seconds;
+// still nothing → hold (the app's confirm path returns them via `verify`), never "failed" for an order that exists.
+async function cardDetailsLater(key: string, rid: string): Promise<string> {
+  for (const wait of [0, 3000, 5000]) {
+    if (wait) await new Promise((r) => setTimeout(r, wait));
+    try {
+      const q = await ck("APIQueryV1.asp", { APIKey: key, RequestID: rid }, { retries: 0, timeoutMs: 12000 });
+      const cd = String(q?.carddetails ?? q?.CardDetails ?? "").trim();
+      if (cd) return cd;
+    } catch { /* try again */ }
+  }
+  return "";
 }
 
 // A print order (airtime / data PINs) whose first reply carries no PINs is NOT necessarily a failure: on 2026-10-01 three
@@ -413,10 +503,7 @@ async function settleEpinOrder(
   waits: number[] = [0, 2000, 4000, 7000],
 ): Promise<EpinOutcome> {
   const pinsOf = (d: Record<string, unknown> | null | undefined) => (Array.isArray(d?.[listKey]) ? d![listKey] : []) as Record<string, unknown>[];
-  const refused = (d: Record<string, unknown>) => {
-    const stat = String(d?.status ?? d?.Status ?? d?.STATUS ?? d?.transactionstatus ?? "").toUpperCase();
-    return FAIL_PATTERNS.some((p) => stat.includes(p)) || stat.includes("CANCEL");
-  };
+  const refused = (d: Record<string, unknown>) => ckOrderDead(d);
   if (pinsOf(first).length) return { ok: true, pins: pinsOf(first), data: first };
   if (typeof first?._raw !== "string" && refused(first)) return { ok: false, error: errMsg(first, fallback), data: first };
 
@@ -794,7 +881,10 @@ serve(async (req) => {
   const SERVICE_ONLY = new Set(["wallet-balance", "connectivity-check", "wallet-balance-alert", "health-check", "data-probe", "refresh-ck-prices", "price-list", "route-check", "vtpass-probe", "provider-status", "vtpass-sandbox-proof", "vtpass-explore", "ck-variants"]);
   // Public catalogue lookups (plan lists) stay open; purchase / write actions require the service key OR a user JWT.
   const READ_ONLY = new Set(["data-plans", "cabletv-plans", "waec-packages", "jamb-packages", "exam-price"]);
-  if (SERVICE_ONLY.has(action)) {
+  if (CRON_ACTIONS.has(action)) {
+    const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+    if (!(await cronAuthorized(req)) && !(await isServiceCall(token))) return unauthorized();
+  } else if (SERVICE_ONLY.has(action)) {
     const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
     if (!(await isServiceCall(token))) return unauthorized();
   } else if (!READ_ONLY.has(action)) {
@@ -838,7 +928,7 @@ serve(async (req) => {
       const out = await buyAcrossProviders("airtime", sid ? await providerOrderFor("airtime") : ["clubkonnect"], pd);
       if (out.via !== "clubkonnect") return vtAnswer("airtime", out, rid, callerUser?.id ?? null, pd.vtRid());
       const data = out.data;
-      if (!isOk(data)) return json({ error: errMsg(data, "Airtime purchase failed"), _raw: data });
+      if (!isOk(data)) return json({ error: (await ckFailedOrHeld(data, AIRTIME_K, rid)) === "hold" ? PENDING_STATUS : errMsg(data, "Airtime purchase failed"), _raw: data });
       afterResponse(recordBillCost("airtime", rid, callerUser?.id ?? null, data, async (d) => airtimeCost(amount, networkName(network, netId), d, data)));
       return json({ status: "SUCCESS", reference: String(data.orderid ?? data.requestid ?? ""), message: String(data.status ?? "ORDER_RECEIVED") });
     }
@@ -946,8 +1036,8 @@ serve(async (req) => {
       const out = await buyAcrossProviders("data", vtPlan ? ["vtpass"] : ["clubkonnect"], pd);
       if (out.via !== "clubkonnect") return vtAnswer("data", out, rid, callerUser?.id ?? null, pd.vtRid());
       const data = out.data;
-      console.log(`data purchase result:`, JSON.stringify(data).slice(0, 500));
-      if (!isOk(data)) return json({ error: `${errMsg(data, "Data purchase failed")} [net:${netId} plan:${planId}]`, _raw: data });
+      console.log(`data purchase result:`, forLog(data, 500));
+      if (!isOk(data)) return json({ error: (await ckFailedOrHeld(data, DATA_K, rid)) === "hold" ? PENDING_STATUS : `${errMsg(data, "Data purchase failed")} [net:${netId} plan:${planId}]`, _raw: data });
       afterResponse(recordBillCost("data", rid, callerUser?.id ?? null, data, async () =>
         dataCost(await providerPlanPrice("data", DATA_K, netId, networkName(network, netId) ?? network, planId).catch(() => null), 1, data)));
       return json({ status: "SUCCESS", reference: String(data.orderid ?? data.requestid ?? ""), message: String(data.status ?? "ORDER_RECEIVED") });
@@ -1029,7 +1119,7 @@ serve(async (req) => {
         VT_CABLE.has(provider) ? () => vtCheckCustomer(provider, smartcard) : null,
         async () => {
           const data = await ck("APIVerifyCableTVV1.asp", { APIKey: CABLETV_K, CableTV: provider, SmartCardNo: smartcard });
-          console.log("cable-verify raw:", JSON.stringify(data).slice(0, 400));
+          console.log("cable-verify raw:", forLog(data));
           return ckCustomer(data, `Smartcard not found (${smartcard}). Check the number and selected provider.`);
         });
       if (r.kind === "ok") return json({ customer_name: r.name });
@@ -1054,7 +1144,7 @@ serve(async (req) => {
         SmartCardNo: smartcard, PhoneNo: phone.replace(/\D/g, ""),
         RequestID: rid, CallBackURL: "https://kudiai.app/",
       });
-      if (!isOk(data)) return json({ error: errMsg(data, "Cable TV subscription failed"), _raw: data });
+      if (!isOk(data)) return json({ error: (await ckFailedOrHeld(data, CABLETV_K, rid)) === "hold" ? PENDING_STATUS : errMsg(data, "Cable TV subscription failed"), _raw: data });
       return json({ status: "SUCCESS", reference: String(data.orderid ?? data.requestid ?? ""), message: String(data.status ?? "ORDER_RECEIVED") });
     }
 
@@ -1073,7 +1163,7 @@ serve(async (req) => {
         sid && mt ? () => vtCheckCustomer(sid, meterNo.trim(), mt) : null,
         async () => {
           const data = await ck("APIVerifyElectricityV1.asp", { APIKey: ELECTRICITY_K, ElectricCompany: company, MeterNo: meterNo, MeterType: meterType });
-          console.log("electricity-verify raw:", JSON.stringify(data).slice(0, 400));
+          console.log("electricity-verify raw:", forLog(data));
           return ckCustomer(data, `Meter not found (${meterNo}). Check the number and selected company.`);
         });
       if (r.kind === "ok") return json({ customer_name: r.name, customer_address: r.address || null });
@@ -1178,7 +1268,7 @@ serve(async (req) => {
         return json({ status: "SUCCESS", reference: ref, token, units, message: "ORDER_COMPLETED", provider: "vtpass" });   // postpaid: no token, by nature
       }
       const data = bought.data;
-      console.log("electricity purchase response:", JSON.stringify(data));
+      console.log("electricity purchase response fields:", Object.keys(data ?? {}).join(","), "status:", String(data?.status ?? data?.Status ?? ""));
 
       // CK electricity uses "transactionid" (not "orderid") — must check both
       const orderId = String(
@@ -1196,7 +1286,7 @@ serve(async (req) => {
       // Check this BEFORE any status validation so we don't miss it.
       const immediateToken = extractElecToken(data);
       if (immediateToken && !isExplicitFail) {
-        console.log("electricity: token found in purchase response:", immediateToken);
+        console.log("electricity: token found in purchase response");
         return json({ status: "SUCCESS", reference: orderId, token: immediateToken, message: purchaseStat || "ORDER_COMPLETED" });
       }
 
@@ -1208,12 +1298,12 @@ serve(async (req) => {
       // ── Priority 3: TXN_HISTORY — previous order found, use its transactionid ──
       if (purchaseStat.includes("TXN_HISTORY")) {
         const txnStat = elecTxnStat(data); // inner order status (transactionstatus field)
-        console.log("electricity TXN_HISTORY: orderId=%s txnStat=%s raw=%s", orderId, txnStat, JSON.stringify(data));
+        console.log("electricity TXN_HISTORY: txnStat=%s", txnStat);
         if (orderId) {
           // If inner order is already completed, query once to get the token
           if (txnStat === "ORDER_COMPLETED" || txnStat === "SUCCESSFUL" || txnStat === "SUCCESS") {
             const q = await ck("APIQueryV1.asp", { APIKey: ELECTRICITY_K, OrderID: orderId }, { retries: 1, timeoutMs: 15000 });
-            console.log("electricity TXN_HISTORY completed query:", JSON.stringify(q));
+            console.log("electricity TXN_HISTORY completed query fields:", Object.keys(q ?? {}).join(","));
             const token = extractElecToken(q);
             if (token) return json({ status: "SUCCESS", reference: orderId, token, message: "ORDER_COMPLETED" });
             // Token not in query response — return PENDING so frontend keeps polling
@@ -1228,31 +1318,127 @@ serve(async (req) => {
         return json({ status: "TXN_HISTORY", reference: orderId, token: extractElecToken(data), message: "TXN_HISTORY" });
       }
 
-      // ── Priority 4: ORDER_RECEIVED — poll until token arrives (max ~88s) ──
-      let polledToken = "";
+      // ── Priority 4: ORDER_RECEIVED — wait briefly for the token (~23 s), then hand over: the app keeps asking
+      // (electricity-query) and the background sweep (electricity-sweep, pg_cron every 2 min) finishes the order even if the
+      // app is closed — saves the token, or refunds the customer when the provider refunded the order. (It used to block here
+      // for up to ~88 s, and nothing ever came back for a token later than ~3 min.)
+      const lookupBy: Record<string, string> = orderId ? { OrderID: orderId } : { RequestID: rid };
       let completedButNoToken = 0;
-      for (let i = 0; i < 22; i++) {
-        await new Promise(r => setTimeout(r, 4000));
-        const q = await ck("APIQueryV1.asp", { APIKey: ELECTRICITY_K, OrderID: orderId }, { retries: 0, timeoutMs: 10000 }).catch(() => ({} as Record<string, unknown>));
-        const qCode = elecStatusCode(q);
-        const qStat = elecStat(q);
+      for (const wait of [2000, 2000, 3000, 3000, 4000, 4000, 5000]) {
+        await new Promise(r => setTimeout(r, wait));
+        const q = await ck("APIQueryV1.asp", { APIKey: ELECTRICITY_K, ...lookupBy }, { retries: 0, timeoutMs: 10000 }).catch(() => ({} as Record<string, unknown>));
         const qToken = extractElecToken(q);
-        console.log(`electricity poll #${i + 1}: code=${qCode} status=${qStat} token=${qToken || "(none)"} full=${JSON.stringify(q)}`);
+        if (qToken) return json({ status: "SUCCESS", reference: orderId || rid, token: qToken, message: elecStat(q) || "ORDER_COMPLETED" });
+        // the DISCO could not vend → ClubKonnect cancelled / refunded it → a refusal: the app refunds the customer now
+        if (ckOrderDead(q) || elecStatusCode(q).startsWith("5")) return json({ error: ELEC_DEAD_MSG, _raw: { status: elecStat(q), statuscode: elecStatusCode(q) } });
+        if (elecStatusCode(q) === "200" || ["ORDER_COMPLETED", "SUCCESSFUL", "SUCCESS"].includes(elecStat(q))) completedButNoToken++;
+      }
+      return json({ status: "PENDING", reference: orderId || rid, token: "", message: completedButNoToken > 0 ? "ORDER_COMPLETED_NO_TOKEN" : "ORDER_RECEIVED" });
+    }
 
-        if (qToken) {
-          return json({ status: "SUCCESS", reference: orderId, token: qToken, message: qStat || "ORDER_COMPLETED" });
-        }
-        if (qCode === "200" || qStat === "ORDER_COMPLETED" || qStat === "SUCCESSFUL" || qStat === "SUCCESS") {
-          completedButNoToken++;
-          console.log(`electricity poll #${i + 1}: completed status but no token yet (${completedButNoToken}/5)`);
-          if (completedButNoToken >= 5) break;
+    // ── Electricity sweep (pg_cron every 2 min; or by hand with the service key) ─────────────────────────────────────────
+    // Prepaid electricity orders still saying "Token loading..." — the app stopped asking (~2 min) or was closed. For each:
+    // ask the provider. Token → save it on the order (the app's format) and tell the customer. Cancelled / refunded by the
+    // provider → refund the customer's wallet when the order's own wallet debit is linked (else admins refund by hand), mark the
+    // order failed and tell the customer. Otherwise leave it for the next run; admins are alerted once after 48 h.
+    // Body: { sinceHours?: 1..336 (default 72), dryRun?: true → report only, change nothing }. Counts only — never a token.
+    if (action === "electricity-sweep") {
+      const sb2 = body as { sinceHours?: unknown; dryRun?: unknown };
+      const sinceH = Math.min(Math.max(Number(sb2.sinceHours) || 72, 1), 336);
+      const dryRun = sb2.dryRun === true;
+      const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+      const { data: rows, error: selErr } = await db.from("transactions")
+        .select("id, user_id, amount, note, bill_details, created_at")
+        .eq("category", "electricity").eq("payment_type", "bill_payment").in("bill_status", ["success", "pending"])
+        .ilike("note", "%Token loading%")
+        .gt("created_at", new Date(Date.now() - sinceH * 3600_000).toISOString())
+        .lt("created_at", new Date(Date.now() - 90_000).toISOString())   // the app may still be asking
+        .order("created_at", { ascending: true }).limit(25);
+      if (selErr) return json({ error: selErr.message });
+      const sum = { dryRun, checked: 0, delivered: 0, refundedToWallet: 0, manualRefund: 0, waiting: 0, alerted: 0, errors: 0 };
+      const items: Record<string, unknown>[] = [];
+      for (const r of (rows ?? []) as { id: string; user_id: string | null; amount: number; note: string | null; bill_details: Record<string, unknown> | null; created_at: string }[]) {
+        sum.checked++;
+        const bd = (r.bill_details ?? {}) as Record<string, unknown>;
+        const orderId = String(bd.orderId ?? "").trim();
+        const ageMin = Math.round((Date.now() - Date.parse(r.created_at)) / 60000);
+        const item: Record<string, unknown> = { at: r.created_at, ageMin };
+        items.push(item);
+        let token = "", units = "", dead = false, why = "";
+        try {
+          if (!orderId) { item.result = "no order id on record"; sum.waiting++; continue; }
+          if (VT_REF.test(orderId)) {
+            if (!vtUsable()) { item.result = "VTpass unavailable"; sum.waiting++; continue; }
+            const rq = await vtCall(vtFetch, VT, "POST", "/requery", { request_id: orderId }, 20_000);
+            token = vtElectricToken(rq); units = String(vtElectricUnits(rq) ?? "");
+            if (!token && (classifyVt(rq) === "failed" || vtCode(rq) === "019")) { dead = true; why = `vtpass ${vtCode(rq) || "failed"}`; }
+          } else {
+            const by: Record<string, string> = /^KDT-BILL-/.test(orderId) ? { RequestID: orderId } : { OrderID: orderId };
+            const q = await ck("APIQueryV1.asp", { APIKey: ELECTRICITY_K, ...by }, { retries: 1, timeoutMs: 15000 });
+            token = extractElecToken(q);
+            units = String(q?.units ?? q?.Units ?? q?.unit ?? "").trim();
+            if (!token && (ckOrderDead(q) || elecStatusCode(q).startsWith("5"))) { dead = true; why = `${elecStatusCode(q)} ${elecStat(q)}`.trim(); }
+          }
+        } catch (e) { item.result = `lookup failed: ${(e as Error).message.slice(0, 80)}`; sum.errors++; continue; }
+
+        const naira = Number(r.amount ?? 0).toLocaleString("en-NG");
+        const cleaned = String(r.note ?? "").replace(" | Token loading...", "").replace("Token loading... | ", "").replace("Token loading...", "");
+        if (token) {
+          item.result = "token found"; sum.delivered++;
+          if (dryRun) continue;
+          const note = `Token: ${token}${units && !cleaned.includes("Units:") ? ` | Units: ${units}` : ""} | ${cleaned}`.replace(" |  | ", " | ");
+          const { count } = await db.from("transactions")
+            .update({ note, bill_status: "success", bill_details: { ...bd, token, units, token_found_by: "sweep" } }, { count: "exact" })
+            .eq("id", r.id).ilike("note", "%Token loading%");
+          item.saved = count ?? 0;
+          if (count) await notifyCustomer(r.user_id, { type: "bill_payment_delivered", title: "Your electricity token is ready", body: `Your ₦${naira} electricity token is ready — open your bills history to see it.` });
           continue;
         }
-        if (qCode.startsWith("5") || qStat === "ORDER_CANCELLED" || qStat === "CANCELLED") {
-          return json({ error: errMsg(q, "Electricity order cancelled by provider"), _raw: q });
+        if (dead) {
+          item.result = `provider cancelled/refunded (${why})`;
+          // the order's OWN wallet debit (linked to this transaction when the app settled it) — never a guess
+          const { data: led } = await db.from("wallet_ledger").select("id, status").eq("related_txn_id", r.id).eq("source", "bill_spend").maybeSingle();
+          const ledger = led as { id: string; status: string } | null;
+          if (dryRun) { item.refund = ledger ? (ledger.status === "reversed" ? "wallet (already refunded)" : "wallet") : "manual"; if (ledger) sum.refundedToWallet++; else sum.manualRefund++; continue; }
+          let refundedHow = "manual";
+          if (ledger) {
+            const { error: revErr } = await db.rpc("wallet_reverse_bill", { p_ledger_id: ledger.id, p_reason: "Electricity order cancelled by the provider — refunded to wallet" });
+            if (!revErr) refundedHow = "wallet";
+            else item.refundError = revErr.message.slice(0, 120);
+          }
+          const failNote = refundedHow === "wallet"
+            ? `FAILED: The electricity company could not issue a token — ₦${naira} refunded to your wallet | ${cleaned}`
+            : `FAILED: The electricity company could not issue a token — our team is refunding you | ${cleaned}`;
+          await db.from("transactions").update({ bill_status: "failed", note: failNote, bill_details: { ...bd, provider_refunded: true, refund: refundedHow } }).eq("id", r.id).ilike("note", "%Token loading%");
+          if (refundedHow === "wallet") sum.refundedToWallet++;
+          else {
+            sum.manualRefund++;
+            await db.from("admin_notifications").insert({
+              type: "error", category: "finance", title: "Electricity order needs a manual refund",
+              message: `The provider cancelled/refunded a ₦${naira} electricity order (${why}) but it wasn't paid from a linked wallet debit, so the customer must be refunded by hand. Transaction ${r.id}.`,
+              metadata: { txn_id: r.id, amount: r.amount, reason: why },
+            });
+          }
+          await notifyCustomer(r.user_id, {
+            type: "bill_payment_failed", title: "Electricity order refunded",
+            body: refundedHow === "wallet"
+              ? `The electricity company couldn't issue a token for your ₦${naira} order, so ₦${naira} is back in your wallet.`
+              : `The electricity company couldn't issue a token for your ₦${naira} order. Our team is refunding you.`,
+          });
+          continue;
+        }
+        item.result = "still waiting"; sum.waiting++;
+        if (!dryRun && ageMin > 48 * 60 && !bd.sweep_alerted) {
+          await db.from("admin_notifications").insert({
+            type: "warning", category: "finance", title: "Electricity token still missing after 48 hours",
+            message: `A ₦${naira} prepaid electricity order has had no token for over 48 hours and the provider has not cancelled it. Check it with the provider. Transaction ${r.id}.`,
+            metadata: { txn_id: r.id, amount: r.amount },
+          });
+          await db.from("transactions").update({ bill_details: { ...bd, sweep_alerted: true } }).eq("id", r.id);
+          sum.alerted++;
         }
       }
-      return json({ status: "PENDING", reference: orderId, token: "", message: completedButNoToken > 0 ? "ORDER_COMPLETED_NO_TOKEN" : "ORDER_RECEIVED" });
+      return json({ ...sum, items });
     }
 
     // ── Electricity status query (frontend polls this when status=PENDING) ────────
@@ -1270,8 +1456,9 @@ serve(async (req) => {
         if (st === "failed" || vtCode(rq) === "019") return json({ status: "CANCELLED", reference: orderId, token: "", message: vtMessage(rq) });
         return json({ status: "PENDING", reference: orderId, token: "", message: st === "pending" ? "ORDER_RECEIVED" : "CHECKING" });
       }
-      const q = await ck("APIQueryV1.asp", { APIKey: ELECTRICITY_K, OrderID: orderId }, { retries: 1, timeoutMs: 15000 });
-      console.log("electricity-query full response:", JSON.stringify(q));
+      const by: Record<string, string> = /^KDT-BILL-/.test(orderId) ? { RequestID: orderId } : { OrderID: orderId };
+      const q = await ck("APIQueryV1.asp", { APIKey: ELECTRICITY_K, ...by }, { retries: 1, timeoutMs: 15000 });
+      console.log("electricity-query fields:", Object.keys(q ?? {}).join(","), "status:", String(q?.status ?? q?.Status ?? ""));
       const qCode = elecStatusCode(q);
       const qStat = elecStat(q);
       const token = extractElecToken(q);
@@ -1283,8 +1470,9 @@ serve(async (req) => {
         // Completed but CK didn't include the token in this poll — keep PENDING so frontend retries
         return json({ status: "PENDING", reference: orderId, token: "", message: "ORDER_COMPLETED_NO_TOKEN" });
       }
-      if (qCode.startsWith("5") || qStat === "ORDER_CANCELLED") {
-        return json({ status: "CANCELLED", reference: orderId, token: "", message: errMsg(q, "Order cancelled") });
+      if (qCode.startsWith("5") || ckOrderDead(q)) {
+        // the order is dead (the background sweep refunds the customer and marks it failed)
+        return json({ status: "CANCELLED", reference: orderId, token: "", message: ELEC_DEAD_MSG });
       }
       return json({ status: "PENDING", reference: orderId, token: "", message: qStat });
     }
@@ -1353,7 +1541,7 @@ serve(async (req) => {
       }
 
       // Explicit failure / cancellation
-      if (FAIL_PATTERNS.some(p => stat.includes(p)) || stat.includes("CANCEL") || code.startsWith("5")) {
+      if (ckOrderDead(q) || code.startsWith("5")) {
         return { status: "FAILED", requestId: rid, message: errMsg(q, "Order failed"), _raw: q };
       }
 
@@ -1404,7 +1592,7 @@ serve(async (req) => {
         APIKey: BETTING_K, BettingCompany: company, CustomerID: customerId,
         Amount: String(amount), RequestID: rid, CallBackURL: "https://kudiai.app/",
       });
-      if (!isOk(data)) return json({ error: errMsg(data, "Betting wallet funding failed"), _raw: data });
+      if (!isOk(data)) return json({ error: (await ckFailedOrHeld(data, BETTING_K, rid)) === "hold" ? PENDING_STATUS : errMsg(data, "Betting wallet funding failed"), _raw: data });
       return json({ status: "SUCCESS", reference: String(data.orderid ?? data.requestid ?? ""), message: String(data.status ?? "ORDER_RECEIVED") });
     }
 
@@ -1451,9 +1639,9 @@ serve(async (req) => {
       const out = await buyAcrossProviders("waec", vb ? await providerOrderFor("waec") : ["clubkonnect"], pd);
       if (out.via !== "clubkonnect") return vtAnswer("waec", out, rid, callerUser?.id ?? null, pd.vtRid());
       const data = out.data;
-      if (!isOk(data)) return json({ error: errMsg(data, "WAEC ePin purchase failed"), _raw: data });
-      const waecDetails = String(data.carddetails ?? data.CardDetails ?? "");
-      if (!waecDetails) return json({ error: "WAEC card details not returned — contact Clubkonnect support", _raw: data });
+      if (!isOk(data)) return json({ error: (await ckFailedOrHeld(data, WAEC_K, rid)) === "hold" ? PENDING_STATUS : errMsg(data, "WAEC ePin purchase failed"), _raw: data });
+      const waecDetails = String(data.carddetails ?? data.CardDetails ?? "") || await cardDetailsLater(WAEC_K, rid);
+      if (!waecDetails) return json({ error: PENDING_STATUS, _raw: data });   // accepted, card details not out yet → hold, verify fetches them
       return json({ status: "SUCCESS", reference: String(data.orderid ?? data.requestid ?? ""), cardDetails: waecDetails, message: String(data.status ?? "ORDER_RECEIVED") });
     }
 
@@ -1482,9 +1670,9 @@ serve(async (req) => {
         APIKey: JAMB_K, ExamType: examType,
         PhoneNo: phone.replace(/\D/g, ""), RequestID: rid, CallBackURL: "https://kudiai.app/",
       });
-      if (!isOk(data)) return json({ error: errMsg(data, "JAMB ePin purchase failed"), _raw: data });
-      const jambDetails = String(data.carddetails ?? data.CardDetails ?? "");
-      if (!jambDetails) return json({ error: "JAMB card details not returned — contact Clubkonnect support", _raw: data });
+      if (!isOk(data)) return json({ error: (await ckFailedOrHeld(data, JAMB_K, rid)) === "hold" ? PENDING_STATUS : errMsg(data, "JAMB ePin purchase failed"), _raw: data });
+      const jambDetails = String(data.carddetails ?? data.CardDetails ?? "") || await cardDetailsLater(JAMB_K, rid);
+      if (!jambDetails) return json({ error: PENDING_STATUS, _raw: data });   // accepted, card details not out yet → hold, verify fetches them
       return json({ status: "SUCCESS", reference: String(data.orderid ?? data.requestid ?? ""), cardDetails: jambDetails, message: String(data.status ?? "ORDER_RECEIVED") });
     }
 
@@ -1522,7 +1710,7 @@ serve(async (req) => {
         APIKey: SPECTRANET_K, MobileNetwork: "spectranet", DataPlan: planId,
         MobileNumber: accountNo, RequestID: rid, CallBackURL: "https://kudiai.app/",
       });
-      if (!isOk(data)) return json({ error: errMsg(data, "Spectranet purchase failed"), _raw: data });
+      if (!isOk(data)) return json({ error: (await ckFailedOrHeld(data, SPECTRANET_K, rid)) === "hold" ? PENDING_STATUS : errMsg(data, "Spectranet purchase failed"), _raw: data });
       return json({ status: "SUCCESS", reference: String(data.orderid ?? data.requestid ?? ""), message: String(data.status ?? "ORDER_RECEIVED") });
     }
 
@@ -1588,7 +1776,7 @@ serve(async (req) => {
         APIKey: SMILE_K, MobileNetwork: "smile-direct", DataPlan: planId,
         MobileNumber: accountNo, RequestID: rid, CallBackURL: "https://kudiai.app/",
       });
-      if (!isOk(data)) return json({ error: errMsg(data, "Smile purchase failed"), _raw: data });
+      if (!isOk(data)) return json({ error: (await ckFailedOrHeld(data, SMILE_K, rid)) === "hold" ? PENDING_STATUS : errMsg(data, "Smile purchase failed"), _raw: data });
       return json({ status: "SUCCESS", reference: String(data.orderid ?? data.requestid ?? ""), message: String(data.status ?? "ORDER_RECEIVED") });
     }
 
@@ -2850,7 +3038,7 @@ serve(async (req) => {
       if (!USER_ID || !useKey)
         return json({ error: "CK credentials not configured", balance: null, commission: null });
       const data = await ck("APIWalletBalanceV1.asp", { APIKey: useKey });
-      console.log("wallet-balance raw:", JSON.stringify(data));
+      console.log("wallet-balance raw:", forLog(data));
 
       // CK sometimes returns "₦26.00", "3,169.36" or "-343.85" — parseCkAmount handles all and keeps the sign
       const parseAmt = parseCkAmount;
