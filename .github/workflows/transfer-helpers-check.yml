@@ -27,16 +27,20 @@ jobs:
           PASS: ${{ secrets.DEMO_REVIEWER_PASSWORD }}
           ACCT: ${{ inputs.account }}
         run: |
-          set -uo pipefail
+          set +e
           TOKEN=$(curl -s -m 30 "$URL/auth/v1/token?grant_type=password" -H "apikey: $ANON" -H "Content-Type: application/json" \
                     -d "$(jq -nc --arg p "$PASS" '{email:"demo.reviewer@kudiai.app", password:$p}')" | jq -r '.access_token // empty')
           [ -n "$TOKEN" ] || { echo "could not sign in as the demo reviewer (account disabled?)"; exit 1; }
           echo "::add-mask::$TOKEN"
-          call() { curl -s -m 60 -w '\n%{http_code} %{time_total}s' "$URL/functions/v1/flutterwave" -H "Authorization: Bearer $TOKEN" -H "apikey: $ANON" \
-                     -H "Content-Type: application/json" -d "$1"; }
+          # $1 = request body; writes the response body to body.json and prints "HTTP <code> in <seconds>"
+          call() { curl -s -m 60 -o body.json -w 'HTTP %{http_code} in %{time_total}s\n' "$URL/functions/v1/flutterwave" \
+                     -H "Authorization: Bearer $TOKEN" -H "apikey: $ANON" -H "Content-Type: application/json" -d "$1"; }
           echo "── bank-network ──"
-          call '{"action":"bank-network"}' | { read -r body; read -r meta; echo "$meta"; echo "$body" | jq -c '{overall, banks: (.banks // {} | with_entries(.value = .value.status)), error}'; }
+          call '{"action":"bank-network"}'
+          jq -c '{overall, banks: (.banks // {} | with_entries(.value = .value.status)), error}' body.json
           for i in 1 2; do
             echo "── suggest-banks (call $i) ──"
-            call "$(jq -nc --arg a "$ACCT" '{action:"suggest-banks", account_number:$a}')" | { read -r body; read -r meta; echo "$meta"; echo "$body" | jq -c '{checked, matches: (.matches // [] | length), banks: [(.matches // [])[] | .code], cached, error, code}'; }
+            call "$(jq -nc --arg a "$ACCT" '{action:"suggest-banks", account_number:$a}')"
+            jq -c '{checked, matches: (.matches // [] | length), banks: [(.matches // [])[] | .code], cached, error, code}' body.json
           done
+          rm -f body.json
