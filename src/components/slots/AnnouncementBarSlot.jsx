@@ -1,5 +1,6 @@
 // Slot: announcement_bar — scrolling marquee pill, sits in normal flow (no overlap)
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useImpressionOf } from "../../hooks/useInView";
 import { useNavigate } from "react-router-dom";
 import { slotNavigate } from "./useSlotNav";
 
@@ -31,6 +32,8 @@ function injectKeyframes() {
 export default function AnnouncementBarSlot({ campaigns = [], loading, recordEvent }) {
   const navigate = useNavigate();
   const [dismissed, setDismissed] = useState(() => getDismissed());
+  const viewRef = useRef(null);
+  useImpressionOf(viewRef, campaigns.find((x) => !dismissed.has(x.id))?.id, (id) => recordEvent(id, "impression"));
 
   useEffect(() => { injectKeyframes(); }, []);
   useEffect(() => { saveDismissed(dismissed); }, [dismissed]);
@@ -61,7 +64,7 @@ export default function AnnouncementBarSlot({ campaigns = [], loading, recordEve
     <div
       className="mx-3 my-1.5 rounded-2xl overflow-hidden flex items-center shrink-0 bg-[linear-gradient(90deg,#16255A_0%,#3DA829_100%)]"
       style={{ height: 34 }}
-      onPointerEnter={() => recordEvent(c.id, "impression")}
+      ref={viewRef}
     >
       {/* Megaphone icon */}
       <div className="pl-3 pr-1.5 shrink-0 flex items-center">

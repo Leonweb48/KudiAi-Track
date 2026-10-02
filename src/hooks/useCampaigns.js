@@ -3,7 +3,7 @@ import { supabase } from "../utils/supabase";
 import { Capacitor } from "@capacitor/core";
 import { isSlotAllowed, isClientPortal, CLIENT_PORTAL_FORBIDDEN_SLOTS } from "../components/slots/SlotRegistry";
 
-const CACHE_KEY = "kt_campaigns_v6"; // v6: page-level targeting
+const CACHE_KEY = "kt_campaigns_v7"; // v7: media_type / poster_url / stories (2026-10-02)
 const CACHE_TTL = 60 * 1000;
 
 function getPlatform() {
@@ -81,7 +81,7 @@ async function fetchAllCampaigns(portalType) {
 }
 
 const SLOT_LIMITS = {
-  home_banner: 5, popup: 5, announcement_bar: 5, feed_card: 1,
+  stories: 10, home_banner: 5, popup: 5, announcement_bar: 5, feed_card: 1,
   upsell_inline: 5, offers_section: 5, tab_card_quad: 1, tab_card_duo: 1,
 };
 

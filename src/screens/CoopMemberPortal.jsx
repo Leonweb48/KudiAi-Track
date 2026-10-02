@@ -24,6 +24,8 @@ import TransactionPinModal from "../components/TransactionPinModal";
 import { useCampaigns } from "../hooks/useCampaigns";
 import { usePartnerOffers } from "../hooks/usePartnerOffers";
 import AnnouncementBarSlot from "../components/slots/AnnouncementBarSlot";
+import StoriesSlot from "../components/slots/StoriesSlot";
+import HomeBannerSlot from "../components/slots/HomeBannerSlot";
 import OffersSection from "../components/slots/OffersSection";
 import PoweredByCardSlot from "../components/slots/PoweredByCardSlot";
 import TabCardQuadSlot from "../components/slots/TabCardQuadSlot";
@@ -3123,7 +3125,7 @@ export default function CoopMemberPortal({ member: initialMember, pinLock }) {
 
   const org = member?.org || member?.organizations || {};
 
-  const { slotMap: camSlots, loading: camLoading, recordEvent: recordCamEvent } = useCampaigns(["announcement_bar","tab_card_quad","tab_card_duo"], "org_member", "org_member.home");
+  const { slotMap: camSlots, loading: camLoading, recordEvent: recordCamEvent } = useCampaigns(["stories","home_banner","announcement_bar","tab_card_quad","tab_card_duo"], "org_member", "org_member.home");
   const coopTabCard = (camSlots.tab_card_quad || [])[0] ?? (camSlots.tab_card_duo || [])[0] ?? null;
   const annBars = camSlots.announcement_bar || [];
   const { offers: partnerOffers, loading: offersLoading, recordEvent: recordOfferEvent, ctaUrl } = usePartnerOffers("org_member");
@@ -3434,9 +3436,11 @@ export default function CoopMemberPortal({ member: initialMember, pinLock }) {
         {/* ── Main Content ── */}
         <main className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
           <AnnouncementBarSlot campaigns={annBars} loading={camLoading} recordEvent={recordCamEvent} />
+          {tab === "home" && <StoriesSlot campaigns={camSlots.stories || []} loading={camLoading} recordEvent={recordCamEvent} className="px-4 pt-3" />}
           {tabContent[tab]}
           {tab === "home" && (
             <>
+              <div className="px-4"><HomeBannerSlot campaigns={camSlots.home_banner || []} loading={camLoading} recordEvent={recordCamEvent} /></div>
               {coopTabCard && coopTabCard.slot === "tab_card_quad" && (
                 <TabCardQuadSlot campaign={coopTabCard} pageKey="org_member.home" recordEvent={recordCamEvent} />
               )}

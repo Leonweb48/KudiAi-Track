@@ -10,6 +10,7 @@ import { useCampaigns } from "../hooks/useCampaigns";
 import { usePartnerOffers } from "../hooks/usePartnerOffers";
 import HomeBannerSlot from "../components/slots/HomeBannerSlot";
 import PopupSlot from "../components/slots/PopupSlot";
+import StoriesSlot from "../components/slots/StoriesSlot";
 import FeedCardSlot from "../components/slots/FeedCardSlot";
 import UpsellInlineSlot from "../components/slots/UpsellInlineSlot";
 import TabCardQuadSlot from "../components/slots/TabCardQuadSlot";
@@ -199,11 +200,12 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
   }, [profile?.id]);
 
   const { slotMap, loading: camLoading, recordEvent } = useCampaigns(
-    ["home_banner","popup","feed_card","upsell_inline","announcement_bar","tab_card_quad","tab_card_duo"],
+    ["stories","home_banner","popup","feed_card","upsell_inline","announcement_bar","tab_card_quad","tab_card_duo"],
     "business",
     "business.home",
   );
   const { offers: partnerOffers, loading: offersLoading, recordEvent: recordOfferEvent, ctaUrl } = usePartnerOffers("business");
+  const stories      = slotMap.stories          || [];
   const homeBanners  = slotMap.home_banner      || [];
   const popups       = slotMap.popup            || [];
   const feedCampaign = (slotMap.feed_card       || [])[0] ?? null;
@@ -252,6 +254,9 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
 
       {/* ── Announcement bar slot ────────────────────────────────── */}
       <AnnouncementBarSlot campaigns={annBars} loading={camLoading} recordEvent={recordEvent} />
+
+      {/* ── Stories (opens only when tapped) ─────────────────────── */}
+      <StoriesSlot campaigns={stories} loading={camLoading} recordEvent={recordEvent} />
 
       {/* ── Profile completion / compliance banner ───────────────────
            Paid owners: persistent non-dismissible PaidProfileBanner.

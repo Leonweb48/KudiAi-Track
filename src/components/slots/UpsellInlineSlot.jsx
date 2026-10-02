@@ -1,5 +1,6 @@
 // Slot: upsell_inline — up to 5 slides, auto-advancing, marquee text on each slide
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useImpressionOf } from "../../hooks/useInView";
 import { useNavigate } from "react-router-dom";
 import { slotNavigate } from "./useSlotNav";
 import { canSellPlans } from "../../utils/platform";
@@ -31,6 +32,9 @@ function Marquee({ text, duration, textClass }) {
 export default function UpsellInlineSlot({ campaigns = [], loading, recordEvent }) {
   const navigate = useNavigate();
   const [idx, setIdx] = useState(0);
+  const viewRef = useRef(null);
+  const shownId = campaigns.length ? campaigns[Math.min(idx, campaigns.length - 1)]?.id : null;
+  useImpressionOf(viewRef, shownId, (id) => recordEvent(id, "impression"));
 
   useEffect(() => { injectKf(); }, []);
 
@@ -60,8 +64,8 @@ export default function UpsellInlineSlot({ campaigns = [], loading, recordEvent 
   return (
     <div className="mb-3">
       <button
+        ref={viewRef}
         onClick={onCTA}
-        onPointerEnter={() => recordEvent(c.id, "impression")}
         className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl border active:scale-[0.99] transition-transform overflow-hidden bg-[linear-gradient(135deg,#16255A10,#3DA82910)]"
         style={{ borderColor: "#3DA82940" }}
       >

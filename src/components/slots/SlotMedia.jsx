@@ -1,20 +1,11 @@
-export default function SlotMedia({ creative_url, headline, className = "" }) {
-  if (!creative_url) return null;
-  const isVideo = /\.(mp4|webm)(\?|$)/i.test(creative_url);
-  const shared = {
-    className,
-    style: { objectFit: "cover", display: "block", width: "100%", height: "100%" },
-  };
-  if (isVideo) {
-    return <video src={creative_url} autoPlay muted loop playsInline draggable={false} {...shared} />;
-  }
+// Kept for the placements that still import it: everything now plays through CampaignMedia (images, GIFs, video,
+// Lottie animations, YouTube — with data-saver and on-screen-only playback). Fills its sized parent.
+import CampaignMedia from "./CampaignMedia";
+
+export default function SlotMedia({ creative_url, headline, media_type, poster_url, fallback = null, className = "" }) {
+  if (!creative_url) return fallback;
   return (
-    <img
-      src={creative_url}
-      alt={headline || ""}
-      draggable={false}
-      loading="eager"
-      {...shared}
-    />
+    <CampaignMedia url={creative_url} media_type={media_type} poster_url={poster_url} alt={headline || ""}
+      fallback={fallback} className={className} />
   );
 }

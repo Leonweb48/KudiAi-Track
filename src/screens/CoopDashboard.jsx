@@ -21,6 +21,7 @@ import { AmountDisplay } from "../components/shared/AmountDisplay";
 import { useCampaigns } from "../hooks/useCampaigns";
 import { usePartnerOffers } from "../hooks/usePartnerOffers";
 import AnnouncementBarSlot from "../components/slots/AnnouncementBarSlot";
+import StoriesSlot from "../components/slots/StoriesSlot";
 import TabCardQuadSlot from "../components/slots/TabCardQuadSlot";
 import TabCardDuoSlot from "../components/slots/TabCardDuoSlot";
 import OffersSection from "../components/slots/OffersSection";
@@ -105,7 +106,7 @@ const OV_QUICK = [
 function OverviewTab({ org, wallet, programs, announcements, members = [], loans = [], wdRequests = [], onQuickService = null, onNavigate = null, adminEmail = null }) {
   const t = useT();
   const { slotMap: camSlots, loading: camLoading, recordEvent: recordCamEvent } = useCampaigns(
-    ["announcement_bar", "tab_card_quad", "tab_card_duo"],
+    ["stories", "announcement_bar", "tab_card_quad", "tab_card_duo"],
     "organisation",
     "org.dashboard",
   );
@@ -154,6 +155,7 @@ function OverviewTab({ org, wallet, programs, announcements, members = [], loans
     <div className="pb-8 space-y-6">
 
       <AnnouncementBarSlot campaigns={annBars} loading={camLoading} recordEvent={recordCamEvent} />
+      <StoriesSlot campaigns={camSlots.stories || []} loading={camLoading} recordEvent={recordCamEvent} className="px-4 pt-3 -mb-2" />
 
       {/* ── Hero Balance Card ── */}
       <div className="mx-4 mt-5 rounded-3xl px-6 py-6 text-white relative overflow-hidden shadow-hero bg-gradient-to-br from-brand-500 via-brand-600 to-brand-700">

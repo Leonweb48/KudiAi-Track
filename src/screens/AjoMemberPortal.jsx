@@ -13,6 +13,8 @@ import { useCampaigns } from "../hooks/useCampaigns";
 import { usePartnerOffers } from "../hooks/usePartnerOffers";
 import { usePushNotifications } from "../hooks/usePushNotifications";
 import AnnouncementBarSlot from "../components/slots/AnnouncementBarSlot";
+import StoriesSlot from "../components/slots/StoriesSlot";
+import HomeBannerSlot from "../components/slots/HomeBannerSlot";
 import OffersSection from "../components/slots/OffersSection";
 import PoweredByCardSlot from "../components/slots/PoweredByCardSlot";
 import TabCardQuadSlot from "../components/slots/TabCardQuadSlot";
@@ -5513,7 +5515,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
     return cached?.ts || null;
   });
 
-  const { slotMap: camSlots, loading: camLoading, recordEvent: recordCamEvent } = useCampaigns(["announcement_bar","tab_card_quad","tab_card_duo"], "ajo_client", "ajo_client.home");
+  const { slotMap: camSlots, loading: camLoading, recordEvent: recordCamEvent } = useCampaigns(["stories","home_banner","announcement_bar","tab_card_quad","tab_card_duo"], "ajo_client", "ajo_client.home");
   const ajoTabCard = (camSlots.tab_card_quad || [])[0] ?? (camSlots.tab_card_duo || [])[0] ?? null;
   const annBars = camSlots.announcement_bar || [];
   const { offers: partnerOffers, loading: offersLoading, recordEvent: recordOfferEvent, ctaUrl } = usePartnerOffers("ajo_client");
@@ -5817,6 +5819,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
         {/* Content */}
         <main className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
           <AnnouncementBarSlot campaigns={annBars} loading={camLoading} recordEvent={recordCamEvent} />
+          {tab === "home" && <StoriesSlot campaigns={camSlots.stories || []} loading={camLoading} recordEvent={recordCamEvent} className="px-4 pt-3" />}
           {tab === "home" && <EnableNotificationsBanner userId={session?.user?.id} />}
           {tab === "home" && client && (
             <OverviewTab
@@ -5884,6 +5887,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
           {/* Offers section — max 1 per session on client portal */}
           {tab === "home" && (
             <>
+              <div className="px-4"><HomeBannerSlot campaigns={camSlots.home_banner || []} loading={camLoading} recordEvent={recordCamEvent} /></div>
               {ajoTabCard && ajoTabCard.slot === "tab_card_quad" && (
                 <TabCardQuadSlot campaign={ajoTabCard} pageKey="ajo_client.home" recordEvent={recordCamEvent} />
               )}

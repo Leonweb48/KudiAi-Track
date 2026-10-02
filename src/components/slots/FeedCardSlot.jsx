@@ -1,10 +1,14 @@
 // Slot: feed_card — 4:1 creative, injected at most once per 8 rows in a feed
+import { useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { useImpressionOf } from "../../hooks/useInView";
 import SlotMedia from "./SlotMedia";
 import { slotNavigate } from "./useSlotNav";
 
 export default function FeedCardSlot({ campaign, recordEvent }) {
   const navigate = useNavigate();
+  const ref = useRef(null);
+  useImpressionOf(ref, campaign?.id, (id) => recordEvent(id, "impression"));
   if (!campaign) return null;
 
   const onTap = async () => {
@@ -14,12 +18,13 @@ export default function FeedCardSlot({ campaign, recordEvent }) {
 
   return (
     <button
+      ref={ref}
       onClick={onTap}
-      onPointerEnter={() => recordEvent(campaign.id, "impression")}
       className="w-full relative rounded-2xl overflow-hidden shadow-sm border border-slate-100 dark:border-slate-700/50 active:scale-[0.98] transition-transform mb-2"
       style={{ aspectRatio: "4/1" }}
     >
-      <SlotMedia creative_url={campaign.creative_url} headline={campaign.headline} className="absolute inset-0 w-full h-full" />
+      <SlotMedia creative_url={campaign.creative_url} headline={campaign.headline} media_type={campaign.media_type} poster_url={campaign.poster_url}
+        fallback={<div className="absolute inset-0 bg-[linear-gradient(135deg,#16255A,#3DA829)]" />} />
       <div className="absolute inset-0 bg-gradient-to-r from-black/50 to-transparent flex items-center px-4">
         <div className="min-w-0">
           {campaign.headline && (
