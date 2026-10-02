@@ -28,12 +28,12 @@ jobs:
           set -uo pipefail
           H=$(( ${HOURS:-12} > 24 ? 24 : ${HOURS:-12} ))
           START=$(date -u -d "-$H hours" +%Y-%m-%dT%H:%M:%SZ); END=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          SQL="select timestamp, event_message from function_logs where event_message like '%FLW disburse resp%' order by timestamp desc limit 30"
+          SQL="select timestamp, event_message from logs where source_name = 'function_logs' and event_message like '%FLW disburse resp%' order by timestamp desc limit 30"
           R=$(curl -s -m 60 -G "https://api.supabase.com/v1/projects/$REF/analytics/endpoints/logs" \
                 -H "Authorization: Bearer $TOKEN" --data-urlencode "sql=$SQL" \
                 --data-urlencode "iso_timestamp_start=$START" --data-urlencode "iso_timestamp_end=$END")
           echo "$R" | jq -r '.error // empty | tostring' | head -c 300
-          echo "$R" | jq -r '.result[]? | [(.timestamp / 1000000 | strftime("%m-%d %H:%M")), .event_message] | @tsv' | while IFS=$'\t' read -r T M; do
+          echo "$R" | jq -r '.result[]? | [(.timestamp | tostring | .[0:19]), .event_message] | @tsv' | while IFS=$'\t' read -r T M; do
             HTTP=$(echo "$M" | grep -oE 'resp: [0-9]{3}' | grep -oE '[0-9]{3}')
             CODE=$(echo "$M" | grep -oE '"code":"?[A-Za-z0-9_]+' | head -1 | sed 's/.*:"\{0,1\}//')
             TYPE=$(echo "$M" | grep -oE '"type":"[A-Za-z_ ]+"' | head -2 | tr '\n' ' ')
@@ -43,7 +43,7 @@ jobs:
           done
           echo "rows: $(echo "$R" | jq '.result | length' 2>/dev/null)"
           # counts only — tells a wrong query apart from no access / no logs
-          for Q in "select count(*) as n from function_logs"                    "select count(*) as n from function_logs where event_message like '%FLW%'"                    "select count(*) as n from function_edge_logs" ; do
+          for Q in "select source_name, count(*) as n from logs group by source_name" "select count(*) as n from logs where source_name = 'function_logs' and event_message like '%FLW%'" ; do
             C=$(curl -s -m 60 -G "https://api.supabase.com/v1/projects/$REF/analytics/endpoints/logs" -H "Authorization: Bearer $TOKEN"                   --data-urlencode "sql=$Q" --data-urlencode "iso_timestamp_start=$START" --data-urlencode "iso_timestamp_end=$END")
             echo "count [$Q]: $(echo "$C" | jq -c '.result // .error // .' | head -c 300)"
           done
