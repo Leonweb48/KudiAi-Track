@@ -43,7 +43,7 @@ jobs:
           done
           echo "rows: $(echo "$R" | jq '.result | length' 2>/dev/null)"
           # counts only — tells a wrong query apart from no access / no logs
-          for Q in "select source_name, count(*) as n from logs group by source_name" "select count(*) as n from logs where source_name = 'function_logs' and event_message like '%FLW%'" ; do
+          for Q in "SELECT timestamp, source_name FROM logs WHERE event_message LIKE '%FLW disburse%' ORDER BY timestamp DESC LIMIT 5" "SELECT timestamp, source_name FROM logs WHERE source_name = 'function_logs' ORDER BY timestamp DESC LIMIT 2" "SELECT timestamp, source_name FROM logs ORDER BY timestamp DESC LIMIT 3" ; do
             C=$(curl -s -m 60 -G "https://api.supabase.com/v1/projects/$REF/analytics/endpoints/logs" -H "Authorization: Bearer $TOKEN"                   --data-urlencode "sql=$Q" --data-urlencode "iso_timestamp_start=$START" --data-urlencode "iso_timestamp_end=$END")
             echo "count [$Q]: $(echo "$C" | jq -c '.result // .error // .' | head -c 300)"
           done
