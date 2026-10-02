@@ -148,11 +148,12 @@ describe("copied / pasted account numbers", () => {
 });
 
 describe("bank network strength", () => {
-  it("passes the per-bank status to the picker and warns about a poor bank and poor transfers overall", async () => {
+  it("passes the per-bank status to the picker and warns about a poor bank — but never a screen-wide banner", async () => {
     const api = mockApi({ bankNetwork: jest.fn(async () => ({ ok: true, banks: { "058": { status: "poor", samples: 6 } }, overall: "poor" })) });
     await render(api);
     expect(host.querySelector('[data-testid="picker"]').textContent).toContain('"058":"poor"');
-    expect(text()).toContain("Bank transfers are having problems right now");
+    // the owner asked (2 Oct) for the "Bank transfers are having problems right now" banner to be removed
+    expect(text()).not.toContain("having problems");
     await click(button("MockPickBank"));
     expect(text()).toContain("are failing often right now");
   });

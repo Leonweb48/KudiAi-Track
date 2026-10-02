@@ -682,14 +682,6 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
                 </div>
               </div>
             )}
-            {network.overall === "poor" && (
-              <div className="rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-3 py-2 flex items-start gap-2">
-                <Icon name="warn" size={14} className="text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
-                <p className="text-[11px] text-amber-700 dark:text-amber-400">
-                  Bank transfers are having problems right now. You can still send — if a transfer fails, the money comes straight back to your wallet.
-                </p>
-              </div>
-            )}
             {clip && !acctNo && (
               <div className="rounded-2xl border border-brand-200 dark:border-brand-800/60 bg-brand-50 dark:bg-brand-900/20 px-3 py-2.5 flex items-center gap-3">
                 <Icon name="copy" size={18} className="text-brand-600 dark:text-brand-400 flex-shrink-0" />
