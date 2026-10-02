@@ -396,6 +396,7 @@ export const TRANSLATIONS = {
   "report.custom":        { en:"Custom",            pidgin:"Custom",            ha:"Na Musamman",          ig:"Nke Onye",           yo:"Àgbàyanu"               },
   "report.from":          { en:"From",              pidgin:"From",              ha:"Daga",                 ig:"Site na",            yo:"Láti"                   },
   "report.to":            { en:"To",                pidgin:"To",                ha:"Zuwa",                 ig:"Ruo",                yo:"Sí"                     },
+  "report.general":       { en:"Business Report",   pidgin:"Business Report",   ha:"Rahoton Kasuwanci",    ig:"Akụkọ Azụmahịa",     yo:"Ìjábọ Iṣòwò"           },
   "report.sales":         { en:"Sales Report",      pidgin:"Sales Report",      ha:"Rahoto Siyarwa",       ig:"Akụkọ Ahịa",         yo:"Ìjábọ Tita"            },
   "report.credit":        { en:"Credit Report",     pidgin:"Credit Report",     ha:"Rahoto Bashi",         ig:"Akụkọ Ugwọ",         yo:"Ìjábọ Gbese"           },
   "report.ajo":           { en:"Ajo Report",        pidgin:"Ajo Report",        ha:"Rahoto Aso",           ig:"Akụkọ Aso",          yo:"Ìjábọ Ajo"             },

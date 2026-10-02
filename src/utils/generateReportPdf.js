@@ -332,8 +332,9 @@ export async function createReportPdf({
     y += 2;
   }
 
-  function addSectionTitle(text) {
-    need(14);
+  // keepWith: mm of content that must follow on the same page (so a heading is never left alone at the bottom)
+  function addSectionTitle(text, keepWith = 0) {
+    need(14 + keepWith);
     y += 4;
     doc.setFillColor(...GREEN);
     doc.rect(ML, y - 3.5, 2.5, 9, "F");

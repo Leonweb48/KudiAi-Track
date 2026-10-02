@@ -132,6 +132,57 @@ function fmtPayType(pt) {
   return pt.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
 }
 
+// ── General business report ──────────────────────────────────────────────────
+export function buildGeneralReportCSV(data) {
+  const { profit: pf, money, salesSummary: ss, credit, ajo, bills, stock } = data;
+  const n = (v) => (v != null ? Number(v) : "");
+  const rows = [
+    ["Profit", "Profit on goods sold (₦)", n(pf.goods)],
+    ["Profit", "Ajo fees & commission (₦)", n(pf.ajo)],
+    ["Profit", "Interest collected on credit (₦)", n(pf.interest)],
+    ["Profit", "Bills: PIN discount + cashback (₦)", n(pf.bills)],
+    ["Profit", "Gross profit (₦)", n(pf.gross)],
+    ["Profit", "Expenses (₦)", n(pf.expenses)],
+    ["Profit", "Net profit (₦)", n(pf.net)],
+    ["Profit", "Revenue (₦)", n(pf.revenue)],
+    ["Profit", "Sales with no cost price (₦)", n(pf.unmeasured)],
+    ["Money", "Money in (₦)", n(money.in)],
+    ["Money", "Money out (₦)", n(money.out)],
+    ["Money", "Net cash (₦)", n(money.net)],
+    ["Money", "Cash sales (₦)", n(money.sales)],
+    ["Money", "Credit sales (₦)", n(money.creditSales)],
+    ["Money", "Credit repayments (₦)", n(money.repayments)],
+    ["Money", "Invoice payments (₦)", n(money.invoices)],
+    ["Money", "Spent on stock (₦)", n(money.stock)],
+    ["Sales", "Number of sales", ss.count],
+    ["Sales", "Total sales (₦)", n(ss.total)],
+    ["Sales", "Average sale (₦)", n(Math.round(ss.average * 100) / 100)],
+    ["Sales", "Items sold", ss.qty],
+    ["Credit", "Outstanding now (₦)", n(credit.outstanding)],
+    ["Credit", "Overdue now (₦)", n(credit.overdueDue)],
+    ["Credit", "Overdue accounts", credit.overdueCount],
+    ["Ajo", "Savings held (₦)", n(ajo.held)],
+    ["Ajo", "Collections (₦)", n(ajo.collections)],
+    ["Ajo", "Withdrawals (₦)", n(ajo.withdrawals)],
+    ["Ajo", "Clients", ajo.clients],
+    ["Bills", "Bills paid (₦)", n(bills.total)],
+    ["Bills", "Number paid", bills.count],
+    ["Bills", "Bill profit (₦)", n(bills.profit)],
+    ["Bills", "Failed (refunded)", bills.failedCount],
+    ["Stock", "Spent on stock (₦)", n(stock.spent)],
+    ["Stock", "Cost of goods sold (₦)", n(stock.cogs)],
+    ["Stock", "Stock on hand at cost (₦)", n(data.stockOnHand)],
+    ["Stock", "Low-stock items", data.lowStock],
+    ...data.staff.map(r => ["Staff", `${r.name} — sales (₦)`, n(r.amount)]),
+  ];
+  return BOM + [csvRow(["section", "item", "value"]), ...rows.map(csvRow)].join("\r\n");
+}
+export function generalReportCSVFilename(from, to) {
+  const f = from ? `_${toISO(from)}` : "";
+  const t = to   ? `_${toISO(to)}`   : "";
+  return `business_report${f}${t}.csv`;
+}
+
 // ── Sales report ──────────────────────────────────────────────────────────────
 export function buildSalesReportCSV(data, from, to) {
   const { tx = [], cashIn, cashOut, profit, sales = [], salesTotals } = data;

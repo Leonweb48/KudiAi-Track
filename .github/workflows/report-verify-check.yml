@@ -41,6 +41,14 @@ jobs:
             -H "Content-Type: application/json" -d "$(jq -nc --arg r "$REF" '{p_ref:$r}')" | jq -c '{found, is_report, kind, business, period_from, period_to, summary}'
           echo "── 4. the public cannot read the table directly ──"
           curl -s -m 30 "$URL/rest/v1/report_verifications?select=ref&limit=1" -H "apikey: $ANON" -H "Authorization: Bearer $ANON" | head -c 200; echo
+          echo "── 4b. general business report: saved and named 'Business report' on the verify page ──"
+          GREF=$(curl -s -m 30 "$URL/rest/v1/report_verifications?select=ref" \
+            -H "Authorization: Bearer $TOKEN" -H "apikey: $ANON" -H "Content-Type: application/json" \
+            -H "Prefer: return=representation" -H "Accept: application/vnd.pgrst.object+json" \
+            -d '{"report_type":"general","period_from":"2026-10-01","period_to":"2026-10-02","business_name":"Adaeze Fresh Mart (Demo)","summary":[{"label":"Net profit","value":"₦1.00"}]}' | jq -r '.ref // empty')
+          echo "ref: ${GREF:-not saved}"
+          [ -n "$GREF" ] && curl -s -m 30 "$URL/rest/v1/rpc/verify_receipt" -H "apikey: $ANON" -H "Authorization: Bearer $ANON" \
+            -H "Content-Type: application/json" -d "$(jq -nc --arg r "$GREF" '{p_ref:$r}')" | jq -c '{found, is_report, kind, summary}'
           echo "── 5. receipts still verify (format check on a made-up ref) ──"
           curl -s -m 30 "$URL/rest/v1/rpc/verify_receipt" -H "apikey: $ANON" -H "Authorization: Bearer $ANON" \
             -H "Content-Type: application/json" -d '{"p_ref":"KDT-202610-ZZZZZZZZ"}'; echo

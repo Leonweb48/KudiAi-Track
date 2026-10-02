@@ -10,10 +10,10 @@ import { createRoot } from "react-dom/client";
 import { saleCost, productMaps, compute } from "../lib/profitEngine";
 import {
   buildSalesProfit, creditProfit, buildCreditData, buildAsoLedger, billProfit, buildBillsData, buildStockData,
-  reportSummary, buildNativeReportPDF,
+  buildGeneralData, reportSummary, buildNativeReportPDF,
 } from "../screens/Reports";
 import { createReportPdf } from "../utils/generateReportPdf";
-import { buildSalesReportCSV, buildCreditReportCSV, buildAsoReportCSV, buildBillsReportCSV, buildStockReportCSV } from "../utils/exportCSV";
+import { buildSalesReportCSV, buildCreditReportCSV, buildAsoReportCSV, buildBillsReportCSV, buildStockReportCSV, buildGeneralReportCSV } from "../utils/exportCSV";
 import VerifyReceipt from "../screens/VerifyReceipt";
 /* eslint-enable import/first */
 
@@ -239,6 +239,78 @@ describe("CSV exports carry the profit too", () => {
     expect(col(bcsv, "date")).toEqual(["2026-10-02", "2026-10-02"]);   // the transaction's own fields still come through
     const stock = buildStockData([sale({ id: "a", item_name: "Rice 5kg", amount: 8000, quantity: 1, cost_price: 5000 })], "2026-10-01", "2026-10-31", products);
     expect(col(buildStockReportCSV(stock), "profit_ngn")).toEqual(["3000"]);
+  });
+});
+
+describe("general business report", () => {
+  // one month of a small shop: a cash sale, a credit sale later repaid with interest, an Ajo commission, a printed-PIN
+  // bill (+ a failed one), an expense and a stock purchase
+  const src = () => ({
+    transactions: [
+      sale({ id: "s1", item_name: "Rice 5kg", amount: 8000, quantity: 1, cost_price: 5000 }),
+      sale({ id: "s2", category: "credit sale", item_name: "Oil 1L", amount: 3000, quantity: 2, cost_price: 1200, staff_id: "st1" }),
+      { id: "r1", type: "in", category: "debt repayment", amount: 3500, transaction_date: "2026-10-03" },
+      { id: "e1", type: "out", category: "expense", item_name: "Transport", amount: 700, transaction_date: "2026-10-03" },
+      { id: "k1", type: "out", category: "stock", item_name: "Rice 5kg", quantity: 4, amount: 20000, transaction_date: "2026-10-03" },
+      { id: "b1", type: "out", payment_type: "bill_payment", category: "print-airtime", item_name: "MTN PINs", amount: 9700, note: "Value: ₦100 x100", transaction_date: "2026-10-04" },
+      { id: "b2", type: "out", payment_type: "bill_payment", category: "electricity", amount: 5000, bill_status: "failed", transaction_date: "2026-10-04" },
+    ],
+    credits: [{ id: "cr1", customer_name: "Ngozi", total_amount: 3000, interest_amount: 500, outstanding: 0, amount_paid: 3500, status: "paid",
+                items: [{ quantity: 2, unit_price: 1500, cost_price: 1200 }] }],
+    debtPayments: [{ id: "dp1", credit_id: "cr1", amount: 3500, created_at: "2026-10-03T10:00:00" }],
+    asoClients: [{ id: "c1", full_name: "Kemi", current_balance: 20000, status: "active" }],
+    contributions: [
+      { id: "a1", aso_client_id: "c1", type: "contribution", amount: 20000, status: "completed", created_at: "2026-10-02T09:00:00" },
+      { id: "a2", aso_client_id: "c1", type: "commission",   amount: 1000,  status: "completed", created_at: "2026-10-02T09:00:00" },
+      { id: "a3", aso_client_id: "c1", type: "withdrawal_fee", amount: 200, status: "pending",   created_at: "2026-10-02T09:00:00" },
+    ],
+    products: [{ id: "p-rice", product_name: "Rice 5kg", cost_price: 5000, quantity: 3, low_stock_threshold: 5, needs_costing: false },
+               { id: "p-oil", product_name: "Oil 1L", cost_price: 1200, quantity: 40, low_stock_threshold: 5, needs_costing: false }],
+    staffMap: { st1: "Tunde" },
+  });
+
+  it("profit from every source, each counted once, and matching the Finance screen plus bills", () => {
+    const d = buildGeneralData(src(), "2026-10-01", "2026-10-31");
+    expect(d.profit.goods).toBe(3000 + 600);            // cash sale + credit sale — the credit's goods aren't counted again
+    expect(d.profit.interest).toBe(500);                 // collected with the repayment
+    expect(d.profit.ajo).toBe(1000);                     // commission taken; the pending fee isn't profit yet; savings never are
+    expect(d.profit.bills).toBe(300);                    // PIN discount; the failed bill was refunded
+    expect(d.profit.gross).toBe(5400);
+    expect(d.profit.expenses).toBe(700);                 // stock purchase and bills are not expenses
+    expect(d.profit.net).toBe(4700);
+    expect(d.profit.financeNet).toBe(4400);              // the Finance screen: same, without what bills earned
+    expect(d.money.stock).toBe(20000);
+    expect(d.money.repayments).toBe(3500);
+    expect(d.salesSummary).toMatchObject({ count: 2, total: 11000, qty: 3 });
+    expect(d.stockOnHand).toBe(3 * 5000 + 40 * 1200);
+    expect(d.lowStock).toBe(1);
+    expect(d.ajo).toMatchObject({ held: 20000, collections: 20000, clients: 1 });
+    expect(d.bills).toMatchObject({ total: 9700, count: 1, profit: 300, failedCount: 1 });
+    expect(d.staff).toEqual([{ name: "Tunde", count: 1, amount: 3000 }]);
+    expect(d.topItems.map((r) => r.item)).toEqual(["Rice 5kg", "Oil 1L"]);
+  });
+
+  it("PDF, verified figures and CSV", async () => {
+    const d = buildGeneralData(src(), "2026-10-01", "2026-10-31");
+    mockSavedDoc = null;
+    await buildNativeReportPDF("general", d, { id: "u1", business_name: "Adaeze Fresh Mart" }, "2026-10-01", "2026-10-31");
+    const t = texts(mockSavedDoc);
+    for (const label of ["BUSINESS REPORT", "Where the profit came from", "Net profit", "Money in & out", "Credit", "Ajo savings", "Bills", "Stock", "Staff sales"]) {
+      expect(t.some((x) => x.toUpperCase().includes(label.toUpperCase()))).toBe(true);
+    }
+    expect(t.some((x) => x.includes("4,700"))).toBe(true);
+    const summary = reportSummary("general", d);
+    expect(summary).toHaveLength(8);
+    expect(summary.find((r) => r.label === "Net profit").value).toContain("4,700");
+    const csv = buildGeneralReportCSV(d);
+    expect(csv).toMatch(/Profit,Net profit \(₦\),4700/);
+    expect(csv).toMatch(/Profit,Gross profit \(₦\),5400/);
+  });
+
+  it("an empty business still produces a report of zeroes", () => {
+    const d = buildGeneralData({}, "2026-10-01", "2026-10-31");
+    expect(d.profit).toMatchObject({ goods: 0, ajo: 0, interest: 0, bills: 0, gross: 0, expenses: 0, net: 0 });
+    expect(reportSummary("general", d)).toHaveLength(8);
   });
 });
 

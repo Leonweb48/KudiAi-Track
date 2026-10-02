@@ -2,10 +2,11 @@ import { useState, useMemo, useEffect } from "react";
 import { fmt, isBillPayment } from "../utils/helpers";
 import { useT }       from "../contexts/LanguageContext";
 import { createReportPdf, fmtCurrency } from "../utils/generateReportPdf";
-import { isRevenueSale, saleCost, saleLines, productMaps } from "../lib/profitEngine";
+import { compute, isRevenueSale, saleCost, saleLines, productMaps } from "../lib/profitEngine";
 import { cashbackEligible } from "../utils/billCalc";
 import {
   buildStaffReportCSV, staffReportCSVFilename,
+  buildGeneralReportCSV, generalReportCSVFilename,
   buildSalesReportCSV, salesReportCSVFilename,
   buildCreditReportCSV, creditReportCSVFilename,
   buildBillsReportCSV, billsReportCSVFilename,
@@ -493,6 +494,91 @@ export function buildStockData(transactions, from, to, products = []) {
   return { rows, totalRevenue, totals, bars };
 }
 
+// Ajo ledger rows that are the business's income (fees, commission) or a payout — the same set the Finance screen gives
+// the profit engine.
+const AJO_LEDGER_TYPES = new Set(["commission", "registration_fee", "withdrawal_fee", "esusu_payout"]);
+
+/**
+ * General business report: everything in one, for the chosen period.
+ *
+ * The profit is the SAME profit engine as the Finance screen (profitEngine.compute): goods profit on sales, credit sales
+ * and invoices — each counted once, with the cost price saved at the sale; credit interest when it is collected; Ajo fees
+ * and commission. On top of that, what bills earned (PIN discount + cashback), which the engine leaves out because it
+ * treats bills as a pass-through. The separate reports can't simply be added up: a credit sale is already a sale, and the
+ * stock report's profit IS the sales profit.
+ */
+export function buildGeneralData({ transactions = [], credits = [], asoClients = [], contributions = [], products = [],
+                                   debtPayments = [], invoices = [], staffMap = {} }, from, to) {
+  const sales  = buildSalesData(transactions, from, to, products);
+  const credit = buildCreditData(credits);
+  const ajo    = buildAsoLedger(asoClients, contributions, from, to);
+  const bills  = buildBillsData(transactions, from, to);
+  const stock  = buildStockData(transactions, from, to, products);
+
+  const ajoEntries = contributions
+    .filter(c => AJO_LEDGER_TYPES.has(c.type) && (!c.status || c.status === "completed"))
+    .map(c => ({ id: c.id, type: c.type === "esusu_payout" ? "payout" : c.type, amount: parseFloat(c.amount) || 0, date: c.created_at }));
+  const engine = compute(
+    { transactions, invoices, products, asoClients, debtPayments, credits, ajoEntries },
+    { from: new Date(`${from}T00:00:00`), to: new Date(`${to}T23:59:59.999`) },
+  );
+  const { profit: ep, cash } = engine;
+  const bs = cash.byStream;
+  const interest  = bs.interestEarned.amount;
+  const ajoIncome = bs.ajoFeeIncome.amount;
+  const billProfit = bills.profitTotals.profit;
+  const gross = ep.grossProfit.amount + billProfit;
+  const expenses = ep.expenses.amount;
+  const profit = {
+    goods: ep.grossProfit.amount - interest - ajoIncome,   // sales, credit sales and invoices
+    ajo: ajoIncome, interest, bills: billProfit,
+    gross, expenses, net: gross - expenses,
+    revenue: ep.revenue.amount, cogs: ep.cogs.amount,
+    unmeasured: ep.unmeasured.revenue,                       // sales with no cost price: revenue known, profit not counted
+    financeNet: ep.netProfit.amount,                         // what the Finance screen shows for these dates
+  };
+  const money = {
+    in: cash.in.amount, out: cash.out.amount, net: cash.net.amount,
+    sales: bs.sales.amount, creditSales: bs.creditSales.amount, repayments: bs.creditRepayments.amount,
+    invoices: bs.invoicePayments.amount, ajoFees: ajoIncome,
+    expenses, stock: bs.stockInvestment.amount,
+  };
+
+  const goodsSales = sales.sales.filter(r => !["registration_fee", "withdrawal_fee", "commission"].includes(r.t.category));
+  const salesSummary = {
+    count: goodsSales.length,
+    total: goodsSales.reduce((n, r) => n + (r.amount || 0), 0),
+    qty: stock.totals.qtySold,
+  };
+  salesSummary.average = salesSummary.count ? salesSummary.total / salesSummary.count : 0;
+
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const overdue = credit.credits.filter(c => c.status === "overdue")
+    .map(c => ({ name: c.customer_name || "—", owed: c.outstanding || 0, due: c.due_date,
+                 late: c.due_date ? Math.max(0, Math.round((today - new Date(`${c.due_date}T00:00:00`)) / 86400000)) : null }))
+    .sort((a, b) => b.owed - a.owed);
+
+  const stockOnHand = products.reduce((n, pr) => n + (Number(pr.quantity) > 0 ? Number(pr.quantity) * (Number(pr.cost_price) || 0) : 0), 0);
+  const lowStock = products.filter(pr => pr.quantity != null && Number(pr.quantity) <= (pr.low_stock_threshold ?? 5)).length;
+  const topItems = stock.rows.filter(r => r.profit != null).sort((a, b) => b.profit - a.profit).slice(0, 5);
+
+  const byStaff = {};
+  sales.tx.filter(t => t.staff_id && isRevenueSale(t)).forEach(t => {
+    if (!byStaff[t.staff_id]) byStaff[t.staff_id] = { name: staffMap[t.staff_id] || `Staff ${String(t.staff_id).slice(0, 6)}`, count: 0, amount: 0 };
+    byStaff[t.staff_id].count++; byStaff[t.staff_id].amount += t.amount;
+  });
+  const staff = Object.values(byStaff).sort((a, b) => b.amount - a.amount);
+
+  return {
+    profit, money, salesSummary, overdue, stockOnHand, lowStock, topItems, staff,
+    credit: { outstanding: credit.totalOut, overdueCount: credit.overdueCount, overdueDue: credit.overdueDue || 0 },
+    ajo: { held: ajo.totalBal, collections: (ajo.totContribs || 0) + (ajo.totManual || 0), withdrawals: ajo.totWithdrawals || 0,
+           clients: asoClients.length, activeClients: ajo.active.length },
+    bills: { total: bills.total, count: bills.paid.length, profit: billProfit, failedCount: bills.failedCount },
+    stock: { spent: money.stock, qtySold: stock.totals.qtySold, cogs: stock.totals.cogs },
+  };
+}
+
 /* ── Report sections ───────────────────────────────────────────────── */
 function SalesSection({ data }) {
   const catRows = Object.entries(data.byCat).sort((a,b)=>b[1].in-a[1].in).map(([cat,v])=>({
@@ -828,10 +914,136 @@ function StockSection({ data }) {
   );
 }
 
+function GeneralSection({ data }) {
+  const { profit: pf, money, salesSummary: ss, credit, ajo, bills, stock } = data;
+  const sign = (v) => (v >= 0 ? "#16a34a" : "#ef4444");
+  const ladder = [
+    { k:"Profit on goods sold",           s:"Sales, credit sales and invoices — cost price saved at each sale", v:pf.goods },
+    { k:"Ajo fees & commission",          s:"Registration fees, withdrawal fees and commission",                v:pf.ajo },
+    { k:"Interest collected on credit",   s:"Counted when customers pay it",                                    v:pf.interest },
+    { k:"Bills: PIN discount + cashback", s:"Printed PINs resold at face value, 1% on airtime and data",        v:pf.bills },
+  ];
+  const line = (label, value, o = {}) => (
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:10,padding:o.big?"9px 12px":"7px 12px",
+                 background:o.bg||"transparent",borderTop:o.top?"1px solid #e2e8f0":"none",borderRadius:o.big?8:0}}>
+      <div style={{minWidth:0}}>
+        <p style={S({fontSize:o.big?12:11,fontWeight:o.bold?800:600,color:o.fg||"#1e293b",margin:0})}>{label}</p>
+        {o.sub && <p style={S({fontSize:9,color:"#94a3b8",margin:"1px 0 0"})}>{o.sub}</p>}
+      </div>
+      <p style={S({fontSize:o.big?14:11.5,fontWeight:o.bold?900:700,color:o.vc||"#1e293b",margin:0,whiteSpace:"nowrap"})}>{value}</p>
+    </div>
+  );
+  return (
+    <div>
+      <StatGrid stats={[
+        { label:"Revenue",      value:fmt(pf.revenue),  color:"#0284c7",       bg:"#eff6ff", border:"#bfdbfe" },
+        { label:"Gross Profit", value:fmt(pf.gross),    color:sign(pf.gross),  bg:"#f0fdf4", border:"#bbf7d0" },
+        { label:"Expenses",     value:fmt(pf.expenses), color:"#ef4444",       bg:"#fef2f2", border:"#fecaca" },
+        { label:"Net Profit",   value:fmt(pf.net),      color:sign(pf.net),    bg:pf.net>=0?"#f0fdf4":"#fef2f2", border:pf.net>=0?"#86efac":"#fecaca" },
+      ]}/>
+
+      <SectionTitle>Where the profit came from</SectionTitle>
+      <div style={{border:"1px solid #e2e8f0",borderRadius:10,padding:4,marginBottom:8}}>
+        {ladder.map(r => <div key={r.k}>{line(r.k, fmt(r.v), { sub:r.s, vc:r.v>0?"#16a34a":r.v<0?"#ef4444":"#94a3b8" })}</div>)}
+        {line("Gross profit", fmt(pf.gross), { bold:true, top:true, vc:sign(pf.gross) })}
+        {line("Less: expenses", `− ${fmt(pf.expenses)}`, { sub:"Running costs — stock purchases and bills are not expenses", vc:"#ef4444" })}
+        {line("Net profit", fmt(pf.net), { bold:true, big:true, bg:pf.net>=0?"#f0fdf4":"#fef2f2", vc:sign(pf.net) })}
+      </div>
+      <p style={S({fontSize:10.5,color:"#64748b",marginBottom:12,lineHeight:1.5})}>
+        Same profit as your Finance screen for these dates ({fmt(pf.financeNet)}){pf.bills ? `, plus ${fmt(pf.bills)} earned on bills` : ""}.
+        {pf.unmeasured > 0 ? ` ${fmt(pf.unmeasured)} of sales have no cost price, so their profit isn't counted — add cost prices in Stock.` : ""}
+      </p>
+
+      <SectionTitle>Money in &amp; out</SectionTitle>
+      <StatGrid stats={[
+        { label:"Money In",       value:fmt(money.in),    color:"#16a34a", bg:"#f0fdf4", border:"#bbf7d0" },
+        { label:"Money Out",      value:fmt(money.out),   color:"#ef4444", bg:"#fef2f2", border:"#fecaca", sub:"Stock + expenses" },
+        { label:"Net Cash",       value:fmt(money.net),   color:sign(money.net), bg:"#f8fafc", border:"#e2e8f0" },
+        { label:"Spent on Stock", value:fmt(money.stock), color:"#64748b", bg:"#f8fafc", border:"#e2e8f0" },
+      ]}/>
+
+      <SectionTitle>Sales</SectionTitle>
+      <StatGrid stats={[
+        { label:"Sales",        value:String(ss.count),   color:"#0284c7", bg:"#eff6ff", border:"#bfdbfe" },
+        { label:"Total Sales",  value:fmt(ss.total),      color:"#0284c7", bg:"#eff6ff", border:"#bfdbfe" },
+        { label:"Average Sale", value:fmt(ss.average),    color:"#334155", bg:"#f8fafc", border:"#e2e8f0" },
+        { label:"Items Sold",   value:String(ss.qty),     color:"#334155", bg:"#f8fafc", border:"#e2e8f0" },
+      ]}/>
+      {data.topItems.length > 0 && (<>
+        <p style={S({fontSize:10,fontWeight:700,color:"#475569",margin:"-6px 0 6px"})}>Most profitable items</p>
+        <Table
+          cols={[
+            {key:"item",    label:"Item",    bold:true, w:"40%"},
+            {key:"sold",    label:"Sold",    right:true, w:"10%"},
+            {key:"revenue", label:"Revenue", right:true, w:"20%"},
+            {key:"profit",  label:"Profit",  right:true, bold:true, color:r=>sign(r._p), w:"18%"},
+            {key:"margin",  label:"Margin",  right:true, w:"12%"},
+          ]}
+          rows={data.topItems.map(r=>({ item:r.item, sold:r.qtySold, revenue:fmt(r.revenue), profit:fmt(r.profit), _p:r.profit,
+                                         margin:r.margin==null?"—":`${Math.round(r.margin*100)}%` }))}/>
+      </>)}
+
+      <SectionTitle>Credit</SectionTitle>
+      <StatGrid stats={[
+        { label:"Credit Sales",     value:fmt(money.creditSales), color:"#d97706", bg:"#fffbeb", border:"#fde68a", sub:"This period" },
+        { label:"Repayments",       value:fmt(money.repayments),  color:"#16a34a", bg:"#f0fdf4", border:"#bbf7d0", sub:"This period" },
+        { label:"Outstanding",      value:fmt(credit.outstanding), color:"#ef4444", bg:"#fef2f2", border:"#fecaca", sub:"Now" },
+        { label:"Overdue",          value:fmt(credit.overdueDue),  color:"#dc2626", bg:"#fff1f2", border:"#fecdd3", sub:`${credit.overdueCount} account${credit.overdueCount===1?"":"s"}` },
+      ]}/>
+      {data.overdue.length > 0 && (
+        <Table
+          cols={[
+            {key:"name", label:"Overdue customer", bold:true, w:"42%"},
+            {key:"owed", label:"Owed",     right:true, bold:true, color:()=>"#dc2626", w:"22%"},
+            {key:"due",  label:"Due date", w:"20%"},
+            {key:"late", label:"Days late", right:true, w:"16%"},
+          ]}
+          rows={data.overdue.slice(0,5).map(o=>({ name:o.name, owed:fmt(o.owed), due:fmtD(o.due), late:o.late==null?"—":o.late }))}/>
+      )}
+
+      <SectionTitle>Ajo savings</SectionTitle>
+      <StatGrid stats={[
+        { label:"Savings Held", value:fmt(ajo.held),        color:"#2E8020", bg:"#f0fdf4", border:"#bbf7d0", sub:"Clients' money" },
+        { label:"Collections",  value:fmt(ajo.collections), color:"#16a34a", bg:"#f0fdf4", border:"#bbf7d0", sub:"This period" },
+        { label:"Withdrawals",  value:fmt(ajo.withdrawals), color:"#ef4444", bg:"#fef2f2", border:"#fecaca", sub:"This period" },
+        { label:"Clients",      value:String(ajo.clients),  color:"#334155", bg:"#f8fafc", border:"#e2e8f0", sub:`${ajo.activeClients} active this period` },
+      ]}/>
+
+      <SectionTitle>Bills</SectionTitle>
+      <StatGrid stats={[
+        { label:"Bills Paid",  value:fmt(bills.total),   color:"#ea580c", bg:"#fff7ed", border:"#fed7aa" },
+        { label:"Number Paid", value:String(bills.count), color:"#334155", bg:"#f8fafc", border:"#e2e8f0" },
+        { label:"Bill Profit", value:fmt(bills.profit),  color:"#16a34a", bg:"#f0fdf4", border:"#bbf7d0" },
+        { label:"Failed",      value:String(bills.failedCount), color:"#94a3b8", bg:"#f8fafc", border:"#e2e8f0", sub:"Refunded" },
+      ]}/>
+
+      <SectionTitle>Stock</SectionTitle>
+      <StatGrid stats={[
+        { label:"Spent on Stock", value:fmt(stock.spent),       color:"#ef4444", bg:"#fef2f2", border:"#fecaca", sub:"This period" },
+        { label:"Cost of Goods",  value:fmt(stock.cogs),        color:"#64748b", bg:"#f8fafc", border:"#e2e8f0", sub:"Of items sold" },
+        { label:"Stock on Hand",  value:fmt(data.stockOnHand),  color:"#0284c7", bg:"#eff6ff", border:"#bfdbfe", sub:"At cost, now" },
+        { label:"Low Stock",      value:String(data.lowStock),  color:data.lowStock?"#d97706":"#334155", bg:"#fffbeb", border:"#fde68a", sub:"Items" },
+      ]}/>
+
+      {data.staff.length > 0 && (<>
+        <SectionTitle>Staff sales</SectionTitle>
+        <Table
+          cols={[
+            {key:"name",   label:"Staff",  bold:true, w:"50%"},
+            {key:"count",  label:"Sales",  right:true, w:"20%"},
+            {key:"amount", label:"Amount", right:true, bold:true, w:"30%"},
+          ]}
+          rows={data.staff.map(r=>({ name:r.name, count:r.count, amount:fmt(r.amount) }))}/>
+      </>)}
+    </div>
+  );
+}
+
 /* ── Report template ────────────────────────────────────────────────── */
 function ReportTemplate({ type, reportData, profile, from, to }) {
   const biz = profile?.business_name || profile?.owner_name || "My Business";
   const TITLES = {
+    general:"General Business Report",
     sales:  "Sales & Revenue Report",
     credit: "Credit Management Report",
     aso:    "Ajo / Aso Savings Report",
@@ -873,6 +1085,7 @@ function ReportTemplate({ type, reportData, profile, from, to }) {
 
       {/* CONTENT */}
       <div style={{padding:"24px 36px"}}>
+        {type==="general" && <GeneralSection data={reportData}/>}
         {type==="sales"  && <SalesSection  data={reportData}/>}
         {type==="credit" && <CreditSection data={reportData}/>}
         {type==="aso"    && <AsoSection    data={reportData}/>}
@@ -893,6 +1106,7 @@ function ReportTemplate({ type, reportData, profile, from, to }) {
 /* ── Report type selector cards ─────────────────────────────────────── */
 function makeReportTypes(t) {
   return [
+    { id:"general", label:t("report.general"), sub:"Everything in one: profit, money in & out, sales, credit, Ajo, bills & stock", icon:"📊", color:"bg-emerald-50 dark:bg-emerald-900/20", border:"border-emerald-200 dark:border-emerald-800", active:"bg-emerald-600", wide:true },
     { id:"sales",  label:t("report.sales"),  sub:"Revenue, expenses, profit & transactions",  icon:"📈", color:"bg-green-50 dark:bg-green-900/20",  border:"border-green-200 dark:border-green-800",  active:"bg-green-600" },
     { id:"credit", label:t("report.credit"), sub:"Debtors, outstanding & overdue accounts",   icon:"👥", color:"bg-amber-50 dark:bg-amber-900/20",  border:"border-amber-200 dark:border-amber-800",  active:"bg-amber-500" },
     { id:"aso",    label:t("report.ajo"),    sub:"Savings clients, contributions & balance",  icon:"🏦", color:"bg-brand-50 dark:bg-brand-900/20",  border:"border-brand-200 dark:border-brand-800",  active:"bg-brand-600" },
@@ -940,6 +1154,12 @@ async function loadLetterhead(profile) {
 export function reportSummary(type, data) {
   const N = fmtCurrency;
   switch (type) {
+    case "general": return [
+      { label: "Revenue", value: N(data.profit.revenue) }, { label: "Gross profit", value: N(data.profit.gross) },
+      { label: "Expenses", value: N(data.profit.expenses) }, { label: "Net profit", value: N(data.profit.net) },
+      { label: "Money in", value: N(data.money.in) }, { label: "Money out", value: N(data.money.out) },
+      { label: "Credit outstanding", value: N(data.credit.outstanding) }, { label: "Ajo savings held", value: N(data.ajo.held) },
+    ];
     case "sales": return [
       { label: "Total sales", value: N(data.salesTotals.revenue) }, { label: "Profit on sales", value: N(data.salesTotals.profit) },
       { label: "Expenses", value: N(data.cashOut) }, { label: "Net cash", value: N(data.profit) },
@@ -987,10 +1207,11 @@ async function registerReport(type, from, to, businessName, summary) {
 
 export async function buildNativeReportPDF(type, data, profile, from, to) {
   const TNAMES = {
+    general:"Business Report",
     sales:"Sales Report", credit:"Credit Report", aso:"Ajo Savings Report",
     bills:"Bills Report", staff:"Staff Performance Report", stock:"Stock Report",
   };
-  const PNAMES = { sales:"Sales", credit:"Credit", aso:"Ajo", bills:"Bills", staff:"Staff", stock:"Stock" };
+  const PNAMES = { general:"Business", sales:"Sales", credit:"Credit", aso:"Ajo", bills:"Bills", staff:"Staff", stock:"Stock" };
   const biz = profile?.business_name || "My Business";
   const prd = from === to ? fmtD(from) : `${fmtD(from)} – ${fmtD(to)}`;
 
@@ -1001,7 +1222,124 @@ export async function buildNativeReportPDF(type, data, profile, from, to) {
   const pdf = await createReportPdf({ title: TNAMES[type] || "Report", businessName: biz, period: prd, letterhead, verifyRef });
   const { addStats, addSectionTitle, addTable, addTotalsBlock, addBarChart, fmtN } = pdf;
 
-  if (type === "sales") {
+  if (type === "general") {
+    const { profit: pf, money, salesSummary: ss, credit, ajo, bills, stock } = data;
+    const tone = (v) => (v >= 0 ? "#16a34a" : "#ef4444");
+    addStats([
+      { label:"Revenue",      value:fmtN(pf.revenue),  color:"#0284c7", bg:"#eff6ff" },
+      { label:"Gross Profit", value:fmtN(pf.gross),    color:tone(pf.gross), bg:"#f0fdf4" },
+      { label:"Expenses",     value:fmtN(pf.expenses), color:"#ef4444", bg:"#fef2f2" },
+      { label:"Net Profit",   value:fmtN(pf.net),      color:tone(pf.net), bg:pf.net>=0?"#f0fdf4":"#fef2f2" },
+    ]);
+    addSectionTitle("Where the profit came from", 40);
+    addTotalsBlock([
+      { label:"Profit on goods sold",           value:fmtN(pf.goods) },
+      { label:"Ajo fees & commission",          value:fmtN(pf.ajo) },
+      { label:"Interest collected on credit",   value:fmtN(pf.interest) },
+      { label:"Bills: PIN discount + cashback", value:fmtN(pf.bills) },
+      { sep:true },
+      { label:"Gross profit",                   value:fmtN(pf.gross), bold:true },
+      { label:"Less: expenses",                 value:`- ${fmtN(pf.expenses)}`, red:true },
+      { sep:true },
+      { label:"Net profit",                     value:fmtN(pf.net), bold:true, highlight:true },
+    ]);
+    addTable([{ key:"n", label:"How profit is counted", w:1 }], [
+      { n:"Goods sold = sales, credit sales and invoices, each at the cost price saved when it was sold. Interest counts when customers pay it." },
+      { n:"Expenses are running costs; stock purchases and bill payments are not expenses. Ajo savings are clients' money, not profit." },
+      { n:`Same as the Finance screen for these dates (${fmtN(pf.financeNet)})${pf.bills ? `, plus ${fmtN(pf.bills)} earned on bills` : ""}.` },
+      ...(pf.unmeasured > 0 ? [{ n:`${fmtN(pf.unmeasured)} of sales have no cost price, so their profit isn't counted. Add cost prices in Stock.` }] : []),
+    ], { rowHeight: 6.5 });
+
+    addSectionTitle("Money in & out", 22);
+    addStats([
+      { label:"Money In",       value:fmtN(money.in),    color:"#16a34a", bg:"#f0fdf4" },
+      { label:"Money Out",      value:fmtN(money.out),   color:"#ef4444", bg:"#fef2f2" },
+      { label:"Net Cash",       value:fmtN(money.net),   color:tone(money.net), bg:"#f8fafc" },
+      { label:"Spent on Stock", value:fmtN(money.stock), color:"#64748b", bg:"#f8fafc" },
+    ]);
+    addTable(
+      [{ key:"k", label:"Money in", bold:true, w:0.30 }, { key:"v", label:"Amount", right:true, w:0.20 },
+       { key:"k2", label:"Money out", bold:true, w:0.30 }, { key:"v2", label:"Amount", right:true, w:0.20 }],
+      [
+        { k:"Cash sales",        v:fmtN(money.sales),       k2:"Stock purchases", v2:fmtN(money.stock) },
+        { k:"Credit sales",      v:fmtN(money.creditSales), k2:"Expenses",        v2:fmtN(money.expenses) },
+        { k:"Credit repayments", v:fmtN(money.repayments),  k2:"",                v2:"" },
+        { k:"Invoice payments",  v:fmtN(money.invoices),    k2:"",                v2:"" },
+        { k:"Ajo fees",          v:fmtN(money.ajoFees),     k2:"",                v2:"" },
+      ],
+      { rowHeight: 6.5 }
+    );
+
+    addSectionTitle("Sales", 22);
+    addStats([
+      { label:"Sales",        value:String(ss.count), color:"#0284c7", bg:"#eff6ff" },
+      { label:"Total Sales",  value:fmtN(ss.total),   color:"#0284c7", bg:"#eff6ff" },
+      { label:"Average Sale", value:fmtN(ss.average), color:"#334155", bg:"#f8fafc" },
+      { label:"Items Sold",   value:String(ss.qty),   color:"#334155", bg:"#f8fafc" },
+    ]);
+    if (data.topItems.length) {
+      addTable(
+        [{ key:"item", label:"Most profitable items", bold:true, w:0.40 },
+         { key:"sold", label:"Sold", right:true, w:0.10 },
+         { key:"revenue", label:"Revenue", right:true, w:0.20 },
+         { key:"profit", label:"Profit", right:true, bold:true, color:r=>r._p>=0?[22,163,74]:[220,38,38], w:0.18 },
+         { key:"margin", label:"Margin", right:true, w:0.12 }],
+        data.topItems.map(r=>({ item:r.item, sold:r.qtySold, revenue:fmtN(r.revenue), profit:fmtN(r.profit), _p:r.profit,
+                                margin:r.margin==null?"—":`${Math.round(r.margin*100)}%` }))
+      );
+    }
+
+    addSectionTitle("Credit", 22);
+    addStats([
+      { label:"Credit Sales (period)", value:fmtN(money.creditSales), color:"#d97706", bg:"#fffbeb" },
+      { label:"Repayments (period)",   value:fmtN(money.repayments),  color:"#16a34a", bg:"#f0fdf4" },
+      { label:"Outstanding Now",       value:fmtN(credit.outstanding), color:"#ef4444", bg:"#fef2f2" },
+      { label:`Overdue (${credit.overdueCount})`, value:fmtN(credit.overdueDue), color:"#dc2626", bg:"#fff1f2" },
+    ]);
+    if (data.overdue.length) {
+      addTable(
+        [{ key:"name", label:"Overdue customer", bold:true, w:0.42 },
+         { key:"owed", label:"Owed", right:true, bold:true, color:()=>[220,38,38], w:0.22 },
+         { key:"due",  label:"Due date", w:0.20 },
+         { key:"late", label:"Days late", right:true, w:0.16 }],
+        data.overdue.slice(0, 10).map(o=>({ name:o.name, owed:fmtN(o.owed), due:fmtD(o.due), late:o.late==null?"—":o.late }))
+      );
+    }
+
+    addSectionTitle("Ajo savings", 22);
+    addStats([
+      { label:"Savings Held (clients')", value:fmtN(ajo.held),        color:"#2E8020", bg:"#f0fdf4" },
+      { label:"Collections (period)",    value:fmtN(ajo.collections), color:"#16a34a", bg:"#f0fdf4" },
+      { label:"Withdrawals (period)",    value:fmtN(ajo.withdrawals), color:"#ef4444", bg:"#fef2f2" },
+      { label:`Clients (${ajo.activeClients} active)`, value:String(ajo.clients), color:"#334155", bg:"#f8fafc" },
+    ]);
+
+    addSectionTitle("Bills", 22);
+    addStats([
+      { label:"Bills Paid",        value:fmtN(bills.total),         color:"#ea580c", bg:"#fff7ed" },
+      { label:"Number Paid",       value:String(bills.count),       color:"#334155", bg:"#f8fafc" },
+      { label:"Bill Profit",       value:fmtN(bills.profit),        color:"#16a34a", bg:"#f0fdf4" },
+      { label:"Failed (refunded)", value:String(bills.failedCount), color:"#94a3b8", bg:"#f8fafc" },
+    ]);
+
+    addSectionTitle("Stock", 22);
+    addStats([
+      { label:"Spent on Stock (period)", value:fmtN(stock.spent),      color:"#ef4444", bg:"#fef2f2" },
+      { label:"Cost of Goods Sold",      value:fmtN(stock.cogs),       color:"#64748b", bg:"#f8fafc" },
+      { label:"Stock on Hand (cost)",    value:fmtN(data.stockOnHand), color:"#0284c7", bg:"#eff6ff" },
+      { label:"Low-stock Items",         value:String(data.lowStock),  color:data.lowStock?"#d97706":"#334155", bg:"#fffbeb" },
+    ]);
+
+    if (data.staff.length) {
+      addSectionTitle("Staff sales", 22);
+      addTable(
+        [{ key:"name", label:"Staff", bold:true, w:0.50 },
+         { key:"count", label:"Sales", right:true, w:0.20 },
+         { key:"amount", label:"Amount", right:true, bold:true, w:0.30 }],
+        data.staff.map(r=>({ name:r.name, count:r.count, amount:fmtN(r.amount) }))
+      );
+    }
+  } else if (type === "sales") {
     const { cashOut, profit, tx, bars, byCat, sales, salesTotals } = data;
     addStats([
       { label:"Total Sales",     value:fmtN(salesTotals.revenue), color:"#0284c7", bg:"#eff6ff" },
@@ -1252,7 +1590,7 @@ export default function Reports({ store, onClose }) {
   const { slotMap: camSlots, loading: camLoading, recordEvent: recordCamEvent } = useCampaigns(["announcement_bar"], "business", "business.reports");
   const reportsAnnBars = camSlots.announcement_bar || [];
 
-  const [reportType,       setReportType]       = useState("sales");
+  const [reportType,       setReportType]       = useState("general");
   const [period,           setPeriod]           = useState("month");
   const [customFrom,       setCustomFrom]       = useState(todayStr());
   const [customTo,         setCustomTo]         = useState(todayStr());
@@ -1265,15 +1603,26 @@ export default function Reports({ store, onClose }) {
   // (profitEngine.saleCost: the sale's saved cost always wins).
   const [products,         setProducts]         = useState([]);
   useEffect(() => {
-    if ((reportType !== "sales" && reportType !== "stock") || !profile?.id) return;
+    if (!["general", "sales", "stock"].includes(reportType) || !profile?.id) return;
     let cancelled = false;
-    supabase.from("products").select("id, product_name, cost_price, needs_costing").eq("user_id", profile.id)
+    supabase.from("products").select("id, product_name, cost_price, needs_costing, quantity, low_stock_threshold").eq("user_id", profile.id)
       .then(({ data }) => { if (!cancelled) setProducts(data || []); }, () => {});
     return () => { cancelled = true; };
   }, [reportType, profile?.id]);
 
+  // Invoice payments are part of the business's profit (general report) — same query as the invoices screen
+  const [invoices,         setInvoices]         = useState([]);
   useEffect(() => {
-    if (reportType !== "aso") return;
+    if (reportType !== "general" || !profile?.id) return;
+    let cancelled = false;
+    supabase.from("invoices").select("*, invoice_items(*), invoice_payments(*)").eq("user_id", profile.id)
+      .then(({ data }) => { if (!cancelled) setInvoices(data || []); }, () => {});
+    return () => { cancelled = true; };
+  }, [reportType, profile?.id]);
+
+  const needsAjo = reportType === "aso" || reportType === "general";
+  useEffect(() => {
+    if (!needsAjo) return;
     const clientIds = asoClients.map(c => c.id);
     if (clientIds.length === 0) { setAjoContributions([]); return; }
     setAsoLoading(true);
@@ -1285,7 +1634,7 @@ export default function Reports({ store, onClose }) {
       .catch(() => setAsoLoading(false));
   // asoClients.length used intentionally to avoid refetch on array identity change
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reportType, asoClients.length]);
+  }, [needsAjo, asoClients.length]);
 
   const REPORT_TYPES = useMemo(() => makeReportTypes(t), [t]);
   const PERIODS      = useMemo(() => makePeriods(t),      [t]);
@@ -1294,6 +1643,8 @@ export default function Reports({ store, onClose }) {
 
   const reportData = (() => {
     switch(reportType) {
+      case "general": return buildGeneralData({ transactions, credits, asoClients, contributions: ajoContributions, products,
+                                                debtPayments: store.debtPayments || [], invoices, staffMap }, from, to);
       case "sales":  return buildSalesData(transactions, from, to, products);
       case "credit": return buildCreditData(credits);
       case "aso":    return buildAsoLedger(asoClients, ajoContributions, from, to);
@@ -1322,6 +1673,10 @@ export default function Reports({ store, onClose }) {
     try {
       let csv, filename;
       switch(reportType) {
+        case "general":
+          csv = buildGeneralReportCSV(reportData, from, to);
+          filename = generalReportCSVFilename(from, to);
+          break;
         case "sales":
           csv = buildSalesReportCSV(reportData, from, to);
           filename = salesReportCSVFilename(from, to);
@@ -1396,7 +1751,7 @@ export default function Reports({ store, onClose }) {
         </div>
 
         {/* Aso loading overlay */}
-        {asoLoading && reportType === "aso" && (
+        {asoLoading && needsAjo && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-100/80 dark:bg-slate-900/80">
             <div className="flex flex-col items-center gap-3">
               <div className="w-8 h-8 border-[3px] border-brand-500 border-t-transparent rounded-full animate-spin"/>
@@ -1461,7 +1816,7 @@ export default function Reports({ store, onClose }) {
         <div className="grid grid-cols-2 gap-2.5 mb-6">
           {REPORT_TYPES.map(rt => (
             <button key={rt.id} onClick={() => setReportType(rt.id)}
-              className={`text-left p-3.5 rounded-2xl border-2 transition-all active:scale-[0.97] ${
+              className={`text-left p-3.5 rounded-2xl border-2 transition-all active:scale-[0.97] ${rt.wide ? "col-span-2 " : ""}${
                 reportType === rt.id
                   ? "border-green-500 bg-green-50 dark:bg-green-900/20 shadow-md"
                   : `${rt.color} ${rt.border}`
@@ -1526,7 +1881,7 @@ export default function Reports({ store, onClose }) {
         )}
 
         {/* Aso loading indicator (in main screen) */}
-        {asoLoading && reportType === "aso" && (
+        {asoLoading && needsAjo && (
           <div className="mb-4 flex items-center gap-2 px-4 py-3 bg-slate-100 dark:bg-slate-800 rounded-xl">
             <div className="w-4 h-4 border-2 border-brand-500 border-t-transparent rounded-full animate-spin flex-shrink-0"/>
             <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Loading Ajo contributions…</p>
@@ -1534,7 +1889,7 @@ export default function Reports({ store, onClose }) {
         )}
 
         {/* Generate button */}
-        <button onClick={() => setPreview(true)} disabled={asoLoading && reportType === "aso"}
+        <button onClick={() => setPreview(true)} disabled={asoLoading && needsAjo}
           className="w-full py-4 bg-brand-600 hover:bg-brand-700 disabled:opacity-60 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.98] shadow-lg flex items-center justify-center gap-2">
           <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
             <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>
