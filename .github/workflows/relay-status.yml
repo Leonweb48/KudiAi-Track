@@ -1,0 +1,41 @@
+name: Relay status (Fly.io)
+
+# Read-only: is the fixed-IP relay (transfers + ClubKonnect) running, does it still own its static egress IP
+# (209.71.82.233 — whitelisted at Flutterwave and ClubKonnect), and is the Fly account in good standing?
+# Prints states, IPs and billing STATUS words only — never card details or tokens. Changes nothing.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: superfly/flyctl-actions/setup-flyctl@fc53c09e1bc3be6f54706524e3b82c4f462f77be   # v1.5 (pinned)
+      - name: Status
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          set -uo pipefail
+          echo "── token accepted? ──"
+          flyctl auth whoami >/dev/null 2>&1 && echo "yes" || echo "NO — token rejected or expired"
+          echo "── app ──"
+          flyctl status --app kudi-flw-relay 2>&1 | grep -vE "^\s*$" | head -20
+          echo "── machines ──"
+          flyctl machine list --app kudi-flw-relay 2>&1 | head -10
+          echo "── IPs (egress 209.71.82.233 must be here) ──"
+          flyctl ips list --app kudi-flw-relay 2>&1 | head -10
+          echo "── health ──"
+          curl -s -m 20 -o /dev/null -w "HTTP %{http_code} in %{time_total}s\n" https://kudi-flw-relay.fly.dev/health
+          echo "── billing (status words only) ──"
+          gql() { curl -s -m 20 https://api.fly.io/graphql -H "Authorization: Bearer $FLY_API_TOKEN" -H "Content-Type: application/json" -d "$1"; }
+          FIELDS=$(gql '{"query":"{ __type(name:\"Organization\") { fields { name type { kind name ofType { name } } } } }"}' |
+            jq -r '.data.__type.fields[] | select((.type.name // .type.ofType.name // "") | test("^(Boolean|String|Int|BillingStatus|.*Status)$")) | .name' |
+            grep -iE "billing|delinq|status|suspend|credit|trial|paid|plan|card" | grep -viE "token|secret|email|address" | tr '\n' ' ')
+          echo "fields: $FIELDS"
+          [ -n "$FIELDS" ] && gql "{\"query\":\"{ organizations { nodes { slug $FIELDS } } }\"}" | jq -c '.data.organizations.nodes[]? // .errors'
+          echo "── app state (GraphQL) ──"
+          gql '{"query":"{ app(name:\"kudi-flw-relay\") { status deployed suspended: status organization { slug } } }"}' | jq -c '.data // .errors'
