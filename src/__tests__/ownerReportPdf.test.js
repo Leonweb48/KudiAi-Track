@@ -1,5 +1,6 @@
-// Owner reports (2026-10-02): profit per sale (profitEngine.saleCost via Reports.buildSalesProfit), the receipt-style
-// letterhead + verify footer of the report PDF, and the verify page's report view.
+// Owner reports (2026-10-02): profit per sale (profitEngine.saleCost via Reports.buildSalesProfit), profit on the credit,
+// Ajo, bills and stock reports, the receipt-style letterhead + verify footer of the report PDF, and the verify page's
+// report view.
 import { TextEncoder, TextDecoder } from "util";
 globalThis.TextEncoder = globalThis.TextEncoder || TextEncoder;
 globalThis.TextDecoder = globalThis.TextDecoder || TextDecoder;
@@ -7,8 +8,12 @@ globalThis.TextDecoder = globalThis.TextDecoder || TextDecoder;
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { saleCost, productMaps, compute } from "../lib/profitEngine";
-import { buildSalesProfit } from "../screens/Reports";
+import {
+  buildSalesProfit, creditProfit, buildCreditData, buildAsoLedger, billProfit, buildBillsData, buildStockData,
+  reportSummary, buildNativeReportPDF,
+} from "../screens/Reports";
 import { createReportPdf } from "../utils/generateReportPdf";
+import { buildSalesReportCSV, buildCreditReportCSV, buildAsoReportCSV, buildBillsReportCSV, buildStockReportCSV } from "../utils/exportCSV";
 import VerifyReceipt from "../screens/VerifyReceipt";
 /* eslint-enable import/first */
 
@@ -20,13 +25,24 @@ jest.mock("../hooks/useCampaigns", () => ({ useCampaigns: () => ({ slotMap: {}, 
 // a tiny real PNG so the QR image goes into the PDF (jsdom has no canvas for the qrcode library)
 const PNG_1PX = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 jest.mock("qrcode", () => ({ toDataURL: async () => "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==" }));
-jest.mock("../utils/pdfSave", () => ({ savePdf: async () => {} }));
+let mockSavedDoc = null;
+jest.mock("../utils/pdfSave", () => ({ savePdf: async (doc) => { mockSavedDoc = doc; } }));
 
 const products = [
   { id: "p-rice", product_name: "Rice 5kg", cost_price: 6000, needs_costing: false },
   { id: "p-oil",  product_name: "Oil 1L",   cost_price: 1500, needs_costing: false },
 ];
 const sale = (o) => ({ id: o.id, type: "in", category: "sale", transaction_date: "2026-10-02", amount: o.amount, ...o });
+// jsPDF writes text as "(...) Tj" — pull the strings out of the uncompressed PDF. Text with a character outside Latin-1
+// (every amount: "₦") is written as UTF-16 byte pairs, so decode those.
+const utf16 = (s) => {
+  if (!s.includes("\u0000")) return s;
+  const b = s.replace(/\\(.)/g, "$1");
+  let out = "";
+  for (let i = 0; i + 1 < b.length; i += 2) out += String.fromCharCode(b.charCodeAt(i) * 256 + b.charCodeAt(i + 1));
+  return out;
+};
+const texts = (doc) => doc.output().match(/\((?:[^()\\]|\\.)*\)\s*Tj/g)?.map((m) => utf16(m.replace(/\)\s*Tj$/, "").slice(1))) || [];
 
 describe("profit per sale", () => {
   const maps = productMaps(products);
@@ -66,9 +82,167 @@ describe("profit per sale", () => {
   });
 });
 
+describe("profit on the credit report", () => {
+  it("goods profit from each item's cost saved with the credit, plus the interest", () => {
+    const p = creditProfit({ total_amount: 14000, interest_amount: 1000, items: [
+      { product_name: "Rice 5kg", quantity: 1, unit_price: 8000, cost_price: 6000 },
+      { product_name: "Oil 1L",   quantity: 4, unit_price: 1500, cost_price: 1200 },
+    ] });
+    expect(p).toMatchObject({ cost: 10800, goodsProfit: 3200, interest: 1000, profit: 4200, uncosted: 0, partial: false });
+  });
+  it("credit with no items: interest only, the principal flagged as uncosted", () => {
+    expect(creditProfit({ total_amount: 5000, interest_amount: 500, items: null })).toMatchObject({ cost: null, goodsProfit: null, profit: 500, uncosted: 5000, partial: true });
+  });
+  it("no items and no interest: no profit figure rather than a guessed zero", () => {
+    expect(creditProfit({ total_amount: 5000, interest_amount: null, items: [] }).profit).toBeNull();
+  });
+  it("extra credit added later (no items) is flagged, the items' profit still counts", () => {
+    const p = creditProfit({ total_amount: 12000, interest_amount: 0, items: [{ quantity: 1, unit_price: 8000, cost_price: 6000 }] });
+    expect(p).toMatchObject({ profit: 2000, uncosted: 4000, partial: true });
+  });
+  it("totals across accounts", () => {
+    const d = buildCreditData([
+      { customer_name: "A", total_amount: 8000, interest_amount: 0, outstanding: 8000, amount_paid: 0, status: "active", items: [{ quantity: 1, unit_price: 8000, cost_price: 6000 }] },
+      { customer_name: "B", total_amount: 3000, interest_amount: 300, outstanding: 0, amount_paid: 3300, status: "paid", items: [] },
+    ]);
+    expect(d.profitTotals).toEqual({ cost: 6000, interest: 300, goods: 2000, profit: 2300, uncosted: 3000 });
+  });
+});
+
+describe("profit on the Ajo report", () => {
+  it("fees + commission per client, only once taken; savings are not profit", () => {
+    const clients = [{ id: "c1", full_name: "Ngozi", current_balance: 20000, status: "active", contribution_amount: 1000, contribution_frequency: "daily" }];
+    const rows = [
+      { aso_client_id: "c1", type: "contribution",     amount: 20000, status: "completed", created_at: "2026-10-01T09:00:00Z" },
+      { aso_client_id: "c1", type: "registration_fee", amount: 1000,  status: "completed", created_at: "2026-10-01T09:00:00Z" },
+      { aso_client_id: "c1", type: "commission",       amount: 1000,  status: "completed", created_at: "2026-10-01T09:00:00Z" },
+      { aso_client_id: "c1", type: "withdrawal_fee",   amount: 200,   created_at: "2026-10-02T09:00:00Z" },          // older rows: no status
+      { aso_client_id: "c1", type: "withdrawal_fee",   amount: 200,   status: "pending", created_at: "2026-10-02T09:00:00Z" },
+      { aso_client_id: "c1", type: "commission",       amount: 999,   status: "completed", created_at: "2026-09-01T09:00:00Z" },   // outside the period
+    ];
+    const d = buildAsoLedger(clients, rows, "2026-10-01", "2026-10-31");
+    expect(d.totRegFees).toBe(1000);
+    expect(d.totWdFees).toBe(200);
+    expect(d.totCommission).toBe(1000);
+    expect(d.totProfit).toBe(2200);
+    expect(d.enriched.find((c) => c.id === "c1").p_profit).toBe(2200);
+  });
+});
+
+describe("profit on the bills report", () => {
+  const bill = (o) => ({ payment_type: "bill_payment", type: "out", transaction_date: "2026-10-02", ...o });
+  it("printed airtime PINs: discount below face value (no cashback on print)", () => {
+    expect(billProfit(bill({ category: "print-airtime", amount: 9700, note: "Network: MTN | Value: ₦100 x100 | Ref X" })))
+      .toMatchObject({ face: 10000, discount: 300, cashback: 0, profit: 300 });
+  });
+  it("all-network bundle: face value saved on the order", () => {
+    expect(billProfit(bill({ category: "airtime-bundle", amount: 4850, note: "Face value: ₦5,000 | 5 numbers" })))
+      .toMatchObject({ face: 5000, discount: 150, profit: 150 });
+  });
+  it("airtime and data: 1% cashback", () => {
+    expect(billProfit(bill({ category: "airtime", amount: 1000 })).profit).toBe(10);
+    expect(billProfit(bill({ category: "data", amount: 2500 })).profit).toBe(25);
+  });
+  it("cable, electricity…: a cost with no profit; failed bills were refunded and don't count", () => {
+    expect(billProfit(bill({ category: "cable", amount: 9000 })).profit).toBe(0);
+    const d = buildBillsData([
+      bill({ id: 1, category: "airtime", amount: 1000 }),
+      bill({ id: 2, category: "print-airtime", amount: 9700, note: "Value: ₦100 x100" }),
+      bill({ id: 3, category: "electricity", amount: 5000, bill_status: "failed" }),
+    ], "2026-10-01", "2026-10-31");
+    expect(d.total).toBe(10700);
+    expect(d.paid.length).toBe(2);
+    expect(d.failedCount).toBe(1);
+    expect(d.profitTotals).toMatchObject({ discount: 300, cashback: 10, profit: 310 });
+  });
+});
+
+describe("profit on the stock report", () => {
+  it("per item: revenue, cost saved at the sale, profit, margin; cart sales split; restock = stock purchases only", () => {
+    const tx = [
+      sale({ id: "a", item_name: "Rice 5kg", amount: 8000, quantity: 1, cost_price: 5000 }),
+      sale({ id: "b", amount: 11000, line_items: [
+        { name: "Rice 5kg", qty: 1, lineTotal: 8000, costPrice: 5500 }, { name: "Oil 1L", qty: 2, lineTotal: 3000, costPrice: 1200 },
+      ] }),
+      sale({ id: "c", item_name: "Mystery item", amount: 1000 }),
+      { id: "r", type: "out", category: "stock", item_name: "Rice 5kg", quantity: 10, amount: 55000, transaction_date: "2026-10-02" },
+      { id: "x", type: "out", category: "expense", item_name: "Rice 5kg", amount: 700, transaction_date: "2026-10-02" },   // not stock
+    ];
+    const d = buildStockData(tx, "2026-10-01", "2026-10-31", products);
+    const rice = d.rows.find((r) => r.item === "Rice 5kg");
+    expect(rice).toMatchObject({ qtySold: 2, revenue: 16000, cogs: 10500, profit: 5500, qtyBought: 10, cost: 55000 });
+    expect(rice.margin).toBeCloseTo(5500 / 16000);
+    expect(d.rows.find((r) => r.item === "Oil 1L")).toMatchObject({ qtySold: 2, revenue: 3000, cogs: 2400, profit: 600 });
+    expect(d.rows.find((r) => r.item === "Mystery item").profit).toBeNull();
+    expect(d.totals).toMatchObject({ cogs: 12900, profit: 6100, uncosted: 1000, stockSpend: 55000 });
+    // the stock report's profit agrees with the sales report's
+    expect(d.totals.profit).toBe(buildSalesProfit(tx.filter((t) => t.type === "in"), products).totals.profit);
+  });
+});
+
+describe("every owner report PDF carries its profit", () => {
+  const profile = { id: "u1", business_name: "Adaeze Fresh Mart" };
+  const cases = {
+    credit: () => buildCreditData([{ customer_name: "Ngozi", total_amount: 8000, interest_amount: 500, outstanding: 8500, amount_paid: 0, status: "active", due_date: "2026-10-30", items: [{ quantity: 1, unit_price: 8000, cost_price: 6000 }] }]),
+    aso: () => buildAsoLedger([{ id: "c1", full_name: "Ngozi", current_balance: 0, status: "active" }],
+      [{ aso_client_id: "c1", type: "commission", amount: 1000, status: "completed", created_at: "2026-10-01T09:00:00Z" }], "2026-10-01", "2026-10-31"),
+    bills: () => buildBillsData([{ payment_type: "bill_payment", category: "print-airtime", item_name: "MTN PINs", amount: 9700, note: "Value: ₦100 x100", transaction_date: "2026-10-02" }], "2026-10-01", "2026-10-31"),
+    stock: () => buildStockData([sale({ id: "a", item_name: "Rice 5kg", amount: 8000, quantity: 1, cost_price: 5000 })], "2026-10-01", "2026-10-31", products),
+  };
+  const expected = { credit: ["Total profit on credit", "2,500"], aso: ["Total Ajo profit", "1,000"], bills: ["Total profit on bills", "300"], stock: ["Total profit on stock", "3,000"] };
+  Object.keys(cases).forEach((type) => {
+    it(`${type}: profit in the PDF and in the verified figures`, async () => {
+      const data = cases[type]();
+      mockSavedDoc = null;
+      await buildNativeReportPDF(type, data, profile, "2026-10-01", "2026-10-31");
+      expect(mockSavedDoc).not.toBeNull();
+      const t = texts(mockSavedDoc);
+      const [label, amount] = expected[type];
+      expect(t.some((x) => x.includes(label))).toBe(true);
+      expect(t.some((x) => x.includes(amount))).toBe(true);
+      const summary = reportSummary(type, data);
+      expect(summary.length).toBeLessThanOrEqual(8);
+      expect(summary.some((r) => /profit/i.test(r.label) && r.value.includes(amount))).toBe(true);
+    });
+  });
+});
+
+describe("CSV exports carry the profit too", () => {
+  const lines = (csv) => csv.replace(/^\uFEFF/, "").split("\r\n");
+  const col = (csv, name) => {
+    const ls = lines(csv); const h = ls.findIndex((l) => l.split(",").includes(name));
+    const i = ls[h].split(",").indexOf(name);
+    return ls.slice(h + 1).filter(Boolean).map((l) => l.split(",")[i]);
+  };
+  it("sales: Net Cash (not 'Net Profit'), profit on sales, profit per sale", () => {
+    const tx = [sale({ id: "a", item_name: "Rice 5kg", amount: 8000, quantity: 1, cost_price: 5000 }),
+                { id: "x", type: "out", category: "expense", amount: 700, transaction_date: "2026-10-02" }];
+    const p = buildSalesProfit(tx, products);
+    const csv = buildSalesReportCSV({ tx, cashIn: 8000, cashOut: 700, profit: 7300, sales: p.rows, salesTotals: p.totals }, "2026-10-01", "2026-10-31");
+    expect(csv).toContain("Net Cash");
+    expect(csv).not.toContain("Net Profit");
+    expect(csv).toMatch(/Profit on Sales[^\r]*,3000/);
+    expect(col(csv, "profit_ngn")).toEqual(["3000", ""]);
+  });
+  it("credit, Ajo, bills, stock", () => {
+    const credit = buildCreditData([{ customer_name: "Ngozi", total_amount: 8000, interest_amount: 500, outstanding: 8500, amount_paid: 0, items: [{ quantity: 1, unit_price: 8000, cost_price: 6000 }] }]);
+    expect(col(buildCreditReportCSV(credit), "profit_ngn")).toEqual(["2500"]);
+    const aso = buildAsoLedger([{ id: "c1", full_name: "Ngozi", current_balance: 0, status: "active" }],
+      [{ aso_client_id: "c1", type: "commission", amount: 1000, status: "completed", created_at: "2026-10-01T09:00:00Z" }], "2026-10-01", "2026-10-31");
+    expect(col(buildAsoReportCSV(aso), "period_profit_ngn")).toEqual(["1000"]);
+    const bills = buildBillsData([
+      { payment_type: "bill_payment", category: "print-airtime", amount: 9700, note: "Value: 100 x100", transaction_date: "2026-10-02" },
+      { payment_type: "bill_payment", category: "cable", amount: 9000, bill_status: "failed", transaction_date: "2026-10-02" },
+    ], "2026-10-01", "2026-10-31");
+    const bcsv = buildBillsReportCSV(bills);
+    expect(col(bcsv, "profit_ngn")).toEqual(["300", ""]);
+    expect(col(bcsv, "date")).toEqual(["2026-10-02", "2026-10-02"]);   // the transaction's own fields still come through
+    const stock = buildStockData([sale({ id: "a", item_name: "Rice 5kg", amount: 8000, quantity: 1, cost_price: 5000 })], "2026-10-01", "2026-10-31", products);
+    expect(col(buildStockReportCSV(stock), "profit_ngn")).toEqual(["3000"]);
+  });
+});
+
 describe("report PDF letterhead + verify footer", () => {
-  // jsPDF writes text as "(...) Tj" — pull the strings out of the uncompressed PDF
-  const texts = (doc) => doc.output().match(/\((?:[^()\\]|\\.)*\)\s*Tj/g)?.map((m) => m.replace(/\)\s*Tj$/, "").slice(1)) || [];
 
   it("business details in the header, KudiAI + Amaya + verify link + QR in the footer of every page", async () => {
     const pdf = await createReportPdf({

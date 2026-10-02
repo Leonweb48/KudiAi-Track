@@ -134,25 +134,36 @@ function fmtPayType(pt) {
 
 // ── Sales report ──────────────────────────────────────────────────────────────
 export function buildSalesReportCSV(data, from, to) {
-  const { tx = [], cashIn, cashOut, profit } = data;
+  const { tx = [], cashIn, cashOut, profit, sales = [], salesTotals } = data;
+  // profit per sale (cost price saved at the sale) — blank for expenses and for sales with no cost price
+  const saleById = new Map(sales.map(r => [r.t.id, r]));
   const summaryHeader = csvRow(["Summary", "Value"]);
   const summaryRows = [
     csvRow(["Total Cash In (₦)", cashIn != null ? Number(cashIn) : ""]),
     csvRow(["Total Cash Out (₦)", cashOut != null ? Number(cashOut) : ""]),
-    csvRow(["Net Profit (₦)", profit != null ? Number(profit) : ""]),
+    csvRow(["Net Cash (₦)", profit != null ? Number(profit) : ""]),
+    ...(salesTotals ? [
+      csvRow(["Total Sales (₦)", Number(salesTotals.revenue)]),
+      csvRow(["Profit on Sales (₦)", Number(salesTotals.profit)]),
+    ] : []),
     csvRow(["Transaction Count", tx.length]),
     csvRow([]),
   ];
-  const txHeader = csvRow(["date", "item", "category", "type", "amount_ngn", "payment_method", "note"]);
-  const txRows = tx.map(t => csvRow([
-    toISO(t.transaction_date),
-    t.item_name || "",
-    t.category || "",
-    t.type === "in" ? "Income" : "Expense",
-    t.amount != null ? Number(t.amount) : "",
-    fmtPayType(t.payment_type),
-    t.note || "",
-  ]));
+  const txHeader = csvRow(["date", "item", "category", "type", "amount_ngn", "cost_ngn", "profit_ngn", "payment_method", "note"]);
+  const txRows = tx.map(t => {
+    const r = saleById.get(t.id);
+    return csvRow([
+      toISO(t.transaction_date),
+      t.item_name || "",
+      t.category || "",
+      t.type === "in" ? "Income" : "Expense",
+      t.amount != null ? Number(t.amount) : "",
+      r && r.profit != null ? Number(r.cost) : "",
+      r && r.profit != null ? Number(r.profit) : "",
+      fmtPayType(t.payment_type),
+      t.note || "",
+    ]);
+  });
   return BOM + [summaryHeader, ...summaryRows, txHeader, ...txRows].join("\r\n");
 }
 export function salesReportCSVFilename(from, to) {
@@ -163,12 +174,15 @@ export function salesReportCSVFilename(from, to) {
 
 // ── Credit report ─────────────────────────────────────────────────────────────
 export function buildCreditReportCSV(data) {
-  const { credits = [] } = data;
-  const header = csvRow(["customer", "phone", "total_amount_ngn", "amount_paid_ngn", "outstanding_ngn", "due_date", "status"]);
-  const rows = credits.map(c => csvRow([
+  const { credits = [], profits } = data;
+  const header = csvRow(["customer", "phone", "total_amount_ngn", "cost_of_goods_ngn", "interest_ngn", "profit_ngn", "amount_paid_ngn", "outstanding_ngn", "due_date", "status"]);
+  const rows = (profits || credits.map(c => ({ c }))).map(({ c, cost, interest, profit }) => csvRow([
     c.customer_name || "",
     c.phone || "",
     c.total_amount  != null ? Number(c.total_amount)  : "",
+    cost     != null ? Number(cost)     : "",
+    interest != null ? Number(interest) : "",
+    profit   != null ? Number(profit)   : "",
     c.amount_paid   != null ? Number(c.amount_paid)   : "",
     c.outstanding   != null ? Number(c.outstanding)   : "",
     toISO(c.due_date),
@@ -181,15 +195,21 @@ export function creditReportCSVFilename() { return "credit_report.csv"; }
 // ── Bills report ──────────────────────────────────────────────────────────────
 export function buildBillsReportCSV(data, from, to) {
   const { bills = [] } = data;
-  const header = csvRow(["date", "item", "category", "amount_ngn", "payment_method", "note"]);
-  const rows = bills.map(t => csvRow([
+  const header = csvRow(["date", "item", "category", "status", "amount_ngn", "face_value_ngn", "discount_ngn", "cashback_ngn", "profit_ngn", "payment_method", "note"]);
+  // each bill: { t: the transaction, failed, face, discount, cashback, profit } (Reports.billProfit)
+  const rows = bills.map(b => { const t = b.t || b; return csvRow([
     toISO(t.transaction_date),
     t.item_name || "",
     t.category || "Bills",
+    b.failed ? "Failed (refunded)" : "Paid",
     t.amount != null ? Number(t.amount) : "",
+    b.face != null ? Number(b.face) : "",
+    b.failed ? "" : Number(b.discount || 0),
+    b.failed ? "" : Number(b.cashback || 0),
+    b.failed ? "" : Number(b.profit || 0),
     fmtPayType(t.payment_type),
     t.note || "",
-  ]));
+  ]); });
   return BOM + [header, ...rows].join("\r\n");
 }
 export function billsReportCSVFilename(from, to) {
@@ -201,12 +221,14 @@ export function billsReportCSVFilename(from, to) {
 // ── Stock report ──────────────────────────────────────────────────────────────
 export function buildStockReportCSV(data, from, to) {
   const { rows = [] } = data;
-  const header = csvRow(["item", "category", "qty_sold", "revenue_ngn", "qty_bought", "cost_ngn"]);
+  const header = csvRow(["item", "qty_sold", "revenue_ngn", "cost_of_goods_ngn", "profit_ngn", "margin_pct", "qty_bought", "restock_cost_ngn"]);
   const dataRows = rows.map(r => csvRow([
     r.item || "",
-    r.category || "",
     r.qtySold   != null ? r.qtySold   : "",
     r.revenue   != null ? Number(r.revenue)   : "",
+    r.profit    != null ? Number(r.cogs)      : "",
+    r.profit    != null ? Number(r.profit)    : "",
+    r.margin    != null ? Math.round(r.margin * 1000) / 10 : "",
     r.qtyBought != null ? r.qtyBought : "",
     r.cost      != null ? Number(r.cost)      : "",
   ]));
@@ -221,13 +243,15 @@ export function stockReportCSVFilename(from, to) {
 // ── Aso report ────────────────────────────────────────────────────────────────
 export function buildAsoReportCSV(data, from, to) {
   const { active = [] } = data;
-  const header = csvRow(["client", "period_contributions_ngn", "period_manual_dep_ngn", "period_withdrawals_ngn", "period_fees_ngn", "period_net_ngn", "balance_ngn"]);
+  const header = csvRow(["client", "period_contributions_ngn", "period_manual_dep_ngn", "period_withdrawals_ngn", "period_fees_ngn", "period_commission_ngn", "period_profit_ngn", "period_net_ngn", "balance_ngn"]);
   const rows = active.map(c => csvRow([
     c.full_name || "",
     c.p_contribs    != null ? Number(c.p_contribs)    : "",
     c.p_manual      != null ? Number(c.p_manual)      : "",
     c.p_withdrawals != null ? Number(c.p_withdrawals) : "",
     c.p_fees        != null ? Number(c.p_fees)        : "",
+    c.p_commission  != null ? Number(c.p_commission)  : "",
+    c.p_profit      != null ? Number(c.p_profit)      : "",
     c.p_net         != null ? Number(c.p_net)         : "",
     c.current_balance != null ? Number(c.current_balance) : "",
   ]));

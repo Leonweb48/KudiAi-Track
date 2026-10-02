@@ -2,7 +2,8 @@ import { useState, useMemo, useEffect } from "react";
 import { fmt, isBillPayment } from "../utils/helpers";
 import { useT }       from "../contexts/LanguageContext";
 import { createReportPdf, fmtCurrency } from "../utils/generateReportPdf";
-import { isRevenueSale, saleCost, productMaps } from "../lib/profitEngine";
+import { isRevenueSale, saleCost, saleLines, productMaps } from "../lib/profitEngine";
+import { cashbackEligible } from "../utils/billCalc";
 import {
   buildStaffReportCSV, staffReportCSVFilename,
   buildSalesReportCSV, salesReportCSVFilename,
@@ -277,15 +278,42 @@ function buildSalesData(transactions, from, to, products = []) {
   return { tx, cashIn, cashOut, profit: cashIn-cashOut, bars, byCat, sales, salesTotals };
 }
 
-function buildCreditData(credits) {
+/**
+ * Profit on ONE credit account: the goods sold on credit (each item's cost price was saved with the credit when it was
+ * given — the same "cost at the time of the sale" rule as sales) plus the agreed interest. It is earned as the customer
+ * repays. Part of a credit with no item cost (no items recorded, items without a cost price, or extra credit added later)
+ * is "uncosted": its profit isn't guessed, only flagged.
+ */
+export function creditProfit(c) {
+  const items = Array.isArray(c?.items) ? c.items : [];
+  let costedRevenue = 0, cost = 0;
+  for (const it of items) {
+    const qty = Number(it?.quantity) || 1, price = Number(it?.unit_price) || 0, unitCost = Number(it?.cost_price) || 0;
+    if (unitCost > 0) { costedRevenue += price * qty; cost += unitCost * qty; }
+  }
+  const principal = Number(c?.total_amount) || 0;
+  const interest  = Number(c?.interest_amount) || 0;
+  const goodsProfit = costedRevenue > 0 ? costedRevenue - cost : null;
+  const uncosted = Math.max(0, principal - costedRevenue);
+  const profit = goodsProfit == null && interest === 0 ? null : (goodsProfit || 0) + interest;
+  return { cost: costedRevenue > 0 ? cost : null, goodsProfit, interest, profit, uncosted, partial: profit != null && uncosted > 0.004 };
+}
+
+export function buildCreditData(credits) {
   const totalDebt = credits.reduce((s,c)=>s+(c.total_amount||0),0);
   const totalPaid = credits.reduce((s,c)=>s+(c.amount_paid||0),0);
   const totalOut  = credits.reduce((s,c)=>s+(c.outstanding||0),0);
   const overdue   = credits.filter(c=>c.status==="overdue");
-  return { credits, totalDebt, totalPaid, totalOut, overdueCount: overdue.length, overdueDue: overdue.reduce((s,c)=>s+c.outstanding,0) };
+  const profits   = credits.map(c => ({ c, ...creditProfit(c) }));
+  const profitTotals = profits.reduce((a, p) => ({
+    cost: a.cost + (p.cost || 0), interest: a.interest + p.interest,
+    goods: a.goods + (p.goodsProfit || 0), profit: a.profit + (p.profit || 0), uncosted: a.uncosted + p.uncosted,
+  }), { cost: 0, interest: 0, goods: 0, profit: 0, uncosted: 0 });
+  return { credits, totalDebt, totalPaid, totalOut, overdueCount: overdue.length, overdueDue: overdue.reduce((s,c)=>s+c.outstanding,0),
+           profits, profitTotals };
 }
 
-function buildAsoLedger(asoClients, contributions, from, to) {
+export function buildAsoLedger(asoClients, contributions, from, to) {
   const totalBal    = asoClients.reduce((s,c)=>s+(c.current_balance||0),0);
   const totalSaved  = asoClients.reduce((s,c)=>s+(c.total_saved||0),0);
   const totalWithdr = asoClients.reduce((s,c)=>s+(c.total_withdrawn||0),0);
@@ -300,12 +328,15 @@ function buildAsoLedger(asoClients, contributions, from, to) {
     const cid = c.aso_client_id;
     if (!byClient[cid]) byClient[cid] = { contribs:0, manual:0, withdrawals:0, regFees:0, wdFees:0 };
     const amt = parseFloat(c.amount) || 0;
+    // fees and commission are only earned once taken (a pending or rejected fee isn't profit yet)
+    const taken = !c.status || c.status === "completed";
     if (c.type === "contribution") {
       if (c.payment_method === "manual_transfer") byClient[cid].manual += amt;
       else byClient[cid].contribs += amt;
     } else if (c.type === "withdrawal")       { byClient[cid].withdrawals += amt; }
-    else if (c.type === "registration_fee")   { byClient[cid].regFees += amt; }
-    else if (c.type === "withdrawal_fee")     { byClient[cid].wdFees += amt; }
+    else if (c.type === "registration_fee")   { if (taken) byClient[cid].regFees += amt; }
+    else if (c.type === "withdrawal_fee")     { if (taken) byClient[cid].wdFees += amt; }
+    else if (c.type === "commission")         { if (taken) byClient[cid].commission = (byClient[cid].commission || 0) + amt; }
   });
 
   const FREQ = {daily:1,weekly:7,monthly:30};
@@ -324,6 +355,9 @@ function buildAsoLedger(asoClients, contributions, from, to) {
       p_reg_fees:    d.regFees     || 0,
       p_wd_fees:     d.wdFees      || 0,
       p_fees:        (d.regFees||0)+(d.wdFees||0),
+      p_commission:  d.commission  || 0,
+      // the business's profit from this client: fees + commission (contributions are the client's money, held in trust)
+      p_profit:      (d.regFees||0)+(d.wdFees||0)+(d.commission||0),
       p_net:         (d.contribs||0)+(d.manual||0)-(d.withdrawals||0),
     };
   });
@@ -340,24 +374,56 @@ function buildAsoLedger(asoClients, contributions, from, to) {
   const totRegFees     = active.reduce((s,c)=>s+c.p_reg_fees,0);
   const totWdFees      = active.reduce((s,c)=>s+c.p_wd_fees,0);
   const totFeeRevenue  = totRegFees+totWdFees;
+  const totCommission  = active.reduce((s,c)=>s+c.p_commission,0);
+  const totProfit      = totFeeRevenue+totCommission;
 
   return {
     enriched, active, totalBal, totalSaved, totalWithdr,
-    totContribs, totManual, totWithdrawals, totRegFees, totWdFees, totFeeRevenue,
+    totContribs, totManual, totWithdrawals, totRegFees, totWdFees, totFeeRevenue, totCommission, totProfit,
     bars,
   };
 }
 
-function buildBillsData(transactions, from, to) {
-  const bills = transactions.filter(t => t.payment_type==="bill_payment" && inRange(t.transaction_date,from,to));
-  const total = bills.reduce((s,t)=>s+t.amount,0);
+/**
+ * What the business earns on ONE bill it paid: the discount on printed airtime PINs / all-network bundles (bought below
+ * face value to resell at face value — the face value is saved on the order) plus the 1% cashback on airtime and data.
+ * Every other bill (cable, electricity, betting, exam PINs, data PINs…) is a cost with no profit. A failed bill was
+ * refunded: no cost, no profit.
+ */
+export function billProfit(t) {
+  if (t?.bill_status === "failed") return { failed: true, face: null, discount: 0, cashback: 0, profit: 0 };
+  const note = String(t?.note || "");
+  const amount = Number(t?.amount) || 0;
+  let face = null;
+  if (t?.category === "print-airtime") {
+    const m = /Value:\s*₦?([\d,]+)\s*x\s*(\d+)/i.exec(note);
+    if (m) face = Number(m[1].replace(/,/g, "")) * Number(m[2]);
+  } else if (t?.category === "airtime-bundle") {
+    const m = /Face value:\s*₦?([\d,]+)/i.exec(note);
+    if (m) face = Number(m[1].replace(/,/g, ""));
+  }
+  const discount = face != null ? Math.max(0, face - amount) : 0;
+  const cashback = cashbackEligible(t?.category) ? Math.round(amount * 0.01 * 100) / 100 : 0;
+  return { failed: false, face, discount, cashback, profit: discount + cashback };
+}
+
+export function buildBillsData(transactions, from, to) {
+  const bills = transactions.filter(t => t.payment_type==="bill_payment" && inRange(t.transaction_date,from,to))
+    .map(t => ({ t, ...billProfit(t) }));
+  const paid = bills.filter(b => !b.failed);
+  const total = paid.reduce((s,b)=>s+b.t.amount,0);
   const byCat = {};
-  bills.forEach(t => {
-    const k=t.category||"Bills";
-    if(!byCat[k]) byCat[k]={total:0,count:0};
-    byCat[k].total+=t.amount; byCat[k].count++;
+  paid.forEach(b => {
+    const k=b.t.category||"Bills";
+    if(!byCat[k]) byCat[k]={total:0,count:0,profit:0};
+    byCat[k].total+=b.t.amount; byCat[k].count++; byCat[k].profit+=b.profit;
   });
-  return { bills, total, byCat };
+  const profitTotals = paid.reduce((a, b) => ({
+    discount: a.discount + b.discount, cashback: a.cashback + b.cashback, profit: a.profit + b.profit,
+    face: a.face + (b.face || 0),
+  }), { discount: 0, cashback: 0, profit: 0, face: 0 });
+  const failed = bills.filter(b => b.failed);
+  return { bills, paid, total, byCat, profitTotals, failedCount: failed.length, failedTotal: failed.reduce((s,b)=>s+b.t.amount,0) };
 }
 
 function buildStaffData(transactions, credits, asoClients, staffMap) {
@@ -387,19 +453,44 @@ function buildStaffData(transactions, credits, asoClients, staffMap) {
   return { rows, bars };
 }
 
-function buildStockData(transactions, from, to) {
-  const tx = transactions.filter(t => inRange(t.transaction_date,from,to) && t.item_name);
+/**
+ * Stock report: per item, what was sold (qty, revenue), what it cost (each sale line's cost price saved at the sale —
+ * profitEngine.saleLines, the same rule as the sales report), the profit and margin, and what was spent restocking it.
+ * Cart sales are split into their items. An item with no cost price shows no profit rather than a guessed one.
+ */
+export function buildStockData(transactions, from, to, products = []) {
+  const maps = productMaps(products);
+  const tx = transactions.filter(t => inRange(t.transaction_date,from,to));
   const byItem = {};
-  tx.forEach(t => {
-    const k = t.item_name;
-    if (!byItem[k]) byItem[k] = { item:k, category:t.category||"—", qtySold:0, revenue:0, qtyBought:0, cost:0 };
-    if (t.type==="in") { byItem[k].qtySold += (t.quantity||1); byItem[k].revenue += t.amount; }
-    else               { byItem[k].qtyBought += (t.quantity||1); byItem[k].cost   += t.amount; }
+  const row = (name) => {
+    const k = name.toLowerCase().trim();
+    if (!byItem[k]) byItem[k] = { item:name, qtySold:0, revenue:0, cogs:0, costedRevenue:0, uncosted:0, qtyBought:0, cost:0 };
+    return byItem[k];
+  };
+  tx.filter(isRevenueSale).forEach(t => {
+    for (const l of saleLines(t, maps)) {
+      if (l.service || !l.name) continue;            // Ajo fees and unnamed sales aren't stock items
+      const r = row(l.name);
+      r.qtySold += l.qty; r.revenue += l.revenue;
+      if (l.cost != null) { r.cogs += l.cost; r.costedRevenue += l.revenue; } else r.uncosted += l.revenue;
+    }
   });
-  const rows = Object.values(byItem).sort((a,b)=>b.revenue-a.revenue);
+  // restocking: stock purchases only (an expense that happens to have a name is not stock)
+  tx.filter(t => t.type === "out" && t.category === "stock" && t.item_name).forEach(t => {
+    const r = row(t.item_name);
+    r.qtyBought += (t.quantity||1); r.cost += t.amount;
+  });
+  const rows = Object.values(byItem).map(r => {
+    const profit = r.costedRevenue > 0 ? r.costedRevenue - r.cogs : null;
+    return { ...r, profit, partial: profit != null && r.uncosted > 0, margin: profit != null && r.costedRevenue > 0 ? profit / r.costedRevenue : null };
+  }).sort((a,b)=>b.revenue-a.revenue);
   const totalRevenue = rows.reduce((s,r)=>s+r.revenue,0);
+  const totals = rows.reduce((a, r) => ({
+    cogs: a.cogs + r.cogs, profit: a.profit + (r.profit || 0), uncosted: a.uncosted + r.uncosted, stockSpend: a.stockSpend + r.cost,
+    qtySold: a.qtySold + r.qtySold,
+  }), { cogs: 0, profit: 0, uncosted: 0, stockSpend: 0, qtySold: 0 });
   const bars = rows.slice(0,12).map(r=>({ label:r.item.slice(0,8), v:r.revenue, color:"#0284c7" }));
-  return { rows, totalRevenue, bars };
+  return { rows, totalRevenue, totals, bars };
 }
 
 /* ── Report sections ───────────────────────────────────────────────── */
@@ -474,9 +565,11 @@ function SalesSection({ data }) {
 }
 
 function CreditSection({ data }) {
-  const rows = data.credits.map(c=>({
+  const pt = data.profitTotals;
+  const rows = data.profits.map(({ c, profit, partial })=>({
     name:  c.customer_name,
-    phone: c.phone||"—",
+    profit: profit==null ? "No cost" : fmt(profit) + (partial ? " *" : ""),
+    _p:    profit,
     total: fmt(c.total_amount||0),
     paid:  fmt(c.amount_paid||0),
     owed:  fmt(c.outstanding||0),
@@ -495,7 +588,7 @@ function CreditSection({ data }) {
         { label:"Total Debt",    value:fmt(data.totalDebt),    color:"#334155", bg:"#f8fafc",   border:"#e2e8f0" },
         { label:"Outstanding",  value:fmt(data.totalOut),     color:"#ef4444", bg:"#fef2f2",   border:"#fecaca" },
         { label:"Recovered",    value:fmt(data.totalPaid),    color:"#16a34a", bg:"#f0fdf4",   border:"#bbf7d0" },
-        { label:"Overdue Accs", value:data.overdueCount,      color:"#dc2626", bg:"#fff1f2",   border:"#fecdd3" },
+        { label:"Profit on Credit", value:fmt(pt.profit),       color:"#16a34a", bg:"#f0fdf4",   border:"#bbf7d0" },
       ]}/>
       <div style={{display:"flex",gap:16,alignItems:"flex-start",marginBottom:14}}>
         <div style={{width:190,flexShrink:0}}>
@@ -517,17 +610,21 @@ function CreditSection({ data }) {
       <SectionTitle>Debtor Records</SectionTitle>
       <Table
         cols={[
-          {key:"name",  label:"Customer",    bold:true, w:"19%"},
-          {key:"phone", label:"Phone",                  w:"12%"},
+          {key:"name",  label:"Customer",    bold:true, w:"18%"},
           {key:"total", label:"Total",       right:true, w:"11%"},
           {key:"paid",  label:"Paid",        right:true, color:()=>"#16a34a", w:"11%"},
-          {key:"owed",  label:"Owed",        right:true, bold:true, color:r=>r._s==="overdue"?"#dc2626":"#ef4444", w:"12%"},
-          {key:"due",   label:"Due Date",               w:"13%"},
-          {key:"status",label:"Status",      color:r=>r._s==="overdue"?"#dc2626":r._s==="paid"?"#16a34a":"#64748b", bold:true, w:"14%"},
+          {key:"owed",  label:"Owed",        right:true, bold:true, color:r=>r._s==="overdue"?"#dc2626":"#ef4444", w:"11%"},
+          {key:"profit",label:"Profit",      right:true, bold:true, color:r=>r._p==null?"#94a3b8":"#16a34a", w:"12%"},
+          {key:"due",   label:"Due Date",               w:"12%"},
+          {key:"status",label:"Status",      color:r=>r._s==="overdue"?"#dc2626":r._s==="paid"?"#16a34a":"#64748b", bold:true, w:"17%"},
           {key:"late",  label:"Late",        right:true, color:r=>r.late!=="—"?"#dc2626":"#94a3b8", w:"8%"},
         ]}
         rows={rows}
         highlight={r=>r._s==="overdue"?"#fff5f5":undefined}/>
+      <p style={S({fontSize:10.5,color:"#64748b",marginTop:-4,marginBottom:12,lineHeight:1.5})}>
+        Profit = profit on the goods sold on credit (each item's cost price saved when the credit was given) + interest {fmt(pt.interest)} — earned as customers repay.
+        {pt.uncosted > 0 ? ` ${fmt(pt.uncosted)} of credit has no item cost (no items recorded, or credit added later), so its goods profit isn't counted (*).` : ""}
+      </p>
     </div>
   );
 }
@@ -536,18 +633,18 @@ function AsoSection({ data }) {
   const {
     active=[], totalBal,
     totContribs=0, totManual=0, totWithdrawals=0,
-    totRegFees=0, totWdFees=0, totFeeRevenue=0, bars=[],
+    totRegFees=0, totWdFees=0, totCommission=0, totProfit=0, bars=[],
   } = data;
   const rows = active.map(c=>({
     name:    c.full_name||"—",
     contribs: fmt(c.p_contribs),
     manual:   fmt(c.p_manual),
     withdr:   fmt(c.p_withdrawals),
-    fees:     fmt(c.p_fees),
+    fees:     fmt(c.p_profit),
     net:      fmt(c.p_net),
     balance:  fmt(c.current_balance||0),
     _net:     c.p_net,
-    _fees:    c.p_fees,
+    _fees:    c.p_profit,
   }));
   return (
     <div>
@@ -555,7 +652,7 @@ function AsoSection({ data }) {
         { label:"Savings Held",       value:fmt(totalBal),               color:"#2E8020", bg:"#f0fdf4", border:"#bbf7d0" },
         { label:"Period Collections", value:fmt(totContribs+totManual),  color:"#16a34a", bg:"#f0fdf4", border:"#bbf7d0" },
         { label:"Period Withdrawals", value:fmt(totWithdrawals),         color:"#ef4444", bg:"#fef2f2", border:"#fecaca" },
-        { label:"Fee Revenue",        value:fmt(totFeeRevenue),          color:"#d97706", bg:"#fffbeb", border:"#fde68a" },
+        { label:"Ajo Profit",         value:fmt(totProfit),              color:"#d97706", bg:"#fffbeb", border:"#fde68a" },
       ]}/>
       {bars.length > 0 && (<>
         <SectionTitle>Collections by Client</SectionTitle>
@@ -563,7 +660,7 @@ function AsoSection({ data }) {
       </>)}
       <SectionTitle>Period Activity by Client</SectionTitle>
       <p style={S({fontSize:9,color:"#94a3b8",marginBottom:8,fontStyle:"italic"})}>
-        Savings Held = client funds held in trust — separate from business profit.
+        Savings Held = client funds held in trust — separate from business profit. Profit = fees + commission earned from each client.
       </p>
       <Table
         cols={[
@@ -571,14 +668,14 @@ function AsoSection({ data }) {
           {key:"contribs",label:"Contributions",right:true, color:()=>"#16a34a", w:"14%"},
           {key:"manual",  label:"Manual Dep.",  right:true, w:"11%"},
           {key:"withdr",  label:"Withdrawals",  right:true, color:()=>"#ef4444", w:"13%"},
-          {key:"fees",    label:"Fees",         right:true, color:r=>r._fees>0?"#d97706":"#94a3b8", w:"11%"},
+          {key:"fees",    label:"Profit",       right:true, bold:true, color:r=>r._fees>0?"#16a34a":"#94a3b8", w:"11%"},
           {key:"net",     label:"Net",          right:true, bold:true, color:r=>r._net>=0?"#2E8020":"#ef4444", w:"13%"},
           {key:"balance", label:"Balance",      right:true, w:"18%"},
         ]}
         rows={rows}
         highlight={r=>r._net<0?"#fff5f5":undefined}/>
-      {totFeeRevenue > 0 && (<>
-        <SectionTitle>Fee Revenue Summary</SectionTitle>
+      {totProfit > 0 && (<>
+        <SectionTitle>Ajo Profit Summary</SectionTitle>
         <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:14}}>
           <div style={S({background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,padding:"8px 14px",flex:1,minWidth:100})}>
             <p style={S({fontSize:9,color:"#92400e",fontWeight:700,marginBottom:3,textTransform:"uppercase",letterSpacing:0.5})}>Registration Fees</p>
@@ -588,9 +685,13 @@ function AsoSection({ data }) {
             <p style={S({fontSize:9,color:"#92400e",fontWeight:700,marginBottom:3,textTransform:"uppercase",letterSpacing:0.5})}>Withdrawal Fees</p>
             <p style={S({fontSize:15,fontWeight:900,color:"#d97706",margin:0})}>{fmt(totWdFees)}</p>
           </div>
+          <div style={S({background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,padding:"8px 14px",flex:1,minWidth:100})}>
+            <p style={S({fontSize:9,color:"#92400e",fontWeight:700,marginBottom:3,textTransform:"uppercase",letterSpacing:0.5})}>Commission</p>
+            <p style={S({fontSize:15,fontWeight:900,color:"#d97706",margin:0})}>{fmt(totCommission)}</p>
+          </div>
           <div style={S({background:"#2E8020",borderRadius:10,padding:"8px 14px",flex:1,minWidth:100})}>
-            <p style={S({fontSize:9,color:"#bbf7d0",fontWeight:700,marginBottom:3,textTransform:"uppercase",letterSpacing:0.5})}>Total Fee Revenue</p>
-            <p style={S({fontSize:15,fontWeight:900,color:"#fff",margin:0})}>{fmt(totFeeRevenue)}</p>
+            <p style={S({fontSize:9,color:"#bbf7d0",fontWeight:700,marginBottom:3,textTransform:"uppercase",letterSpacing:0.5})}>Total Ajo Profit</p>
+            <p style={S({fontSize:15,fontWeight:900,color:"#fff",margin:0})}>{fmt(totProfit)}</p>
           </div>
         </div>
       </>)}
@@ -599,32 +700,33 @@ function AsoSection({ data }) {
 }
 
 function BillsSection({ data }) {
+  const pt = data.profitTotals;
   const catRows = Object.entries(data.byCat).sort((a,b)=>b[1].total-a[1].total).map(([cat,v])=>({
-    cat, total:fmt(v.total), count:v.count, avg:fmt(v.total/v.count)
+    cat, total:fmt(v.total), count:v.count, profit:fmt(v.profit), _p:v.profit,
   }));
-  const rows = data.bills.slice(0,60).map(t=>({
-    date: fmtD(t.transaction_date),
-    item: t.item_name||"—",
-    cat:  t.category||"—",
-    amount: fmt(t.amount),
-    pay:  fmtPayType(t.payment_type),
-    note: t.note||"—",
+  const rows = data.bills.slice(0,60).map(b=>({
+    date: fmtD(b.t.transaction_date),
+    item: b.t.item_name||"—",
+    cat:  b.t.category||"—",
+    amount: b.failed ? `${fmt(b.t.amount)} (refunded)` : fmt(b.t.amount),
+    profit: b.failed ? "Failed" : fmt(b.profit),
+    _p: b.failed ? null : b.profit, _f: b.failed,
   }));
   return (
     <div>
       <StatGrid stats={[
-        { label:"Total Bills Paid", value:fmt(data.total),    color:"#dc2626", bg:"#fef2f2", border:"#fecaca" },
-        { label:"Transactions",    value:data.bills.length,  color:"#64748b", bg:"#f8fafc", border:"#e2e8f0" },
-        { label:"Avg per Bill",    value:fmt(data.bills.length?data.total/data.bills.length:0), color:"#0284c7", bg:"#eff6ff", border:"#bfdbfe" },
-        { label:"Categories",      value:Object.keys(data.byCat).length, color:"#0284c7", bg:"#eff6ff", border:"#bfdbfe" },
+        { label:"Total Bills Paid", value:fmt(data.total),     color:"#dc2626", bg:"#fef2f2", border:"#fecaca" },
+        { label:"Bill Profit",      value:fmt(pt.profit),      color:"#16a34a", bg:"#f0fdf4", border:"#bbf7d0" },
+        { label:"PIN Discount",     value:fmt(pt.discount),    color:"#0284c7", bg:"#eff6ff", border:"#bfdbfe" },
+        { label:"Cashback Earned",  value:fmt(pt.cashback),    color:"#d97706", bg:"#fffbeb", border:"#fde68a" },
       ]}/>
       <SectionTitle>By Category</SectionTitle>
       <Table
         cols={[
-          {key:"cat",  label:"Category",    bold:true, w:"42%"},
-          {key:"total",label:"Total Paid",  right:true, bold:true, color:()=>"#dc2626", w:"26%"},
-          {key:"count",label:"Count",       right:true, w:"14%"},
-          {key:"avg",  label:"Avg/Bill",    right:true, w:"18%"},
+          {key:"cat",   label:"Category",   bold:true, w:"40%"},
+          {key:"total", label:"Total Paid", right:true, bold:true, color:()=>"#dc2626", w:"24%"},
+          {key:"count", label:"Count",      right:true, w:"12%"},
+          {key:"profit",label:"Profit",     right:true, bold:true, color:r=>r._p>0?"#16a34a":"#94a3b8", w:"24%"},
         ]}
         rows={catRows}/>
       <SectionTitle>Bill Transactions</SectionTitle>
@@ -632,11 +734,15 @@ function BillsSection({ data }) {
         cols={[
           {key:"date",  label:"Date",     w:"14%"},
           {key:"item",  label:"Item",     bold:true, w:"30%"},
-          {key:"cat",   label:"Category", w:"20%"},
-          {key:"amount",label:"Amount",   right:true, bold:true, color:()=>"#dc2626", w:"18%"},
-          {key:"pay",   label:"Payment",  w:"18%"},
+          {key:"cat",   label:"Category", w:"16%"},
+          {key:"amount",label:"Amount",   right:true, bold:true, color:r=>r._f?"#94a3b8":"#dc2626", w:"22%"},
+          {key:"profit",label:"Profit",   right:true, bold:true, color:r=>r._f?"#94a3b8":r._p>0?"#16a34a":"#94a3b8", w:"18%"},
         ]}
         rows={rows}/>
+      <p style={S({fontSize:10.5,color:"#64748b",marginTop:-4,marginBottom:12,lineHeight:1.5})}>
+        Bill profit = the discount on printed airtime PINs and bundles (resold at face value) + 1% cashback on airtime and data. Other bills are costs with no profit.
+        {data.failedCount > 0 ? ` ${data.failedCount} failed bill${data.failedCount===1?"":"s"} (${fmt(data.failedTotal)}, refunded) not counted.` : ""}
+      </p>
     </div>
   );
 }
@@ -683,13 +789,15 @@ function StaffSection({ data }) {
 }
 
 function StockSection({ data }) {
+  const tt = data.totals;
+  const pct = (m) => (m == null ? "—" : `${Math.round(m * 100)}%`);
   return (
     <div>
       <StatGrid stats={[
-        { label:"Unique Items",   value:data.rows.length,           color:"#0284c7", bg:"#eff6ff", border:"#bfdbfe" },
-        { label:"Total Revenue",  value:fmt(data.totalRevenue),     color:"#16a34a", bg:"#f0fdf4", border:"#bbf7d0" },
-        { label:"Items Tracked",  value:data.rows.reduce((s,r)=>s+r.qtySold,0), color:"#334155", bg:"#f8fafc", border:"#e2e8f0" },
-        { label:"Top Item",       value:data.rows[0]?.item?.slice(0,12)||"—", color:"#7c3aed", bg:"#faf5ff", border:"#e9d5ff" },
+        { label:"Revenue",        value:fmt(data.totalRevenue), color:"#0284c7", bg:"#eff6ff", border:"#bfdbfe" },
+        { label:"Cost of Goods",  value:fmt(tt.cogs),           color:"#64748b", bg:"#f8fafc", border:"#e2e8f0" },
+        { label:"Stock Profit",   value:fmt(tt.profit),         color:tt.profit>=0?"#16a34a":"#ef4444", bg:"#f0fdf4", border:"#bbf7d0" },
+        { label:"Spent on Stock", value:fmt(tt.stockSpend),     color:"#ef4444", bg:"#fef2f2", border:"#fecaca" },
       ]}/>
       {data.bars.length > 0 && (<>
         <SectionTitle>Revenue by Item</SectionTitle>
@@ -698,15 +806,24 @@ function StockSection({ data }) {
       <SectionTitle>Item Performance</SectionTitle>
       <Table
         cols={[
-          {key:"item",     label:"Item",      bold:true, w:"24%"},
-          {key:"category", label:"Category",            w:"15%"},
-          {key:"qtySold",  label:"Qty Sold",  right:true, w:"10%"},
-          {key:"revenue",  label:"Revenue",   right:true, bold:true, color:()=>"#16a34a", w:"15%"},
-          {key:"qtyBought",label:"Qty Bought",right:true, w:"11%"},
-          {key:"cost",     label:"Cost",      right:true, color:()=>"#ef4444", w:"13%"},
-          {key:"margin",   label:"Margin",    right:true, bold:true, w:"12%"},
+          {key:"item",     label:"Item",       bold:true, w:"21%"},
+          {key:"qtySold",  label:"Sold",       right:true, w:"6%"},
+          {key:"revenue",  label:"Revenue",    right:true, bold:true, w:"14%"},
+          {key:"cogs",     label:"Cost",       right:true, color:()=>"#64748b", w:"13%"},
+          {key:"profit",   label:"Profit",     right:true, bold:true, color:r=>r._p==null?"#94a3b8":r._p>=0?"#16a34a":"#ef4444", w:"14%"},
+          {key:"margin",   label:"Margin",     right:true, w:"8%"},
+          {key:"qtyBought",label:"Bought",     right:true, w:"8%"},
+          {key:"cost",     label:"Restock",    right:true, color:r=>r._c>0?"#ef4444":"#94a3b8", w:"16%"},
         ]}
-        rows={data.rows.map(r=>({...r,revenue:fmt(r.revenue),cost:fmt(r.cost),margin:fmt(r.revenue-r.cost)}))}/>
+        rows={data.rows.map(r=>({
+          item:r.item, qtySold:r.qtySold, revenue:fmt(r.revenue), cogs:r.profit==null?"—":fmt(r.cogs),
+          profit:r.profit==null?(r.revenue>0?"No cost":"—"):fmt(r.profit)+(r.partial?" *":""), _p:r.profit,
+          margin:pct(r.margin), qtyBought:r.qtyBought||"—", cost:r.cost>0?fmt(r.cost):"—", _c:r.cost,
+        }))}/>
+      <p style={S({fontSize:10.5,color:"#64748b",marginTop:-4,marginBottom:12,lineHeight:1.5})}>
+        Profit = revenue − the cost price saved when each item was sold. Restock = what was spent buying the item in this period.
+        {tt.uncosted > 0 ? ` ${fmt(tt.uncosted)} of item sales have no cost price, so their profit isn't counted (*).` : ""}
+      </p>
     </div>
   );
 }
@@ -820,7 +937,7 @@ async function loadLetterhead(profile) {
 
 // The headline figures saved with the report's reference — the verify page shows them so whoever holds the PDF can check
 // the printed figures were not changed. Strings exactly as printed.
-function reportSummary(type, data) {
+export function reportSummary(type, data) {
   const N = fmtCurrency;
   switch (type) {
     case "sales": return [
@@ -830,18 +947,25 @@ function reportSummary(type, data) {
     ];
     case "credit": return [
       { label: "Total debt", value: N(data.totalDebt) }, { label: "Outstanding", value: N(data.totalOut) },
-      { label: "Recovered", value: N(data.totalPaid) }, { label: "Overdue accounts", value: String(data.overdueCount) },
+      { label: "Recovered", value: N(data.totalPaid) }, { label: "Profit on credit", value: N(data.profitTotals.profit) },
+      { label: "Overdue accounts", value: String(data.overdueCount) },
     ];
     case "aso": return [
       { label: "Savings held", value: N(data.totalBal) }, { label: "Period collections", value: N((data.totContribs || 0) + (data.totManual || 0)) },
-      { label: "Period withdrawals", value: N(data.totWithdrawals || 0) }, { label: "Fee revenue", value: N(data.totFeeRevenue || 0) },
+      { label: "Period withdrawals", value: N(data.totWithdrawals || 0) }, { label: "Ajo profit", value: N(data.totProfit || 0) },
     ];
-    case "bills": return [{ label: "Total bills", value: N(data.total) }, { label: "Bill count", value: String(data.bills.length) }];
+    case "bills": return [
+      { label: "Total bills paid", value: N(data.total) }, { label: "Profit on bills", value: N(data.profitTotals.profit) },
+      { label: "Bills paid", value: String(data.paid.length) },
+    ];
     case "staff": return [
       { label: "Staff members", value: String(data.rows.length) },
       { label: "Sales recorded by staff", value: N(data.rows.reduce((n, r) => n + (r.salesIn || 0), 0)) },
     ];
-    case "stock": return [{ label: "Total revenue", value: N(data.totalRevenue) }, { label: "Unique items", value: String(data.rows.length) }];
+    case "stock": return [
+      { label: "Revenue", value: N(data.totalRevenue) }, { label: "Cost of goods", value: N(data.totals.cogs) },
+      { label: "Profit on stock", value: N(data.totals.profit) }, { label: "Items", value: String(data.rows.length) },
+    ];
     default: return [];
   }
 }
@@ -861,7 +985,7 @@ async function registerReport(type, from, to, businessName, summary) {
   }
 }
 
-async function buildNativeReportPDF(type, data, profile, from, to) {
+export async function buildNativeReportPDF(type, data, profile, from, to) {
   const TNAMES = {
     sales:"Sales Report", credit:"Credit Report", aso:"Ajo Savings Report",
     bills:"Bills Report", staff:"Staff Performance Report", stock:"Stock Report",
@@ -942,34 +1066,50 @@ async function buildNativeReportPDF(type, data, profile, from, to) {
       }))
     );
   } else if (type === "credit") {
-    const { credits, totalDebt, totalPaid, totalOut, overdueCount } = data;
+    const { profits, totalDebt, totalPaid, totalOut, overdueCount, profitTotals: pt } = data;
     addStats([
-      { label:"Total Debt",   value:fmtN(totalDebt), color:"#334155", bg:"#f8fafc" },
-      { label:"Outstanding",  value:fmtN(totalOut),  color:"#ef4444", bg:"#fef2f2" },
-      { label:"Recovered",    value:fmtN(totalPaid), color:"#16a34a", bg:"#f0fdf4" },
-      { label:"Overdue Accs", value:overdueCount,    color:"#dc2626", bg:"#fff1f2" },
+      { label:"Total Debt",       value:fmtN(totalDebt), color:"#334155", bg:"#f8fafc" },
+      { label:"Outstanding",      value:fmtN(totalOut),  color:"#ef4444", bg:"#fef2f2" },
+      { label:"Recovered",        value:fmtN(totalPaid), color:"#16a34a", bg:"#f0fdf4" },
+      { label:"Profit on Credit", value:fmtN(pt.profit), color:"#16a34a", bg:"#f0fdf4" },
     ]);
-    addSectionTitle("Credit Accounts");
+    addSectionTitle(`Credit Accounts — ${profits.length} account${profits.length===1?"":"s"}, ${overdueCount} overdue`);
     addTable(
-      [{ key:"name",   label:"Customer", bold:true, w:0.24 },
-       { key:"total",  label:"Total",    right:true, w:0.16 },
-       { key:"paid",   label:"Paid",     right:true, color:()=>[22,163,74], w:0.16 },
-       { key:"owed",   label:"Owed",     right:true, color:r=>r._s==="overdue"?[220,38,38]:null, w:0.16 },
-       { key:"due",    label:"Due Date", w:0.14 },
-       { key:"status", label:"Status",   bold:true, color:r=>r._s==="overdue"?[220,38,38]:r._s==="paid"?[22,163,74]:null, w:0.14 }],
-      credits.map(c=>({
-        name:c.customer_name, total:fmtN(c.total_amount||0), paid:fmtN(c.amount_paid||0),
-        owed:fmtN(c.outstanding||0), due:fmtD(c.due_date),
+      [{ key:"name",   label:"Customer", bold:true, w:0.20 },
+       { key:"total",  label:"Total",    right:true, w:0.12 },
+       { key:"cost",   label:"Cost",     right:true, color:()=>[100,99,94], w:0.11 },
+       { key:"profit", label:"Profit",   right:true, bold:true, color:r=>r._p==null?[150,150,150]:[22,163,74], w:0.12 },
+       { key:"paid",   label:"Paid",     right:true, color:()=>[22,163,74], w:0.11 },
+       { key:"owed",   label:"Owed",     right:true, color:r=>r._s==="overdue"?[220,38,38]:null, w:0.11 },
+       { key:"due",    label:"Due",      w:0.11 },
+       { key:"status", label:"Status",   bold:true, color:r=>r._s==="overdue"?[220,38,38]:r._s==="paid"?[22,163,74]:null, w:0.12 }],
+      profits.map(({ c, cost, profit, partial })=>({
+        name:c.customer_name, total:fmtN(c.total_amount||0), cost:cost==null?"—":fmtN(cost),
+        profit:profit==null?"No cost":fmtN(profit)+(partial?" *":""), _p:profit,
+        paid:fmtN(c.amount_paid||0), owed:fmtN(c.outstanding||0), due:fmtD(c.due_date),
         status:(c.status||"active").replace(/_/g," ").toUpperCase(), _s:c.status
       }))
     );
+    addTotalsBlock([
+      { label:"Total credit given",          value:fmtN(totalDebt), bold:true },
+      { label:"Cost of goods sold on credit", value:fmtN(pt.cost) },
+      { label:"Profit on goods",              value:fmtN(pt.goods) },
+      { label:"Interest",                     value:fmtN(pt.interest) },
+      ...(pt.uncosted > 0 ? [{ label:"Credit with no item cost", value:fmtN(pt.uncosted) }] : []),
+      { sep:true },
+      { label:"Total profit on credit",       value:fmtN(pt.profit), bold:true, highlight:true },
+    ]);
+    addTable([{ key:"n", label:"Notes", w:1 }], [
+      { n:"Profit is earned as customers repay. Goods profit uses each item's cost price saved when the credit was given." },
+      ...(pt.uncosted > 0 ? [{ n:"* Part of this credit has no item cost (no items recorded, or credit added later), so its goods profit isn't counted." }] : []),
+    ], { rowHeight: 6.5 });
   } else if (type === "aso") {
-    const { active=[], totalBal, totContribs=0, totManual=0, totWithdrawals=0, totFeeRevenue=0, totRegFees=0, totWdFees=0, bars=[] } = data;
+    const { active=[], totalBal, totContribs=0, totManual=0, totWithdrawals=0, totRegFees=0, totWdFees=0, totCommission=0, totProfit=0, bars=[] } = data;
     addStats([
       { label:"Savings Held",       value:fmtN(totalBal),              color:"#2E8020", bg:"#f0fdf4" },
       { label:"Period Collections", value:fmtN(totContribs+totManual), color:"#16a34a", bg:"#f0fdf4" },
       { label:"Period Withdrawals", value:fmtN(totWithdrawals),        color:"#ef4444", bg:"#fef2f2" },
-      { label:"Fee Revenue",        value:fmtN(totFeeRevenue),         color:"#d97706", bg:"#fffbeb" },
+      { label:"Ajo Profit",         value:fmtN(totProfit),             color:"#d97706", bg:"#fffbeb" },
     ]);
     if (bars.length > 0) {
       addSectionTitle("Collections by Client");
@@ -981,55 +1121,70 @@ async function buildNativeReportPDF(type, data, profile, from, to) {
        { key:"contribs",label:"Contributions",right:true, color:()=>[22,163,74], w:0.14 },
        { key:"manual",  label:"Manual Dep.",  right:true, w:0.12 },
        { key:"withdr",  label:"Withdrawals",  right:true, color:()=>[220,38,38], w:0.13 },
-       { key:"fees",    label:"Fees",         right:true, color:r=>Number(r._fees)>0?[217,119,6]:null, w:0.11 },
+       { key:"fees",    label:"Profit",       right:true, bold:true, color:r=>Number(r._fees)>0?[22,163,74]:null, w:0.11 },
        { key:"net",     label:"Net",          right:true, bold:true, color:r=>Number(r._net)>=0?[46,128,32]:[220,38,38], w:0.13 },
        { key:"balance", label:"Balance",      right:true, w:0.15 }],
       active.map(c=>({
         name:c.full_name||"—",
         contribs:fmtN(c.p_contribs), manual:fmtN(c.p_manual),
-        withdr:fmtN(c.p_withdrawals), fees:fmtN(c.p_fees),
+        withdr:fmtN(c.p_withdrawals), fees:fmtN(c.p_profit),
         net:fmtN(c.p_net), balance:fmtN(c.current_balance||0),
-        _fees:c.p_fees, _net:c.p_net,
+        _fees:c.p_profit, _net:c.p_net,
       }))
     );
-    if (totFeeRevenue > 0) {
-      addSectionTitle("Fee Revenue Summary");
-      addTable(
-        [{ key:"label",  label:"Fee Type", bold:true, w:0.55 },
-         { key:"amount", label:"Amount", right:true, bold:true, color:()=>[217,119,6], w:0.45 }],
-        [
-          { label:"Registration Fees", amount:fmtN(totRegFees) },
-          { label:"Withdrawal Fees",   amount:fmtN(totWdFees) },
-          { label:"Total Fee Revenue", amount:fmtN(totFeeRevenue) },
-        ]
-      );
-    }
+    addTotalsBlock([
+      { label:"Registration fees", value:fmtN(totRegFees) },
+      { label:"Withdrawal fees",   value:fmtN(totWdFees) },
+      { label:"Commission",        value:fmtN(totCommission) },
+      { sep:true },
+      { label:"Total Ajo profit",  value:fmtN(totProfit), bold:true, highlight:true },
+    ]);
+    addTable([{ key:"n", label:"Notes", w:1 }], [
+      { n:"Ajo profit = fees + commission earned from clients in this period. Savings held is the clients' money, held in trust — not profit." },
+    ], { rowHeight: 6.5 });
   } else if (type === "bills") {
-    const { bills, total: billTotal, byCat } = data;
+    const { bills, paid, total: billTotal, byCat, profitTotals: pt, failedCount, failedTotal } = data;
     addStats([
-      { label:"Total Bills", value:fmtN(billTotal), color:"#ea580c", bg:"#fff7ed" },
-      { label:"Bill Count",  value:bills.length,    color:"#0284c7", bg:"#eff6ff" },
+      { label:"Total Bills Paid", value:fmtN(billTotal),   color:"#ea580c", bg:"#fff7ed" },
+      { label:"Bill Profit",      value:fmtN(pt.profit),   color:"#16a34a", bg:"#f0fdf4" },
+      { label:"PIN Discount",     value:fmtN(pt.discount), color:"#0284c7", bg:"#eff6ff" },
+      { label:"Cashback Earned",  value:fmtN(pt.cashback), color:"#d97706", bg:"#fffbeb" },
     ]);
     addSectionTitle("By Category");
     addTable(
-      [{ key:"cat",   label:"Category", bold:true, w:0.50 },
-       { key:"count", label:"Count",    right:true, w:0.20 },
-       { key:"total", label:"Total",    right:true, bold:true, w:0.30 }],
+      [{ key:"cat",    label:"Category", bold:true, w:0.40 },
+       { key:"count",  label:"Count",    right:true, w:0.14 },
+       { key:"total",  label:"Total",    right:true, bold:true, w:0.24 },
+       { key:"profit", label:"Profit",   right:true, bold:true, color:r=>r._p>0?[22,163,74]:[150,150,150], w:0.22 }],
       Object.entries(byCat).sort((a,b)=>b[1].total-a[1].total).map(([cat,v])=>({
-        cat, count:v.count, total:fmtN(v.total)
+        cat, count:v.count, total:fmtN(v.total), profit:fmtN(v.profit), _p:v.profit
       }))
     );
-    addSectionTitle("Bill Transactions");
+    addSectionTitle(`Bill Transactions — ${paid.length} paid${failedCount ? `, ${failedCount} failed` : ""}`);
     addTable(
-      [{ key:"date",   label:"Date",     w:0.18 },
-       { key:"item",   label:"Item",     bold:true, w:0.36 },
-       { key:"cat",    label:"Category", w:0.22 },
-       { key:"amount", label:"Amount",   right:true, bold:true, color:()=>[234,88,12], w:0.24 }],
-      bills.map(t=>({
-        date:fmtD(t.transaction_date), item:t.item_name||"—",
-        cat:t.category||"Bills", amount:fmtN(t.amount)
+      [{ key:"date",   label:"Date",       w:0.12 },
+       { key:"item",   label:"Item",       bold:true, w:0.30 },
+       { key:"cat",    label:"Category",   w:0.14 },
+       { key:"amount", label:"Amount",     right:true, bold:true, color:r=>r._f?[150,150,150]:[234,88,12], w:0.14 },
+       { key:"face",   label:"Face value", right:true, w:0.14 },
+       { key:"profit", label:"Profit",     right:true, bold:true, color:r=>r._f?[150,150,150]:r._p>0?[22,163,74]:[150,150,150], w:0.16 }],
+      bills.map(b=>({
+        date:fmtD(b.t.transaction_date), item:b.t.item_name||"—", cat:b.t.category||"Bills",
+        amount:b.failed ? "Refunded" : fmtN(b.t.amount), face:b.face!=null ? fmtN(b.face) : "—",
+        profit:b.failed ? "Failed" : fmtN(b.profit), _p:b.profit, _f:b.failed,
       }))
     );
+    addTotalsBlock([
+      { label:`Total bills paid (${paid.length})`, value:fmtN(billTotal), bold:true },
+      { label:"Discount on printed PINs",          value:fmtN(pt.discount) },
+      { label:"Cashback earned (1%)",              value:fmtN(pt.cashback) },
+      { sep:true },
+      { label:"Total profit on bills",             value:fmtN(pt.profit), bold:true, highlight:true },
+    ]);
+    addTable([{ key:"n", label:"Notes", w:1 }], [
+      { n:"Bill profit = the discount on printed airtime PINs and bundles (resold at face value) + 1% cashback on airtime and data. Other bills are costs." },
+      ...(failedCount ? [{ n:`${failedCount} failed bill${failedCount===1?"":"s"} (${fmtN(failedTotal)}) were refunded and are not counted.` }] : []),
+    ], { rowHeight: 6.5 });
   } else if (type === "staff") {
     const { rows, bars } = data;
     addStats([{ label:"Staff Members", value:rows.length, color:"#1d4ed8", bg:"#eff6ff" }]);
@@ -1049,26 +1204,42 @@ async function buildNativeReportPDF(type, data, profile, from, to) {
       }))
     );
   } else if (type === "stock") {
-    const { rows, totalRevenue, bars } = data;
+    const { rows, totalRevenue, totals: tt, bars } = data;
     addStats([
-      { label:"Total Revenue", value:fmtN(totalRevenue), color:"#0e7490", bg:"#ecfeff" },
-      { label:"Unique Items",  value:rows.length,         color:"#0284c7", bg:"#eff6ff" },
+      { label:"Revenue",        value:fmtN(totalRevenue),  color:"#0284c7", bg:"#eff6ff" },
+      { label:"Cost of Goods",  value:fmtN(tt.cogs),       color:"#64748b", bg:"#f8fafc" },
+      { label:"Stock Profit",   value:fmtN(tt.profit),     color:tt.profit>=0?"#16a34a":"#ef4444", bg:"#f0fdf4" },
+      { label:"Spent on Stock", value:fmtN(tt.stockSpend), color:"#ef4444", bg:"#fef2f2" },
     ]);
     addSectionTitle("Revenue by Item");
     addBarChart(bars);
-    addSectionTitle("Item Details");
+    addSectionTitle(`Item Profit — ${rows.length} item${rows.length===1?"":"s"}`);
     addTable(
-      [{ key:"item",      label:"Item",     bold:true, w:0.28 },
-       { key:"cat",       label:"Category", w:0.18 },
-       { key:"qtySold",   label:"Qty Sold", right:true, w:0.13 },
-       { key:"revenue",   label:"Revenue",  right:true, bold:true, color:()=>[22,163,74], w:0.17 },
-       { key:"qtyBought", label:"Bought",   right:true, w:0.13 },
-       { key:"cost",      label:"Cost",     right:true, color:()=>[220,38,38], w:0.11 }],
+      [{ key:"item",      label:"Item",      bold:true, w:0.25 },
+       { key:"qtySold",   label:"Sold",      right:true, w:0.07 },
+       { key:"revenue",   label:"Revenue",   right:true, bold:true, w:0.13 },
+       { key:"cogs",      label:"Cost",      right:true, color:()=>[100,99,94], w:0.12 },
+       { key:"profit",    label:"Profit",    right:true, bold:true, color:r=>r._p==null?[150,150,150]:r._p>=0?[22,163,74]:[220,38,38], w:0.13 },
+       { key:"margin",    label:"Margin",    right:true, w:0.08 },
+       { key:"qtyBought", label:"Bought",    right:true, w:0.08 },
+       { key:"cost",      label:"Restock",   right:true, color:r=>r._c>0?[220,38,38]:[150,150,150], w:0.14 }],
       rows.map(r=>({
-        item:r.item, cat:r.category, qtySold:r.qtySold, revenue:fmtN(r.revenue),
-        qtyBought:r.qtyBought, cost:fmtN(r.cost)
+        item:r.item, qtySold:r.qtySold, revenue:fmtN(r.revenue), cogs:r.profit==null?"—":fmtN(r.cogs),
+        profit:r.profit==null?(r.revenue>0?"No cost":"—"):fmtN(r.profit)+(r.partial?" *":""), _p:r.profit,
+        margin:r.margin==null?"—":`${Math.round(r.margin*100)}%`, qtyBought:r.qtyBought||"—", cost:r.cost>0?fmtN(r.cost):"—", _c:r.cost
       }))
     );
+    addTotalsBlock([
+      { label:`Revenue (${tt.qtySold} sold)`, value:fmtN(totalRevenue), bold:true },
+      { label:"Cost of goods sold",              value:fmtN(tt.cogs) },
+      ...(tt.uncosted > 0 ? [{ label:"Sales with no cost price", value:fmtN(tt.uncosted) }] : []),
+      { sep:true },
+      { label:"Total profit on stock",           value:fmtN(tt.profit), bold:true, highlight:true },
+    ]);
+    addTable([{ key:"n", label:"Notes", w:1 }], [
+      { n:"Profit = revenue − the cost price saved when each item was sold. Restock = what was spent buying the item in this period." },
+      ...(tt.uncosted > 0 ? [{ n:"* Part of this item's sales have no cost price, so their profit isn't counted. Add cost prices in Stock." }] : []),
+    ], { rowHeight: 6.5 });
   }
 
   await pdf.save(`KudiAITrack_${PNAMES[type] || "Report"}_Report_${from}_${to}.pdf`);
@@ -1094,7 +1265,7 @@ export default function Reports({ store, onClose }) {
   // (profitEngine.saleCost: the sale's saved cost always wins).
   const [products,         setProducts]         = useState([]);
   useEffect(() => {
-    if (reportType !== "sales" || !profile?.id) return;
+    if ((reportType !== "sales" && reportType !== "stock") || !profile?.id) return;
     let cancelled = false;
     supabase.from("products").select("id, product_name, cost_price, needs_costing").eq("user_id", profile.id)
       .then(({ data }) => { if (!cancelled) setProducts(data || []); }, () => {});
@@ -1108,7 +1279,7 @@ export default function Reports({ store, onClose }) {
     setAsoLoading(true);
     supabase
       .from("ajo_contributions")
-      .select("id, aso_client_id, type, amount, payment_method, created_at")
+      .select("id, aso_client_id, type, amount, status, payment_method, created_at")
       .in("aso_client_id", clientIds)
       .then(({ data }) => { setAjoContributions(data || []); setAsoLoading(false); })
       .catch(() => setAsoLoading(false));
@@ -1128,7 +1299,7 @@ export default function Reports({ store, onClose }) {
       case "aso":    return buildAsoLedger(asoClients, ajoContributions, from, to);
       case "bills":  return buildBillsData(transactions, from, to);
       case "staff":  return buildStaffData(transactions, credits, asoClients, staffMap);
-      case "stock":  return buildStockData(transactions, from, to);
+      case "stock":  return buildStockData(transactions, from, to, products);
       default:       return {};
     }
   })();

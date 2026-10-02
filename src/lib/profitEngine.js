@@ -111,19 +111,18 @@ export function productMaps(products = []) {
 }
 
 /**
- * Cost of goods for ONE revenue transaction. The cost price snapshotted at sale time (line_items[].costPrice /
- * enteredCostPrice, or transactions.cost_price) always wins; the product's CURRENT cost is only a fallback for rows that
- * predate the snapshot — editing a product later must never change a past sale's profit.
- *   measured   — the part of the sale whose cost is known (gross profit = measured − cogs)
- *   unmeasured — the part with no cost price (revenue known, margin unknown)
- *   costed / hasUnmeasured — whether compute() lists this transaction among the costed / uncosted ones
- *   service    — an Ajo fee (R2): zero cost by definition
+ * The goods in ONE revenue transaction, line by line: [{ name, productId, qty, revenue, cost, service }]. `cost` is the
+ * cost of that line (unit cost × qty), or null when there is no cost price for it. The cost price snapshotted at sale time
+ * (line_items[].costPrice / enteredCostPrice, or transactions.cost_price) always wins; the product's CURRENT cost is only
+ * a fallback for rows that predate the snapshot — editing a product later must never change a past sale's profit.
+ * Used by saleCost() (per sale) and the stock report (per item).
  */
-export function saleCost(t, { productByName, productById }) {
-  if (SERVICE_CATS.has(t.category)) return { measured: t.amount, unmeasured: 0, cogs: 0, costed: false, hasUnmeasured: false, service: true };
+export function saleLines(t, { productByName, productById }) {
+  if (SERVICE_CATS.has(t.category)) {
+    return [{ name: t.item_name || t.category, productId: null, qty: 1, revenue: t.amount, cost: 0, service: true }];
+  }
   if (t.line_items && t.line_items.length > 0) {
-    let measured = 0, unmeasured = 0, cogs = 0;
-    for (const li of t.line_items) {
+    return t.line_items.map((li) => {
       const liName = (li.name || "").toLowerCase().trim();
       const prod = li.productId
         ? (productById.get(li.productId) || (liName ? productByName.get(liName) : null))
@@ -134,19 +133,41 @@ export function saleCost(t, { productByName, productById }) {
       const unitCost = snapshotCost != null && snapshotCost > 0
         ? snapshotCost
         : (prod && !prod.needs_costing ? (prod.cost_price || 0) : 0);
-      if (unitCost > 0) { measured += li.lineTotal; cogs += unitCost * (li.qty || 1); }
-      else unmeasured += li.lineTotal;
-    }
-    return { measured, unmeasured, cogs, costed: measured > 0, hasUnmeasured: unmeasured > 0, service: false };
+      const qty = li.qty || 1;
+      return { name: li.name || "", productId: li.productId || null, qty, revenue: li.lineTotal, cost: unitCost > 0 ? unitCost * qty : null, service: false };
+    });
   }
-  const name = (t.item_name || "").toLowerCase().trim();
-  if (!name) return { measured: 0, unmeasured: t.amount, cogs: 0, costed: false, hasUnmeasured: true, service: false };
-  const prod = productByName.get(name);
+  const display = (t.item_name || "").trim();
+  const qty = t.quantity || 1;
+  if (!display) return [{ name: "", productId: null, qty, revenue: t.amount, cost: null, service: false }];
+  const prod = productByName.get(display.toLowerCase());
   // Same rule: a transaction-level cost_price snapshot (single-item POS sales) wins over the product's current cost.
   const snapshotCost = t.cost_price != null && t.cost_price > 0 ? t.cost_price : null;
   const unitCost = snapshotCost != null ? snapshotCost : (prod && !prod.needs_costing ? (prod.cost_price || 0) : 0);
-  if (unitCost > 0) return { measured: t.amount, unmeasured: 0, cogs: unitCost * (t.quantity || 1), costed: true, hasUnmeasured: false, service: false };
-  return { measured: 0, unmeasured: t.amount, cogs: 0, costed: false, hasUnmeasured: true, service: false };
+  return [{ name: display, productId: prod?.id || null, qty, revenue: t.amount, cost: unitCost > 0 ? unitCost * qty : null, service: false }];
+}
+
+/**
+ * Cost of goods for ONE revenue transaction (its saleLines added up).
+ *   measured   — the part of the sale whose cost is known (gross profit = measured − cogs)
+ *   unmeasured — the part with no cost price (revenue known, margin unknown)
+ *   costed / hasUnmeasured — whether compute() lists this transaction among the costed / uncosted ones
+ *   service    — an Ajo fee (R2): zero cost by definition
+ */
+export function saleCost(t, maps) {
+  const lines = saleLines(t, maps);
+  if (lines[0]?.service) return { measured: t.amount, unmeasured: 0, cogs: 0, costed: false, hasUnmeasured: false, service: true };
+  let measured = 0, unmeasured = 0, cogs = 0;
+  for (const l of lines) {
+    if (l.cost != null) { measured += l.revenue; cogs += l.cost; }
+    else unmeasured += l.revenue;
+  }
+  const cart = !!(t.line_items && t.line_items.length > 0);
+  return {
+    measured, unmeasured, cogs, service: false,
+    costed: cart ? measured > 0 : lines[0].cost != null,
+    hasUnmeasured: cart ? unmeasured > 0 : lines[0].cost == null,
+  };
 }
 
 // ── Main compute ──────────────────────────────────────────────────────────────
