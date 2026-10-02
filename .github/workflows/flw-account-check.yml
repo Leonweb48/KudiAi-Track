@@ -1,0 +1,36 @@
+name: Flutterwave account check
+
+# Read-only: can each Flutterwave account log in and list banks, does the payout relay egress from the whitelisted IP,
+# and does the ACTIVE account's NGN balance cover what the wallets owe and today's transfers?
+# CI logs are public: prints yes/no facts only — never a balance, amount, key or hash. Changes nothing.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check
+        env:
+          URL: ${{ secrets.REACT_APP_SUPABASE_URL }}
+          KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -uo pipefail
+          R=$(curl -s -m 90 "$URL/functions/v1/flutterwave" -H "Authorization: Bearer $KEY" -H "apikey: $KEY" \
+                -H "Content-Type: application/json" -d '{"action":"check-accounts"}')
+          echo "$R" | jq -c '{
+            error, active, warnings,
+            relay_ip_ok: (.relay_egress_ip == "209.71.82.233"),
+            accounts: ((.accounts // {}) | with_entries(.value = {
+              configured: .value.configured, mode: .value.mode, auth: .value.auth, banks: .value.banks,
+              balance_read: ((.value.ngn_available | type) == "number"),
+              balance_zero: (if (.value.ngn_available | type) == "number" then .value.ngn_available <= 0 else null end),
+              balance_over_10k: (if (.value.ngn_available | type) == "number" then .value.ngn_available >= 10000 else null end)
+            })),
+            active_covers_wallets: (if ((.accounts[.active].ngn_available | type) == "number") and (.wallet_liability_ngn != null)
+              then .accounts[.active].ngn_available >= .wallet_liability_ngn else null end)
+          }' 2>/dev/null || echo "non-JSON answer (length ${#R})"
