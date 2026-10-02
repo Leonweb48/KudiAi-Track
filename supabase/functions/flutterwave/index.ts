@@ -372,10 +372,31 @@ async function flwDisburse(o: {
     ok: r.ok,
     error: (d?.error?.message || "Transfer failed") + (vErrs ? ` (${vErrs})` : ""),
     detail: d,
+    http: r.status,
+    flw_type: String(d?.error?.type || ""),
+    flw_code: String(d?.error?.code ?? ""),
     transfer_id: t?.id || "",
     status: t?.status || "NEW",
     fee_kobo: Math.round(Number(t?.fee?.value ?? t?.fee_charged ?? 0) * 100),
   };
+}
+
+// A transfer Flutterwave refused: tell finance admins Flutterwave's own words (type / code / message / HTTP status) — the
+// customer only sees a plain "could not be completed". Added 2026-10-02 after three refusals ("Unable to process") could
+// not be explained because the code and type were only in the function logs. No account number or name. Never throws.
+async function alertTransferRefused(
+  sb: any,
+  o: { withdrawalId: string; amount_kobo: number; bank_code: string; d: { error: string; http?: number; flw_type?: string; flw_code?: string } },
+) {
+  try {
+    await sb.from("admin_notifications").insert({
+      type: "error", category: "finance", target_roles: ["finance_admin", "super_admin"],
+      title: "Transfer refused by Flutterwave",
+      message: `Flutterwave refused a ₦${(o.amount_kobo / 100).toLocaleString("en-NG")} transfer to bank ${o.bank_code}: "${o.d.error}"` +
+        ` (type ${o.d.flw_type || "?"}, code ${o.d.flw_code || "?"}, HTTP ${o.d.http ?? "?"}). The wallet was refunded. Withdrawal ${o.withdrawalId}.`,
+      metadata: { withdrawal_id: o.withdrawalId, bank_code: o.bank_code, http: o.d.http ?? null, flw_type: o.d.flw_type || null, flw_code: o.d.flw_code || null, flw_message: o.d.error },
+    });
+  } catch { /* non-fatal */ }
 }
 
 serve(async (req) => {
@@ -677,6 +698,7 @@ serve(async (req) => {
 
       if (!d.ok) {
         await sb.rpc("wallet_transfer_failed", { p_withdrawal_id: wdId, p_reason: `Transfer declined: ${d.error}` });
+        await alertTransferRefused(sb, { withdrawalId: String(wdId), amount_kobo: row.amount_kobo, bank_code: row.bank_code, d });
         await sb.rpc("wallet_record_scheduled_run", { p_id: row.id, p_success: false, p_error: d.error });
         return json({ ok: true, held: true, disbursed: false, reason: d.error });
       }
@@ -1351,6 +1373,7 @@ serve(async (req) => {
       });
       if (!d.ok) {
         await sb.rpc("wallet_transfer_failed", { p_withdrawal_id: wdId, p_reason: `Transfer declined: ${d.error}` });
+        await alertTransferRefused(sb, { withdrawalId: String(wdId), amount_kobo: Math.round(amount_kobo), bank_code, d });
         return json({ error: `Transfer could not be completed (${d.error}). Your wallet was not charged.`, detail: d.detail }, 502);
       }
       await sb.rpc("wallet_transfer_sent", { p_withdrawal_id: wdId, p_flw_transfer_id: d.transfer_id, p_fee_kobo: d.fee_kobo });

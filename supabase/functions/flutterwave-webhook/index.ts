@@ -439,6 +439,23 @@ serve(async (req) => {
       const { error } = await sb.rpc("wallet_mark_withdrawal", { p_flw_transfer_id: transferId, p_status: st, p_reference: ref });
       if (error) console.error("[flw-webhook] wallet_mark_withdrawal:", error.message);
 
+      // A transfer Flutterwave accepted but the bank side failed / reversed: tell finance admins Flutterwave's own reason
+      // (provider_response code / type / message) — 2026-10-02, a failure with code 0309 was invisible outside the raw
+      // webhook payload. No account number or name.
+      if (st !== "successful") {
+        try {
+          const pr = (data.provider_response ?? {}) as Record<string, unknown>;
+          const why = String(pr.message || data.complete_message || "no reason given").slice(0, 200);
+          await sb.from("admin_notifications").insert({
+            type: "warning", category: "finance", target_roles: ["finance_admin", "super_admin"],
+            title: st === "reversed" ? "Transfer reversed by the bank" : "Transfer failed at the bank",
+            message: `A wallet transfer to bank ${String((data.bank as Record<string, unknown> | undefined)?.code ?? "?")} ${st}: "${why}"` +
+              ` (code ${String(pr.code ?? "?")}, type ${String(pr.type ?? "?")}). The wallet was refunded. Withdrawal ${ref || "?"}.`,
+            metadata: { withdrawal_id: ref || null, flw_transfer_id: transferId || null, status: st, provider_code: pr.code ?? null, provider_type: pr.type ?? null, provider_message: why },
+          });
+        } catch { /* non-fatal */ }
+      }
+
       // stamp the bank name + NIP session id onto the row for the receipt.
       // Flutterwave puts the session id in a few different places depending on
       // the rail — take the first that looks right.
