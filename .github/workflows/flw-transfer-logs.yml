@@ -42,3 +42,8 @@ jobs:
             echo "$T  http=$HTTP code=$CODE $TYPE $ST msg=$MSG"
           done
           echo "rows: $(echo "$R" | jq '.result | length' 2>/dev/null)"
+          # counts only — tells a wrong query apart from no access / no logs
+          for Q in "select count(*) as n from function_logs"                    "select count(*) as n from function_logs where event_message like '%FLW%'"                    "select count(*) as n from function_edge_logs" ; do
+            C=$(curl -s -m 60 -G "https://api.supabase.com/v1/projects/$REF/analytics/endpoints/logs.all" -H "Authorization: Bearer $TOKEN"                   --data-urlencode "sql=$Q" --data-urlencode "iso_timestamp_start=$START" --data-urlencode "iso_timestamp_end=$END")
+            echo "count [$Q]: $(echo "$C" | jq -c '.result // .error // .' | head -c 300)"
+          done
