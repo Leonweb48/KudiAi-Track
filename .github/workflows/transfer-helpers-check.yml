@@ -1,0 +1,42 @@
+name: Transfer helpers check
+
+# Read-only smoke test of the transfer screen's server helpers, as a real signed-in user (the Play demo reviewer):
+#   bank-network  — per-bank network strength (bank codes + good/fair/poor/unknown — no personal data)
+#   suggest-banks — "which bank is this account at?" for the given number: prints how many banks were tried, how many
+#                   matched and their bank CODES only — never an account holder's name (CI logs are public).
+# Each suggest-banks call makes up to 7 name enquiries (free) and counts toward the demo user's 40/hour limit.
+
+on:
+  workflow_dispatch:
+    inputs:
+      account:
+        description: "10-digit account number to look up (default: the CBN's NUBAN example)"
+        default: "0000014579"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check
+        env:
+          URL: ${{ secrets.REACT_APP_SUPABASE_URL }}
+          ANON: ${{ secrets.REACT_APP_SUPABASE_ANON_KEY }}
+          PASS: ${{ secrets.DEMO_REVIEWER_PASSWORD }}
+          ACCT: ${{ inputs.account }}
+        run: |
+          set -uo pipefail
+          TOKEN=$(curl -s -m 30 "$URL/auth/v1/token?grant_type=password" -H "apikey: $ANON" -H "Content-Type: application/json" \
+                    -d "$(jq -nc --arg p "$PASS" '{email:"demo.reviewer@kudiai.app", password:$p}')" | jq -r '.access_token // empty')
+          [ -n "$TOKEN" ] || { echo "could not sign in as the demo reviewer (account disabled?)"; exit 1; }
+          echo "::add-mask::$TOKEN"
+          call() { curl -s -m 60 -w '\n%{http_code} %{time_total}s' "$URL/functions/v1/flutterwave" -H "Authorization: Bearer $TOKEN" -H "apikey: $ANON" \
+                     -H "Content-Type: application/json" -d "$1"; }
+          echo "── bank-network ──"
+          call '{"action":"bank-network"}' | { read -r body; read -r meta; echo "$meta"; echo "$body" | jq -c '{overall, banks: (.banks // {} | with_entries(.value = .value.status)), error}'; }
+          for i in 1 2; do
+            echo "── suggest-banks (call $i) ──"
+            call "$(jq -nc --arg a "$ACCT" '{action:"suggest-banks", account_number:$a}')" | { read -r body; read -r meta; echo "$meta"; echo "$body" | jq -c '{checked, matches: (.matches // [] | length), banks: [(.matches // [])[] | .code], cached, error, code}'; }
+          done
