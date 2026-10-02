@@ -43,7 +43,7 @@ A reply without the expected data is not a failure. That covers no PINs, no toke
   and similar) or its own "network error" / "service unavailable" words: hold the order. In a *purchase* reply, the
   same words are a refusal (nothing was bought), and the customer is refunded.
   - Code: `ckLookupUnusable`. `ckOrderDead` is for lookups, `ckSaysFailed` for purchase replies.
-  - **Why:** on the evening of 1 Oct the key stopped working while the sweep, `electricity-query`, `verify` and the
+  - **Why:** on the evening of 1 Oct ClubKonnect rejected our key for hours while the sweep, `electricity-query`, `verify` and the
     print-PIN settle all read `INVALID_CREDENTIALS` as "order failed". Any order they looked up would have been
     refunded, even a delivered one.
 
@@ -117,8 +117,12 @@ every bill fails with `INVALID_CREDENTIALS`. To recover:
 4. Run **ClubKonnect route check**: every service must say `valid`.
 
 While the key is rejected, purchases are refused and refunded, and orders already placed stay held (rule 1). Nothing is
-lost, but no bill sells until the new key is in. It has been reset three times (28 Sept, and twice on 1 Oct), so
-check who uses the clubkonnect.com login.
+lost, but no bill sells until it is accepted again.
+
+**Not every `INVALID_CREDENTIALS` is a reset.** On the evening of 1 Oct, ClubKonnect rejected our key for every
+service for several hours, then accepted the **same** key again the next morning with nothing changed on our side.
+Before generating a new key, run the route check again a little later. The key was genuinely reset on 28 Sept and on
+the morning of 1 Oct.
 
 ### 10. Phone network detection
 
