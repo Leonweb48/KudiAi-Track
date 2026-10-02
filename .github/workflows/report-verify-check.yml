@@ -1,0 +1,47 @@
+name: Report verification check
+
+# Live end-to-end check of owner-report verification (2026-10-02) using the FICTIONAL Play demo account:
+#   1. signed in as the demo reviewer, save a report reference the way the app does (report_verifications insert)
+#   2. as the public (anon key, no login), look it up the way kudiai.app/verify does (verify_receipt)
+# Leaves one row for the demo business. Prints only the demo business's fictional data.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check
+        env:
+          URL: ${{ secrets.REACT_APP_SUPABASE_URL }}
+          ANON: ${{ secrets.REACT_APP_SUPABASE_ANON_KEY }}
+          PASS: ${{ secrets.DEMO_REVIEWER_PASSWORD }}
+        run: |
+          set +e
+          TOKEN=$(curl -s -m 30 "$URL/auth/v1/token?grant_type=password" -H "apikey: $ANON" -H "Content-Type: application/json" \
+                    -d "$(jq -nc --arg p "$PASS" '{email:"demo.reviewer@kudiai.app", password:$p}')" | jq -r '.access_token // empty')
+          [ -n "$TOKEN" ] || { echo "could not sign in as the demo reviewer (account disabled?)"; exit 1; }
+          echo "::add-mask::$TOKEN"
+          echo "── 1. save a report reference (signed in) ──"
+          curl -s -m 30 -o ins.json -w "HTTP %{http_code}\n" "$URL/rest/v1/report_verifications?select=ref" \
+            -H "Authorization: Bearer $TOKEN" -H "apikey: $ANON" -H "Content-Type: application/json" \
+            -H "Prefer: return=representation" -H "Accept: application/vnd.pgrst.object+json" \
+            -d '{"report_type":"sales","period_from":"2026-10-01","period_to":"2026-10-02","business_name":"Adaeze Fresh Mart (Demo)","summary":[{"label":"Total sales","value":"₦1.00"}]}'
+          REF=$(jq -r '.ref // empty' ins.json); echo "ref: ${REF:-$(cat ins.json | head -c 200)}"
+          echo "── 2. the app cannot choose its own reference ──"
+          curl -s -m 30 -o /dev/null -w "HTTP %{http_code} (expect 401/403)\n" "$URL/rest/v1/report_verifications" \
+            -H "Authorization: Bearer $TOKEN" -H "apikey: $ANON" -H "Content-Type: application/json" \
+            -d '{"ref":"KDR-202610-AAAAAAAA","report_type":"sales"}'
+          echo "── 3. public lookup (no login), like kudiai.app/verify ──"
+          [ -n "$REF" ] && curl -s -m 30 "$URL/rest/v1/rpc/verify_receipt" -H "apikey: $ANON" -H "Authorization: Bearer $ANON" \
+            -H "Content-Type: application/json" -d "$(jq -nc --arg r "$REF" '{p_ref:$r}')" | jq -c '{found, is_report, kind, business, period_from, period_to, summary}'
+          echo "── 4. the public cannot read the table directly ──"
+          curl -s -m 30 "$URL/rest/v1/report_verifications?select=ref&limit=1" -H "apikey: $ANON" -H "Authorization: Bearer $ANON" | head -c 200; echo
+          echo "── 5. receipts still verify (format check on a made-up ref) ──"
+          curl -s -m 30 "$URL/rest/v1/rpc/verify_receipt" -H "apikey: $ANON" -H "Authorization: Bearer $ANON" \
+            -H "Content-Type: application/json" -d '{"p_ref":"KDT-202610-ZZZZZZZZ"}'; echo
+          rm -f ins.json
