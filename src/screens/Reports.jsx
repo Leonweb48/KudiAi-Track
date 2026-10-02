@@ -1,7 +1,8 @@
 import { useState, useMemo, useEffect } from "react";
 import { fmt, isBillPayment } from "../utils/helpers";
 import { useT }       from "../contexts/LanguageContext";
-import { createReportPdf } from "../utils/generateReportPdf";
+import { createReportPdf, fmtCurrency } from "../utils/generateReportPdf";
+import { isRevenueSale, saleCost, productMaps } from "../lib/profitEngine";
 import {
   buildStaffReportCSV, staffReportCSVFilename,
   buildSalesReportCSV, salesReportCSVFilename,
@@ -191,7 +192,43 @@ function ChartLegend({ items }) {
 }
 
 /* ── Report data builders ──────────────────────────────────────────── */
-function buildSalesData(transactions, from, to) {
+// What a sale was for, for the sales table: the item, or the cart's items ("Rice ×2, Oil").
+function saleItemLabel(t) {
+  if (Array.isArray(t.line_items) && t.line_items.length) {
+    return t.line_items.map(li => `${li.name || "Item"}${(li.qty || 1) > 1 ? ` ×${li.qty}` : ""}`).join(", ");
+  }
+  return t.item_name || "—";
+}
+function saleQty(t) {
+  if (Array.isArray(t.line_items) && t.line_items.length) return t.line_items.reduce((n, li) => n + (Number(li.qty) || 1), 0);
+  return Number(t.quantity) || 1;
+}
+
+/**
+ * Profit per sale for the sales report — profitEngine's saleCost(), so these add up to the same gross profit the rest of
+ * the app shows. The cost price saved at the time of the sale always wins; a product's current cost is only used for old
+ * sales recorded before costs were saved. A sale with no cost price has profit = null ("no cost price"), and its amount
+ * is counted in totals.uncosted instead of being guessed.
+ */
+export function buildSalesProfit(tx, products = []) {
+  const maps = productMaps(products);
+  const rows = tx.filter(isRevenueSale).map(t => {
+    const c = saleCost(t, maps);
+    const profit = c.service ? c.measured : (c.costed ? c.measured - c.cogs : null);
+    return {
+      t, amount: t.amount, qty: saleQty(t), item: saleItemLabel(t),
+      cost: c.service ? 0 : (c.costed ? c.cogs : null),
+      profit, partial: c.costed && c.hasUnmeasured, uncosted: c.unmeasured || 0,
+    };
+  });
+  const totals = rows.reduce((a, r) => ({
+    count: a.count + 1, revenue: a.revenue + r.amount, cost: a.cost + (r.cost || 0),
+    profit: a.profit + (r.profit || 0), uncosted: a.uncosted + r.uncosted,
+  }), { count: 0, revenue: 0, cost: 0, profit: 0, uncosted: 0 });
+  return { rows, totals };
+}
+
+function buildSalesData(transactions, from, to, products = []) {
   const tx = transactions.filter(t => inRange(t.transaction_date, from, to));
   const cashIn  = tx.filter(t=>t.type==="in").reduce((s,t)=>s+t.amount,0);
   const cashOut = tx.filter(t=>t.type==="out" && !isBillPayment(t)).reduce((s,t)=>s+t.amount,0);
@@ -236,7 +273,8 @@ function buildSalesData(transactions, from, to) {
     byCat[k][t.type] += t.amount; byCat[k].count++;
   });
 
-  return { tx, cashIn, cashOut, profit: cashIn-cashOut, bars, byCat };
+  const { rows: sales, totals: salesTotals } = buildSalesProfit(tx, products);
+  return { tx, cashIn, cashOut, profit: cashIn-cashOut, bars, byCat, sales, salesTotals };
 }
 
 function buildCreditData(credits) {
@@ -381,11 +419,30 @@ function SalesSection({ data }) {
   return (
     <div>
       <StatGrid stats={[
-        { label:"Cash In",    value:fmt(data.cashIn),  color:"#16a34a", bg:"#f0fdf4", border:"#bbf7d0" },
-        { label:"Cash Out",   value:fmt(data.cashOut), color:"#ef4444", bg:"#fef2f2", border:"#fecaca" },
-        { label:"Net Profit", value:fmt(data.profit),  color: data.profit>=0?"#16a34a":"#ef4444", bg:"#f8fafc", border:"#e2e8f0" },
-        { label:"Transactions", value:data.tx.length,  color:"#0284c7", bg:"#eff6ff", border:"#bfdbfe" },
+        { label:"Total Sales",     value:fmt(data.salesTotals.revenue), color:"#0284c7", bg:"#eff6ff", border:"#bfdbfe" },
+        { label:"Profit on Sales", value:fmt(data.salesTotals.profit),  color: data.salesTotals.profit>=0?"#16a34a":"#ef4444", bg:"#f0fdf4", border:"#bbf7d0" },
+        { label:"Expenses",        value:fmt(data.cashOut),             color:"#ef4444", bg:"#fef2f2", border:"#fecaca" },
+        { label:"Net Cash",        value:fmt(data.profit),              color: data.profit>=0?"#16a34a":"#ef4444", bg:"#f8fafc", border:"#e2e8f0" },
       ]}/>
+      <SectionTitle>Sales &amp; Profit</SectionTitle>
+      <Table
+        cols={[
+          {key:"date",   label:"Date",   w:"14%"},
+          {key:"item",   label:"Item",   bold:true, w:"34%"},
+          {key:"qty",    label:"Qty",    right:true, w:"8%"},
+          {key:"amount", label:"Amount", right:true, bold:true, w:"22%"},
+          {key:"profit", label:"Profit", right:true, bold:true, color:r=>r._p==null?"#94a3b8":r._p>=0?"#16a34a":"#ef4444", w:"22%"},
+        ]}
+        rows={data.sales.slice(0,50).map(r=>({
+          date: fmtD(r.t.transaction_date), item: r.item, qty: r.qty, amount: fmt(r.amount),
+          profit: r.profit==null ? "No cost price" : fmt(r.profit) + (r.partial ? " *" : ""), _p: r.profit,
+        }))}/>
+      {data.sales.length > 50 && <p style={S({fontSize:10,color:"#94a3b8",fontStyle:"italic",marginTop:-8})}>Showing first 50 of {data.sales.length} sales — the PDF lists them all</p>}
+      {data.salesTotals.uncosted > 0 && (
+        <p style={S({fontSize:10.5,color:"#b45309",marginTop:-4,marginBottom:12})}>
+          {fmt(data.salesTotals.uncosted)} of sales have no cost price, so their profit isn't counted{data.sales.some(r=>r.partial) ? " (* = part of the sale has no cost price)" : ""}. Add cost prices in Stock to include them.
+        </p>
+      )}
       <SectionTitle>Income vs Expenses</SectionTitle>
       <ChartLegend items={[{color:"#16a34a",label:"Income"},{color:"#ef4444",label:"Expenses"}]}/>
       <BarChart bars={data.bars}/>
@@ -738,6 +795,72 @@ function makePeriods(t) {
   ];
 }
 
+// The business's own letterhead for owner report PDFs: logo / address / contacts from the invoice settings when set, else
+// the profile (the same source invoices use).
+async function loadLetterhead(profile) {
+  let inv = null;
+  if (profile?.id) {
+    try {
+      const { data } = await supabase.from("invoice_settings")
+        .select("logo_url, contact_email, contact_phone, address").eq("user_id", profile.id).maybeSingle();
+      inv = data;
+    } catch { /* fall back to the profile */ }
+  }
+  const area = [profile?.business_lga || profile?.lga, profile?.business_state || profile?.state].filter(Boolean).join(", ");
+  const street = profile?.business_address || profile?.address || "";
+  return {
+    businessName: profile?.business_name || "My Business",
+    logoUrl: inv?.logo_url || profile?.store_image_url || "",
+    address: inv?.address || [street, area && !street.includes(area) ? area : ""].filter(Boolean).join(", "),
+    phone: inv?.contact_phone || profile?.business_phone || profile?.phone || "",
+    email: inv?.contact_email || profile?.business_email || profile?.email || "",
+    generatedAt: new Date(),
+  };
+}
+
+// The headline figures saved with the report's reference — the verify page shows them so whoever holds the PDF can check
+// the printed figures were not changed. Strings exactly as printed.
+function reportSummary(type, data) {
+  const N = fmtCurrency;
+  switch (type) {
+    case "sales": return [
+      { label: "Total sales", value: N(data.salesTotals.revenue) }, { label: "Profit on sales", value: N(data.salesTotals.profit) },
+      { label: "Expenses", value: N(data.cashOut) }, { label: "Net cash", value: N(data.profit) },
+      { label: "Number of sales", value: String(data.salesTotals.count) },
+    ];
+    case "credit": return [
+      { label: "Total debt", value: N(data.totalDebt) }, { label: "Outstanding", value: N(data.totalOut) },
+      { label: "Recovered", value: N(data.totalPaid) }, { label: "Overdue accounts", value: String(data.overdueCount) },
+    ];
+    case "aso": return [
+      { label: "Savings held", value: N(data.totalBal) }, { label: "Period collections", value: N((data.totContribs || 0) + (data.totManual || 0)) },
+      { label: "Period withdrawals", value: N(data.totWithdrawals || 0) }, { label: "Fee revenue", value: N(data.totFeeRevenue || 0) },
+    ];
+    case "bills": return [{ label: "Total bills", value: N(data.total) }, { label: "Bill count", value: String(data.bills.length) }];
+    case "staff": return [
+      { label: "Staff members", value: String(data.rows.length) },
+      { label: "Sales recorded by staff", value: N(data.rows.reduce((n, r) => n + (r.salesIn || 0), 0)) },
+    ];
+    case "stock": return [{ label: "Total revenue", value: N(data.totalRevenue) }, { label: "Unique items", value: String(data.rows.length) }];
+    default: return [];
+  }
+}
+
+// Saves the report's reference + headline figures (report_verifications) — "" when it can't (offline): the PDF is then
+// still produced, just without the verify block.
+async function registerReport(type, from, to, businessName, summary) {
+  try {
+    const { data, error } = await supabase.from("report_verifications")
+      .insert({ report_type: type, period_from: from || null, period_to: to || null, business_name: businessName, summary })
+      .select("ref").single();
+    if (error) throw error;
+    return data?.ref || "";
+  } catch (e) {
+    console.warn("[reports] report reference not saved:", e?.message || e);
+    return "";
+  }
+}
+
 async function buildNativeReportPDF(type, data, profile, from, to) {
   const TNAMES = {
     sales:"Sales Report", credit:"Credit Report", aso:"Ajo Savings Report",
@@ -747,17 +870,50 @@ async function buildNativeReportPDF(type, data, profile, from, to) {
   const biz = profile?.business_name || "My Business";
   const prd = from === to ? fmtD(from) : `${fmtD(from)} – ${fmtD(to)}`;
 
-  const pdf = await createReportPdf({ title: TNAMES[type] || "Report", businessName: biz, period: prd });
-  const { addStats, addSectionTitle, addTable, addBarChart, fmtN } = pdf;
+  const [letterhead, verifyRef] = await Promise.all([
+    loadLetterhead(profile),
+    registerReport(type, from, to, biz, reportSummary(type, data)),
+  ]);
+  const pdf = await createReportPdf({ title: TNAMES[type] || "Report", businessName: biz, period: prd, letterhead, verifyRef });
+  const { addStats, addSectionTitle, addTable, addTotalsBlock, addBarChart, fmtN } = pdf;
 
   if (type === "sales") {
-    const { cashIn, cashOut, profit, tx, bars, byCat } = data;
+    const { cashOut, profit, tx, bars, byCat, sales, salesTotals } = data;
     addStats([
-      { label:"Cash In",      value:fmtN(cashIn),  color:"#16a34a", bg:"#f0fdf4" },
-      { label:"Cash Out",     value:fmtN(cashOut), color:"#ef4444", bg:"#fef2f2" },
-      { label:"Net Profit",   value:fmtN(profit),  color:profit>=0?"#16a34a":"#ef4444", bg:"#f8fafc" },
-      { label:"Transactions", value:tx.length,     color:"#0284c7", bg:"#eff6ff" },
+      { label:"Total Sales",     value:fmtN(salesTotals.revenue), color:"#0284c7", bg:"#eff6ff" },
+      { label:"Profit on Sales", value:fmtN(salesTotals.profit),  color:salesTotals.profit>=0?"#16a34a":"#ef4444", bg:"#f0fdf4" },
+      { label:"Expenses",        value:fmtN(cashOut),             color:"#ef4444", bg:"#fef2f2" },
+      { label:"Net Cash",        value:fmtN(profit),              color:profit>=0?"#16a34a":"#ef4444", bg:"#f8fafc" },
     ]);
+    addSectionTitle(`Sales & Profit — ${salesTotals.count} sale${salesTotals.count === 1 ? "" : "s"}`);
+    const MAX_SALES = 500;
+    addTable(
+      [{ key:"date",   label:"Date",     w:0.11 },
+       { key:"item",   label:"Item",     bold:true, w:0.29 },
+       { key:"cust",   label:"Customer", w:0.15 },
+       { key:"qty",    label:"Qty",      right:true, w:0.06 },
+       { key:"amount", label:"Amount",   right:true, bold:true, w:0.13 },
+       { key:"cost",   label:"Cost",     right:true, color:()=>[100,99,94], w:0.12 },
+       { key:"profit", label:"Profit",   right:true, bold:true, color:r=>r._p==null?[150,150,150]:r._p>=0?[22,163,74]:[220,38,38], w:0.14 }],
+      sales.slice(0, MAX_SALES).map(r=>({
+        date:fmtD(r.t.transaction_date), item:r.item, cust:r.t.customer_name||"—", qty:r.qty,
+        amount:fmtN(r.amount), cost:r.cost==null ? "—" : fmtN(r.cost),
+        profit:r.profit==null ? "No cost" : fmtN(r.profit) + (r.partial ? " *" : ""), _p:r.profit,
+      }))
+    );
+    addTotalsBlock([
+      { label:`Total sales (${salesTotals.count})`, value:fmtN(salesTotals.revenue), bold:true },
+      { label:"Cost of goods sold",                    value:fmtN(salesTotals.cost) },
+      ...(salesTotals.uncosted > 0 ? [{ label:"Sales with no cost price", value:fmtN(salesTotals.uncosted) }] : []),
+      { sep:true },
+      { label:"Total profit on sales",                 value:fmtN(salesTotals.profit), bold:true, highlight:true },
+    ]);
+    const notes = [
+      sales.length > MAX_SALES ? `Only the first ${MAX_SALES} of ${sales.length} sales are listed; the totals cover all of them.` : "",
+      salesTotals.uncosted > 0 ? "Profit counts only sales with a cost price (* = part of the sale has none). Add cost prices in Stock to include the rest." : "",
+      "Each sale's profit uses the cost price saved when it was sold.",
+    ].filter(Boolean);
+    addTable([{ key:"n", label:"Notes", w:1 }], notes.map(n => ({ n })), { rowHeight: 6.5 });
     addSectionTitle("Income vs Expenses");
     addBarChart(bars);
     addSectionTitle("Category Breakdown");
@@ -934,6 +1090,16 @@ export default function Reports({ store, onClose }) {
   const [exportError,      setExportError]      = useState("");
   const [ajoContributions, setAjoContributions] = useState([]);
   const [asoLoading,       setAsoLoading]       = useState(false);
+  // Products, only for the cost-price FALLBACK of old sales recorded before each sale saved its own cost price
+  // (profitEngine.saleCost: the sale's saved cost always wins).
+  const [products,         setProducts]         = useState([]);
+  useEffect(() => {
+    if (reportType !== "sales" || !profile?.id) return;
+    let cancelled = false;
+    supabase.from("products").select("id, product_name, cost_price, needs_costing").eq("user_id", profile.id)
+      .then(({ data }) => { if (!cancelled) setProducts(data || []); }, () => {});
+    return () => { cancelled = true; };
+  }, [reportType, profile?.id]);
 
   useEffect(() => {
     if (reportType !== "aso") return;
@@ -957,7 +1123,7 @@ export default function Reports({ store, onClose }) {
 
   const reportData = (() => {
     switch(reportType) {
-      case "sales":  return buildSalesData(transactions, from, to);
+      case "sales":  return buildSalesData(transactions, from, to, products);
       case "credit": return buildCreditData(credits);
       case "aso":    return buildAsoLedger(asoClients, ajoContributions, from, to);
       case "bills":  return buildBillsData(transactions, from, to);

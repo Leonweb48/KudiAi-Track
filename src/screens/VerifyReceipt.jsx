@@ -13,8 +13,14 @@ import BarcodeScanner from "../components/BarcodeScanner";
  * (successful / pending / failed / reversed), the amount, when it was recorded and by
  * which business — via the verify_receipt RPC, which deliberately returns no names,
  * balances or contact details.
+ *
+ * Also owners' report PDFs (2026-10-02): a KDR-YYYYMM-XXXXXXXX reference (printed with a QR in the report's footer) shows
+ * the report type, business, period, when it was generated and the headline figures saved with it, so whoever holds the
+ * PDF can check its figures were not changed.
  */
-const REF_RE = /^KDT-[0-9]{6}-[A-Z2-9]{8}$/;
+const REF_RE = /^KD[TR]-[0-9]{6}-[A-Z2-9]{8}$/;
+const isReportRef = (ref) => String(ref || "").startsWith("KDR-");
+const fmtDay = (d) => (d ? new Date(`${String(d).slice(0, 10)}T00:00:00`).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" }) : "");
 const FONT = "system-ui,-apple-system,'Segoe UI',sans-serif";
 
 /**
@@ -122,9 +128,9 @@ export default function VerifyReceipt() {
         </div>
 
         <div style={{ background: "#fff", borderRadius: 16, padding: 22, boxShadow: "0 1px 3px rgba(15,28,69,.08)", border: "1px solid #e2e8f0" }}>
-          <h1 style={{ margin: "0 0 4px", fontSize: 20, color: "#0f1c45" }}>Verify a receipt</h1>
+          <h1 style={{ margin: "0 0 4px", fontSize: 20, color: "#0f1c45" }}>Verify a receipt or report</h1>
           <p style={{ margin: "0 0 16px", fontSize: 13, color: "#64748b", lineHeight: 1.5 }}>
-            Enter the transaction reference printed on the receipt to confirm it was really issued by KudiAI Track.
+            Enter the reference printed on the receipt or report — or scan its QR code — to confirm it was really issued by KudiAI Track.
           </p>
 
           <form onSubmit={(e) => { e.preventDefault(); check(ref); }}>
@@ -146,7 +152,7 @@ export default function VerifyReceipt() {
 
           {state.status === "invalid" && (
             <p role="alert" style={{ margin: "14px 0 0", fontSize: 13, color: "#b45309" }}>
-              That doesn't look like a KudiAI reference. It starts with KDT- and looks like KDT-202609-X7K2M9PQ.
+              That doesn't look like a KudiAI reference. Receipts start with KDT- (like KDT-202609-X7K2M9PQ), reports with KDR-.
             </p>
           )}
           {state.status === "error" && (
@@ -154,13 +160,48 @@ export default function VerifyReceipt() {
           )}
           {state.status === "notfound" && (
             <div role="alert" style={{ marginTop: 16, padding: 14, borderRadius: 12, background: "#fef2f2", border: "1px solid #fecaca" }}>
-              <div style={{ fontWeight: 700, color: "#991b1b", fontSize: 14 }}>No transaction found</div>
+              <div style={{ fontWeight: 700, color: "#991b1b", fontSize: 14 }}>{isReportRef(state.ref) ? "No report found" : "No transaction found"}</div>
               <div style={{ color: "#7f1d1d", fontSize: 13, marginTop: 4, lineHeight: 1.5 }}>
-                There is no transaction with reference <b style={{ fontFamily: "ui-monospace,Menlo,Consolas,monospace" }}>{state.ref}</b>. Check the reference, and be cautious with a receipt that cannot be verified.
+                There is no {isReportRef(state.ref) ? "report" : "transaction"} with reference <b style={{ fontFamily: "ui-monospace,Menlo,Consolas,monospace" }}>{state.ref}</b>. Check the reference, and be cautious with a {isReportRef(state.ref) ? "report" : "receipt"} that cannot be verified.
               </div>
             </div>
           )}
-          {state.status === "found" && (() => {
+          {state.status === "found" && state.result.is_report && (() => {
+            const r = state.result;
+            const period = r.period_from && r.period_to
+              ? (String(r.period_from) === String(r.period_to) ? fmtDay(r.period_from) : `${fmtDay(r.period_from)} – ${fmtDay(r.period_to)}`)
+              : "";
+            const summary = Array.isArray(r.summary) ? r.summary.filter((x) => x && x.label) : [];
+            return (
+            <div style={{ marginTop: 16 }}>
+              <div data-testid="report-banner" style={{ padding: 14, borderRadius: 12, background: RECEIPT_STATUS.successful.bg, border: `1px solid ${RECEIPT_STATUS.successful.border}`, display: "flex", gap: 10, alignItems: "center" }}>
+                <StatusIcon status="successful" color={RECEIPT_STATUS.successful.dot} />
+                <div>
+                  <div style={{ fontWeight: 700, color: RECEIPT_STATUS.successful.ink, fontSize: 14 }}>Report verified</div>
+                  <div style={{ color: RECEIPT_STATUS.successful.ink, fontSize: 12, lineHeight: 1.45 }}>This report was generated on KudiAI Track. Check that the figures below match the report you were given.</div>
+                </div>
+              </div>
+              <div style={{ marginTop: 6 }}>
+                <Row label="Reference" value={<span style={{ fontFamily: "ui-monospace,Menlo,Consolas,monospace" }}>{state.ref}</span>} />
+                <Row label="Report" value={r.kind} />
+                {r.business && <Row label="Business" value={r.business} />}
+                {r.account_business && r.account_business !== r.business && <Row label="KudiAI account" value={r.account_business} />}
+                {period && <Row label="Period" value={period} />}
+                <Row label="Generated" value={formatWAT(r.occurred_at)} />
+              </div>
+              {summary.length > 0 && (
+                <div data-testid="report-figures" style={{ marginTop: 14, padding: "4px 14px", borderRadius: 12, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", padding: "10px 0 2px" }}>Figures on the report</div>
+                  {summary.map((x, i) => <Row key={i} label={x.label} value={x.value} />)}
+                </div>
+              )}
+              <p style={{ margin: "12px 0 0", fontSize: 11.5, color: "#94a3b8", lineHeight: 1.5 }}>
+                If any of these differ from the PDF you have, the document was changed after it was generated.
+              </p>
+            </div>
+            );
+          })()}
+          {state.status === "found" && !state.result.is_report && (() => {
             const look = RECEIPT_STATUS[state.result.status];
             const banner = look || LEGACY_FOUND;
             return (

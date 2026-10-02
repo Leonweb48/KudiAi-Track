@@ -93,6 +93,62 @@ function pool(items) {
   };
 }
 
+// ── Per-sale profit (R1–R4 for ONE transaction) ───────────────────────────────
+// Shared by compute() below and the owner's sales report (profit per sale), so the report's per-sale figures always add
+// up to the same gross profit the rest of the app shows.
+
+/** Is this transaction revenue (R1/R2): an "in" sale / credit sale / Ajo fee, never a bill payment. */
+export function isRevenueSale(t) {
+  return t?.type === "in" && REVENUE_CATS.has(t.category) && !isBillPayment(t);
+}
+
+/** Product lookups used for the cost-price fallback (rows recorded before the sale-time snapshot existed). */
+export function productMaps(products = []) {
+  return {
+    productByName: new Map(products.filter(p => p?.product_name).map(p => [p.product_name.toLowerCase().trim(), p])),
+    productById:   new Map(products.map(p => [p.id, p])),
+  };
+}
+
+/**
+ * Cost of goods for ONE revenue transaction. The cost price snapshotted at sale time (line_items[].costPrice /
+ * enteredCostPrice, or transactions.cost_price) always wins; the product's CURRENT cost is only a fallback for rows that
+ * predate the snapshot — editing a product later must never change a past sale's profit.
+ *   measured   — the part of the sale whose cost is known (gross profit = measured − cogs)
+ *   unmeasured — the part with no cost price (revenue known, margin unknown)
+ *   costed / hasUnmeasured — whether compute() lists this transaction among the costed / uncosted ones
+ *   service    — an Ajo fee (R2): zero cost by definition
+ */
+export function saleCost(t, { productByName, productById }) {
+  if (SERVICE_CATS.has(t.category)) return { measured: t.amount, unmeasured: 0, cogs: 0, costed: false, hasUnmeasured: false, service: true };
+  if (t.line_items && t.line_items.length > 0) {
+    let measured = 0, unmeasured = 0, cogs = 0;
+    for (const li of t.line_items) {
+      const liName = (li.name || "").toLowerCase().trim();
+      const prod = li.productId
+        ? (productById.get(li.productId) || (liName ? productByName.get(liName) : null))
+        : (liName ? productByName.get(liName) : null);
+      // A cost snapshotted at sale time (li.costPrice, or a manually-entered one) is authoritative for THIS sale and must
+      // win over the product's current cost. Only older rows that predate the snapshot fall back to the live lookup.
+      const snapshotCost = li.costPrice ?? li.enteredCostPrice ?? null;
+      const unitCost = snapshotCost != null && snapshotCost > 0
+        ? snapshotCost
+        : (prod && !prod.needs_costing ? (prod.cost_price || 0) : 0);
+      if (unitCost > 0) { measured += li.lineTotal; cogs += unitCost * (li.qty || 1); }
+      else unmeasured += li.lineTotal;
+    }
+    return { measured, unmeasured, cogs, costed: measured > 0, hasUnmeasured: unmeasured > 0, service: false };
+  }
+  const name = (t.item_name || "").toLowerCase().trim();
+  if (!name) return { measured: 0, unmeasured: t.amount, cogs: 0, costed: false, hasUnmeasured: true, service: false };
+  const prod = productByName.get(name);
+  // Same rule: a transaction-level cost_price snapshot (single-item POS sales) wins over the product's current cost.
+  const snapshotCost = t.cost_price != null && t.cost_price > 0 ? t.cost_price : null;
+  const unitCost = snapshotCost != null ? snapshotCost : (prod && !prod.needs_costing ? (prod.cost_price || 0) : 0);
+  if (unitCost > 0) return { measured: t.amount, unmeasured: 0, cogs: unitCost * (t.quantity || 1), costed: true, hasUnmeasured: false, service: false };
+  return { measured: 0, unmeasured: t.amount, cogs: 0, costed: false, hasUnmeasured: true, service: false };
+}
+
 // ── Main compute ──────────────────────────────────────────────────────────────
 export function compute(ledger, range) {
   const {
@@ -122,13 +178,10 @@ export function compute(ledger, range) {
   );
 
   // ── Revenue (R1 + R2) ─────────────────────────────────────────────────────
-  const revTxs  = txsIn.filter(t => REVENUE_CATS.has(t.category) && !isBillPayment(t));
+  const revTxs  = txsIn.filter(isRevenueSale);
 
-  // ── COGS (R3) ─────────────────────────────────────────────────────────────
-  const productByName = new Map(
-    products.map(p => [p.product_name.toLowerCase().trim(), p])
-  );
-  const productById = new Map(products.map(p => [p.id, p]));
+  // ── COGS (R3) — per sale via saleCost(), shared with the owner's sales report ──
+  const { productByName, productById } = productMaps(products);
 
   let cogsAmount  = 0;
   const cogsTxIds = [];
@@ -136,58 +189,11 @@ export function compute(ledger, range) {
   const unmeasItems = [];
 
   for (const t of revTxs) {
-    if (SERVICE_CATS.has(t.category)) {
-      measuredRev += t.amount;
-      continue;
-    }
-    if (t.line_items && t.line_items.length > 0) {
-      let txMeasured = 0, txUnmeasured = 0;
-      for (const li of t.line_items) {
-        const liName = (li.name || "").toLowerCase().trim();
-        const prod = li.productId
-          ? (productById.get(li.productId) || (liName ? productByName.get(liName) : null))
-          : (liName ? productByName.get(liName) : null);
-        // A cost snapshotted at sale time (li.costPrice, or a manually-entered
-        // one) is authoritative for THIS sale and must win over the product's
-        // current cost — editing the product later must never change the
-        // profit already recorded for a past sale. Only fall back to the
-        // live lookup for older rows that predate this snapshot.
-        const snapshotCost = li.costPrice ?? li.enteredCostPrice ?? null;
-        const unitCost = snapshotCost != null && snapshotCost > 0
-          ? snapshotCost
-          : (prod && !prod.needs_costing ? (prod.cost_price || 0) : 0);
-        if (unitCost > 0) {
-          txMeasured += li.lineTotal;
-          cogsAmount += unitCost * (li.qty || 1);
-        } else {
-          txUnmeasured += li.lineTotal;
-        }
-      }
-      if (txMeasured   > 0) { measuredRev += txMeasured; cogsTxIds.push(t.id); }
-      if (txUnmeasured > 0) unmeasItems.push({ id: t.id, amount: txUnmeasured });
-      continue;
-    }
-    const name = (t.item_name || "").toLowerCase().trim();
-    if (!name) {
-      unmeasItems.push({ id: t.id, amount: t.amount });
-      continue;
-    }
-    const prod = productByName.get(name);
-    // Same rule as above: a transaction-level cost_price snapshot (captured
-    // at sale time for single-item POS sales) wins over the product's
-    // current cost price. Rows recorded before this snapshot existed have
-    // no choice but the live lookup.
-    const snapshotCost = t.cost_price != null && t.cost_price > 0 ? t.cost_price : null;
-    const unitCost = snapshotCost != null
-      ? snapshotCost
-      : (prod && !prod.needs_costing ? (prod.cost_price || 0) : 0);
-    if (unitCost > 0) {
-      measuredRev += t.amount;
-      cogsAmount  += unitCost * (t.quantity || 1);
-      cogsTxIds.push(t.id);
-    } else {
-      unmeasItems.push({ id: t.id, amount: t.amount });
-    }
+    const c = saleCost(t, { productByName, productById });
+    if (c.service) { measuredRev += c.measured; continue; }
+    cogsAmount += c.cogs;
+    if (c.costed) { measuredRev += c.measured; cogsTxIds.push(t.id); }
+    if (c.hasUnmeasured) unmeasItems.push({ id: t.id, amount: c.unmeasured });
   }
 
   // ── Invoice COGS (catalog-linked items) ──────────────────────────────────
