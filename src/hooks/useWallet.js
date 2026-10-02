@@ -201,6 +201,10 @@ export function useWallet(userId, enabled = true) {
   const simulateTopup    = useCallback((amount_naira = 2000) => invoke("simulate-topup", { amount_naira }), [invoke]);
   const listBanks        = useCallback(() => fwRead("list-banks"), []);
   const resolveAccount   = useCallback((bank_code, account_number) => fwRead("resolve-account", { bank_code, account_number }), []);
+  // "Which bank is this account at?" — the server tries the likely banks and returns the ones where it exists, with names.
+  const suggestBanks     = useCallback((account_number) => fwRead("suggest-banks", { account_number }), []);
+  // Per-bank network strength (good / fair / poor / unknown) + "overall" for all transfers.
+  const bankNetwork      = useCallback(() => fwRead("bank-network"), []);
   // Instant transfer, confirmed with the transaction PIN. Holds funds + pays out.
   const transfer = useCallback((amount_kobo, bank_code, account_number, pin, narration = "", book_expense = false, confirmed_name = "") =>
     invoke("transfer", { amount_kobo, bank_code, account_number, pin, narration, book_expense, confirmed_name }), [invoke]);
@@ -321,14 +325,14 @@ export function useWallet(userId, enabled = true) {
     tier, limits,
     scheduledTransfers, refreshScheduled, scheduleTransfer, setScheduledTransferStatus,
     refresh: load, receiptFor, entryFor,
-    provisionAccount, migrateAccount, simulateTopup, listBanks, resolveAccount, transfer,
+    provisionAccount, migrateAccount, simulateTopup, listBanks, resolveAccount, suggestBanks, bankNetwork, transfer,
     startBvnVerification, checkBvnVerification,
     createPaymentRequest, cancelPaymentRequest,
   }), [
     walletView, ledger, withdrawals, requests, banks, payRequest, loading, resolved, busy, hasAccount, bvnVerified, balanceKobo, dailyUsedKobo,
     acct.state, acct.graceUntilMs, acct.daysLeft, tier, limits,
     scheduledTransfers, refreshScheduled, scheduleTransfer, setScheduledTransferStatus,
-    load, receiptFor, entryFor, provisionAccount, migrateAccount, simulateTopup, listBanks, resolveAccount, transfer,
+    load, receiptFor, entryFor, provisionAccount, migrateAccount, simulateTopup, listBanks, resolveAccount, suggestBanks, bankNetwork, transfer,
     startBvnVerification, checkBvnVerification,
     createPaymentRequest, cancelPaymentRequest,
   ]);

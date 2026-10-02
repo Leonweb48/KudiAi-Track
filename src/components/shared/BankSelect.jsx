@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import NetworkBars from "./NetworkBars";
 
 /**
  * Searchable, mobile-friendly bank picker — a drop-in replacement for a native
@@ -13,6 +14,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
  *   disabled     boolean
  *   placeholder  string
  *   className    string            — extra classes for the trigger button
+ *   network      { [code]: "good" | "fair" | "poor" | "unknown" } — optional; signal bars per bank (transfer screen)
  */
 
 // Names a Nigerian user is most likely to want — floated to the top when the
@@ -27,6 +29,7 @@ export default function BankSelect({
   disabled = false,
   placeholder = "Select bank…",
   className = "",
+  network = null,
 }) {
   const [open, setOpen]   = useState(false);
   const [query, setQuery] = useState("");
@@ -93,6 +96,7 @@ export default function BankSelect({
         } ${className}`}
       >
         <span className="truncate min-w-0">{selected ? selected.name : (cleanBanks.length === 0 ? "Loading banks…" : placeholder)}</span>
+        {selected && <NetworkBars status={network?.[selected.code]} className="ml-auto" />}
         <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 flex-shrink-0 text-slate-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
           <path d="M6 9l6 6 6-6" />
         </svg>
@@ -138,6 +142,11 @@ export default function BankSelect({
               </div>
             </div>
 
+            {network && Object.values(network).some((v) => v !== "unknown") && (
+              <p className="px-5 pb-2 -mt-1 text-[11px] text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+                <NetworkBars status="good" /> Bars show how transfers to each bank are going right now
+              </p>
+            )}
             <div className="flex-1 overflow-y-auto overscroll-contain" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
               {filtered.pop.length === 0 && filtered.rest.length === 0 && (
                 <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-10">
@@ -150,7 +159,7 @@ export default function BankSelect({
                   {filtered.pop.map(b => (
                     <button key={b.code} type="button" onClick={() => pick(b)} className={rowCls(b.code === value)}>
                       <span className="truncate">{b.name}</span>
-                      {b.code === value && <Check />}
+                      <span className="flex items-center gap-2 flex-shrink-0"><NetworkBars status={network?.[b.code]} />{b.code === value && <Check />}</span>
                     </button>
                   ))}
                   <p className="px-4 pt-3 pb-1 text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">All banks</p>
@@ -159,7 +168,7 @@ export default function BankSelect({
               {filtered.rest.map(b => (
                 <button key={b.code} type="button" onClick={() => pick(b)} className={rowCls(b.code === value)}>
                   <span className="truncate">{b.name}</span>
-                  {b.code === value && <Check />}
+                  <span className="flex items-center gap-2 flex-shrink-0"><NetworkBars status={network?.[b.code]} />{b.code === value && <Check />}</span>
                 </button>
               ))}
             </div>

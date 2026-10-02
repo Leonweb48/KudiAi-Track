@@ -3,6 +3,10 @@ import Icon from "./Icon";
 import TransactionPinModal from "./TransactionPinModal";
 import BankSelect from "./shared/BankSelect";
 import BankLogo from "./shared/BankLogo";
+import NetworkBars from "./shared/NetworkBars";
+import { displayBankName } from "../utils/bankLogos";
+import { parseCopiedAccount } from "../utils/accountDetect";
+import { readClipboardText } from "../utils/clipboard";
 import TransactionDetailModal from "./shared/TransactionDetailModal";
 import { fmt } from "../utils/helpers";
 import { WALLET_SOURCE } from "../utils/walletSources";
@@ -322,6 +326,12 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
   const [receiptLoading, setReceiptLoading] = useState(false);
   const reqRef = useRef(0);       // guards against a stale lookup clobbering a newer one
   const doneKeyRef = useRef("");  // one lookup per unique (bank, account) pair
+  // Copied account number + bank suggestions + bank network strength (2026-10-02)
+  const [clip, setClip] = useState(null);             // { text, account } — an account number found on the clipboard, offered once
+  const [suggests, setSuggests] = useState(null);     // banks where this account exists: [{ code, bank_name, account_name }]
+  const [suggesting, setSuggesting] = useState(false);
+  const [network, setNetwork] = useState({ banks: {}, overall: "unknown" });
+  const suggestReqRef = useRef(0);
 
   useEffect(() => {
     if (open) return;
@@ -329,6 +339,7 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
     setNarration(""); setBookExpense(false); setRepeat(false); setFrequency("monthly"); setErr(""); setFee(0); setResolving(false);
     setWdId(""); setReceipt(null); setReceiptLoading(false);
     setPendingPin(""); setSelfie(""); setSelfieBusy(false); setSelfieErr("");
+    setClip(null); setSuggests(null); setSuggesting(false); suggestReqRef.current++;
     doneKeyRef.current = "";
   }, [open]);
 
@@ -413,6 +424,78 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
     }
     return [...by.values()];
   }, [banks]);
+
+  // Network strength per bank (signal bars + warnings), fetched each time the sheet opens. The two lookups are stable
+  // callbacks — depend on them, not on `api`, which changes with every balance update.
+  const { bankNetwork, suggestBanks } = api;
+  useEffect(() => {
+    if (!open || !bankNetwork) return;
+    let cancelled = false;
+    bankNetwork().then((d) => { if (!cancelled && d) setNetwork({ banks: d.banks || {}, overall: d.overall || "unknown" }); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [open, bankNetwork]);
+  const netByCode = useMemo(() => Object.fromEntries(Object.entries(network.banks || {}).map(([c, v]) => [c, v?.status])), [network]);
+
+  // Copied an account number before opening the sheet? Offer it once (per copied number, per session).
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    readClipboardText().then((text) => {
+      if (cancelled || !text) return;
+      const { account } = parseCopiedAccount(text, []);
+      if (!account) return;
+      let seen = "";
+      try { seen = sessionStorage.getItem("kdt_clip_offered") || ""; } catch { /* storage blocked */ }
+      if (seen === account) return;
+      try { sessionStorage.setItem("kdt_clip_offered", account); } catch { /* storage blocked */ }
+      setClip({ text, account });
+    });
+    return () => { cancelled = true; };
+  }, [open]);
+  const clipBank = useMemo(() => (clip ? parseCopiedAccount(clip.text, bankList).bank : null), [clip, bankList]);
+
+  // Put an account number (and the bank, when the text names one) from copied / pasted text into the form.
+  const applyAccount = (text) => {
+    const { account, bank: named } = parseCopiedAccount(text, bankList);
+    if (!account) return false;
+    setClip(null); setErr(""); setName(""); setManual(false); setSuggests(null);
+    setAcctNo(account);
+    if (named) { setBank(named); doneKeyRef.current = ""; }
+    return true;
+  };
+  const pasteFromClipboard = async () => {
+    const text = await readClipboardText({ userGesture: true });
+    if (!text) { setErr("Couldn't read what you copied — press and hold the box, then tap Paste."); return; }
+    if (!applyAccount(text)) setErr("There's no 10-digit account number in what you copied.");
+  };
+
+  // No bank chosen yet for a full account number → a saved recipient with that number picks its bank straight away;
+  // otherwise ask the server which banks have this account (it checks the name at each likely bank).
+  useEffect(() => {
+    const digits = acctNo.replace(/\D/g, "");
+    if (!open || step !== "to" || bank?.code || digits.length !== 10 || !suggestBanks) {
+      suggestReqRef.current++; setSuggesting(false);
+      return;
+    }
+    const saved = savedRecipients.find((b) => b.accountNo === digits && b.bankCode);
+    if (saved) { doneKeyRef.current = ""; setBank({ code: saved.bankCode, name: saved.bankName }); return; }
+    const id = ++suggestReqRef.current;
+    setSuggesting(true); setSuggests(null);
+    const t = setTimeout(() => {
+      suggestBanks(digits)
+        .then((d) => { if (id === suggestReqRef.current) setSuggests(d?.matches || []); })
+        .catch(() => { if (id === suggestReqRef.current) setSuggests([]); })
+        .finally(() => { if (id === suggestReqRef.current) setSuggesting(false); });
+    }, 350);
+    return () => clearTimeout(t);
+  }, [open, step, bank?.code, acctNo, suggestBanks, savedRecipients]);
+
+  const pickSuggestion = (m) => {
+    const digits = acctNo.replace(/\D/g, "");
+    const b = bankList.find((x) => x.code === m.code) || { code: m.code, name: m.bank_name };
+    doneKeyRef.current = `${b.code}:${digits}`;   // the server has just checked this name at this bank
+    setBank(b); setName(m.account_name); setManual(false); setErr(""); setSuggests(null);
+  };
 
   const isFirstTimeRecipient = !!(bank?.code && acctNo.length === 10) &&
     !savedRecipients.some((b) => b.bankCode === bank.code && b.accountNo === acctNo);
@@ -599,12 +682,76 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
                 </div>
               </div>
             )}
+            {network.overall === "poor" && (
+              <div className="rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-3 py-2 flex items-start gap-2">
+                <Icon name="warn" size={14} className="text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                  Bank transfers are having problems right now. You can still send — if a transfer fails, the money comes straight back to your wallet.
+                </p>
+              </div>
+            )}
+            {clip && !acctNo && (
+              <div className="rounded-2xl border border-brand-200 dark:border-brand-800/60 bg-brand-50 dark:bg-brand-900/20 px-3 py-2.5 flex items-center gap-3">
+                <Icon name="copy" size={18} className="text-brand-600 dark:text-brand-400 flex-shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] font-semibold text-brand-700 dark:text-brand-300">Use the account number you copied?</p>
+                  <p className="text-[14px] font-extrabold tracking-[0.12em] text-slate-800 dark:text-white truncate">
+                    {clip.account}
+                    {clipBank && <span className="ml-1.5 text-[11px] font-semibold tracking-normal text-slate-500 dark:text-slate-400">· {displayBankName(clipBank)}</span>}
+                  </p>
+                </div>
+                <button onClick={() => applyAccount(clip.text)}
+                  className="px-3 py-1.5 rounded-lg bg-brand-600 text-white text-[12px] font-bold active:scale-[0.97]">Use</button>
+                <button aria-label="Dismiss" onClick={() => setClip(null)}
+                  className="w-7 h-7 flex items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700">
+                  <Icon name="x" size={14} />
+                </button>
+              </div>
+            )}
             <div>
               <label className={labelCls}>Account number</label>
-              <input inputMode="numeric" autoFocus value={acctNo}
-                onChange={(e) => { setAcctNo(e.target.value.replace(/\D/g, "").slice(0, 10)); setName(""); setManual(false); }}
-                placeholder="0123456789" className={inputCls + " tracking-[0.15em]"} />
+              <div className="relative">
+                <input inputMode="numeric" autoFocus value={acctNo}
+                  onChange={(e) => { setAcctNo(e.target.value.replace(/\D/g, "").slice(0, 10)); setName(""); setManual(false); setSuggests(null); }}
+                  onPaste={(e) => { const t = e.clipboardData?.getData("text") || ""; if (applyAccount(t)) e.preventDefault(); }}
+                  placeholder="0123456789" className={inputCls + " tracking-[0.15em] pr-20"} />
+                {!acctNo && (
+                  <button type="button" onClick={pasteFromClipboard}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 mt-[3px] px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-[12px] font-bold text-brand-600 dark:text-brand-400 active:scale-[0.97]">
+                    Paste
+                  </button>
+                )}
+              </div>
             </div>
+            {!bank?.code && acctNo.length === 10 && (suggesting || suggests) && (
+              <div>
+                {suggesting ? (
+                  <p className="text-[12px] text-slate-400 flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-brand-400 animate-pulse" /> Finding the bank for this account…
+                  </p>
+                ) : suggests.length > 0 ? (
+                  <>
+                    <label className={labelCls}>{suggests.length === 1 ? "We found this account" : "We found this account number at"}</label>
+                    <div className="mt-1.5 space-y-2">
+                      {suggests.map((m) => (
+                        <button key={m.code} type="button" onClick={() => pickSuggestion(m)}
+                          className="w-full flex items-center gap-3 rounded-2xl border border-emerald-200/70 dark:border-emerald-800/50 bg-emerald-50 dark:bg-emerald-900/20 px-3 py-2.5 text-left active:scale-[0.98] transition-transform">
+                          <BankLogo code={m.code} name={m.bank_name} size={40} />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[14px] font-extrabold text-emerald-800 dark:text-emerald-300 break-words">{m.account_name}</p>
+                            <p className="text-[11px] text-emerald-700/70 dark:text-emerald-400/70 truncate">{displayBankName({ code: m.code, name: m.bank_name })}</p>
+                          </div>
+                          <NetworkBars status={netByCode[m.code]} />
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-1.5">Tap the right one — or choose the bank yourself below.</p>
+                  </>
+                ) : (
+                  <p className="text-[12px] text-slate-400">We couldn't match a bank for this number automatically — choose it below.</p>
+                )}
+              </div>
+            )}
             <div>
               <label className={labelCls}>Bank</label>
               <BankSelect
@@ -613,7 +760,16 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
                 onChange={(code, b) => { setBank(b); setName(""); setManual(false); setErr(""); doneKeyRef.current = ""; }}
                 placeholder="Select bank"
                 className="h-[52px] mt-1.5"
+                network={netByCode}
               />
+              {(netByCode[bank?.code] === "poor" || netByCode[bank?.code] === "fair") && (
+                <p className="text-[11px] text-amber-600 dark:text-amber-400 flex items-start gap-1 mt-1.5">
+                  <Icon name="warn" size={12} className="mt-0.5 flex-shrink-0" />
+                  {netByCode[bank.code] === "poor"
+                    ? `Transfers to ${displayBankName(bank)} are failing often right now. You can still send — if it fails, the money comes straight back to your wallet.`
+                    : `Transfers to ${displayBankName(bank)} are slower than usual right now.`}
+                </p>
+              )}
             </div>
             {resolving && (
               <p className="text-[12px] text-slate-400 flex items-center gap-1.5">
@@ -648,6 +804,12 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
               </div>
             )}
             {err && <p className="text-[12px] text-red-500">{err}</p>}
+            {err && /doesn't exist at this bank/i.test(err) && suggestBanks && (
+              <button type="button" onClick={() => { setErr(""); setName(""); doneKeyRef.current = ""; setBank(null); }}
+                className="text-[12px] font-bold text-brand-600 dark:text-brand-400 -mt-2">
+                Find the right bank for this number
+              </button>
+            )}
             <button disabled={!recipientName || (manual && !name && manualName.trim().length < 3)}
               onClick={() => { setErr(""); setStep("amount"); }} className={primaryBtn}>
               Continue

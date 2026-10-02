@@ -18,6 +18,7 @@ import { bankEmail, esc, cleanSubject, nairaFromKobo, appLink, htmlToText } from
 import { loadAccounts, isConfigured, resolveActive, graceStatus, type FlwAccount, type AccountKey } from "../_shared/flwAccounts.ts";
 import { customerName, customerPhone, customerEmail } from "../_shared/flwCustomer.ts";
 import { checkIdentity, hmacHex, loadIdCheck, selfieImageOk, type IdKind, type IdTable } from "../_shared/idCheck.ts";
+import { candidateBanks, resolveSaysNetworkUp, type Bank } from "../_shared/bankSuggest.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin":  "*",
@@ -318,21 +319,66 @@ async function runIdChecks(
 
 // ── bank list cache ─────────────────────────────────────────────────────────
 let _banks: { list: unknown[]; exp: number } = { list: [], exp: 0 };
+const _suggest = new Map<string, { matches: { code: string; bank_name: string; account_name: string }[]; checked: number; exp: number }>();
+let _net: { v: { banks: Record<string, { status: string; samples: number }>; overall: string }; exp: number } | null = null;
+
+async function getBanks(): Promise<unknown[] | null> {
+  if (_banks.list.length && Date.now() < _banks.exp) return _banks.list;
+  const r = await flwFetch("/banks?country=NG");
+  if (!r.ok) return null;
+  _banks = { list: ((r.data as any)?.data || []) as unknown[], exp: Date.now() + 24 * 3600 * 1000 };
+  return _banks.list;
+}
+
+// Bank "network strength" (bank_network_status): every name enquiry's outcome per bank — did the bank answer at all?
+// Best-effort and not awaited; a failure to record changes nothing for the caller.
+let _svc: any = null;
+function recordBankNetwork(bank_code: string, r: { ok: boolean; status?: number; type?: string; msg?: string; timedOut?: boolean }, ms: number) {
+  const up = resolveSaysNetworkUp(r);
+  if (up === null || !SUPABASE_URL || !SERVICE_KEY) return;
+  _svc ??= createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+  _svc.rpc("bank_network_record", { p_bank_code: bank_code, p_ok: up, p_ms: Math.round(ms) }).then(() => {}, () => {});
+}
+
+// One NIBSS name enquiry, no retries, with a time limit — for trying several banks at once (suggest-banks).
+async function flwResolveOnce(bank_code: string, account_number: string, timeoutMs = 9000) {
+  const t0 = Date.now();
+  const timeout = new Promise<null>((res) => setTimeout(() => res(null), timeoutMs));
+  const r = await Promise.race([
+    flwFetch("/banks/account-resolve", {
+      method: "POST",
+      body: JSON.stringify({ currency: "NGN", account: { code: bank_code, number: account_number } }),
+    }).catch(() => ({ ok: false, status: 0, data: {} as Record<string, unknown> })),
+    timeout,
+  ]);
+  const out = r === null
+    ? { ok: false, name: "", status: 0, type: "", msg: "timeout", timedOut: true }
+    : r.ok
+      ? { ok: true, name: String((r.data as any)?.data?.account_name || ""), status: r.status, type: "", msg: "", timedOut: false }
+      : { ok: false, name: "", status: r.status, type: String((r.data as any)?.error?.type || ""), msg: String((r.data as any)?.error?.message || ""), timedOut: false };
+  recordBankNetwork(bank_code, out, Date.now() - t0);
+  return out;
+}
 
 // NIBSS name enquiry — retried, since it times out often.
 async function flwResolve(bank_code: string, account_number: string) {
-  let lastType = "", lastMsg = "";
+  let lastType = "", lastMsg = "", lastStatus = 0;
+  const t0 = Date.now();
   for (let i = 0; i < 3; i++) {
     if (i > 0) await new Promise((r) => setTimeout(r, 700));
     const r = await flwFetch("/banks/account-resolve", {
       method: "POST",
       body: JSON.stringify({ currency: "NGN", account: { code: bank_code, number: account_number } }),
     });
-    if (r.ok) return { ok: true, name: (r.data as any)?.data?.account_name || "", type: "", msg: "" };
+    if (r.ok) {
+      recordBankNetwork(bank_code, { ok: true }, Date.now() - t0);
+      return { ok: true, name: (r.data as any)?.data?.account_name || "", type: "", msg: "" };
+    }
     const err = (r.data as any)?.error || {};
-    lastType = String(err.type || ""); lastMsg = String(err.message || "");
+    lastType = String(err.type || ""); lastMsg = String(err.message || ""); lastStatus = r.status;
     if (/INVALID_ACCOUNT|UNKNOWN_BANK_CODE|not recognized|is invalid/i.test(lastType + " " + lastMsg)) break;
   }
+  recordBankNetwork(bank_code, { ok: false, status: lastStatus, type: lastType, msg: lastMsg }, Date.now() - t0);
   return { ok: false, name: "", type: lastType, msg: lastMsg };
 }
 
@@ -1274,12 +1320,48 @@ serve(async (req) => {
 
     // ── list-banks ────────────────────────────────────────────────────────
     if (action === "list-banks") {
-      if (_banks.list.length && Date.now() < _banks.exp) return json({ ok: true, banks: _banks.list });
-      const r = await flwFetch("/banks?country=NG");
-      if (!r.ok) return json({ error: "Could not load banks" }, 502);
-      const list = ((r.data as any)?.data || []) as unknown[];
-      _banks = { list, exp: Date.now() + 24 * 3600 * 1000 };
+      const list = await getBanks();
+      if (!list) return json({ error: "Could not load banks" }, 502);
       return json({ ok: true, banks: list });
+    }
+
+    // ── suggest-banks — "which bank is this account at?" (2026-10-02). Tries a short list of likely banks
+    //    (_shared/bankSuggest.ts: platform history, phone-number fintechs, NUBAN check digit, popular) with one name
+    //    enquiry each, in parallel, and returns the banks where the account exists with the holder's name. Rate-limited
+    //    per user (each try is a NIBSS call) and cached per account for 10 minutes. ──
+    if (action === "suggest-banks") {
+      const acct = String((body as { account_number?: unknown }).account_number ?? "").replace(/\D/g, "");
+      if (!/^\d{10}$/.test(acct)) return json({ error: "Enter the 10-digit account number." }, 400);
+      const hit = _suggest.get(acct);
+      if (hit && Date.now() < hit.exp) return json({ ok: true, matches: hit.matches, checked: hit.checked, cached: true });
+      const { data: allowed } = await sb.rpc("rate_limit_hit", { p_key: `bank-suggest:${uid}`, p_window_seconds: 3600, p_max: 40 });
+      if (allowed === false) return json({ error: "Too many lookups for now — pick the bank from the list.", code: "rate_limited" }, 429);
+      const banks = await getBanks();
+      if (!banks) return json({ error: "Could not load banks" }, 502);
+      const { data: hist } = await sb.from("wallet_withdrawals").select("bank_code")
+        .eq("account_number", acct).eq("status", "successful").order("created_at", { ascending: false }).limit(5);
+      const cands = candidateBanks(acct, banks as Bank[], ((hist ?? []) as { bank_code: string }[]).map((h) => h.bank_code), 7);
+      const tried = await Promise.all(cands.map(async (b) => ({ b, r: await flwResolveOnce(b.code, acct) })));
+      const matches = tried.filter((t) => t.r.ok && t.r.name).map((t) => ({ code: t.b.code, bank_name: t.b.name, account_name: t.r.name }));
+      _suggest.set(acct, { matches, checked: cands.length, exp: Date.now() + 10 * 60_000 });
+      if (_suggest.size > 500) _suggest.delete(_suggest.keys().next().value as string);
+      return json({ ok: true, matches, checked: cands.length });
+    }
+
+    // ── bank-network — per-bank "network strength" for the transfer screen (bank_network_status, last 3 h): good /
+    //    fair / poor / unknown, plus "overall" = all transfers together. Cached 60 s. ──
+    if (action === "bank-network") {
+      if (_net && Date.now() < _net.exp) return json({ ok: true, ..._net.v });
+      const { data, error } = await sb.rpc("bank_network_status", { p_hours: 3 });
+      if (error) return json({ ok: true, banks: {}, overall: "unknown" });
+      const banks: Record<string, { status: string; samples: number }> = {};
+      let overall = "unknown";
+      for (const r of (data ?? []) as { bank_code: string; status: string; samples: number }[]) {
+        if (r.bank_code === "*") overall = r.status;
+        else banks[r.bank_code] = { status: r.status, samples: r.samples };
+      }
+      _net = { v: { banks, overall }, exp: Date.now() + 60_000 };
+      return json({ ok: true, banks, overall });
     }
 
     // ── resolve-account (name enquiry) ────────────────────────────────────

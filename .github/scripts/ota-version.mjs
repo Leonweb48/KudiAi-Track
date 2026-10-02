@@ -23,9 +23,11 @@ function git(...args) { return execFileSync("git", args, { encoding: "utf8", std
 // Plugins the JavaScript only ever calls inside a try/catch that does nothing when the plugin is missing, so an APK
 // without them runs today's code fine and still gets OTA updates. @capacitor/haptics: every call is in src/utils/haptics.js
 // (guarded). Added 2026-10-01 so APK #170–#172 (built the day before the 18 Sept notification redesign, no haptics) can
-// receive it over the air instead of being stuck on the old notification drawer. Only add a plugin here after checking
-// EVERY call site is guarded like that.
-const OPTIONAL_PLUGINS = new Set(["@capacitor/haptics"]);
+// receive it over the air instead of being stuck on the old notification drawer. @capacitor/clipboard (2026-10-02):
+// only src/utils/clipboard.js calls it, inside try/catch, falling back to the web clipboard / the Paste button — so the
+// "use copied account number" code can reach older APKs too; it just can't read the clipboard by itself there. Only add a
+// plugin here after checking EVERY call site is guarded like that.
+const OPTIONAL_PLUGINS = new Set(["@capacitor/haptics", "@capacitor/clipboard"]);
 
 // What JavaScript can call natively: the Capacitor plugins (name + major version), our own Java plugins, and the raw
 // resources the JS names (notification sounds: the push channels created in usePushNotifications.js use raw/kudiai.mp3).
