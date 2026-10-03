@@ -48,7 +48,7 @@ function classifySource(source) {
 // button navigates(-1)) or as a local overlay rendered directly by a portal
 // that doesn't have this route in its router branch at all, e.g. the Ajo
 // client portal (pass userId/displayName/onClose to mount it inline instead).
-export default function WalletStatement({ session, store, userId: userIdOverride, displayName, onClose }) {
+export default function WalletStatement({ session, store, userId: userIdOverride, displayName, onClose, embedded = false }) {
   const userId = userIdOverride || session?.user?.id || null;
   const bizName = displayName || store?.profile?.business_name || "";
   const ownerName = displayName || store?.profile?.owner_name || "";
@@ -148,11 +148,14 @@ export default function WalletStatement({ session, store, userId: userIdOverride
 
   return (
     <div className="pb-28">
-      <div className="flex items-center gap-3 px-4 pt-3 pb-2">
-        <button onClick={goBack} className="w-9 h-9 -ml-1 flex items-center justify-center rounded-full active:bg-slate-100 dark:active:bg-slate-800">
-          <Icon name="chevron-left" size={20} className="text-slate-600 dark:text-slate-300" />
-        </button>
-        <h1 className="text-[18px] font-extrabold text-slate-900 dark:text-slate-50">Statement</h1>
+      {/* embedded: inside another screen's tabs (the client Statements screen) — no back button or title of its own */}
+      <div className={`flex items-center gap-3 px-4 ${embedded ? "pb-2" : "pt-3 pb-2"}`}>
+        {!embedded && (
+          <button onClick={goBack} className="w-9 h-9 -ml-1 flex items-center justify-center rounded-full active:bg-slate-100 dark:active:bg-slate-800">
+            <Icon name="chevron-left" size={20} className="text-slate-600 dark:text-slate-300" />
+          </button>
+        )}
+        {!embedded && <h1 className="text-[18px] font-extrabold text-slate-900 dark:text-slate-50">Statement</h1>}
         <button onClick={handleExportPdf} disabled={!!exporting || periodFiltered.length === 0}
           className="ml-auto text-[12px] font-bold text-brand-600 dark:text-brand-400 disabled:opacity-40 flex items-center gap-1">
           <Icon name="download" size={14} /> {exporting === "pdf" ? "Preparing…" : "PDF"}

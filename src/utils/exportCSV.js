@@ -132,6 +132,26 @@ function fmtPayType(pt) {
   return pt.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
 }
 
+// ── Client savings statement (client_savings_statement result) ───────────────
+export function buildSavingsStatementCSV(statement) {
+  const entries = statement?.entries || [];
+  const header = csvRow(["date_time_wat", "description", "reference", "money_in_ngn", "money_out_ngn", "balance_ngn"]);
+  const wat = (iso) => new Date(new Date(iso).getTime() + 3600000).toISOString().slice(0, 19).replace("T", " ");
+  const rows = [
+    csvRow(["", "Opening balance", "", "", "", Number(statement?.opening || 0)]),
+    ...entries.map(e => csvRow([
+      wat(e.at), e.label || "", e.ref || "",
+      e.credit ? Number(e.amount) : "", e.credit ? "" : Number(e.amount), Number(e.balance),
+    ])),
+    csvRow(["", "Closing balance", "", Number(statement?.total_in || 0), Number(statement?.total_out || 0), Number(statement?.closing || 0)]),
+  ];
+  return BOM + [header, ...rows].join("\r\n");
+}
+export function savingsStatementCSVFilename(from, to) {
+  const d = (v) => String(v || "").slice(0, 10);
+  return `savings_statement_${d(from)}_to_${d(to)}.csv`;
+}
+
 // ── General business report ──────────────────────────────────────────────────
 export function buildGeneralReportCSV(data) {
   const { profit: pf, money, salesSummary: ss, credit, ajo, bills, stock } = data;

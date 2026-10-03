@@ -191,6 +191,7 @@ serve(async (req) => {
       "send-profile-otp","verify-profile-otp",
       "send-txn-pin-otp","verify-txn-pin-otp",
       "request-reactivation","get-reactivation-status",
+      "get-savings-statement","get-monthly-statement",
     ]);
     if (_clientScoped.has(action as string)) {
       const { client_id } = body as { client_id: string };
@@ -392,6 +393,25 @@ serve(async (req) => {
         .order("created_at", { ascending: false })
         .limit(1000);
       return json({ contributions: data || [] });
+    }
+
+    // ── Statements — the same numbers as the monthly statement email (migration 20270273) ──────────
+    // Savings: every completed entry in the period with the running balance (rebuilt on the server and anchored to
+    // the client's real balance). Monthly: savings + wallet for one WAT calendar month.
+    if (action === "get-savings-statement") {
+      const { client_id, from, to } = body as { client_id: string; from?: string; to?: string };
+      const f = typeof from === "string" && !isNaN(Date.parse(from)) ? from : "2000-01-01T00:00:00Z";
+      const t = typeof to === "string" && !isNaN(Date.parse(to)) ? to : new Date(Date.now() + 86400000).toISOString();
+      const { data, error } = await sb.rpc("client_savings_statement", { p_client_id: client_id, p_from: f, p_to: t });
+      if (error) return json({ error: error.message }, 500);
+      return json({ statement: data });
+    }
+    if (action === "get-monthly-statement") {
+      const { client_id, month } = body as { client_id: string; month?: string };
+      if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(String(month || ""))) return json({ error: "month must be YYYY-MM" }, 400);
+      const { data, error } = await sb.rpc("client_statement_data", { p_client_id: client_id, p_month: `${month}-01` });
+      if (error) return json({ error: error.message }, 500);
+      return json({ statement: data });
     }
 
     // ── Active cycles for card view (returns array — clients can have multiple) ─

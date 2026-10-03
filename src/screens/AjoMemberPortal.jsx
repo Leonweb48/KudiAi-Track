@@ -27,8 +27,6 @@ import { buildAjoMemberContext } from "../utils/buildContext";
 import AppLogo from "../components/AppLogo";
 import { useT, useLanguage } from "../contexts/LanguageContext";
 import { LANGUAGES, markLangChosen } from "../utils/i18n";
-import { createReportPdf, fmtCurrency as pdfFmt, fmtDate as pdfFmtDate } from "../utils/generateReportPdf";
-import { allocatePeriods } from "../utils/allocatePeriods.mjs";
 import NotificationCenter from "../components/NotificationCenter";
 import NotificationPreferences from "../components/NotificationPreferences";
 import EnableNotificationsBanner from "../components/EnableNotificationsBanner";
@@ -48,7 +46,7 @@ import { walletIdError } from "../utils/walletId";
 import { useBvnVerification } from "../hooks/useBvnVerification";
 import { BottomSheet, ActionButton, AccountCard, FundWalletSheet, TransferSheet, ReceivePaymentSheet, WalletMiniAction, WALLET_MINI_ICONS, cleanBankName, WalletTxRow, WALLET_SOURCE } from "../components/WalletPanel";
 import { HistoryAvatar } from "../components/shared/HistoryRow";
-import WalletStatement from "./WalletStatement";
+import ClientStatements from "./ClientStatements";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import EsusuRotationDashboard from "../components/EsusuRotationDashboard";
 import LegalScreen from "./LegalScreen";
@@ -3138,7 +3136,7 @@ function PendingInfoSheet({ item, onClose }) {
 }
 
 // ── History tab ───────────────────────────────────────────────────────────
-function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, cycles = [], rotationsData = [], wallet }) {
+function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, cycles = [], rotationsData = [], wallet, onOpenStatements }) {
   const t = useT();
   // Build lookup maps so each row can show its entity name
   const cycleNameMap = Object.fromEntries(cycles.map(c => [c.id, c.label || "Personal Savings"]));
@@ -3253,84 +3251,6 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
       </div>
     );
   }
-
-  const handleExportPdf = async () => {
-    const sorted = [...allItems].sort((a, b) => new Date(a.date || a.created_at || 0) - new Date(b.date || b.created_at || 0));
-    let runBal = 0;
-    const rows = sorted.map(item => {
-      const amt     = parseFloat(item.amount) || 0;
-      const isWdReq = item._type === "withdrawal_request";
-      const isFee   = item.type === "withdrawal_fee" || item.type === "registration_fee";
-      const isWd    = !isWdReq && (item.type === "withdrawal" || isFee || item.type === "commission" || (item.type || "").startsWith("reversal_"));
-      const desc    = isWdReq ? (item.status === "approved" ? "Withdrawal Request (Approved)" : "Withdrawal Request (Pending)") : ledgerTypeLabel(item);
-      if (!isWdReq) { if (isWd) runBal -= amt; else runBal += amt; }
-      return {
-        date:        pdfFmtDate(item.created_at || item.date),
-        description: desc,
-        reference:   item.payment_method || item.status || "—",
-        debit:       isWd || isWdReq ? pdfFmt(amt) : "",
-        credit:      isWd || isWdReq ? "" : pdfFmt(amt),
-        balance:     pdfFmt(runBal),
-      };
-    });
-    const totC = contributions.filter(c => c.type === "contribution").reduce((s, c) => s + (parseFloat(c.amount) || 0), 0);
-    const totD = withdrawRequests.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
-    const pdf = await createReportPdf({
-      title: "Ajo Savings Statement", businessName: bizName,
-      period: client?.full_name || "Member",
-      headerRight: [
-        { value: bizName },
-        client?.full_name       ? { value: client.full_name,     sub: true } : null,
-        ownerInfo?.staff?.phone ? { value: ownerInfo.staff.phone, sub: true } : null,
-      ].filter(Boolean),
-      entityDetails: [
-        { label: "Member",          value: client?.full_name || "—" },
-        { label: "Current Balance", value: pdfFmt(client?.current_balance || 0) },
-        { label: "Total Deposited",  value: pdfFmt(client?.total_saved || totC) },
-        { label: "Records",         value: String(allItems.length) },
-      ],
-    });
-    pdf.addStats([
-      { label: "Total Contributed", value: pdfFmt(totC), color: "#3DA829" },
-      { label: "Total Withdrawn",   value: pdfFmt(totD), color: "#ef4444" },
-      { label: "Current Balance",   value: pdfFmt(client?.current_balance || 0) },
-      { label: "Records",           value: String(allItems.length) },
-    ]);
-    pdf.addStatement(rows, { openingBalance: 0, totalDebits: totD, totalCredits: totC });
-
-    // Per-cycle period status
-    const statementCycles = cycles.filter(c => c.status === "active" || c.status === "completed");
-    if (statementCycles.length > 0) {
-      const PERIOD_STATUS_LABELS = {
-        paid: "Paid", paid_in_advance: "Paid ahead", partial: "Partial",
-        pending: "Pending", missed: "Missed", current: "Current",
-        upcoming: "Upcoming", collector: "Collector's",
-      };
-      const FREQ_COLS_PDF = { daily: 7, weekly: 5, monthly: 4 };
-      pdf.addSectionTitle("Period Status by Cycle");
-      statementCycles.forEach(cyc => {
-        const cycContribs = contributions.filter(c => c.cycle_id === cyc.id);
-        const freq = cyc.frequency || cyc.contribution_frequency || "monthly";
-        const { periods: cyPeriods } = allocatePeriods(cyc, cycContribs, contributions);
-        pdf.addGrid(cyPeriods, FREQ_COLS_PDF[freq] || 4);
-        const pRows = cyPeriods.map(p => ({
-          period: `#${p.idx + 1}`,
-          paid:   pdfFmt(p.paid),
-          status: PERIOD_STATUS_LABELS[p.status] || p.status,
-        }));
-        pdf.addTable(
-          [
-            { key: "period", label: "Period", w: 0.20 },
-            { key: "paid",   label: "Paid",   w: 0.30, right: true },
-            { key: "status", label: "Status", w: 0.50 },
-          ],
-          pRows
-        );
-      });
-    }
-
-    await pdf.save(`Ajo_Savings_${(client?.full_name || "Statement").replace(/\s+/g, "_")}.pdf`);
-  };
 
   const renderItem = (item) => {
     const isWallet   = item._type === "wallet";
@@ -3541,13 +3461,13 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
             </button>
           ))}
         </div>
-        {allItems.length > 0 && (
-          <button onClick={handleExportPdf}
+        {onOpenStatements && (
+          <button onClick={onOpenStatements}
             className="flex-shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-700 active:scale-95 transition ml-2">
             <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 text-slate-500 dark:text-slate-300" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 15V3m0 12l-4-4m4 4l4-4"/><path d="M2 17l.621 2.485A2 2 0 004.561 21h14.878a2 2 0 001.94-1.515L22 17"/>
             </svg>
-            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-300">PDF</span>
+            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-300">Statement</span>
           </button>
         )}
       </div>
@@ -3624,7 +3544,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
 }
 
 // ── Me tab (Staff Portal structure) ───────────────────────────────────────
-function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onProfileUpdate, contributions = [], cycles = [] }) {
+function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onProfileUpdate, contributions = [], cycles = [], onOpenStatements }) {
   const t = useT();
   const { walletEnabled: tierWalletEnabled } = usePlatformConfig();
   const { lang, changeLang } = useLanguage();
@@ -4516,6 +4436,17 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
           <SectionLabel>Wallet tier</SectionLabel>
           <WalletTierCard userId={client?.client_user_id || session?.user?.id} enabled
             prefill={{ fullName: client?.full_name || "", address: client?.address || "", state: client?.state || "", lga: client?.lga || "" }} />
+        </div>
+      )}
+
+      {/* Statements */}
+      {onOpenStatements && (
+        <div className="px-4 mb-5">
+          <SectionLabel>Statements</SectionLabel>
+          <SettingsCard>
+            <Row iconCls="bg-brand-50 dark:bg-brand-900/20" icon={<RowIcon d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z|M14 2v6h6|M16 13H8|M16 17H8" color="#3DA829" />}
+              label="Statements" sub="Savings and wallet · monthly statement PDFs" onClick={onOpenStatements} />
+          </SettingsCard>
         </div>
       )}
 
@@ -5490,7 +5421,8 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
   const [showPwdModal,     setShowPwdModal]     = useState(false);
   const [showWallet,       setShowWallet]       = useState(false);
   const [walletSheet,      setWalletSheet]      = useState(null); // "fund" | "transfer" | "receive" | null
-  const [showStatement,    setShowStatement]    = useState(false);
+  // The Statements screen: null (closed) or { tab: "savings" | "wallet" | "monthly", month?: "YYYY-MM" }
+  const [statementsView,   setStatementsView]   = useState(null);
   // Session-scoped, not permanent — the nudge reappears next visit so it stays
   // a reminder rather than a one-time dismiss (mirrors ajo_balance_hidden below).
   const [walletBannerDismissed, setWalletBannerDismissed] = useState(
@@ -5747,6 +5679,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
 
   usePushNotifications(session?.user?.id ?? null, (dl) => {
     if (dl?.openWallet) setShowWallet(true);
+    if (dl?.openStatements) setStatementsView({ tab: "monthly", month: typeof dl.month === "string" ? dl.month : "" });
     if (!dl?.tab) return;
     setTab(["home","bills","circles","history","me"].includes(dl.tab) ? dl.tab : "home");
   });
@@ -5781,6 +5714,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
               userId={client?.client_user_id ?? session?.user?.id ?? null}
               onNavigate={(dl) => {
                 if (dl?.openWallet) setShowWallet(true);
+                if (dl?.openStatements) setStatementsView({ tab: "monthly", month: typeof dl.month === "string" ? dl.month : "" });
                 if (!dl?.tab) return;
                 // Server-side notifications say "contributions"; in this portal
                 // that content is the History tab (it isn't a tab of its own).
@@ -5862,6 +5796,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
               cycles={cycles}
               rotationsData={rotationsData}
               wallet={wallet}
+              onOpenStatements={() => setStatementsView({ tab: "savings" })}
             />
           )}
           {tab === "circles" && (
@@ -5879,6 +5814,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
               onProfileUpdate={updates => setClient(prev => ({ ...prev, ...updates }))}
               contributions={contributions}
               cycles={cycles}
+              onOpenStatements={() => setStatementsView({ tab: "savings" })}
             />
           )}
           {!client && tab === "home" && <SkeletonHome />}
@@ -5994,7 +5930,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
           onProfileUpdate={(fields) => setClient(prev => ({ ...prev, ...fields }))}
           onFund={() => { setShowWallet(false); setWalletSheet("fund"); }}
           onTransfer={() => { setShowWallet(false); setWalletSheet("transfer"); }}
-          onStatement={() => { setShowWallet(false); setShowStatement(true); }}
+          onStatement={() => { setShowWallet(false); setStatementsView({ tab: "wallet" }); }}
         />
       )}
       {walletEnabled && wallet.hasAccount && (
@@ -6009,12 +5945,23 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
           <ReceivePaymentSheet open={walletSheet === "receive"} onClose={() => setWalletSheet(null)}
             wallet={wallet.wallet} payRequest={wallet.payRequest} testMode={walletTestMode} api={wallet}
             businessName={client?.full_name} ownerName={client?.full_name} />
-          {showStatement && (
-            <div className="fixed inset-0 z-50 bg-white dark:bg-slate-900 overflow-y-auto">
-              <WalletStatement userId={walletUserId} displayName={client?.full_name} onClose={() => setShowStatement(false)} />
-            </div>
-          )}
         </>
+      )}
+      {statementsView && clientId && (
+        <div className="fixed inset-0 z-50 bg-white dark:bg-slate-900 overflow-y-auto">
+          <ClientStatements
+            call={ajoFn}
+            clientId={clientId}
+            clientName={client?.full_name || ajoClient?.full_name}
+            clientEmail={client?.email || ajoClient?.email}
+            since={client?.registration_date || client?.created_at || ajoClient?.created_at}
+            walletUserId={walletUserId}
+            hasWallet={!!(walletEnabled && wallet.hasAccount)}
+            initialTab={statementsView.tab}
+            initialMonth={statementsView.month || ""}
+            onClose={() => setStatementsView(null)}
+          />
+        </div>
       )}
       {showWithdraw && client && (
         <WithdrawRequestModal

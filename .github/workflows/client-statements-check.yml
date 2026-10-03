@@ -1,0 +1,42 @@
+name: Client statements check
+
+# Manual check of the monthly client statements (2026-10-03). Asks the `client-statements` function for a DRY RUN: it
+# builds each due client's statement (numbers from the database, the PDF with the app's own layout) and has the email
+# pipeline render — not send — the email with the PDF attached. Nothing is sent, notified or recorded.
+# Prints counts and sizes only: no names, emails or amounts.
+
+on:
+  workflow_dispatch:
+    inputs:
+      month:
+        description: "Month (YYYY-MM). Empty = last month"
+        required: false
+        default: ""
+      limit:
+        description: "How many clients (1-10)"
+        required: false
+        default: "3"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dry run
+        env:
+          URL: ${{ secrets.REACT_APP_SUPABASE_URL }}
+          KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          MONTH: ${{ inputs.month }}
+          LIMIT: ${{ inputs.limit }}
+        run: |
+          set +e
+          BODY=$(jq -nc --arg m "$MONTH" --arg l "$LIMIT" '{dry_run: true, limit: (($l | tonumber?) // 3)} + (if $m == "" then {} else {month: $m} end)')
+          curl -s -m 140 -o out.json -w "HTTP %{http_code}\n" "$URL/functions/v1/client-statements" \
+            -H "Authorization: Bearer $KEY" -H "apikey: $KEY" -H "Content-Type: application/json" -d "$BODY"
+          jq -c '{ok, month, candidates, dry_run, error,
+                  results: [.results[]? | {savings_entries, wallet_entries, pdf_bytes, email_rendered, has_login, has_email, status, error,
+                                           preview: (.preview // {} | {dry_run, html_bytes, attachment_bytes, error})}]}' out.json \
+            || head -c 300 out.json
+          rm -f out.json

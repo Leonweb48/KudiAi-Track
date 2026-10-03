@@ -164,6 +164,16 @@ async function createAndroidChannels(Push) {
   } catch (_e) {}
 }
 
+// A ?kt_dl= link (a web push cold-open, or an email's button) is read from the address once, then offered to each
+// portal that mounts this hook within 15 s until one takes it. The owner app's hook mounts first for everyone, so a
+// handler returns false when the link isn't for it (e.g. the Ajo client portal's "open my statements") and the next
+// portal to mount gets it.
+const PENDING_LINK_TTL_MS = 15000;
+let pendingLink = null;   // { dl, at }
+
+/** test hook */
+export function _setPendingLinkForTest(dl) { pendingLink = dl ? { dl, at: Date.now() } : null; }
+
 // ── Main hook ─────────────────────────────────────────────────────────────────
 export function usePushNotifications(userId, onDeepLink) {
   const registered    = useRef(false);
@@ -183,12 +193,17 @@ export function usePushNotifications(userId, onDeepLink) {
         params.delete("kt_dl");
         const qs = params.toString();
         window.history.replaceState({}, "", window.location.pathname + (qs ? "?" + qs : "") + window.location.hash);
-        const parsed = JSON.parse(raw);
-        setTimeout(() => onDeepLinkRef.current?.(parsed), 800); // let the portal mount first
+        pendingLink = { dl: JSON.parse(raw), at: Date.now() };
       }
     } catch { /* malformed link — ignore */ }
+    // let the portal mount first, then offer the link; false = "not mine", leave it for the next portal
+    const offerTimer = setTimeout(() => {
+      if (!pendingLink || Date.now() - pendingLink.at > PENDING_LINK_TTL_MS) { pendingLink = null; return; }
+      const { dl } = pendingLink;
+      if (onDeepLinkRef.current?.(dl) !== false) pendingLink = null;
+    }, 800);
 
-    if (!("serviceWorker" in navigator)) return;
+    if (!("serviceWorker" in navigator)) return () => clearTimeout(offerTimer);
     const onMessage = (e) => {
       if (e.data?.type !== "kt-push-click") return;
       try {
@@ -197,7 +212,7 @@ export function usePushNotifications(userId, onDeepLink) {
       } catch { /* malformed link — ignore */ }
     };
     navigator.serviceWorker.addEventListener("message", onMessage);
-    return () => navigator.serviceWorker.removeEventListener("message", onMessage);
+    return () => { clearTimeout(offerTimer); navigator.serviceWorker.removeEventListener("message", onMessage); };
   }, []);
 
   useEffect(() => {

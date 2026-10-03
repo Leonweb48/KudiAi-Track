@@ -230,11 +230,13 @@ export default function App() {
     navigate(target === "home" ? "/" : `/${target}`, opts.replace ? { replace: true } : undefined);
   }, [navigate]);
 
-  // Push notification deep-link handler — called by usePushNotifications on tap
+  // Push notification deep-link handler — called by usePushNotifications on tap. Returns false for a link that isn't
+  // for this (owner) app — no tab, or an Ajo client's session — so the client portal's own handler gets it.
   const handlePushDeepLink = useCallback((dl) => {
-    if (!userId) return;
+    if (!userId || !dl?.tab || status === "ajo_client") return false;
     openDeepLink(dl, { replace: true });
-  }, [openDeepLink, userId]);
+    return true;
+  }, [openDeepLink, userId, status]);
 
   // Register FCM token + handle push taps (no-op on web)
   usePushNotifications(userId, handlePushDeepLink);
