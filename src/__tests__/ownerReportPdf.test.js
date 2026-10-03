@@ -1,9 +1,8 @@
+/* global globalThis */
 // Owner reports (2026-10-02): profit per sale (profitEngine.saleCost via Reports.buildSalesProfit), profit on the credit,
 // Ajo, bills and stock reports, the receipt-style letterhead + verify footer of the report PDF, and the verify page's
 // report view.
-import { TextEncoder, TextDecoder } from "util";
-globalThis.TextEncoder = globalThis.TextEncoder || TextEncoder;
-globalThis.TextDecoder = globalThis.TextDecoder || TextDecoder;
+import "../testUtils/textEncoder";   // first: jsPDF needs TextEncoder when it loads
 /* eslint-disable import/first */
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -24,7 +23,6 @@ jest.mock("react-router-dom", () => ({ useNavigate: () => () => {} }), { virtual
 jest.mock("../hooks/useCampaigns", () => ({ useCampaigns: () => ({ slotMap: {}, loading: false, recordEvent: () => {} }) }));
 // a tiny real PNG so the QR image goes into the PDF (jsdom has no canvas for the qrcode library)
 const PNG_1PX = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
-jest.mock("qrcode", () => ({ toDataURL: async () => "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==" }));
 let mockSavedDoc = null;
 jest.mock("../utils/pdfSave", () => ({ savePdf: async (doc) => { mockSavedDoc = doc; } }));
 

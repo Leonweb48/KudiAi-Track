@@ -1,0 +1,42 @@
+name: Owner reports check
+
+# Manual check of the owners' monthly reports (2026-10-03). Asks the `owner-reports` function for a DRY RUN: it builds
+# each due owner's Business Report + Wallet Statement (the app's own shared report code) and has the email pipeline
+# render — not send — the email with both PDFs attached. Nothing is sent, notified or recorded.
+# Prints counts and sizes only: no names, emails or amounts.
+
+on:
+  workflow_dispatch:
+    inputs:
+      month:
+        description: "Month (YYYY-MM). Empty = last month"
+        required: false
+        default: ""
+      limit:
+        description: "How many owners (1-5)"
+        required: false
+        default: "2"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dry run
+        env:
+          URL: ${{ secrets.REACT_APP_SUPABASE_URL }}
+          KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          MONTH: ${{ inputs.month }}
+          LIMIT: ${{ inputs.limit }}
+        run: |
+          set +e
+          BODY=$(jq -nc --arg m "$MONTH" --arg l "$LIMIT" '{dry_run: true, limit: (($l | tonumber?) // 2)} + (if $m == "" then {} else {month: $m} end)')
+          curl -s -m 140 -o out.json -w "HTTP %{http_code}\n" "$URL/functions/v1/owner-reports" \
+            -H "Authorization: Bearer $KEY" -H "apikey: $KEY" -H "Content-Type: application/json" -d "$BODY"
+          jq -c '{ok, month, candidates, dry_run, error,
+                  results: [.results[]? | {business_pdf_bytes, wallet_pdf_bytes, email_rendered, has_email, wants_email, font, status, error,
+                                           preview: (.preview // {} | {dry_run, html_bytes, attachment_bytes, attachments, error})}]}' out.json \
+            || head -c 300 out.json
+          rm -f out.json

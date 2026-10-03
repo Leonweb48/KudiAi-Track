@@ -3,8 +3,6 @@
 // header with the KudiAI Track name and the client's details, verify footer with reference + QR code — the client
 // Statements screen (savings / wallet / monthly, back steps through the tabs) and its helpers. Fictional client.
 import "../testUtils/textEncoder";   // first: jsPDF needs TextEncoder when it loads
-import fs from "fs";
-import path from "path";
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import jsQR from "jsqr";
@@ -65,13 +63,6 @@ const SAVINGS = {
 const REF = "KDR-202610-ABCDEFGH";
 
 describe("shared statement layout", () => {
-  it("the server's copy (monthly email PDF) is byte-for-byte the app's — run scripts/sync-statement-layout.mjs after editing", () => {
-    const root = path.resolve(__dirname, "../..");
-    const app = fs.readFileSync(path.join(root, "src/utils/statementPdfLayout.js"), "utf8");
-    const server = fs.readFileSync(path.join(root, "supabase/functions/_shared/statementPdfLayout.js"), "utf8");
-    expect(server).toBe(app);
-  });
-
   it("wallet entries are named exactly as the app's receipts name them", () => {
     expect(WALLET_SOURCE_TITLES).toEqual(WALLET_TITLES);
   });

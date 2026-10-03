@@ -29,3 +29,18 @@ export function statementDates(range, firstAt) {
   const toDate = addDay(watDay(range.to), -1);
   return { fromDate: fromDate <= "2000-01-01" ? toDate : fromDate, toDate };
 }
+
+/** Months that can be downloaded, newest first: from the month they joined to this month (at most 24). */
+export function statementMonths(since, today = watToday()) {
+  const cur = today.slice(0, 7);
+  const start = since && /^\d{4}-\d{2}/.test(String(since)) ? String(since).slice(0, 7) : cur;
+  const out = [];
+  let [y, m] = cur.split("-").map(Number);
+  while (out.length < 24) {
+    const key = `${y}-${String(m).padStart(2, "0")}`;
+    out.push(key);
+    if (key <= start) break;
+    m -= 1; if (m === 0) { m = 12; y -= 1; }
+  }
+  return out;
+}

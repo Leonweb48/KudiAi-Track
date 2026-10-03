@@ -17,7 +17,7 @@ import { jsPDF } from "npm:jspdf@4.2.1";
 import QRCode from "npm:qrcode@1.5.4";
 import {
   fmtNaira, monthDates, monthKeyLabel, monthlyStatementFilename, monthlyVerifySummary, renderMonthlyStatementPdf, verifyUrl,
-} from "../_shared/statementPdfLayout.js";
+} from "../_shared/app/statementPdfLayout.js";
 
 const SUPABASE_URL   = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY    = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";

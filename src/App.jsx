@@ -228,6 +228,8 @@ export default function App() {
     const target = (dl.tab === "credit" || dl.tab === "aso") ? "finance" : dl.tab;
     publishDeepLink(dl);
     navigate(target === "home" ? "/" : `/${target}`, opts.replace ? { replace: true } : undefined);
+    // the monthly reports notification / email: open Reports on that part and month
+    if (dl.openReports) setShowReports({ view: String(dl.openReports), month: typeof dl.month === "string" ? dl.month : "" });
   }, [navigate]);
 
   // Push notification deep-link handler — called by usePushNotifications on tap. Returns false for a link that isn't
@@ -814,7 +816,7 @@ export default function App() {
       {/* Report generator — full-screen overlay, z-60
            Compliance lock: blocked after grace expires for non-compliant paid owners. */}
       {showReports && !isFeatureLocked("pdfExport", complianceCtx) && (
-        <S><Reports store={store} onClose={() => setShowReports(false)} /></S>
+        <S><Reports store={store} initialView={showReports?.view} initialMonth={showReports?.month} onClose={() => setShowReports(false)} /></S>
       )}
       {showReports && isFeatureLocked("pdfExport", complianceCtx) && (
         <ComplianceLockModal

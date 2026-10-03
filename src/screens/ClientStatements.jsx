@@ -5,12 +5,12 @@ import ScreenErrorBoundary from "../components/shared/ScreenErrorBoundary";
 import { supabase } from "../utils/supabase";
 import { fmt } from "../utils/helpers";
 import { clientHolder, formatWATDate, formatWATTime, monthKeyLabel } from "../utils/statementPdfLayout";
-import { statementDates, statementRange, watToday } from "../utils/statementPeriod";
+import { statementDates, statementMonths, statementRange, watToday } from "../utils/statementPeriod";
 import { saveMonthlyStatementPdf, saveSavingsStatementPdf } from "../utils/generateClientStatementPdf";
 import { buildSavingsStatementCSV, savingsStatementCSVFilename, shareCSV } from "../utils/exportCSV";
 import WalletStatement from "./WalletStatement";
 
-export { statementRange };
+export { statementMonths, statementRange };
 
 // A client's statements (Ajo/savings client portal) — the client-side counterpart of the owner's wallet statement:
 //   Savings  every completed savings entry in the period with the running balance, PDF + CSV
@@ -22,21 +22,6 @@ export { statementRange };
 // Back (the arrow, the Android back button, the browser's back): the previous tab first, then out of Statements to
 // wherever it was opened from. Statements is one entry in the browser history, so the Android back button
 // (App.jsx: navigate(-1) while there is history, otherwise exit) comes here instead of closing the app.
-
-/** Months a client can download, newest first: from the month they joined to this month (at most 24). */
-export function statementMonths(since, today = watToday()) {
-  const cur = today.slice(0, 7);
-  const start = since && /^\d{4}-\d{2}/.test(String(since)) ? String(since).slice(0, 7) : cur;
-  const out = [];
-  let [y, m] = cur.split("-").map(Number);
-  while (out.length < 24) {
-    const key = `${y}-${String(m).padStart(2, "0")}`;
-    out.push(key);
-    if (key <= start) break;
-    m -= 1; if (m === 0) { m = 12; y -= 1; }
-  }
-  return out;
-}
 
 function SummaryCard({ label, value, tone }) {
   const color = tone === "in" ? "text-[#0f7b3e] dark:text-[#3ccf7a]" : tone === "out" ? "text-[#b91c1c] dark:text-[#ef7171]" : "text-slate-900 dark:text-slate-50";

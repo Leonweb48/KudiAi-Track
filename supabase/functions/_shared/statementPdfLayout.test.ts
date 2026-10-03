@@ -5,7 +5,7 @@ import { jsPDF } from "npm:jspdf@4.2.1";
 import QRCode from "npm:qrcode@1.5.4";
 import {
   monthlyStatementFilename, monthlyStatementSections, monthlyVerifySummary, renderMonthlyStatementPdf, verifyUrl,
-} from "./statementPdfLayout.js";
+} from "./app/statementPdfLayout.js";
 
 function ok(cond: unknown, msg: string) {
   if (!cond) throw new Error(`ASSERT ${msg}`);

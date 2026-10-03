@@ -2,15 +2,11 @@
 // owner reports use — kudiai.app/verify shows them), and the QR code for its verify link as a module matrix that the
 // statement layout draws as vector squares.
 
-import QRCode from "qrcode";
 import { supabase } from "./supabase";
 import { verifyUrl } from "./statementPdfLayout";
+import { qrMatrix } from "./qrMatrix";
 
-/** { size, isDark(row, col) } for a QR code of `text` (error correction M). */
-export function qrMatrix(text) {
-  const q = QRCode.create(text, { errorCorrectionLevel: "M" });
-  return { size: q.modules.size, isDark: (r, c) => !!q.modules.get(r, c) };
-}
+export { qrMatrix };
 
 /**
  * Save the statement's reference — "" when it can't (offline): the PDF is then still made, just without the verify

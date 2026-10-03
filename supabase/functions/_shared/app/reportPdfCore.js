@@ -1,0 +1,628 @@
+// SHARED WITH THE SERVER — copied byte-for-byte to supabase/functions/_shared/app/ by `node scripts/sync-shared.mjs`
+// (the monthly owner/client report emails build their PDFs there). Edit it here, then run the script;
+// src/__tests__/sharedModules.test.js fails while the copies differ. No imports outside src/shared.
+
+// Report/statement PDF engine — the drawing. Every report and statement PDF is drawn here; the browser wrapper
+// (src/utils/generateReportPdf.js) and the server (supabase/functions/owner-reports) load the assets — the KudiAI logo,
+// NotoSans, the business's logo, the verify QR matrix — and hand them in. See generateReportPdf.js for the API.
+
+import { formatNGN } from "./formatNGN.js";
+
+/** "2 Oct 2026, 3:04 pm" in Nigerian time. */
+export function fmtGeneratedAt(d = new Date()) {
+  try {
+    return new Date(d).toLocaleString("en-NG", { timeZone: "Africa/Lagos", day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" });
+  } catch { return new Date(d).toLocaleString(); }
+}
+
+// Brand palette — matches invoice PDF
+const NAVY   = [15,  28,  69];
+const GREEN  = [61,  168, 41];
+const DARK   = [44,  44,  42];
+const SEC    = [65,  64,  60];
+const MUTED  = [100, 99,  94];
+const HAIRLN = [195, 193, 186];
+const PANEL  = [246, 248, 252];
+const WHITE  = [255, 255, 255];
+const RED    = [220, 38,  38];
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function hexToRgb(hex) {
+  if (!hex || !hex.startsWith("#")) return SEC;
+  return [parseInt(hex.slice(1,3),16), parseInt(hex.slice(3,5),16), parseInt(hex.slice(5,7),16)];
+}
+
+function resolveColor(c, row) {
+  if (!c) return SEC;
+  if (Array.isArray(c)) return c;
+  if (typeof c === "function") {
+    const v = c(row);
+    return Array.isArray(v) ? v : hexToRgb(v || "");
+  }
+  return hexToRgb(c);
+}
+
+export function fmtCurrency(amount) {
+  return formatNGN(amount);
+}
+
+export function fmtDate(d) {
+  if (!d) return "—";
+  const s = String(d);
+  const dt = s.includes("T") ? new Date(s) : new Date(s + "T00:00:00");
+  return dt.toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" });
+}
+
+/**
+ * @param {any} doc     a fresh jsPDF (unit mm, A4)
+ * @param {any} options { title, businessName, period, subtitle, entityDetails, headerRight, letterhead, verifyRef }
+ * @param {any} assets  { appLogo (data URL), fontReg / fontMed (base64 TTF), bizLogo ({ dataUrl, w, h, format }),
+ *                        qr ({ size, isDark(r, c) }) or qrDataUrl (PNG) }
+ */
+export function createReportPdfCore(doc, {
+  title         = "Report",
+  businessName  = "Business",
+  period        = "",
+  subtitle      = "",
+  entityDetails = null,  // [{label, value}] — auto-rendered on page 1 below header
+  headerRight   = null,  // [{value, sub?}]  — identity block on right side of header
+  letterhead    = null,  // { businessName, logoUrl, address, phone, email, generatedAt } — owner reports' business header
+  verifyRef     = "",    // KDR-… reference → verify footer with QR on every page
+} = {}, { appLogo = null, fontReg = null, fontMed = null, bizLogo = null, qr = null, qrDataUrl = null } = {}) {
+  const appLogoB64 = appLogo;
+  const hasQr = !!(qr || qrDataUrl);
+  const W  = doc.internal.pageSize.getWidth();
+  const H  = doc.internal.pageSize.getHeight();
+  const ML = 12;
+  const MR = W - 12;
+  const CW = MR - ML;
+  const branded   = !!letterhead;
+  const FOOTER_H  = branded ? 24 : 14;
+  const CONTENT_BOT = H - FOOTER_H - 2;
+
+  // Header height scales with number of identity lines on the right
+  const hrItems = (headerRight || []).filter(item => item?.value);
+  const HDR_H   = branded ? 34 : Math.max(40, 7 + hrItems.reduce((h, it) => h + (it.sub ? 5 : 6), 0) + 3);
+
+  const generatedStamp = fmtGeneratedAt(letterhead?.generatedAt || new Date());
+
+  // ── Register Unicode font ──────────────────────────────────────────────────
+  let FONT = "helvetica";
+  try {
+    if (fontReg) {
+      doc.addFileToVFS("NotoSans-Regular.ttf", fontReg);
+      doc.addFont("NotoSans-Regular.ttf", "NotoSans", "normal");
+      FONT = "NotoSans";
+    }
+    if (fontMed) {
+      doc.addFileToVFS("NotoSans-Medium.ttf", fontMed);
+      doc.addFont("NotoSans-Medium.ttf", "NotoSans", "bold");
+    } else if (FONT === "NotoSans") {
+      doc.addFont("NotoSans-Regular.ttf", "NotoSans", "bold");
+    }
+  } catch { /* fall back to helvetica */ }
+
+  /** The verify QR as vector squares (one rectangle per run of dark modules in a row). */
+  function drawQrMatrix(x, y, size) {
+    const n = qr.size, cell = size / n;
+    doc.setFillColor(...WHITE); doc.rect(x - 1, y - 1, size + 2, size + 2, "F");
+    doc.setFillColor(...NAVY);
+    for (let r = 0; r < n; r++) {
+      let c = 0;
+      while (c < n) {
+        if (!qr.isDark(r, c)) { c++; continue; }
+        let end = c;
+        while (end + 1 < n && qr.isDark(r, end + 1)) end++;
+        doc.rect(x + c * cell, y + r * cell, (end - c + 1) * cell, cell + 0.02, "F");
+        c = end + 1;
+      }
+    }
+  }
+
+  const setReg  = sz => { doc.setFont(FONT, "normal"); if (sz) doc.setFontSize(sz); };
+  const setMed  = sz => { doc.setFont(FONT, "bold");   if (sz) doc.setFontSize(sz); };
+  const setItal = sz => { doc.setFont("helvetica", "italic"); if (sz) doc.setFontSize(sz); };
+  const col     = (...c) => doc.setTextColor(...c);
+
+  // ── Page 1 header — plain white, logo+title left, identity block right ────
+  function drawPage1Header() {
+    // Logo top-left
+    if (appLogoB64) doc.addImage(appLogoB64, "PNG", ML, 5, 13, 13);
+    // Brand label
+    setMed(6); col(...GREEN);
+    doc.text("KudiAI Track", ML + 17, 11);
+    // Report title
+    setMed(13); col(...NAVY);
+    doc.text(doc.splitTextToSize(String(title), CW * 0.50)[0], ML, 23);
+    // Period · subtitle
+    const meta = [period, subtitle].filter(Boolean).join("  ·  ");
+    if (meta) { setReg(7); col(...MUTED); doc.text(doc.splitTextToSize(meta, CW * 0.50)[0], ML, 30); }
+    // Business name fallback when no identity block supplied
+    if (!hrItems.length) { setReg(7); col(...DARK); doc.text(doc.splitTextToSize(String(businessName), CW * 0.50)[0], ML, 36); }
+
+    // Right-side identity block
+    if (hrItems.length) {
+      let hy = 7;
+      hrItems.forEach(item => {
+        item.sub ? setReg(6) : setMed(8);
+        col(...(item.sub ? SEC : DARK));
+        doc.text(doc.splitTextToSize(String(item.value), CW * 0.46)[0], MR, hy, { align: "right" });
+        hy += item.sub ? 5 : 6;
+      });
+    }
+
+    // Hairline divider + green accent rule
+    doc.setDrawColor(...HAIRLN); doc.setLineWidth(0.2);
+    doc.line(ML, HDR_H - 2, MR, HDR_H - 2);
+    doc.setFillColor(...GREEN); doc.rect(0, HDR_H, W, 2, "F");
+  }
+
+  // Continuation pages: plain white, title left, business right, green rule bottom
+  function drawContinuationHeader() {
+    setMed(6.5); col(...NAVY);
+    doc.text(`${title} (continued)`, ML, 8);
+    setReg(6); col(...MUTED);
+    doc.text(doc.splitTextToSize(String(businessName), CW * 0.50)[0], MR, 8, { align: "right" });
+    doc.setFillColor(...GREEN); doc.rect(0, 11, W, 1.5, "F");
+  }
+
+  // ── Owner-report letterhead (receipt style): the business's logo + name + address + contacts left, report title /
+  //    period / generated date-time / reference right, brand rule underneath ────────────────────────────────────────
+  function drawLetterhead() {
+    const lh = letterhead;
+    let tx = ML;
+    if (bizLogo?.dataUrl && bizLogo.w > 0 && bizLogo.h > 0) {
+      const k = Math.min(18 / bizLogo.w, 18 / bizLogo.h);
+      const w = bizLogo.w * k, h = bizLogo.h * k;
+      try { doc.addImage(bizLogo.dataUrl, bizLogo.format || "PNG", ML, 8 + (18 - h) / 2, w, h); tx = ML + w + 4; } catch { /* the logo is decoration only */ }
+    }
+    const leftW = CW * 0.6 - (tx - ML);
+    setMed(13); col(...NAVY);
+    doc.text(doc.splitTextToSize(String(lh.businessName || businessName), leftW)[0], tx, 13.5);
+    let ly = 18.5;
+    setReg(7); col(...SEC);
+    const addr = String(lh.address || "").replace(/\s+/g, " ").trim();
+    if (addr) doc.splitTextToSize(addr, leftW).slice(0, 2).forEach((l) => { doc.text(l, tx, ly); ly += 3.6; });
+    const contact = [lh.phone, lh.email].map((v) => String(v || "").trim()).filter(Boolean).join("   ·   ");
+    if (contact) { doc.text(doc.splitTextToSize(contact, leftW)[0], tx, ly); ly += 3.6; }
+
+    setMed(9.5); col(...DARK);
+    doc.text(String(title).toUpperCase(), MR, 13, { align: "right" });
+    setReg(7.5); col(...MUTED);
+    const meta = [period, subtitle].filter(Boolean).join("  ·  ");
+    if (meta) doc.text(doc.splitTextToSize(meta, CW * 0.38)[0], MR, 18.2, { align: "right" });
+    doc.text(`Generated ${generatedStamp}`, MR, 22.6, { align: "right" });
+    if (verifyRef) {
+      doc.setFont("courier", "bold"); doc.setFontSize(7.5); col(...DARK);
+      doc.text(verifyRef, MR, 27.2, { align: "right" });
+    }
+    doc.setFillColor(...GREEN); doc.rect(0, HDR_H, W, 1.4, "F");
+  }
+
+  if (branded) drawLetterhead(); else drawPage1Header();
+  let y = HDR_H + 7;  // 7mm gap after green stripe before first content element
+
+  // ── Page management ────────────────────────────────────────────────────────
+  function newPage() {
+    doc.addPage();
+    drawContinuationHeader();
+    y = 17;  // green stripe ends at 12.5mm; 4.5mm gap to content
+  }
+
+  function need(h) {
+    if (y + h > CONTENT_BOT) newPage();
+  }
+
+  // ── Entity details panel ───────────────────────────────────────────────────
+  function addEntityPanel(details) {
+    if (!details?.length) return;
+    const ITEM_H  = 7.5;
+    const rowCount = Math.ceil(details.length / 2);
+    const panH    = rowCount * ITEM_H + 8;
+    need(panH + 4);
+
+    doc.setFillColor(...PANEL);
+    doc.rect(ML, y, CW, panH, "F");
+    doc.setFillColor(...GREEN);
+    doc.rect(ML, y, 2.5, panH, "F");
+    doc.setDrawColor(...HAIRLN); doc.setLineWidth(0.15);
+    doc.rect(ML, y, CW, panH, "S");
+
+    const halfW = CW / 2;
+    const baseY = y + 5.5;
+
+    details.forEach((d, i) => {
+      const xOff = ML + 6 + (i % 2) * halfW;
+      const yOff = baseY + Math.floor(i / 2) * ITEM_H;
+      setReg(5.5); col(...MUTED);
+      const lblLines = doc.splitTextToSize(String(d.label || "").toUpperCase(), halfW - 10);
+      doc.text(lblLines[0], xOff, yOff);
+      setMed(7); col(...DARK);
+      const valLines = doc.splitTextToSize(String(d.value || "—"), halfW - 10);
+      doc.text(valLines[0] + (valLines.length > 1 ? "…" : ""), xOff, yOff + 4.5);
+    });
+
+    y += panH + 4;
+  }
+
+  // Auto-render entity panel on page 1 if provided
+  if (entityDetails?.length > 0) {
+    y += 2;
+    addEntityPanel(entityDetails);
+  }
+
+  // ── Public API: content methods ────────────────────────────────────────────
+
+  function addStats(stats) {
+    if (!stats?.length) return;
+    const perRow = stats.length <= 2 ? 2 : Math.min(4, stats.length);
+    const boxW   = (CW - (perRow - 1) * 3) / perRow;
+    const boxH   = 18;
+
+    for (let i = 0; i < stats.length; i += perRow) {
+      need(boxH + 3);
+      const slice = stats.slice(i, i + perRow);
+      // eslint-disable-next-line no-loop-func
+      slice.forEach((s, j) => {
+        const x  = ML + j * (boxW + 3);
+        const bg = Array.isArray(s.bg) ? s.bg : hexToRgb(typeof s.bg === "string" ? s.bg : "#f8fafc");
+        doc.setFillColor(...bg);
+        doc.rect(x, y, boxW, boxH, "F");
+        setReg(5.5); col(...MUTED);
+        doc.text(String(s.label || "").toUpperCase(), x + 3, y + 6);
+        const vc = Array.isArray(s.color) ? s.color : hexToRgb(typeof s.color === "string" ? s.color : "#2c2c2a");
+        setMed(11); col(...vc);
+        const vLines = doc.splitTextToSize(String(s.value ?? ""), boxW - 5);
+        doc.text(vLines[0] + (vLines.length > 1 ? "…" : ""), x + 3, y + 14);
+      });
+      y += boxH + 3;
+    }
+    y += 2;
+  }
+
+  // keepWith: mm of content that must follow on the same page (so a heading is never left alone at the bottom)
+  function addSectionTitle(text, keepWith = 0) {
+    need(14 + keepWith);
+    y += 4;
+    doc.setFillColor(...GREEN);
+    doc.rect(ML, y - 3.5, 2.5, 9, "F");
+    setMed(7.5); col(...NAVY);
+    doc.text(String(text).toUpperCase(), ML + 5.5, y + 1.5);
+    doc.setDrawColor(...HAIRLN); doc.setLineWidth(0.2);
+    doc.line(ML + 5.5, y + 3.5, MR, y + 3.5);
+    y += 10;
+  }
+
+  function addTable(cols, rows, opts = {}) {
+    if (!cols?.length) return;
+    const RH = opts.rowHeight    || 7;
+    const TH = opts.headerHeight || 7;
+
+    need(TH + RH);
+
+    function drawHeader() {
+      doc.setFillColor(...NAVY);
+      doc.rect(ML, y, CW, TH, "F");
+      let x = ML + 1.5;
+      cols.forEach(c => {
+        const cw  = CW * (c.w || c.width || (1 / cols.length));
+        setMed(6.5); col(...WHITE);
+        const lbl = String(c.label || "").toUpperCase();
+        const lblClipped = doc.splitTextToSize(lbl, cw - 3)[0];
+        if (c.right) doc.text(lblClipped, x + cw - 2, y + TH / 2 + 2, { align: "right" });
+        else         doc.text(lblClipped, x,            y + TH / 2 + 2);
+        x += cw;
+      });
+      y += TH;
+    }
+
+    drawHeader();
+
+    if (!rows?.length) {
+      setItal(7); col(...MUTED);
+      doc.text("No data for this period", ML + CW / 2, y + 5, { align: "center" });
+      y += 10;
+      return;
+    }
+
+    rows.forEach((r, ri) => {
+      if (y + RH > CONTENT_BOT) { newPage(); drawHeader(); }
+      if (ri % 2 === 0) {
+        doc.setFillColor(...PANEL);
+        doc.rect(ML, y, CW, RH, "F");
+      }
+      doc.setDrawColor(...HAIRLN); doc.setLineWidth(0.1);
+      doc.line(ML, y + RH, MR, y + RH);
+
+      let x = ML + 1.5;
+      cols.forEach(c => {
+        const cw  = CW * (c.w || c.width || (1 / cols.length));
+        const val = String(r[c.key] ?? "—");
+        const tc  = resolveColor(c.color, r);
+        c.bold ? setMed(7) : setReg(7);
+        col(...tc);
+        const maxW = cw - 3;
+        const lines = doc.splitTextToSize(val, maxW);
+        const display = lines.length > 1 ? lines[0].trimEnd() + "…" : lines[0];
+        if (c.right) doc.text(display, x + cw - 2, y + RH / 2 + 2, { align: "right" });
+        else         doc.text(display, x,            y + RH / 2 + 2);
+        x += cw;
+      });
+      y += RH;
+    });
+    y += 4;
+  }
+
+  // Right-aligned totals block (occupies right ~47% of page)
+  function addTotalsBlock(items) {
+    if (!items?.length) return;
+    const RH    = 7;
+    const TOT_X = ML + CW * 0.53;
+    need(items.length * RH + 6);
+
+    items.forEach((item) => {
+      if (item.sep) {
+        doc.setDrawColor(...HAIRLN); doc.setLineWidth(0.2);
+        doc.line(TOT_X, y + 1, MR, y + 1);
+        y += 3;
+        return;
+      }
+      if (item.highlight) {
+        doc.setFillColor(...NAVY);
+        doc.rect(TOT_X, y, MR - TOT_X, RH, "F");
+      }
+
+      const textCol = item.highlight ? WHITE : (item.bold ? DARK : SEC);
+      setReg(7.5); col(...textCol);
+      doc.text(String(item.label || ""), TOT_X + 2, y + 5);
+
+      item.bold ? setMed(7.5) : setReg(7.5);
+      const valCol = item.highlight ? WHITE : (item.green ? GREEN : item.red ? RED : DARK);
+      col(...valCol);
+      doc.text(String(item.value || ""), MR - 2, y + 5, { align: "right" });
+      y += RH;
+    });
+    y += 4;
+  }
+
+  // ── Period visual grid — mirrors on-screen ContributionCard cell colours ──
+  function addGrid(periods, gridCols) {
+    if (!periods?.length) return;
+    const cols  = gridCols || 4;
+    const CELL  = 9;    // mm — square cell
+    const GAP   = 1.5;  // mm — gap between cells
+    const R     = 1.5;  // mm — corner radius
+    const STEP  = CELL + GAP;
+
+    const rowsNeeded = Math.ceil(periods.length / cols);
+    need(rowsNeeded * STEP + 14); // 14 = 4 gap + 10 legend
+
+    // Light-mode colour map — mirrors MARK_CLS / MARK_ICON on-screen
+    const STATUS = {
+      paid:     { fill: [5, 150, 105],   txt: WHITE, stroke: null         },
+      partial:  { fill: [251, 191, 36],  txt: WHITE, stroke: null         },
+      missed:   { fill: WHITE,           txt: RED,   stroke: RED          },
+      current:  { fill: GREEN,           txt: WHITE, stroke: null         },
+      upcoming: { fill: PANEL,           txt: MUTED, stroke: HAIRLN       },
+    };
+    const SYM = { paid: "✓", partial: "~", missed: "✗", current: "→", upcoming: "·" };
+
+    periods.forEach((p, i) => {
+      const ci  = i % cols;
+      const ri  = Math.floor(i / cols);
+      const cx  = ML + ci * STEP;
+      const cy  = y + ri * STEP;
+      const s   = STATUS[p.status] || STATUS.upcoming;
+
+      doc.setFillColor(...s.fill);
+      if (s.stroke) {
+        doc.setDrawColor(...s.stroke);
+        doc.setLineWidth(0.5);
+        doc.roundedRect(cx, cy, CELL, CELL, R, R, "FD");
+      } else {
+        doc.roundedRect(cx, cy, CELL, CELL, R, R, "F");
+      }
+
+      // Icon in upper portion of cell
+      setMed(7); col(...s.txt);
+      doc.text(SYM[p.status] || "·", cx + CELL / 2, cy + 4.2, { align: "center" });
+
+      // Period number at bottom of cell
+      setReg(4.5); col(...s.txt);
+      doc.text(String((p.idx ?? i) + 1), cx + CELL / 2, cy + CELL - 1.2, { align: "center" });
+    });
+
+    y += rowsNeeded * STEP + 4;
+
+    // Colour legend
+    const LEGEND = [
+      { fill: [5, 150, 105],  stroke: null,   label: "Paid"     },
+      { fill: [251, 191, 36], stroke: null,   label: "Partial"  },
+      { fill: WHITE,          stroke: RED,    label: "Missed"   },
+      { fill: PANEL,          stroke: HAIRLN, label: "Upcoming" },
+    ];
+    const LS = 5;    // legend square size mm
+    const LW = 29;   // mm per legend item
+    LEGEND.forEach((l, i) => {
+      const lx = ML + i * LW;
+      doc.setFillColor(...l.fill);
+      if (l.stroke) {
+        doc.setDrawColor(...l.stroke);
+        doc.setLineWidth(0.4);
+        doc.roundedRect(lx, y, LS, LS, 0.8, 0.8, "FD");
+      } else {
+        doc.roundedRect(lx, y, LS, LS, 0.8, 0.8, "F");
+      }
+      setReg(5.5); col(...SEC);
+      doc.text(l.label, lx + LS + 1.5, y + 4);
+    });
+
+    y += 10;
+  }
+
+  function addBarChart(bars) {
+    if (!bars?.length) return;
+    const CH = 40;
+    need(CH + 20);
+    const maxV   = Math.max(...bars.map(b => Math.max(b.v1 || 0, b.v2 || b.v || 0)), 1);
+    const slot   = CW / bars.length;
+    const bw     = Math.min(slot * 0.4, 7);
+    const isDual = bars[0]?.v1 !== undefined;
+
+    doc.setDrawColor(...HAIRLN); doc.setLineWidth(0.2);
+    [0.25, 0.5, 0.75, 1].forEach(f => {
+      const ly = y + CH - CH * f;
+      doc.line(ML, ly, MR, ly);
+    });
+
+    const skip = Math.ceil(bars.length / 14);
+    bars.forEach((b, i) => {
+      const cx = ML + i * slot + slot / 2;
+      if (isDual) {
+        const h1 = Math.max(0.5, (b.v1 / maxV) * CH);
+        const h2 = Math.max(0.5, (b.v2 / maxV) * CH);
+        doc.setFillColor(...GREEN); doc.rect(cx - bw - 0.5, y + CH - h1, bw, h1, "F");
+        doc.setFillColor(...RED);   doc.rect(cx + 0.5,       y + CH - h2, bw, h2, "F");
+      } else {
+        const h  = Math.max(0.5, ((b.v || 0) / maxV) * CH);
+        const bc = b.color ? (Array.isArray(b.color) ? b.color : hexToRgb(b.color)) : GREEN;
+        doc.setFillColor(...bc);
+        doc.rect(cx - bw / 2, y + CH - h, bw, h, "F");
+      }
+      if (i % skip === 0) {
+        setReg(5); col(...MUTED);
+        doc.text(String(b.label || "").slice(0, 7), cx, y + CH + 5, { align: "center" });
+      }
+    });
+    y += CH + 10;
+
+    if (isDual) {
+      doc.setFillColor(...GREEN); doc.rect(ML, y, 5, 3.5, "F");
+      setReg(6); col(...SEC);
+      doc.text("Income", ML + 7, y + 3);
+      doc.setFillColor(...RED); doc.rect(ML + 30, y, 5, 3.5, "F");
+      doc.text("Expenses", ML + 37, y + 3);
+      y += 8;
+    }
+  }
+
+  // Bank-statement format with optional opening/closing balance and summary totals.
+  // txns: [{ date, description, reference, debit, credit, balance }]
+  // opts: { openingBalance?: number, totalDebits?: number, totalCredits?: number }
+  function addStatement(txns, { openingBalance, totalDebits, totalCredits } = {}) {
+    const hasOB = typeof openingBalance === "number";
+
+    const COLS = [
+      { key: "date",        label: "Date",          w: 0.13 },
+      { key: "description", label: "Description",   w: 0.30, bold: true },
+      { key: "reference",   label: "Reference",     w: 0.15 },
+      { key: "debit",       label: "Debit (₦)",   w: 0.14, right: true, color: r => r.debit ? RED : MUTED },
+      { key: "credit",      label: "Credit (₦)",  w: 0.14, right: true, color: r => r.credit ? GREEN : MUTED },
+      { key: "balance",     label: "Balance (₦)", w: 0.14, right: true, bold: true },
+    ];
+
+    const allRows = [];
+    if (hasOB) {
+      allRows.push({
+        date: "", description: "Opening Balance", reference: "",
+        debit: "", credit: "", balance: fmtCurrency(openingBalance),
+      });
+    }
+    allRows.push(...(txns || []));
+
+    addTable(COLS, allRows, { rowHeight: 8 });
+
+    const hasSummary = typeof totalDebits === "number" || typeof totalCredits === "number";
+    if (hasSummary) {
+      const closing = hasOB
+        ? openingBalance + (totalCredits || 0) - (totalDebits || 0)
+        : null;
+      const items = [];
+      if (typeof totalDebits  === "number") items.push({ label: "Total Debits",  value: fmtCurrency(totalDebits),  red:  true });
+      if (typeof totalCredits === "number") items.push({ label: "Total Credits", value: fmtCurrency(totalCredits), green: true });
+      if (closing !== null) {
+        items.push({ sep: true });
+        items.push({ label: "Closing Balance", value: fmtCurrency(closing), bold: true, highlight: true });
+      }
+      addTotalsBlock(items);
+    }
+  }
+
+  // ── Footers ────────────────────────────────────────────────────────────────
+  // Owner reports: like the receipt — KudiAI logo, "Generated by KudiAI Track · A product of Amaya & Co. Technologies",
+  // the verify link + reference, and a QR code that opens it, on every page.
+  function drawBrandedFooter(i, totalPg) {
+    const top = H - FOOTER_H;
+    doc.setDrawColor(...HAIRLN); doc.setLineWidth(0.25);
+    doc.line(ML, top + 1, MR, top + 1);
+    if (appLogoB64) { try { doc.addImage(appLogoB64, "PNG", ML, top + 4.5, 10, 10); } catch { /* decoration only */ } }
+    const tx = ML + 13;
+    setMed(7.5); col(...NAVY);
+    doc.text("Generated by KudiAI Track", tx, top + 7.6);
+    setReg(6.5); col(...MUTED);
+    doc.text("A product of Amaya & Co. Technologies", tx, top + 11.2);
+    if (verifyRef) {
+      const lead = "Verify this report at ";
+      setReg(6.5); col(...SEC);
+      doc.text(lead, tx, top + 14.9);
+      let vx = tx + doc.getTextWidth(lead);
+      setMed(6.5); col(...GREEN);
+      doc.textWithLink("kudiai.app/verify", vx, top + 14.9, { url: `https://kudiai.app/verify?ref=${encodeURIComponent(verifyRef)}` });
+      vx += doc.getTextWidth("kudiai.app/verify");
+      setReg(6.5); col(...SEC);
+      doc.text("  ·  Ref ", vx, top + 14.9);
+      vx += doc.getTextWidth("  ·  Ref ");
+      doc.setFont("courier", "bold"); doc.setFontSize(7); col(...DARK);
+      doc.text(verifyRef, vx, top + 14.9);
+    }
+    setReg(5.5); col(...MUTED);
+    doc.text("Computer generated · valid without signature", tx, top + 18.6);
+    if (hasQr) {
+      if (qr) drawQrMatrix(MR - 17, top + 3.5, 17);
+      else { try { doc.addImage(qrDataUrl, "PNG", MR - 17, top + 3.5, 17, 17); } catch { /* the printed link still works */ } }
+      setReg(5); col(...MUTED);
+      doc.text("Scan to verify", MR - 19.5, top + 7.6, { align: "right" });
+    }
+    setMed(6); col(...NAVY);
+    doc.text(`Page ${i} of ${totalPg}`, hasQr ? MR - 19.5 : MR, top + 18.6, { align: "right" });
+    doc.setFillColor(...GREEN); doc.rect(0, H - 1.5, W, 1.5, "F");
+  }
+
+  function drawPlainFooter(i, totalPg, genDate) {
+    doc.setFillColor(...PANEL);
+    doc.rect(0, H - FOOTER_H, W, FOOTER_H, "F");
+    doc.setDrawColor(...HAIRLN); doc.setLineWidth(0.2);
+    doc.line(0, H - FOOTER_H, W, H - FOOTER_H);
+    doc.setFillColor(...GREEN);
+    doc.rect(0, H - 1.5, W, 1.5, "F");
+    if (appLogoB64) doc.addImage(appLogoB64, "PNG", ML, H - 11, 7, 7);
+    setReg(5.5); col(...MUTED);
+    doc.text(`KudiAI Track  ·  Generated ${genDate}`, ML + 10, H - 6);
+    setMed(5.5); col(...NAVY);
+    doc.text(`Page ${i} of ${totalPg}`, MR, H - 6, { align: "right" });
+  }
+
+  let finalized = false;
+  function finalize() {
+    if (finalized) return;
+    finalized = true;
+    const totalPg = doc.internal.getNumberOfPages();
+    const genDate = new Date().toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" });
+    for (let i = 1; i <= totalPg; i++) {
+      doc.setPage(i);
+      if (branded) drawBrandedFooter(i, totalPg); else drawPlainFooter(i, totalPg, genDate);
+    }
+    if (branded) {
+      doc.setProperties({
+        title: `${title}${verifyRef ? ` — ${verifyRef}` : ""}`,
+        subject: `${title} · ${letterhead.businessName || businessName}${period ? ` · ${period}` : ""}`,
+        author: "KudiAI Track · Amaya & Co. Technologies",
+      });
+    }
+  }
+
+  /** The finished jsPDF document (footers drawn) — for saving, tests and previews. */
+  function getDoc() { finalize(); return doc; }
+
+  return { addStats, addSectionTitle, addTable, addTotalsBlock, addBarChart, addEntityPanel, addStatement, addGrid, finalize, getDoc, fmtN: fmtCurrency, fmtD: fmtDate };
+}
