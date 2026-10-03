@@ -118,9 +118,14 @@ export function useWallet(userId, enabled = true) {
   useEffect(() => { if (!loadedOnceRef.current) setLoading(true); load(); }, [load]);
 
   // ── realtime ──────────────────────────────────────────────────────────────
+  // One channel PER hook instance. Two screens can use this hook for the same wallet at once (the client portal and
+  // its Statements screen; an owner screen and the wallet statement): with a shared name, supabase-js hands the second
+  // one the first one's already-joined channel and `.on()` throws ("cannot add postgres_changes callbacks … after
+  // subscribe()") — which blanked the whole screen — and removeChannel on unmount would cut the other one's updates.
+  const channelSuffix = useRef(Math.random().toString(36).slice(2, 10));
   useEffect(() => {
     if (!active) return;
-    const channel = supabase.channel(`wallet_rt_${userId}`)
+    const channel = supabase.channel(`wallet_rt_${userId}_${channelSuffix.current}`)
       .on("postgres_changes",
         { event: "UPDATE", schema: "public", table: "wallets", filter: `user_id=eq.${userId}` },
         (p) => { if (p.new) setWallet((prev) => ({ ...prev, ...p.new })); })

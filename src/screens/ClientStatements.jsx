@@ -1,36 +1,27 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Icon from "../components/Icon";
 import PeriodFilter from "../components/shared/PeriodFilter";
+import ScreenErrorBoundary from "../components/shared/ScreenErrorBoundary";
 import { supabase } from "../utils/supabase";
 import { fmt } from "../utils/helpers";
-import { formatWATDate, formatWATTime, monthKeyLabel } from "../utils/statementPdfLayout";
+import { clientHolder, formatWATDate, formatWATTime, monthKeyLabel } from "../utils/statementPdfLayout";
+import { statementDates, statementRange, watToday } from "../utils/statementPeriod";
 import { saveMonthlyStatementPdf, saveSavingsStatementPdf } from "../utils/generateClientStatementPdf";
 import { buildSavingsStatementCSV, savingsStatementCSVFilename, shareCSV } from "../utils/exportCSV";
 import WalletStatement from "./WalletStatement";
+
+export { statementRange };
 
 // A client's statements (Ajo/savings client portal) — the client-side counterpart of the owner's wallet statement:
 //   Savings  every completed savings entry in the period with the running balance, PDF + CSV
 //   Wallet   the owner's own wallet statement screen, on the client's wallet
 //   Monthly  one statement per month (savings + wallet) — the same PDF that is emailed on the 1st of the next month
 // The numbers come from the server (ajo-portal → client_savings_statement / client_statement_data, migration 20270273),
-// the same ones the monthly email uses.
-
-const WAT_MS = 3600000;
-const watToday = () => new Date(Date.now() + WAT_MS).toISOString().slice(0, 10);
-const addDay = (ymd) => new Date(Date.parse(`${ymd}T00:00:00Z`) + 86400000).toISOString().slice(0, 10);
-const startOfDay = (ymd) => `${ymd}T00:00:00+01:00`;
-
-/** The period chips as a WAT time range [from, to). */
-export function statementRange(period, dateFrom, dateTo, today = watToday()) {
-  let from = "2000-01-01", to = today;
-  if (period === "today") from = today;
-  else if (period === "week") {
-    const d = new Date(`${today}T00:00:00Z`);
-    from = new Date(d.getTime() - d.getUTCDay() * 86400000).toISOString().slice(0, 10);   // Sunday, as the chips do elsewhere
-  } else if (period === "month") from = `${today.slice(0, 7)}-01`;
-  else if (period === "custom") { from = dateFrom || "2000-01-01"; to = dateTo || today; }
-  return { from: startOfDay(from), to: startOfDay(addDay(to)) };
-}
+// the same ones the monthly email uses. Every PDF carries the client's details and a verify reference + QR code.
+//
+// Back (the arrow, the Android back button, the browser's back): the previous tab first, then out of Statements to
+// wherever it was opened from. Statements is one entry in the browser history, so the Android back button
+// (App.jsx: navigate(-1) while there is history, otherwise exit) comes here instead of closing the app.
 
 /** Months a client can download, newest first: from the month they joined to this month (at most 24). */
 export function statementMonths(since, today = watToday()) {
@@ -78,10 +69,11 @@ function SavingsTab({ call, clientId }) {
   }, [call, clientId, range.from, range.to]);
 
   const rows = useMemo(() => [...(statement?.entries || [])].reverse(), [statement]);
+  const dates = () => statementDates(range, statement?.entries?.[0]?.at);
 
   const exportPdf = async () => {
     setExporting("pdf");
-    try { await saveSavingsStatementPdf(statement, range); }
+    try { await saveSavingsStatementPdf(statement, dates()); }
     catch (e) { console.warn("[statement] PDF failed:", e?.message); }
     finally { setExporting(""); }
   };
@@ -93,9 +85,7 @@ function SavingsTab({ call, clientId }) {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-3">
-        <PeriodFilter className="flex-1 min-w-0" period={period} setPeriod={setPeriod} dateFrom={dateFrom} setDateFrom={setDateFrom} dateTo={dateTo} setDateTo={setDateTo} />
-      </div>
+      <PeriodFilter period={period} setPeriod={setPeriod} dateFrom={dateFrom} setDateFrom={setDateFrom} dateTo={dateTo} setDateTo={setDateTo} />
       <div className="flex items-center justify-end gap-3">
         <button onClick={exportPdf} disabled={!!exporting || !statement}
           className="text-[12px] font-bold text-brand-600 dark:text-brand-400 disabled:opacity-40 flex items-center gap-1">
@@ -189,7 +179,7 @@ function MonthlyTab({ call, clientId, since, email, highlight }) {
       <div className="rounded-2xl bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800/40 px-4 py-3">
         <p className="text-[12px] font-bold text-brand-700 dark:text-brand-300">Monthly statements</p>
         <p className="text-[11px] text-brand-700/80 dark:text-brand-300/80 mt-0.5 leading-relaxed">
-          On the 1st of every month we send you last month's statement — your savings and wallet, every transaction with the balance after it
+          On the 1st of every month we send you last month's statement — your savings and your wallet, every transaction with the balance after it
           {email ? <> — to <strong>{email}</strong> and</> : ""} here in the app.
         </p>
       </div>
@@ -203,7 +193,7 @@ function MonthlyTab({ call, clientId, since, email, highlight }) {
             <div className="flex-1 min-w-0">
               <p className="text-[13px] font-bold text-slate-800 dark:text-slate-100">{monthKeyLabel(m)}</p>
               <p className="text-[11px] text-slate-400 mt-0.5">
-                {m === current ? "So far this month" : sent[m] ? `Sent ${formatWATDate(sent[m])}` : "Savings and wallet"}
+                {m === current ? "So far this month · savings and wallet" : sent[m] ? `Sent ${formatWATDate(sent[m])} · savings and wallet` : "Savings and wallet"}
               </p>
             </div>
             <button onClick={() => download(m)} disabled={!!busy}
@@ -217,15 +207,59 @@ function MonthlyTab({ call, clientId, since, email, highlight }) {
   );
 }
 
-export default function ClientStatements({ call, clientId, clientName, clientEmail, since, walletUserId, hasWallet,
+/**
+ * @param client  the client row (full_name, phone, email, address, lga, state) — printed on the wallet PDF
+ * @param onClose called once Statements is left (after its history entry is gone) — the portal returns to where it came from
+ */
+export default function ClientStatements({ call, clientId, client = {}, since, walletUserId, hasWallet,
                                            initialTab = "savings", initialMonth = "", onClose }) {
   const tabs = [["savings", "Savings"], ...(hasWallet ? [["wallet", "Wallet"]] : []), ["monthly", "Monthly"]];
   const [tab, setTab] = useState(tabs.some(([id]) => id === initialTab) ? initialTab : "savings");
+  const tabHistory = useRef([]);
+  const tabRef = useRef(tab);
+  tabRef.current = tab;
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const holder = useMemo(() => clientHolder({
+    name: client.full_name, phone: client.phone, email: client.email,
+    address: client.address, lga: client.lga, state: client.state,
+  }), [client.full_name, client.phone, client.email, client.address, client.lga, client.state]);
+
+  const goTab = (id) => {
+    if (id === tabRef.current) return;
+    tabHistory.current.push(tabRef.current);
+    setTab(id);
+  };
+
+  // One history entry for the whole screen: a back press (Android button / browser) lands here.
+  useEffect(() => {
+    const marker = `statements-${Date.now()}`;
+    let closed = false;
+    const arm = () => window.history.pushState({ ...(window.history.state || {}), ktOverlay: marker }, "");
+    arm();
+    const onPop = () => {
+      if (tabHistory.current.length) { setTab(tabHistory.current.pop()); arm(); return; }
+      closed = true;
+      onCloseRef.current?.();
+    };
+    window.addEventListener("popstate", onPop);
+    return () => {
+      window.removeEventListener("popstate", onPop);
+      // left some other way (signed out, a new screen): take our entry back off the history
+      if (!closed && window.history.state?.ktOverlay === marker) window.history.back();
+    };
+  }, []);
+
+  // The arrow: previous tab, else leave (through the history entry, so it's gone too)
+  const back = () => {
+    if (tabHistory.current.length) { setTab(tabHistory.current.pop()); return; }
+    window.history.back();
+  };
 
   return (
     <div className="pb-28">
       <div className="flex items-center gap-3 px-4 pt-3 pb-2">
-        <button onClick={onClose} aria-label="Back" className="w-9 h-9 -ml-1 flex items-center justify-center rounded-full active:bg-slate-100 dark:active:bg-slate-800">
+        <button onClick={back} aria-label="Back" className="w-9 h-9 -ml-1 flex items-center justify-center rounded-full active:bg-slate-100 dark:active:bg-slate-800">
           <Icon name="chevron-left" size={20} className="text-slate-600 dark:text-slate-300" />
         </button>
         <h1 className="text-[18px] font-extrabold text-slate-900 dark:text-slate-50">Statements</h1>
@@ -233,7 +267,7 @@ export default function ClientStatements({ call, clientId, clientName, clientEma
       <div className="px-4 mb-3">
         <div className="flex gap-1.5 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 w-fit">
           {tabs.map(([id, label]) => (
-            <button key={id} onClick={() => setTab(id)}
+            <button key={id} onClick={() => goTab(id)}
               className={`px-3.5 py-1.5 rounded-lg text-[12px] font-bold transition-colors ${
                 tab === id ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-50 shadow-sm" : "text-slate-500 dark:text-slate-400"}`}>
               {label}
@@ -241,9 +275,11 @@ export default function ClientStatements({ call, clientId, clientName, clientEma
           ))}
         </div>
       </div>
-      {tab === "savings" && <div className="px-4"><SavingsTab call={call} clientId={clientId} /></div>}
-      {tab === "wallet" && <WalletStatement userId={walletUserId} displayName={clientName} embedded />}
-      {tab === "monthly" && <div className="px-4"><MonthlyTab call={call} clientId={clientId} since={since} email={clientEmail} highlight={initialMonth} /></div>}
+      <ScreenErrorBoundary key={tab} onBack={back}>
+        {tab === "savings" && <div className="px-4"><SavingsTab call={call} clientId={clientId} /></div>}
+        {tab === "wallet" && <WalletStatement userId={walletUserId} displayName={client.full_name} holder={holder} embedded />}
+        {tab === "monthly" && <div className="px-4"><MonthlyTab call={call} clientId={clientId} since={since} email={client.email} highlight={initialMonth} /></div>}
+      </ScreenErrorBoundary>
     </div>
   );
 }

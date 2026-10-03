@@ -11,6 +11,8 @@ import { applyPeriodFilter, fmt } from "../utils/helpers";
 import { bizFromProfile } from "../utils/receiptConfig";
 import { buildWalletStatementCSV, walletStatementCSVFilename, shareCSV } from "../utils/exportCSV";
 import { saveWalletStatementPdf } from "../utils/generateWalletStatementPdf";
+import { businessHolder } from "../utils/statementPdfLayout";
+import { statementDates, statementRange } from "../utils/statementPeriod";
 
 // A dedicated, independent query — useWallet's own `ledger` is deliberately
 // capped at the last 50 rows for its realtime hot-path; a statement needs the
@@ -48,7 +50,8 @@ function classifySource(source) {
 // button navigates(-1)) or as a local overlay rendered directly by a portal
 // that doesn't have this route in its router branch at all, e.g. the Ajo
 // client portal (pass userId/displayName/onClose to mount it inline instead).
-export default function WalletStatement({ session, store, userId: userIdOverride, displayName, onClose, embedded = false }) {
+// holder: who a client's statement is for (clientHolder) — the owner's comes from the business profile.
+export default function WalletStatement({ session, store, userId: userIdOverride, displayName, onClose, embedded = false, holder: holderOverride = null }) {
   const userId = userIdOverride || session?.user?.id || null;
   const bizName = displayName || store?.profile?.business_name || "";
   const ownerName = displayName || store?.profile?.owner_name || "";
@@ -133,11 +136,15 @@ export default function WalletStatement({ session, store, userId: userIdOverride
     setExporting("pdf");
     try {
       const biz = bizFromProfile(store?.profile);
+      const holder = holderOverride || businessHolder({
+        name: bizName, phone: biz.phone, email: store?.profile?.business_email || store?.profile?.email || "", address: biz.address,
+      });
+      const range = statementRange(period, dateFrom, dateTo);
+      const oldest = periodFiltered.length ? periodFiltered[periodFiltered.length - 1].created_at : null;
       await saveWalletStatementPdf(periodFiltered, {
-        name:    bizName,
-        address: biz.address,
-        phone:   biz.phone,
-        account: w.wallet?.flw_account_number || "",
+        holder,
+        account: { number: w.wallet?.flw_account_number || "", bank: w.wallet?.flw_account_bank || "", name: w.wallet?.flw_account_name || "" },
+        dates: statementDates(range, oldest),
       });
     } catch (e) {
       console.warn("[statement] PDF export failed:", e?.message);

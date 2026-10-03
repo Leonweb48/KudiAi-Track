@@ -14,7 +14,10 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { jsPDF } from "npm:jspdf@4.2.1";
-import { fmtNaira, monthKeyLabel, monthlyStatementFilename, renderMonthlyStatementPdf } from "../_shared/statementPdfLayout.js";
+import QRCode from "npm:qrcode@1.5.4";
+import {
+  fmtNaira, monthDates, monthKeyLabel, monthlyStatementFilename, monthlyVerifySummary, renderMonthlyStatementPdf, verifyUrl,
+} from "../_shared/statementPdfLayout.js";
 
 const SUPABASE_URL   = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY    = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -22,6 +25,8 @@ const CRON_SECRET    = Deno.env.get("CRON_SECRET") ?? "";
 const TRIGGER_SECRET = Deno.env.get("EMAIL_TRIGGER_SECRET") || SERVICE_KEY;
 const EMAIL_URL      = "https://admin.kudiai.app/api/public/email-trigger";
 const LOGO_URL       = "https://kudiai.app/icon-192.png";
+// The app's own PDF font (it has the ₦ sign) — served with the web app; the built-in font is the fallback.
+const FONT_URLS      = { reg: "https://kudiai.app/fonts/NotoSans-Regular.ttf", med: "https://kudiai.app/fonts/NotoSans-Medium.ttf" };
 
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } });
@@ -31,7 +36,9 @@ type Savings = { opening: number; total_in: number; total_out: number; closing: 
                  client?: { name?: string }; business?: { name?: string } };
 type Wallet  = { opening_kobo: number; in_kobo: number; out_kobo: number; closing_kobo: number; entries: unknown[];
                  account?: { number?: string; bank?: string } };
-type Data    = { month: string; savings: Savings | null; wallet: Wallet | null; generatedAt?: string };
+type Data    = { month: string; savings: (Savings & { client?: { name?: string; user_id?: string | null } ; business?: { id?: string; name?: string } }) | null;
+                 wallet: Wallet | null; generatedAt?: string };
+type Verify  = { ref: string; qr: { size: number; isDark: (r: number, c: number) => boolean } } | null;
 type Claim = { statement_id: string; notified: boolean; emailed: boolean };
 type Candidate = { client_id: string; client_user_id: string | null; client_name: string | null; client_email: string | null; business_name: string | null };
 
@@ -77,9 +84,52 @@ async function logo(): Promise<Uint8Array | null> {
   return logoCache;
 }
 
-async function buildPdf(data: Data): Promise<Uint8Array> {
+let fontCache: { reg: string | null; med: string | null } | undefined;
+async function fonts() {
+  if (fontCache) return fontCache;
+  const get = async (url: string) => {
+    try { const r = await fetch(url); return r.ok ? toBase64(new Uint8Array(await r.arrayBuffer())) : null; } catch { return null; }
+  };
+  const [reg, med] = await Promise.all([get(FONT_URLS.reg), get(FONT_URLS.med)]);
+  fontCache = { reg, med };
+  return fontCache;
+}
+
+// Same as the app's registerNotoSans (src/utils/pdfAssets.js).
+function registerNotoSans(doc: jsPDF, f: { reg: string | null; med: string | null }): string {
+  if (!f.reg) return "helvetica";
+  doc.addFileToVFS("NotoSans-Regular.ttf", f.reg);
+  doc.addFont("NotoSans-Regular.ttf", "NotoSans", "normal");
+  if (f.med) { doc.addFileToVFS("NotoSans-Medium.ttf", f.med); doc.addFont("NotoSans-Medium.ttf", "NotoSans", "bold"); }
+  else doc.addFont("NotoSans-Regular.ttf", "NotoSans", "bold");
+  return "NotoSans";
+}
+
+/** { size, isDark } — the same QR library and settings as the app (src/utils/statementVerify.js). */
+function qrMatrix(text: string) {
+  const q = QRCode.create(text, { errorCorrectionLevel: "M" });
+  return { size: q.modules.size as number, isDark: (r: number, c: number) => !!q.modules.get(r, c) };
+}
+
+/** Save the statement's KDR reference with its headline figures (kudiai.app/verify shows them). */
+// deno-lint-ignore no-explicit-any
+async function registerVerify(sb: any, data: Data, c: Candidate): Promise<Verify> {
+  const owner = data.savings?.client?.user_id || c.client_user_id || data.savings?.business?.id;
+  if (!owner) return null;
+  const { fromDate, toDate } = monthDates(data.month);
+  const { data: row, error } = await sb.from("report_verifications").insert({
+    owner_id: owner, report_type: "monthly_statement", period_from: fromDate, period_to: toDate,
+    business_name: (data.savings?.client?.name || c.client_name || "").slice(0, 200) || null,
+    summary: monthlyVerifySummary(data),
+  }).select("ref").single();
+  if (error || !row?.ref) return null;
+  return { ref: row.ref as string, qr: qrMatrix(verifyUrl(row.ref as string)) };
+}
+
+async function buildPdf(data: Data, verify: Verify): Promise<Uint8Array> {
   const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "landscape", compress: true });
-  renderMonthlyStatementPdf(doc, data, { logo: await logo(), font: "helvetica" });
+  const font = registerNotoSans(doc, await fonts());
+  renderMonthlyStatementPdf(doc, data, { logo: await logo(), font }, { verify });
   doc.setProperties({ title: `Statement — ${monthKeyLabel(data.month)}`, subject: "KudiAI Track monthly statement", author: "KudiAI Track · Amaya & Co. Technologies" });
   return new Uint8Array(doc.output("arraybuffer"));
 }
@@ -193,18 +243,23 @@ Deno.serve(async (req) => {
       const { data: raw, error } = await sb.rpc("client_statement_data", { p_client_id: c.client_id, p_month: `${month}-01` });
       if (error || !raw) throw new Error(error?.message || "no statement data");
       const data: Data = { ...(raw as Data), generatedAt: new Date().toISOString() };
-      const pdf = await buildPdf(data);
+      // a real statement gets a real reference; a dry run is drawn with a sample one (never saved, never sent)
+      const verify: Verify = dryRun
+        ? { ref: "KDR-000000-SAMPLEQR", qr: qrMatrix(verifyUrl("KDR-000000-SAMPLEQR")) }
+        : await registerVerify(sb, data, c);
+      const pdf = await buildPdf(data, verify);
       const sum = summary(data);
 
       if (dryRun) {
         const e = await email(c, data, sum, pdf, { dryRun: true });
         results.push({ savings_entries: sum.savings?.count ?? null, wallet_entries: sum.wallet?.count ?? null,
-                       pdf_bytes: pdf.length, email_rendered: e.ok, preview: e.preview, has_login: !!c.client_user_id, has_email: !!c.client_email });
+                       pdf_bytes: pdf.length, email_rendered: e.ok, preview: e.preview, has_login: !!c.client_user_id, has_email: !!c.client_email,
+                       font: fontCache?.reg ? "NotoSans" : "helvetica" });
         continue;
       }
       if (override) {
         const e = await email(c, data, sum, pdf, { to: override });
-        results.push({ test_email_sent: e.ok, pdf_bytes: pdf.length });
+        results.push({ test_email_sent: e.ok, pdf_bytes: pdf.length, verified: !!verify });
         continue;
       }
 
@@ -216,7 +271,7 @@ Deno.serve(async (req) => {
         p_id: claim!.statement_id, p_status: done ? "sent" : "failed", p_savings: sum.savings, p_wallet: sum.wallet,
         p_notified: notified, p_emailed: emailed, p_note: done ? null : `notified=${notified} emailed=${emailed}`,
       });
-      results.push({ status: done ? "sent" : "failed", notified, emailed });
+      results.push({ status: done ? "sent" : "failed", notified, emailed, verified: !!verify });
       if (wantsEmail) await sleep(2200);   // the email route allows 30 requests / minute / IP
     } catch (e) {
       const held = claim as Claim | null;

@@ -5421,7 +5421,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
   const [showPwdModal,     setShowPwdModal]     = useState(false);
   const [showWallet,       setShowWallet]       = useState(false);
   const [walletSheet,      setWalletSheet]      = useState(null); // "fund" | "transfer" | "receive" | null
-  // The Statements screen: null (closed) or { tab: "savings" | "wallet" | "monthly", month?: "YYYY-MM" }
+  // The Statements screen: null (closed) or { tab: "savings" | "wallet" | "monthly", month?: "YYYY-MM", from?: "wallet" }
   const [statementsView,   setStatementsView]   = useState(null);
   // Session-scoped, not permanent — the nudge reappears next visit so it stays
   // a reminder rather than a one-time dismiss (mirrors ajo_balance_hidden below).
@@ -5930,7 +5930,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
           onProfileUpdate={(fields) => setClient(prev => ({ ...prev, ...fields }))}
           onFund={() => { setShowWallet(false); setWalletSheet("fund"); }}
           onTransfer={() => { setShowWallet(false); setWalletSheet("transfer"); }}
-          onStatement={() => { setShowWallet(false); setStatementsView({ tab: "wallet" }); }}
+          onStatement={() => { setShowWallet(false); setStatementsView({ tab: "wallet", from: "wallet" }); }}
         />
       )}
       {walletEnabled && wallet.hasAccount && (
@@ -5952,14 +5952,18 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
           <ClientStatements
             call={ajoFn}
             clientId={clientId}
-            clientName={client?.full_name || ajoClient?.full_name}
-            clientEmail={client?.email || ajoClient?.email}
+            client={client || ajoClient || {}}
             since={client?.registration_date || client?.created_at || ajoClient?.created_at}
             walletUserId={walletUserId}
             hasWallet={!!(walletEnabled && wallet.hasAccount)}
             initialTab={statementsView.tab}
             initialMonth={statementsView.month || ""}
-            onClose={() => setStatementsView(null)}
+            onClose={() => {
+              // back to where Statements was opened from
+              const from = statementsView?.from;
+              setStatementsView(null);
+              if (from === "wallet") setShowWallet(true);
+            }}
           />
         </div>
       )}

@@ -172,31 +172,33 @@ export default function VerifyReceipt() {
               ? (String(r.period_from) === String(r.period_to) ? fmtDay(r.period_from) : `${fmtDay(r.period_from)} – ${fmtDay(r.period_to)}`)
               : "";
             const summary = Array.isArray(r.summary) ? r.summary.filter((x) => x && x.label) : [];
+            // a client's / owner's statement (savings, wallet, monthly) reads as a statement, for an account holder
+            const doc = r.is_statement ? "statement" : "report";
             return (
             <div style={{ marginTop: 16 }}>
               <div data-testid="report-banner" style={{ padding: 14, borderRadius: 12, background: RECEIPT_STATUS.successful.bg, border: `1px solid ${RECEIPT_STATUS.successful.border}`, display: "flex", gap: 10, alignItems: "center" }}>
                 <StatusIcon status="successful" color={RECEIPT_STATUS.successful.dot} />
                 <div>
-                  <div style={{ fontWeight: 700, color: RECEIPT_STATUS.successful.ink, fontSize: 14 }}>Report verified</div>
-                  <div style={{ color: RECEIPT_STATUS.successful.ink, fontSize: 12, lineHeight: 1.45 }}>This report was generated on KudiAI Track. Check that the figures below match the report you were given.</div>
+                  <div style={{ fontWeight: 700, color: RECEIPT_STATUS.successful.ink, fontSize: 14 }}>{r.is_statement ? "Statement verified" : "Report verified"}</div>
+                  <div style={{ color: RECEIPT_STATUS.successful.ink, fontSize: 12, lineHeight: 1.45 }}>This {doc} was generated on KudiAI Track. Check that the figures below match the {doc} you were given.</div>
                 </div>
               </div>
               <div style={{ marginTop: 6 }}>
                 <Row label="Reference" value={<span style={{ fontFamily: "ui-monospace,Menlo,Consolas,monospace" }}>{state.ref}</span>} />
-                <Row label="Report" value={r.kind} />
-                {r.business && <Row label="Business" value={r.business} />}
+                <Row label={r.is_statement ? "Statement" : "Report"} value={r.kind} />
+                {r.business && <Row label={r.is_statement ? "Account holder" : "Business"} value={r.business} />}
                 {r.account_business && r.account_business !== r.business && <Row label="KudiAI account" value={r.account_business} />}
                 {period && <Row label="Period" value={period} />}
                 <Row label="Generated" value={formatWAT(r.occurred_at)} />
               </div>
               {summary.length > 0 && (
                 <div data-testid="report-figures" style={{ marginTop: 14, padding: "4px 14px", borderRadius: 12, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", padding: "10px 0 2px" }}>Figures on the report</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", padding: "10px 0 2px" }}>Figures on the {doc}</div>
                   {summary.map((x, i) => <Row key={i} label={x.label} value={x.value} />)}
                 </div>
               )}
               <p style={{ margin: "12px 0 0", fontSize: 11.5, color: "#94a3b8", lineHeight: 1.5 }}>
-                If any of these differ from the PDF you have, the document was changed after it was generated.
+                If any of these differ from the PDF you have, the {doc} was changed after it was generated.
               </p>
             </div>
             );
