@@ -776,11 +776,15 @@ export async function exportInvoicePdf(
     doc.text(thanksLns, ML + TW / 2, y, { align: "center" });
   }
 
-  // ── FOOTER on every page ────────────────────────────────────────────────────
+  // ── FOOTER on the last page; the others carry just the page number ─────────
   const totalPages = doc.internal.pages.length - 1;
   for (let p = 1; p <= totalPages; p++) {
     doc.setPage(p);
-    drawFooter(p, totalPages);
+    if (p === totalPages) { drawFooter(p, totalPages); continue; }
+    setReg(7); col(...MUTED);
+    doc.text(`Page ${p} of ${totalPages}`, MR, H - 6, { align: "right" });
+    doc.setFillColor(...GREEN);
+    doc.rect(0, H - 1.5, W, 1.5, "F");
   }
 
   // ── OUTPUT ──────────────────────────────────────────────────────────────────

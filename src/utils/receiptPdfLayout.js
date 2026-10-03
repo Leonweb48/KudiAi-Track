@@ -67,7 +67,7 @@ export function renderReceiptPdf(doc, data, { logo = null, providerLogo = null, 
   const hasClock = !!data.occurredAt;
   const stamp = hasClock ? `${formatWATDate(data.occurredAt)}, ${formatWATTime(data.occurredAt)}` : (data.datetime || "");
 
-  // ── Page furniture (every page) ────────────────────────────────────────────
+  // ── Footer (last page only — a longer receipt's other pages carry just "Page n of m") ──
   const drawFooter = () => {
     doc.setDrawColor(...HAIR); doc.setLineWidth(0.3);
     doc.line(ML, 277, RIGHT, 277);
@@ -173,7 +173,7 @@ export function renderReceiptPdf(doc, data, { logo = null, providerLogo = null, 
   const LABEL_W = 44;
   const VALUE_W = CW - LABEL_W - 6;
   let page = 1;
-  const newPage = () => { drawFooter(); doc.addPage(); page += 1; y = 24; };
+  const newPage = () => { doc.addPage(); page += 1; y = 24; };
 
   all.forEach((row, idx) => {
     const lines = String(row.value).split("\n").flatMap((ln, i) => {
@@ -231,5 +231,12 @@ export function renderReceiptPdf(doc, data, { logo = null, providerLogo = null, 
   }
 
   drawFooter();
+  if (page > 1) {
+    for (let p = 1; p <= page; p++) {
+      doc.setPage(p);
+      setReg(7.5, MUTED);
+      doc.text(`Page ${p} of ${page}`, RIGHT, 291, { align: "right" });
+    }
+  }
   return { pages: page };
 }
