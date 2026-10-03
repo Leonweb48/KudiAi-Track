@@ -49,6 +49,14 @@ jobs:
           echo "ref: ${GREF:-not saved}"
           [ -n "$GREF" ] && curl -s -m 30 "$URL/rest/v1/rpc/verify_receipt" -H "apikey: $ANON" -H "Authorization: Bearer $ANON" \
             -H "Content-Type: application/json" -d "$(jq -nc --arg r "$GREF" '{p_ref:$r}')" | jq -c '{found, is_report, kind, summary}'
+          echo "── 4c. a statement (wallet statement): saved, and shown as a statement for an account holder ──"
+          SREF=$(curl -s -m 30 "$URL/rest/v1/report_verifications?select=ref" \
+            -H "Authorization: Bearer $TOKEN" -H "apikey: $ANON" -H "Content-Type: application/json" \
+            -H "Prefer: return=representation" -H "Accept: application/vnd.pgrst.object+json" \
+            -d '{"report_type":"wallet_statement","period_from":"2026-10-01","period_to":"2026-10-03","business_name":"Adaeze Fresh Mart (Demo)","summary":[{"label":"Closing balance","value":"₦1.00"}]}' | jq -r '.ref // empty')
+          echo "ref: ${SREF:-not saved}"
+          [ -n "$SREF" ] && curl -s -m 30 "$URL/rest/v1/rpc/verify_receipt" -H "apikey: $ANON" -H "Authorization: Bearer $ANON" \
+            -H "Content-Type: application/json" -d "$(jq -nc --arg r "$SREF" '{p_ref:$r}')" | jq -c '{found, is_report, is_statement, kind, summary}'
           echo "── 5. receipts still verify (format check on a made-up ref) ──"
           curl -s -m 30 "$URL/rest/v1/rpc/verify_receipt" -H "apikey: $ANON" -H "Authorization: Bearer $ANON" \
             -H "Content-Type: application/json" -d '{"p_ref":"KDT-202610-ZZZZZZZZ"}'; echo
