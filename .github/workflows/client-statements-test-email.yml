@@ -1,0 +1,41 @@
+name: Client statement test email
+
+# Manual: sends ONE real monthly statement email (PDF attached) to the address in the STATEMENT_TEST_EMAIL secret —
+# never to a client. Uses the client-statements function's override_email test mode: no client is notified and nothing
+# is recorded as sent (the PDF's verification reference is real, so its QR code works).
+# If a client record has that same email (the owner's own test client), that client's statement is used; otherwise the
+# first client due for the month. Prints yes/no and sizes only — no address, name, id or amount.
+
+on:
+  workflow_dispatch:
+    inputs:
+      month:
+        description: "Month (YYYY-MM)"
+        required: true
+        default: "2026-10"
+
+permissions:
+  contents: read
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send
+        env:
+          URL: ${{ secrets.REACT_APP_SUPABASE_URL }}
+          KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TO: ${{ secrets.STATEMENT_TEST_EMAIL }}
+          MONTH: ${{ inputs.month }}
+        run: |
+          set +e
+          [ -n "$TO" ] || { echo "STATEMENT_TEST_EMAIL is not set"; exit 1; }
+          CID=$(curl -s -m 30 -G "$URL/rest/v1/aso_clients" -H "apikey: $KEY" -H "Authorization: Bearer $KEY" \
+                  --data-urlencode "select=id" --data-urlencode "email=ilike.$TO" --data-urlencode "limit=1" | jq -r '.[0].id // empty')
+          echo "own client record with that email: $([ -n "$CID" ] && echo yes || echo no)"
+          BODY=$(jq -nc --arg to "$TO" --arg m "$MONTH" --arg cid "$CID" '{override_email: $to, month: $m} + (if $cid == "" then {} else {client_id: $cid} end)')
+          curl -s -m 140 -o out.json -w "HTTP %{http_code}\n" "$URL/functions/v1/client-statements" \
+            -H "Authorization: Bearer $KEY" -H "apikey: $KEY" -H "Content-Type: application/json" -d "$BODY"
+          jq -c '{ok, month, candidates, test_override, error, results: [.results[]? | {test_email_sent, pdf_bytes, verified, status, error}]}' out.json \
+            || head -c 200 out.json
+          rm -f out.json
