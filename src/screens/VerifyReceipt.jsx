@@ -22,6 +22,15 @@ const REF_RE = /^KD[TR]-[0-9]{6}-[A-Z2-9]{8}$/;
 const isReportRef = (ref) => String(ref || "").startsWith("KDR-");
 const fmtDay = (d) => (d ? new Date(`${String(d).slice(0, 10)}T00:00:00`).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" }) : "");
 const FONT = "system-ui,-apple-system,'Segoe UI',sans-serif";
+// How a KDR document reads, by verify_receipt's `doc`: its noun in sentences, the banner title, the label of its kind
+// row, and who the stored name is (business_name) — the business behind a report / invoice, a statement's account holder.
+const DOC_WORDS = {
+  report:    { noun: "report",            title: "Report",            label: "Report",    holder: "Business" },
+  statement: { noun: "statement",         title: "Statement",         label: "Statement", holder: "Account holder" },
+  invoice:   { noun: "invoice",           title: "Invoice",           label: "Document",  holder: "Issued by" },
+  receipt:   { noun: "receipt",           title: "Receipt",           label: "Document",  holder: "Issued by" },
+  card:      { noun: "contribution card", title: "Contribution card", label: "Document",  holder: "Member" },
+};
 
 /**
  * The QR printed on a receipt (see receiptPdfLayout.js) encodes a full verify URL, but any 2D barcode
@@ -160,9 +169,9 @@ export default function VerifyReceipt() {
           )}
           {state.status === "notfound" && (
             <div role="alert" style={{ marginTop: 16, padding: 14, borderRadius: 12, background: "#fef2f2", border: "1px solid #fecaca" }}>
-              <div style={{ fontWeight: 700, color: "#991b1b", fontSize: 14 }}>{isReportRef(state.ref) ? "No report found" : "No transaction found"}</div>
+              <div style={{ fontWeight: 700, color: "#991b1b", fontSize: 14 }}>{isReportRef(state.ref) ? "No document found" : "No transaction found"}</div>
               <div style={{ color: "#7f1d1d", fontSize: 13, marginTop: 4, lineHeight: 1.5 }}>
-                There is no {isReportRef(state.ref) ? "report" : "transaction"} with reference <b style={{ fontFamily: "ui-monospace,Menlo,Consolas,monospace" }}>{state.ref}</b>. Check the reference, and be cautious with a {isReportRef(state.ref) ? "report" : "receipt"} that cannot be verified.
+                There is no {isReportRef(state.ref) ? "document" : "transaction"} with reference <b style={{ fontFamily: "ui-monospace,Menlo,Consolas,monospace" }}>{state.ref}</b>. Check the reference, and be cautious with a {isReportRef(state.ref) ? "document" : "receipt"} that cannot be verified.
               </div>
             </div>
           )}
@@ -172,21 +181,23 @@ export default function VerifyReceipt() {
               ? (String(r.period_from) === String(r.period_to) ? fmtDay(r.period_from) : `${fmtDay(r.period_from)} – ${fmtDay(r.period_to)}`)
               : "";
             const summary = Array.isArray(r.summary) ? r.summary.filter((x) => x && x.label) : [];
-            // a client's / owner's statement (savings, wallet, monthly) reads as a statement, for an account holder
-            const doc = r.is_statement ? "statement" : "report";
+            // what the document is — report | statement | invoice | receipt | card (an older answer only says is_statement):
+            // a statement is for an account holder, a contribution card for a member, an invoice / receipt is issued by a business
+            const kind = DOC_WORDS[r.doc] ? r.doc : (r.is_statement ? "statement" : "report");
+            const { noun: doc, title, label, holder } = DOC_WORDS[kind];
             return (
             <div style={{ marginTop: 16 }}>
               <div data-testid="report-banner" style={{ padding: 14, borderRadius: 12, background: RECEIPT_STATUS.successful.bg, border: `1px solid ${RECEIPT_STATUS.successful.border}`, display: "flex", gap: 10, alignItems: "center" }}>
                 <StatusIcon status="successful" color={RECEIPT_STATUS.successful.dot} />
                 <div>
-                  <div style={{ fontWeight: 700, color: RECEIPT_STATUS.successful.ink, fontSize: 14 }}>{r.is_statement ? "Statement verified" : "Report verified"}</div>
+                  <div style={{ fontWeight: 700, color: RECEIPT_STATUS.successful.ink, fontSize: 14 }}>{title} verified</div>
                   <div style={{ color: RECEIPT_STATUS.successful.ink, fontSize: 12, lineHeight: 1.45 }}>This {doc} was generated on KudiAI Track. Check that the figures below match the {doc} you were given.</div>
                 </div>
               </div>
               <div style={{ marginTop: 6 }}>
                 <Row label="Reference" value={<span style={{ fontFamily: "ui-monospace,Menlo,Consolas,monospace" }}>{state.ref}</span>} />
-                <Row label={r.is_statement ? "Statement" : "Report"} value={r.kind} />
-                {r.business && <Row label={r.is_statement ? "Account holder" : "Business"} value={r.business} />}
+                <Row label={label} value={r.kind} />
+                {r.business && <Row label={holder} value={r.business} />}
                 {r.account_business && r.account_business !== r.business && <Row label="KudiAI account" value={r.account_business} />}
                 {period && <Row label="Period" value={period} />}
                 <Row label="Generated" value={formatWAT(r.occurred_at)} />

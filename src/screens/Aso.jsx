@@ -14,6 +14,7 @@ import { fmt, today, applyPeriodFilter } from "../utils/helpers";
 import PeriodFilter from "../components/shared/PeriodFilter";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
 import { createReportPdf, fmtCurrency as pdfFmt, fmtDate as pdfFmtDate } from "../utils/generateReportPdf";
+import { spanDays } from "../utils/statementPeriod";
 import { buildAjoStatementCSV, ajoCSVFilename, shareCSV } from "../utils/exportCSV";
 import ContributionCard from "../components/ContributionCard";
 import EsusuRotationDashboard from "../components/EsusuRotationDashboard";
@@ -195,6 +196,20 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
     const pdf = await createReportPdf({
       title: "Ajo Statement", businessName: businessName || "My Business",
       period: client.full_name,
+      // verifiable: kudiai.app/verify shows these figures, as printed
+      docNoun: "statement",
+      verify: {
+        type: "savings_statement", holderName: client.full_name,
+        ...spanDays(sorted.map(c => c.created_at), { toToday: true }),
+        summary: [
+          { label: "Client",            value: client.full_name },
+          { label: "Business",          value: businessName || "My Business" },
+          { label: "Total contributed", value: pdfFmt(totContrib) },
+          { label: "Total withdrawn",   value: pdfFmt(totWd) },
+          { label: "Current balance",   value: pdfFmt(client.current_balance || 0) },
+          { label: "Records",           value: String(contributions.length) },
+        ],
+      },
       headerRight: [
         { value: businessName || "My Business" },
         { value: client.full_name, sub: true },

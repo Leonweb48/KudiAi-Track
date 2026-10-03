@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { createReportPdf, fmtCurrency, fmtDate } from "../utils/generateReportPdf";
+import { spanDays, watDay } from "../utils/statementPeriod";
 import TransactionPinModal from "./TransactionPinModal";
 import ResultOverlay from "./ResultOverlay";
 import { allocatePeriods, allocateForReceipt } from "../utils/allocatePeriods.mjs";
@@ -102,10 +103,27 @@ async function exportCardPdf({ cycle, periods, contributions, clientName, busine
   const pendingTotal = periods.reduce((s, p) => s + (p.pendingAmount || 0), 0);
   const commission = computeCommission(cycle, contributions || []);
 
+  const lastEnd = periods.length ? periods[periods.length - 1].to : null;
   const pdf = await createReportPdf({
     title:        "Contribution Card",
     businessName,
     period:       `${fmtDate(cycle.start_date)} – ${cycle.label || `${cycle.length_periods} periods`}`,
+    // verifiable: kudiai.app/verify shows these figures, as printed
+    docNoun: "contribution card",
+    verify: {
+      type: "contribution_card", holderName: clientName,
+      fromDate: watDay(cycle.start_date) || spanDays([]).fromDate,
+      toDate:   lastEnd ? watDay(new Date(new Date(lastEnd).getTime() - 86400000)) : spanDays([]).toDate,
+      summary: [
+        { label: "Member",            value: clientName },
+        { label: "Business",          value: businessName || "" },
+        { label: "Expected / period", value: fmtCurrency(cycle.expected_amount_per_period) },
+        { label: "Paid",              value: `${paid} / ${cycle.length_periods}` },
+        { label: "Missed",            value: String(missed) },
+        { label: "Total collected",   value: fmtCurrency(totalPaid) },
+        { label: "Status",            value: cycle.status.charAt(0).toUpperCase() + cycle.status.slice(1) },
+      ],
+    },
     entityDetails: [
       { label: "Member",    value: clientName },
       { label: "Frequency", value: freq.charAt(0).toUpperCase() + freq.slice(1) },

@@ -2,7 +2,8 @@
  * Platform-wide transaction detail + shareable receipt.
  * Shows the full ReceiptCard in-modal (what you see = what you get).
  * "Share Receipt" captures it via html2canvas as an image, or builds a real
- * vector PDF (selectable text) from the same receipt data.
+ * vector PDF (selectable text) from the same receipt data. Either way the
+ * receipt's verify link goes along with the file (verifyLink.receiptShareText).
  *
  * Props:
  *   data            — receipt data from receiptConfig.js build* functions
@@ -13,9 +14,9 @@
 import { useRef, useState } from "react";
 import { useToast } from "../Toast";
 import { Capacitor } from "@capacitor/core";
-import { Filesystem, Directory } from "@capacitor/filesystem";
-import { Share } from "@capacitor/share";
 import { saveReceiptPdf } from "../../utils/generateReceiptPdf";
+import { shareFile } from "../../utils/shareFile";
+import { receiptShareText } from "../../utils/verifyLink";
 import { captureReceiptCanvas } from "../../utils/captureReceipt";
 import { ReceiptCard } from "./ReceiptCard";
 import SupportTicketModal from "./SupportTicketModal";
@@ -24,48 +25,6 @@ import { shareVoucherPDF } from "../../utils/printVouchers";
 const GREEN = '#3da829';
 
 // captureCanvas is now captureReceiptCanvas from ../../utils/captureReceipt
-
-async function fileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result.split(',')[1]);
-    reader.onerror   = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-// Returns 'shared', 'downloaded', or throws
-async function shareFile(file) {
-  if (Capacitor.isNativePlatform()) {
-    try {
-      const base64 = await fileToBase64(file);
-      const saved  = await Filesystem.writeFile({
-        path: file.name, data: base64,
-        directory: Directory.Cache, recursive: true,
-      });
-      await Share.share({ title: file.name, url: saved.uri, dialogTitle: 'Share receipt' });
-      return 'shared';
-    } catch (e) {
-      if (e?.message?.includes('cancel') || e?.errorMessage?.includes('cancel')) return 'shared';
-      throw e;
-    }
-  }
-  if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    try {
-      await navigator.share({ files: [file], title: file.name });
-      return 'shared';
-    } catch (e) {
-      if (e?.name === 'AbortError' || e?.message?.includes('cancel')) return 'shared';
-    }
-  }
-  const url = URL.createObjectURL(file);
-  const a   = Object.assign(document.createElement('a'), { href: url, download: file.name });
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-  return 'downloaded';
-}
 
 // ── Electricity token retrieval ───────────────────────────────────────────────
 function TokenSection({ onRetrieveToken }) {
@@ -200,7 +159,7 @@ export default function TransactionDetailModal({ data, onClose, onReportIssue, o
         const canvas = await captureReceiptCanvas(receiptRef.current);
         const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
         const file = new File([blob], filenames?.image || 'receipt.png', { type: 'image/png' });
-        result = await shareFile(file);
+        result = await shareFile(file, { text: receiptShareText(data) });
       } else {
         // A real vector PDF built from the receipt data — text stays selectable.
         await saveReceiptPdf(data);
@@ -323,7 +282,7 @@ export default function TransactionDetailModal({ data, onClose, onReportIssue, o
                   </p>
                   <div className="flex items-center gap-3">
                     <button
-                      onClick={() => shareVoucherPDF(data.pinsArr, data.businessName, data.category)}
+                      onClick={() => shareVoucherPDF(data.pinsArr, data.businessName, data.category, { receiptRef: data.hasRef ? data.receiptRef : "" })}
                       className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 active:opacity-60"
                     >
                       📤 Share Cards

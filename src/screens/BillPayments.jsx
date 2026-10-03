@@ -24,15 +24,16 @@ import { buildCallbackUrl, openPaystackCheckout } from "../utils/paystackCheckou
 import { Browser } from "@capacitor/browser";
 import { Capacitor } from "@capacitor/core";
 import { saveReceiptPdf } from "../utils/generateReceiptPdf";
-import { createReportPdf } from "../utils/generateReportPdf";
+import { createReportPdf, fmtCurrency as pdfFmtN } from "../utils/generateReportPdf";
+import { spanDays } from "../utils/statementPeriod";
 import { captureReceiptCanvas } from "../utils/captureReceipt";
-import { Filesystem, Directory } from "@capacitor/filesystem";
-import { Share } from "@capacitor/share";
 import { detectNetwork } from "../utils/phoneNetwork";
 import { getProviderLogo, getProviderBadge } from "../utils/logoMap";
 import { billVisual } from "../utils/historyEntries";
 import { HistoryAvatar } from "../components/shared/HistoryRow";
 import { shareVoucherPDF } from "../utils/printVouchers";
+import { shareFile } from "../utils/shareFile";
+import { receiptShareText } from "../utils/verifyLink";
 
 /* ─── Service catalogue ───────────────────────────────────────────────────── */
 
@@ -850,6 +851,20 @@ async function genBillStatement(allBills, catFilter, period, profile) {
     businessName: biz,
     period: periodLabel,
     subtitle: svcName,
+    // verifiable: kudiai.app/verify shows these figures, as printed
+    docNoun: "statement",
+    verify: {
+      type: "bill_statement", holderName: biz,
+      ...spanDays(rows.map(b => b.created_at || b.transaction_date), { toToday: true }),
+      summary: [
+        { label: "Service",      value: svcName },
+        { label: "Period",       value: periodLabel },
+        { label: "Transactions", value: String(rows.length) },
+        { label: "Successful",   value: String(successCnt) },
+        { label: "Failed",       value: String(rows.length - successCnt) },
+        { label: "Total amount", value: pdfFmtN(totalAmt) },
+      ],
+    },
   });
   const { addStats, addSectionTitle, addTable, addTotalsBlock, fmtN } = pdf;
 
@@ -966,47 +981,6 @@ function BillStatementModal({ bills, profile, onClose }) {
 }
 
 
-/* ─── Receipt share helpers ──────────────────────────────────────────────── */
-async function receiptFileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result.split(',')[1]);
-    reader.onerror   = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-async function shareBillReceiptFile(file) {
-  if (Capacitor.isNativePlatform()) {
-    try {
-      const base64 = await receiptFileToBase64(file);
-      const saved  = await Filesystem.writeFile({
-        path: file.name, data: base64,
-        directory: Directory.Cache, recursive: true,
-      });
-      await Share.share({ title: file.name, url: saved.uri, dialogTitle: 'Share receipt' });
-      return 'shared';
-    } catch (e) {
-      if (e?.message?.includes('cancel') || e?.errorMessage?.includes('cancel')) return 'shared';
-      throw e;
-    }
-  }
-  if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    try {
-      await navigator.share({ files: [file], title: file.name });
-      return 'shared';
-    } catch (e) {
-      if (e?.name === 'AbortError' || e?.message?.includes('cancel')) return 'shared';
-    }
-  }
-  const url = URL.createObjectURL(file);
-  const a   = Object.assign(document.createElement('a'), { href: url, download: file.name });
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-  return 'downloaded';
-}
 
 /* ─── Stages 2–4: processing → delivery → receipt ──────────────────────── */
 function BillResultOverlay({ saving, fulfillResult, profile, businessName, staffName, onDone, onShareReceipt, onReportIssue }) {
@@ -1071,7 +1045,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
         const canvas = await captureReceiptCanvas(receiptCardRef.current);
         const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
         const file = new File([blob], fnames?.image || 'receipt.png', { type: 'image/png' });
-        await shareBillReceiptFile(file);
+        await shareFile(file, { text: receiptShareText(successReceiptData) });
       } else if (successReceiptData) {
         // A real vector PDF built from the receipt data — text stays selectable.
         await saveReceiptPdf(successReceiptData);
@@ -1277,7 +1251,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
                   </span>
                   <div className="ml-auto flex items-center gap-3">
                     <button
-                      onClick={() => shareVoucherPDF(fulfillResult.pinsArr, businessName || profile?.business_name, fulfillResult.cat)}
+                      onClick={() => shareVoucherPDF(fulfillResult.pinsArr, businessName || profile?.business_name, fulfillResult.cat, { receiptRef: fulfillResult.receiptRef || "" })}
                       className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 active:opacity-60 flex items-center gap-1"
                     >
                       📤 Share Cards
@@ -1414,7 +1388,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
               </button>
               {fulfillResult.pinsArr?.length > 0 && (
                 <button
-                  onClick={() => shareVoucherPDF(fulfillResult.pinsArr, businessName || profile?.business_name, fulfillResult.cat)}
+                  onClick={() => shareVoucherPDF(fulfillResult.pinsArr, businessName || profile?.business_name, fulfillResult.cat, { receiptRef: fulfillResult.receiptRef || "" })}
                   className="flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform bg-transparent text-violet-700 dark:text-violet-400 border-[1.5px] border-violet-700 dark:border-violet-500">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M18 8h1a4 4 0 010 8h-1M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8zM6 1v3M10 1v3M14 1v3"/>

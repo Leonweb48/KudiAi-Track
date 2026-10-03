@@ -425,12 +425,12 @@ describe("verify page — a report reference", () => {
     expect(text).not.toContain("Transaction type");   // not the receipt layout
   });
 
-  it("an unknown report says 'No report found'", async () => {
+  it("an unknown reference says 'No document found'", async () => {
     mockRpc = jest.fn(async () => ({ data: { found: false }, error: null }));
     window.history.replaceState(null, "", "/verify?ref=KDR-202610-ZZZZZZZZ");
     await act(async () => { root.render(<VerifyReceipt />); });
     await flush();
-    expect(host.textContent).toContain("No report found");
+    expect(host.textContent).toContain("No document found");
   });
 });
 

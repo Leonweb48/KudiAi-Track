@@ -1,5 +1,8 @@
 import { savePdf } from "./pdfSave";
 import { formatNGN } from "./formatNGN";
+import { registerStatement } from "./statementVerify";
+import { verifyLink, verifyShareText } from "./verifyLink";
+import { watDay } from "./statementPeriod";
 
 // ── Brand palette ──────────────────────────────────────────────────────────────
 const NAVY    = [22,  37,  90];
@@ -151,8 +154,25 @@ export async function exportInvoicePdf(
   inv,
   profile,
   invoiceSettings = {},
-  { isReceipt = false, returnBase64 = false } = {}
+  { isReceipt = false, returnBase64 = false, withRef = false } = {}
 ) {
+  // Verifiable (2026-10-03): a KDR reference saved with the figures printed on it — kudiai.app/verify shows them. Saved
+  // while the assets load; offline, the PDF is still made, just without the verify block.
+  const paidK = inv.amount_paid_kobo || 0;
+  const dueK  = Math.max(0, (inv.total_kobo || 0) - paidK);
+  const verifyP = registerStatement(isReceipt ? "invoice_receipt" : "invoice", {
+    fromDate:   watDay(inv.issue_date || inv.created_at),
+    toDate:     watDay(isReceipt ? new Date() : (inv.due_date || inv.issue_date || inv.created_at)),
+    holderName: profile?.business_name || "My Business",
+    summary: [
+      { label: isReceipt ? "Receipt no." : "Invoice no.", value: inv.invoice_number || "—" },
+      { label: "Customer", value: inv.customer_name || "—" },
+      { label: isReceipt ? "Total received" : "Total due", value: fmtK(inv.total_kobo) },
+      ...(paidK > 0 ? [{ label: "Amount paid", value: fmtK(paidK) }] : []),
+      ...(paidK > 0 && dueK > 0 ? [{ label: "Balance due", value: fmtK(dueK) }] : []),
+      { label: "Status", value: statusCfg(inv.status, isReceipt).text },
+    ],
+  });
   const { jsPDF } = await import("jspdf");
   const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
 
@@ -216,11 +236,12 @@ export async function exportInvoicePdf(
 
   // ── Load assets ────────────────────────────────────────────────────────────
   const origin = typeof window !== "undefined" ? window.location.origin : "";
-  const [logoB64, appLogoB64, fontRegB64, fontMedB64] = await Promise.all([
+  const [logoB64, appLogoB64, fontRegB64, fontMedB64, verify] = await Promise.all([
     biz.logo ? imgToBase64(biz.logo) : Promise.resolve(null),
     imgToBase64(`${origin}/logo-tp.png`),
     loadFontBase64(`${origin}/fonts/NotoSans-Regular.ttf`),
     loadFontBase64(`${origin}/fonts/NotoSans-Medium.ttf`),
+    verifyP,
   ]);
 
   // ── Register Unicode font ──────────────────────────────────────────────────
@@ -774,6 +795,44 @@ export async function exportInvoicePdf(
     doc.line(ML, y, MR, y); y += 6;
     setItal(10); col(...MUTED);
     doc.text(thanksLns, ML + TW / 2, y, { align: "center" });
+    y += thanksLns.length * 4.3;
+  }
+
+  // ── VERIFY (last page): the reference, the link and a QR code that opens it ──
+  if (verify?.ref) {
+    const VH = 24, QS = 18;
+    y += 6;
+    if (y + VH > CONTENT_BOT) y = newPage(false) + 2;
+    doc.setFillColor(...PANEL); doc.setDrawColor(...HAIRLN); doc.setLineWidth(0.3);
+    doc.roundedRect(ML, y, TW, VH, 2.5, 2.5, "FD");
+    if (verify.qr) {
+      // vector squares, one rectangle per run of dark modules in a row
+      const n = verify.qr.size, cell = QS / n, qx = MR - 4 - QS, qy = y + 3;
+      doc.setFillColor(...WHITE); doc.rect(qx - 1, qy - 1, QS + 2, QS + 2, "F");
+      doc.setFillColor(...NAVY);
+      for (let r = 0; r < n; r++) {
+        let c = 0;
+        while (c < n) {
+          if (!verify.qr.isDark(r, c)) { c++; continue; }
+          let e = c;
+          while (e + 1 < n && verify.qr.isDark(r, e + 1)) e++;
+          doc.rect(qx + c * cell, qy + r * cell, (e - c + 1) * cell, cell + 0.02, "F");
+          c = e + 1;
+        }
+      }
+      setReg(7.5); col(...MUTED);
+      doc.text("Scan with any phone camera", qx - 3, y + 8, { align: "right" });
+    }
+    setMed(10); col(...NAVY);
+    doc.text(`Verify this ${isReceipt ? "receipt" : "invoice"}`, ML + 6, y + 8);
+    setMed(9.5); col(...GREEN);
+    doc.textWithLink("kudiai.app/verify", ML + 6, y + 13.5, { url: verifyLink(verify.ref) });
+    setReg(8.5); col(...SEC);
+    doc.text("Reference: ", ML + 6, y + 19);
+    const rx = ML + 6 + doc.getTextWidth("Reference: ");
+    doc.setFont("courier", "bold"); doc.setFontSize(9); col(...DARK);
+    doc.text(verify.ref, rx, y + 19);
+    y += VH;
   }
 
   // ── FOOTER on the last page; the others carry just the page number ─────────
@@ -790,6 +849,11 @@ export async function exportInvoicePdf(
   // ── OUTPUT ──────────────────────────────────────────────────────────────────
   const prefix = isReceipt ? "receipt" : "invoice";
   const fname  = `${prefix}_${(inv.invoice_number || Date.now()).toString().replace(/\//g, "-")}.pdf`;
-  if (returnBase64) return doc.output("datauristring").split(",")[1];
-  await savePdf(doc, fname);
+  // shared from the app, the verify link goes along with the file
+  const shareText = verifyShareText(verify?.ref, isReceipt ? "receipt" : "invoice");
+  if (returnBase64) {
+    const base64 = doc.output("datauristring").split(",")[1];
+    return withRef ? { base64, ref: verify?.ref || "", shareText } : base64;
+  }
+  await savePdf(doc, fname, { shareText });
 }

@@ -11,7 +11,8 @@ export { qrMatrix };
 /**
  * Save the statement's reference — "" when it can't (offline): the PDF is then still made, just without the verify
  * block. Returns { ref, qr } ready for renderStatementPdf's `verify`, or null.
- * @param type savings_statement | wallet_statement | monthly_statement
+ * @param type any report_verifications type — savings_statement | wallet_statement | monthly_statement | invoice |
+ *             invoice_receipt | credit_statement | transaction_statement | bill_statement | contribution_card …
  * @param fromDate/toDate YYYY-MM-DD (WAT), holderName who it is for, summary [{ label, value }] (≤ 8, as printed)
  */
 export async function registerStatement(type, { fromDate, toDate, holderName, summary }) {

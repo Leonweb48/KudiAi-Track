@@ -4,6 +4,7 @@
 import { savePdf } from "./pdfSave";
 import { loadPdfAssets, registerNotoSans } from "./pdfAssets";
 import { registerStatement } from "./statementVerify";
+import { verifyShareText } from "./verifyLink";
 import { buildStatementEntries, groupByMonth } from "./walletStatementPdfLayout";
 import {
   monthDates, monthKeyLabel, periodLabel, renderStatementPdf, walletMonthFromLedger, walletMonthSections, walletStatementSections, walletVerifySummary,
@@ -35,7 +36,7 @@ export async function generateWalletStatementPdf(rows, { holder = {}, account = 
     generatedAt: new Date(), verify,
   }, { logo: assets.logo, font });
   doc.setProperties({ title: `Wallet statement${holder.name ? ` — ${holder.name}` : ""}`, subject: "KudiAI Track wallet statement", author: "KudiAI Track · Amaya & Co. Technologies" });
-  return { doc, entries };
+  return { doc, entries, ref: verify?.ref || "" };
 }
 
 export function walletStatementPdfFilename(entries) {
@@ -47,8 +48,8 @@ export function walletStatementPdfFilename(entries) {
 
 /** Build the statement PDF and hand it to the platform (download on web, share sheet on native). */
 export async function saveWalletStatementPdf(rows, opts = {}) {
-  const { doc, entries } = await generateWalletStatementPdf(rows, opts);
-  await savePdf(doc, walletStatementPdfFilename(entries));
+  const { doc, entries, ref } = await generateWalletStatementPdf(rows, opts);
+  await savePdf(doc, walletStatementPdfFilename(entries), { shareText: verifyShareText(ref, "statement") });
 }
 
 /**
@@ -78,6 +79,6 @@ export async function saveWalletMonthPdf(userId, month, { holder = {}, account =
   const font = registerNotoSans(doc, assets);
   renderStatementPdf(doc, { sections, generatedAt: new Date(), verify }, { logo: assets.logo, font });
   doc.setProperties({ title: `Wallet statement — ${monthKeyLabel(month)}`, subject: "KudiAI Track wallet statement", author: "KudiAI Track · Amaya & Co. Technologies" });
-  await savePdf(doc, `KudiAI_Wallet_Statement_${monthKeyLabel(month).replace(/\s+/g, "_")}.pdf`);
+  await savePdf(doc, `KudiAI_Wallet_Statement_${monthKeyLabel(month).replace(/\s+/g, "_")}.pdf`, { shareText: verifyShareText(verify?.ref, "statement") });
 }
 

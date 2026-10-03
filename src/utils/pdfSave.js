@@ -17,8 +17,9 @@ async function blobToBase64(blob) {
  * The share sheet is NOT awaited — the caller's loading state clears immediately
  * so the spinner stops before the share dialog appears.
  * Web: triggers a browser file download.
+ * shareText: sent along with the file in the share sheet — a document's verify link (verifyLink.js).
  */
-export async function savePdf(doc, filename) {
+export async function savePdf(doc, filename, { shareText = "" } = {}) {
   if (Capacitor.isNativePlatform()) {
     try {
       const blob   = doc.output("blob");
@@ -35,6 +36,7 @@ export async function savePdf(doc, filename) {
       // Awaiting it would leave the spinner running until the user acts.
       Share.share({
         title:       filename,
+        ...(shareText ? { text: shareText } : {}),
         url:         saved.uri,
         dialogTitle: "Share or save PDF",
       }).catch(() => {});

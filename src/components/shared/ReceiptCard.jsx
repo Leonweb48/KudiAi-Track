@@ -14,7 +14,9 @@
  *  - Amount formatted with locale-independent regex (toLocaleString('en-NG')
  *    is unavailable in some Android WebViews and falls back to period separators).
  */
+import { useEffect, useState } from 'react';
 import { getProviderLogo, getProviderBadge } from '../../utils/logoMap';
+import { verifyLink } from '../../utils/verifyLink';
 
 const NAVY       = '#0f1c45';
 const GREEN      = '#3da829';
@@ -285,6 +287,41 @@ function BankBadge({ counterparty }) {
   );
 }
 
+// The verify QR as a PNG data URL (null until made, or if it can't be) — any phone camera opens kudiai.app/verify with the
+// reference filled in. An <img> with a data URL is what html2canvas captures reliably.
+function useVerifyQr(ref) {
+  const [src, setSrc] = useState(null);
+  useEffect(() => {
+    let live = true;
+    setSrc(null);
+    if (!ref) return undefined;
+    import('qrcode')
+      .then((mod) => (mod.toDataURL || mod.default?.toDataURL)(verifyLink(ref), { margin: 0, width: 220, color: { dark: NAVY, light: '#ffffff' } }))
+      .then((url) => { if (live) setSrc(url); })
+      .catch(() => { /* the printed link and reference still work */ });
+    return () => { live = false; };
+  }, [ref]);
+  return src;
+}
+
+// "Verify this receipt" — the link, the reference and the QR, on every receipt that has a stored reference (data.hasRef)
+function VerifyBlock({ refCode, qr }) {
+  return (
+    <div data-receipt-verify="true" style={{
+      display: 'flex', alignItems: 'center', margin: '0 0 12px', padding: '9px 10px',
+      border: '1px solid #e2e8f0', borderRadius: 10, background: '#f8fafc', position: 'relative', zIndex: 2,
+    }}>
+      <div style={{ flex: 1, minWidth: 0, paddingRight: 10 }}>
+        <div style={{ fontSize: 10.5, fontWeight: 700, color: '#1e293b', lineHeight: 1.4 }}>Verify this receipt</div>
+        <div style={{ fontSize: 10, fontWeight: 700, color: GREEN, lineHeight: 1.4 }}>kudiai.app/verify</div>
+        <div style={{ fontSize: 9, color: '#475569', fontFamily: 'monospace', lineHeight: 1.5, wordBreak: 'break-all' }}>Ref {refCode}</div>
+        <div style={{ fontSize: 8, color: '#94a3b8', lineHeight: 1.4, marginTop: 2 }}>Scan the code with any phone camera to check it</div>
+      </div>
+      {qr && <img src={qr} alt="Scan to verify" style={{ width: 66, height: 66, display: 'block', flexShrink: 0, background: '#ffffff' }} />}
+    </div>
+  );
+}
+
 // ── Main receipt card ─────────────────────────────────────────────────────────
 export function ReceiptCard({ data, innerRef }) {
   const {
@@ -301,6 +338,8 @@ export function ReceiptCard({ data, innerRef }) {
                        status === 'failed'  ? '#dc2626' : NAVY;
 
   const printFields = fields.filter(f => !f.retrievable);
+  const verifyRef   = data.hasRef && receiptRef ? receiptRef : '';
+  const verifyQr    = useVerifyQr(verifyRef);
 
   return (
     <div ref={innerRef} style={{ background: OUTER_BG, padding: '0 16px 16px', fontFamily: FONT_STACK }}>
@@ -441,6 +480,8 @@ export function ReceiptCard({ data, innerRef }) {
             </p>
           )}
         </div>
+
+        {verifyRef && <VerifyBlock refCode={verifyRef} qr={verifyQr} />}
 
         {/* Footer strip */}
         <div style={{

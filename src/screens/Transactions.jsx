@@ -18,6 +18,7 @@ import { AmountDisplay } from "../components/shared/AmountDisplay";
 import { TxRow } from "../components/shared/TxRow";
 import { canDo, planLimits } from "../utils/plans";
 import { createReportPdf, fmtCurrency, fmtDate } from "../utils/generateReportPdf";
+import { spanDays } from "../utils/statementPeriod";
 import { buildTransactionsCSV, transactionsCSVFilename, shareCSV } from "../utils/exportCSV";
 import { useT } from "../contexts/LanguageContext";
 export { AddTxnModal };
@@ -384,6 +385,19 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
     const pdf = await createReportPdf({
       title: "Transaction Statement", businessName: biz,
       period: labels[filter] || "All Transactions",
+      // verifiable: kudiai.app/verify shows these figures, as printed
+      docNoun: "statement",
+      verify: {
+        type: "transaction_statement", holderName: biz,
+        ...spanDays(sorted.map(tx => tx.transaction_date || tx.created_at)),
+        summary: [
+          { label: "Statement",      value: labels[filter] || "All Transactions" },
+          { label: "Records",        value: String(filterBase.length) },
+          { label: "Total income",   value: fmtCurrency(totIn) },
+          { label: "Total expenses", value: fmtCurrency(totOut) },
+          { label: "Net cash flow",  value: fmtCurrency(totIn - totOut) },
+        ],
+      },
       headerRight: [
         { value: biz },
         store.profile?.owner_name ? { value: store.profile.owner_name, sub: true } : null,

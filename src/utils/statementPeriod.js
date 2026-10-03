@@ -3,6 +3,21 @@
 
 const WAT_MS = 3600000;
 export const watToday = () => new Date(Date.now() + WAT_MS).toISOString().slice(0, 10);
+
+/** A timestamp (or a YYYY-MM-DD day) as its WAT day, YYYY-MM-DD — "" when it isn't a date. */
+export function watDay(input) {
+  if (!input) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(input))) return String(input);
+  const t = new Date(input).getTime();
+  return Number.isNaN(t) ? "" : new Date(t + WAT_MS).toISOString().slice(0, 10);
+}
+
+/** The days a set of records covers, in WAT — { fromDate: the first, toDate: the last, or today with toToday }. */
+export function spanDays(values, { toToday = false } = {}) {
+  const days = (values || []).map(watDay).filter(Boolean).sort();
+  const today = watToday();
+  return { fromDate: days[0] || today, toDate: toToday ? today : (days[days.length - 1] || today) };
+}
 const addDay = (ymd, n = 1) => new Date(Date.parse(`${ymd}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
 const startOfDay = (ymd) => `${ymd}T00:00:00+01:00`;
 

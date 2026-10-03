@@ -7,6 +7,7 @@ import { loadPdfAssets, registerNotoSans, loadImageAsset } from "./pdfAssets";
 import { renderReceiptPdf } from "./receiptPdfLayout";
 import { discoFromText, electricityLogoUrl } from "./electricityLogos";
 import { getProviderLogo } from "./logoMap";
+import { receiptShareText } from "./verifyLink";
 
 /**
  * A QR code for the receipt's verify link — scanning it (any phone's own camera app, no
@@ -50,5 +51,5 @@ export async function generateReceiptPdf(data) {
 /** Build the receipt PDF and hand it to the platform (download on web, share sheet on native). */
 export async function saveReceiptPdf(data) {
   const doc = await generateReceiptPdf(data);
-  await savePdf(doc, data.filenames?.pdf || "receipt.pdf");
+  await savePdf(doc, data.filenames?.pdf || "receipt.pdf", { shareText: receiptShareText(data) });
 }

@@ -17,6 +17,7 @@ import { fmt, applyPeriodFilter } from "../utils/helpers";
 import PeriodFilter from "../components/shared/PeriodFilter";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
 import { createReportPdf, fmtCurrency as pdfFmt, fmtDate as pdfFmtDate } from "../utils/generateReportPdf";
+import { spanDays } from "../utils/statementPeriod";
 import { buildCreditPaymentsCSV, creditCSVFilename, shareCSV } from "../utils/exportCSV";
 import { getLang, speakConfirmation } from "../utils/i18n";
 import { useT } from "../contexts/LanguageContext";
@@ -1410,6 +1411,20 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
           const pdf = await createReportPdf({
             title: "Credit Payment History", businessName: bizName,
             period: historyFor.customer_name,
+            // verifiable: kudiai.app/verify shows these figures, as printed
+            docNoun: "statement",
+            verify: {
+              type: "credit_statement", holderName: historyFor.customer_name,
+              ...spanDays([historyFor.created_at || historyFor.date, ...sorted.map(p => p.created_at || p.payment_date)], { toToday: true }),
+              summary: [
+                { label: "Customer",    value: historyFor.customer_name },
+                { label: "Business",    value: bizName },
+                { label: "Total debt",  value: pdfFmt(totalAmt) },
+                { label: "Total paid",  value: pdfFmt(historyFor.amount_paid || totPaid) },
+                { label: "Outstanding", value: pdfFmt(historyFor.outstanding || Math.max(0, totalAmt - totPaid)) },
+                { label: "Payments",    value: String(payments.length) },
+              ],
+            },
             headerRight: [
               { value: bizName },
               { value: historyFor.customer_name, sub: true },
@@ -1429,7 +1444,8 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
             { label: "Outstanding",  value: pdfFmt(historyFor.outstanding || Math.max(0, totalAmt - totPaid)), color: "#ef4444" },
             { label: "Payments",     value: String(payments.length) },
           ]);
-          pdf.addStatement(rows, { openingBalance: totalAmt, totalCredits: totPaid });
+          // payments bring the debt down — the closing balance is what is still owed (as on the Outstanding row above)
+          pdf.addStatement(rows, { openingBalance: totalAmt, totalCredits: totPaid, closingBalance: Math.max(0, totalAmt - totPaid) });
           await pdf.save(`Credit_Payments_${historyFor.customer_name.replace(/\s+/g, "_")}.pdf`);
         };
 

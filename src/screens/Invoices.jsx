@@ -10,6 +10,7 @@ import { formatWATDate }             from "../utils/wat";
 import PeriodFilter from "../components/shared/PeriodFilter";
 import { AmountDisplay }         from "../components/shared/AmountDisplay";
 import { exportInvoicePdf }      from "../utils/generateInvoicePdf";
+import { shareFile }             from "../utils/shareFile";
 import InvoiceBuilder            from "../components/InvoiceBuilder";
 import { useInvoiceSettings }    from "../hooks/useInvoiceSettings";
 import InvoiceSettingsModal      from "../components/InvoiceSettingsModal";
@@ -327,19 +328,13 @@ function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCance
         // savePdf already writes to cache + fires Share.share (OS sheet)
         await exportInvoicePdf(inv, profile, invoiceSettings || {}, { isReceipt });
       } else {
-        const b64 = await exportInvoicePdf(inv, profile, invoiceSettings || {}, { isReceipt, returnBase64: true });
+        const { base64: b64, shareText } = await exportInvoicePdf(inv, profile, invoiceSettings || {}, { isReceipt, returnBase64: true, withRef: true });
         const bin = atob(b64);
         const arr = new Uint8Array(bin.length);
         for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
         const file = new File([arr], fname, { type: "application/pdf" });
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-          await navigator.share({ files: [file], title: fname });
-        } else {
-          const url = URL.createObjectURL(file);
-          const a = document.createElement("a");
-          a.href = url; a.download = fname; a.click();
-          setTimeout(() => URL.revokeObjectURL(url), 5000);
-        }
+        // shared with its verify link (or downloaded where the browser can't share files)
+        await shareFile(file, { text: shareText, dialogTitle: isReceipt ? "Share receipt" : "Share invoice" });
       }
     } catch (e) { console.error("[PDF share]", e); }
     setPdfLoading(false);
