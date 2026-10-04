@@ -218,7 +218,7 @@ export function buildShowcase(ownerId, clientUserId, now = new Date()) {
     const row = {
       id: randomUUID(), owner_id: ownerId, type: "contribution", payment_method: "cash", status: "completed", paystack_status: "completed",
       contribution_context: "personal_savings", cycle_id: null, group_id: null, initiated_by: "business", notes: "",
-      fee_for_contribution_id: null, ...o,
+      fee_for_contribution_id: null, payment_channel: null, ...o,      // every row needs the same keys for one bulk insert
     };
     row.paid_at = row.created_at;
     contributions.push(row);
