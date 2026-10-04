@@ -11,12 +11,18 @@
 //     ACTION=tester-stock-ping rename one of its products (a server-side stock change, to check that an open app updates live)
 //     ACTION=tester-disable    lock it
 //
+//   SHOWCASE  extra fictional data on the REVIEWER's shop, only for photographing the wallet / Ajo / client screens
+//     ACTION=showcase          a FROZEN wallet (no debit can leave it), 11 Ajo savers, a savings card, an esusu circle, and a client
+//                              login demo.client@kudiai.app (same password as the reviewer) with its own frozen wallet
+//     ACTION=showcase-clear    remove all of it again, and delete that client login
+//
 // Run by .github/workflows/demo-account.yml with secrets in the environment. Nothing secret is ever printed, and every write is scoped to the ONE user
 // whose email is the account's own, so it cannot touch a real customer's rows.
 import { randomBytes } from "node:crypto";
 import {
   DEMO_EMAIL, DEMO_BUSINESS, TESTER_EMAIL, TESTER_BUSINESS, DEMO_APP_PIN, DEMO_TXN_PIN,
   buildProfile, buildTesterProfile, buildProducts, buildCustomers, buildCredits, buildTransactions,
+  SHOWCASE_CLIENT_EMAIL, SHOWCASE_CLIENT_NAME, buildShowcase,
 } from "./seed.mjs";
 
 const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY: SERVICE, SUPABASE_ANON_KEY: ANON, DEMO_PASSWORD, TESTER_PASSWORD, ACTION = "create" } = process.env;
@@ -32,7 +38,7 @@ const VERB = ACTION.replace(/^tester-/, "");
 function fail(msg) { console.error("ERROR:", msg); process.exit(1); }
 const say = (...a) => console.log(...a);
 if (!SUPABASE_URL || !SERVICE || !ANON) fail("SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY and SUPABASE_ANON_KEY are required");
-if (["create"].includes(VERB) && (!ACCT.password || ACCT.password.length < 10)) fail(`the ${ACCT.secret} secret is missing or too short`);
+if (["create", "showcase"].includes(VERB) && (!ACCT.password || ACCT.password.length < 10)) fail(`the ${ACCT.secret} secret is missing or too short`);
 
 async function api(method, path, body, headers = {}) {
   const res = await fetch(SUPABASE_URL + path, {
@@ -46,11 +52,11 @@ async function api(method, path, body, headers = {}) {
 const must = (r, what) => { if (!r.ok) fail(`${what} failed (HTTP ${r.status}): ${r.json?.message || r.json?.msg || r.json?.error_description || r.text}`); return r; };
 
 // ── the account's user (found by email — no other user is ever touched) ────────────────────────────────────
-async function findUserId() {
+async function findUserId(email = ACCT.email) {
   for (let page = 1; page <= 50; page++) {
     const r = must(await api("GET", `/auth/v1/admin/users?page=${page}&per_page=200`), "list users");
     const users = r.json?.users || [];
-    const hit = users.find((u) => (u.email || "").toLowerCase() === ACCT.email);
+    const hit = users.find((u) => (u.email || "").toLowerCase() === email);
     if (hit) return hit.id;
     if (users.length < 200) return null;
   }
@@ -225,7 +231,120 @@ async function stockPing() {
   say("renamed a product to:", name);
 }
 
+// ── showcase (marketing photos only) ───────────────────────────────────────────────────────────────────────
+// Everything is scoped to the reviewer's own user id and the showcase client's own user id (both found by email).
+async function showcaseClear(ownerId, clientId) {
+  const del = async (path, what) => must(await api("DELETE", path, undefined, { Prefer: "return=minimal" }), what);
+  const ids = async (path, what) => (must(await api("GET", path), what).json || []).map((r) => r.id);
+  const dropRefs = async (table, list) => {
+    for (let i = 0; i < list.length; i += 60) await del(`/rest/v1/receipt_references?source_table=eq.${table}&source_id=in.(${list.slice(i, i + 60).join(",")})`, "clear receipt references");
+  };
+  // Ajo: contributions first (fee / reversal rows point at other rows, so they go before the rows they point at), then the circle, card and savers
+  await dropRefs("ajo_contributions", await ids(`/rest/v1/ajo_contributions?owner_id=eq.${ownerId}&select=id&limit=10000`, "read contributions"));
+  await del(`/rest/v1/ajo_contributions?owner_id=eq.${ownerId}&fee_for_contribution_id=not.is.null`, "clear fee rows");
+  await del(`/rest/v1/ajo_contributions?owner_id=eq.${ownerId}&reverses_contribution_id=not.is.null`, "clear reversal rows");
+  await del(`/rest/v1/ajo_contributions?owner_id=eq.${ownerId}`, "clear contributions");
+  for (const t of ["ajo_esusu_debts", "ajo_wallet_payouts", "aso_client_group_memberships"]) await clearRows(t, "owner_id", ownerId);
+  await del(`/rest/v1/ajo_groups?owner_id=eq.${ownerId}`, "clear circles");          // rounds and turns go with them
+  await del(`/rest/v1/ajo_cycles?owner_id=eq.${ownerId}`, "clear savings cards");
+  await del(`/rest/v1/aso_clients?user_id=eq.${ownerId}`, "clear savers");
+  // wallets (their ledger rows go with them)
+  for (const uid of [ownerId, clientId].filter(Boolean)) {
+    for (const wid of await ids(`/rest/v1/wallets?user_id=eq.${uid}&select=id`, "read wallet")) {
+      await dropRefs("wallet_ledger", await ids(`/rest/v1/wallet_ledger?wallet_id=eq.${wid}&select=id&limit=10000`, "read wallet ledger"));
+    }
+    await del(`/rest/v1/wallets?user_id=eq.${uid}`, "clear wallet");
+  }
+}
+
+async function showcase() {
+  await loadSchema();
+  const ownerId = await findUserId(DEMO_EMAIL);
+  if (!ownerId) fail("the demo account does not exist yet — run create first");
+
+  // the client's login: an Ajo client of the demo shop, signed straight in (no OTP, no forced password change)
+  const meta = { full_name: SHOWCASE_CLIENT_NAME, account_type: "ajo_client", owner_id: ownerId, must_change_password: false, ajo_client_otp_verified: true, demo: true };
+  let clientId = await findUserId(SHOWCASE_CLIENT_EMAIL);
+  if (!clientId) {
+    const r = await api("POST", "/auth/v1/admin/users", { email: SHOWCASE_CLIENT_EMAIL, password: ACCT.password, email_confirm: true, user_metadata: meta });
+    if (r.ok) clientId = r.json.id; else if (r.status === 422) clientId = await findUserId(SHOWCASE_CLIENT_EMAIL);
+    if (!clientId) must(r, "create client login");
+    say("created the client login");
+  }
+
+  await showcaseClear(ownerId, clientId);
+  const s = buildShowcase(ownerId, clientId);
+  const n = {};
+  n.wallets = await insertRows("wallets", [s.ownerWallet, s.clientWallet]);
+  n.wallet_ledger = await insertRows("wallet_ledger", [...s.ownerLedger, ...s.clientLedger]);
+  n.aso_clients = await insertRows("aso_clients", s.clients);
+  n.ajo_cycles = await insertRows("ajo_cycles", [s.card]);
+  n.ajo_groups = await insertRows("ajo_groups", [s.group]);
+  n.memberships = await insertRows("aso_client_group_memberships", s.memberships);
+  n.rounds = await insertRows("ajo_group_rounds", [s.round]);
+  n.turns = await insertRows("ajo_group_turns", s.turns);
+  n.ajo_contributions = await insertRows("ajo_contributions", s.contributions, 500);
+  say("seeded:", JSON.stringify(n));
+  for (const [t, cols] of Object.entries(dropped)) say(`  (${t}: columns not in the table, skipped: ${[...cols].join(", ")})`);
+
+  const ngozi = s.clients.find((c) => c.client_user_id === clientId);
+  must(await api("PUT", `/auth/v1/admin/users/${clientId}`, { password: ACCT.password, email_confirm: true, ban_duration: "none", user_metadata: { ...meta, aso_client_id: ngozi.id } }), "set client login");
+  if (columnsOf("profiles")?.has("bvn_verified")) must(await api("PATCH", `/rest/v1/profiles?id=eq.${ownerId}`, { bvn_verified: true }, { Prefer: "return=minimal" }), "mark owner BVN verified");
+
+  // the client starts past the Terms screen and with known PINs, like the reviewer
+  const docs = must(await api("GET", "/rest/v1/legal_documents?select=type,version&status=eq.published&order=version.desc"), "read legal documents").json || [];
+  const latest = (type) => docs.find((d) => d.type === type)?.version;
+  if (latest("tnc") && latest("privacy")) {
+    await clearRows("user_consents", "user_id", clientId);
+    await insertRows("user_consents", [{ user_id: clientId, tnc_version: latest("tnc"), privacy_version: latest("privacy"), consented_at: new Date().toISOString() }]);
+  }
+  const login = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, { method: "POST", headers: { apikey: ANON, "Content-Type": "application/json" }, body: JSON.stringify({ email: SHOWCASE_CLIENT_EMAIL, password: ACCT.password }) });
+  const session = await login.json().catch(() => ({}));
+  if (!login.ok || !session.access_token) fail(`the client login could not sign in (HTTP ${login.status})`);
+  for (const [action, pin] of [["setup_app_pin", DEMO_APP_PIN], ["setup_txn_pin", DEMO_TXN_PIN]]) {
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/pin-manager`, { method: "POST", headers: { apikey: ANON, Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" }, body: JSON.stringify({ action, pin }) });
+    const j = await r.json().catch(() => ({}));
+    if (!j.success) fail(`client ${action} failed: ${j.error || "HTTP " + r.status}`);
+  }
+  for (const t of ["welcome_email_queue", "email_automation_queue"]) { await clearRows(t, "user_id", clientId); await clearRows(t, "user_id", ownerId); }
+
+  // read back: both wallets frozen, every saver's balance equals the sum of its rows
+  const wallets = must(await api("GET", `/rest/v1/wallets?user_id=in.(${ownerId},${clientId})&select=status,balance_kobo`), "read wallets back").json || [];
+  if (wallets.length !== 2 || wallets.some((w) => w.status !== "frozen")) fail("read-back: the showcase wallets are not both frozen");
+  const back = must(await api("GET", `/rest/v1/aso_clients?user_id=eq.${ownerId}&select=id,current_balance`), "read savers back").json || [];
+  const rows = must(await api("GET", `/rest/v1/ajo_contributions?owner_id=eq.${ownerId}&status=eq.completed&select=aso_client_id,amount,type&limit=10000`), "read contributions back").json || [];
+  const sum = {};
+  for (const r of rows) sum[r.aso_client_id] = (sum[r.aso_client_id] || 0) + (r.type === "contribution" ? 1 : -1) * Number(r.amount);
+  const off = back.filter((c) => Math.abs(Number(c.current_balance) - (sum[c.id] || 0)) > 0.001).length;
+  if (off) fail(`read-back: ${off} saver balance(s) do not match their rows`);
+  say(`ready: 2 frozen wallets, ${back.length} savers, ${rows.length} contributions — run showcase-clear when the photos are done`);
+}
+
+async function showcaseClearAction() {
+  const ownerId = await findUserId(DEMO_EMAIL);
+  if (!ownerId) fail("the demo account does not exist");
+  await loadSchema();
+  const clientId = await findUserId(SHOWCASE_CLIENT_EMAIL);
+  await showcaseClear(ownerId, clientId);
+  if (clientId) {
+    for (const t of ["user_consents", "welcome_email_queue", "email_automation_queue", "notifications"]) await clearRows(t, "user_id", clientId);
+    await clearRows("profiles", "id", clientId);                 // the minimal row pin-manager made for the client
+    const r = await api("DELETE", `/auth/v1/admin/users/${clientId}`);
+    if (r.ok) say("client login deleted");
+    else {
+      must(await api("PUT", `/auth/v1/admin/users/${clientId}`, { password: randomBytes(24).toString("base64url"), ban_duration: "876000h" }), "lock client login");
+      say(`client login locked (could not delete it: HTTP ${r.status})`);
+    }
+  }
+  const left = must(await api("GET", `/rest/v1/aso_clients?user_id=eq.${ownerId}&select=id`), "check savers").json || [];
+  const w = must(await api("GET", `/rest/v1/wallets?user_id=eq.${ownerId}&select=id`), "check wallet").json || [];
+  if (left.length || w.length) fail(`clear incomplete: ${left.length} savers, ${w.length} wallets left`);
+  say("showcase removed: no savers, no wallets left on the demo shop");
+}
+
 if (ACTION === "create") await create();
+else if (ACTION === "showcase") await showcase();
+else if (ACTION === "showcase-clear") await showcaseClearAction();
 else if (ACTION === "disable" || ACTION === "tester-disable") await disable();
 else if (ACTION === "tester-create") await create();
 else if (ACTION === "tester-upgrade") await testerPlan("top");

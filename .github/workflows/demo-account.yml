@@ -6,6 +6,9 @@ name: Demo reviewer account
 #     disable — lock it (random password + banned); use after the review
 #   TESTER (free-plan account for trying "register in the Android app, upgrade elsewhere")
 #     tester-create / tester-upgrade / tester-downgrade / tester-disable — password from the DEMO_TESTER_PASSWORD secret
+#   SHOWCASE (extra fictional data on the reviewer's shop, only for photographing the wallet / Ajo / client screens)
+#     showcase       — frozen wallets, Ajo savers, a savings card, an esusu circle and a client login (reviewer password)
+#     showcase-clear — remove all of it and delete the client login; run it as soon as the photos are taken
 # Passwords live ONLY in repository secrets — never in the repo or the logs.
 on:
   workflow_dispatch:
@@ -13,7 +16,7 @@ on:
       action:
         description: "reviewer: create / disable — tester: tester-create / tester-upgrade / tester-downgrade / tester-disable"
         type: choice
-        options: [create, disable, tester-create, tester-upgrade, tester-downgrade, tester-stock-ping, tester-disable]
+        options: [create, disable, tester-create, tester-upgrade, tester-downgrade, tester-stock-ping, tester-disable, showcase, showcase-clear]
         default: create
 
 permissions:
