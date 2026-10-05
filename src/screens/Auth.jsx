@@ -96,6 +96,10 @@ function BgLayout({ children, center = false }) {
             <p className="text-white/90 text-sm font-medium" style={{ textShadow: "0 1px 6px rgba(0,0,0,0.7)" }}>
               {t("auth.designed")}
             </p>
+            <a href="/founder" className="mt-2 self-start text-white/85 text-xs font-semibold underline underline-offset-4 decoration-white/40"
+              style={{ textShadow: "0 1px 6px rgba(0,0,0,0.7)" }}>
+              Meet the founder →
+            </a>
           </div>
 
           {/* Bottom sheet — fixed height cap, scrolls internally if form is long */}
