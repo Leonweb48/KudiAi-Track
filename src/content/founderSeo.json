@@ -1,0 +1,62 @@
+{
+  "url": "https://kudiai.app/founder",
+  "title": "Solomon Leon Johnson – Founder of KudiAI Track | Amaya & Co. Technologies",
+  "description": "Solomon Leon Johnson is Founder & CEO of Amaya & Co. Technologies, the company behind KudiAI Track, the business, savings and payments app for Nigerian traders.",
+  "image": "https://kudiai.app/people/solomon-leon-johnson.jpg",
+  "imageAlt": "Portrait of Solomon Leon Johnson, Founder & CEO of Amaya & Co. Technologies",
+  "jsonld": {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Organization",
+        "@id": "https://kudiai.app/#organization",
+        "name": "Amaya & Co. Technologies",
+        "alternateName": ["Amaya Technologies", "Amaya & Co"],
+        "url": "https://kudiai.app/",
+        "logo": "https://kudiai.app/logo.png",
+        "email": "support@kudiai.app",
+        "founder": { "@id": "https://kudiai.app/founder#person" },
+        "brand": { "@type": "Brand", "name": "KudiAI Track" }
+      },
+      {
+        "@type": "SoftwareApplication",
+        "@id": "https://kudiai.app/#app",
+        "name": "KudiAI Track",
+        "alternateName": ["KudiAI", "Kudiai Track", "KudiTrack"],
+        "applicationCategory": "FinanceApplication",
+        "operatingSystem": "Android, Web",
+        "url": "https://kudiai.app/",
+        "description": "Business, savings and payments app for Nigerian traders: record sales, see real profit, manage stock and debts, run Ajo and Esusu savings, and pay bills.",
+        "publisher": { "@id": "https://kudiai.app/#organization" }
+      },
+      {
+        "@type": "Person",
+        "@id": "https://kudiai.app/founder#person",
+        "name": "Solomon Leon Johnson",
+        "jobTitle": "Founder & CEO",
+        "worksFor": { "@id": "https://kudiai.app/#organization" },
+        "image": "https://kudiai.app/people/solomon-leon-johnson.jpg",
+        "email": "mailto:solomon.john@amayatechnologies.com",
+        "url": "https://kudiai.app/founder",
+        "sameAs": [
+          "https://www.linkedin.com/in/leonrichy",
+          "https://www.facebook.com/leonrichy",
+          "https://www.instagram.com/leonrichy",
+          "https://x.com/leonrichy",
+          "https://www.tiktok.com/@leonrichy"
+        ]
+      },
+      {
+        "@type": "ProfilePage",
+        "@id": "https://kudiai.app/founder",
+        "url": "https://kudiai.app/founder",
+        "name": "Solomon Leon Johnson – Founder of KudiAI Track | Amaya & Co. Technologies",
+        "inLanguage": "en-NG",
+        "dateModified": "2026-10-05",
+        "mainEntity": { "@id": "https://kudiai.app/founder#person" },
+        "about": [{ "@id": "https://kudiai.app/#organization" }, { "@id": "https://kudiai.app/#app" }],
+        "isPartOf": { "@type": "WebSite", "@id": "https://kudiai.app/#website", "name": "KudiAI Track", "url": "https://kudiai.app/", "publisher": { "@id": "https://kudiai.app/#organization" } }
+      }
+    ]
+  }
+}

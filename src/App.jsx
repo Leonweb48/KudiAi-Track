@@ -518,7 +518,7 @@ export default function App() {
   if (location.pathname === "/verify") return <VerifyReceipt />;
   // Account-deletion URL for Google Play (Data safety) — explains deletion and takes requests from people who cannot sign in.
   if (location.pathname === "/delete-account") return <DeleteAccountPage />;
-  // The founder's note — a public, magazine-style page (linked from the sign-in screen).
+  // The founder's note — a public, magazine-style page. Served from build/founder.html (scripts/seo-founder.js) so search engines get its own title, description and structured data.
   if (location.pathname === "/founder") return <Suspense fallback={<div style={{ minHeight: "100dvh", background: "#F6F1E8" }} />}><FounderPage /></Suspense>;
   // The privacy policy and terms must be readable at a public address (Google Play requires a privacy-policy URL).
   if (location.pathname === "/privacy" || location.pathname === "/terms") {

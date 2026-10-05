@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import SEO from "../content/founderSeo.json";   // also read by scripts/seo-founder.js, which writes /founder's own HTML head for search engines
 
 /**
  * Public page at /founder — a magazine-style founder's note: the story, the problem, the why, what we are building now and
@@ -7,7 +8,8 @@ import { useEffect } from "react";
  */
 const NAME = "Solomon Leon Johnson";
 const TITLE = "Founder & CEO, Amaya Technologies";
-const PHOTO = "/founder/solomon-leon-johnson.jpg";
+const COMPANY = "Amaya & Co. Technologies";
+const PHOTO = "/people/solomon-leon-johnson.jpg";
 const EMAIL = "solomon.john@amayatechnologies.com";
 const FONTS = "https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap";
 
@@ -124,9 +126,9 @@ const CSS = `
 
 export default function FounderPage() {
   useEffect(() => {
-    document.title = `${NAME} · Founder's Note · KudiAI Track`;
+    document.title = SEO.title;
     const meta = document.querySelector('meta[name="description"]');
-    if (meta) meta.setAttribute("content", `${NAME}, ${TITLE}, on why KudiAI Track exists and where Nigerian businesses go next.`);
+    if (meta) meta.setAttribute("content", SEO.description);
     if (!document.getElementById("fdr-fonts")) {
       const l = document.createElement("link");
       l.id = "fdr-fonts"; l.rel = "stylesheet"; l.href = FONTS;
@@ -142,7 +144,7 @@ export default function FounderPage() {
         <div className="fdr-top">
           <a className="fdr-brand" href="/">
             <img src="/logo-tp.png" alt="" onError={(e) => { e.currentTarget.style.display = "none"; }} />
-            <div><b>KudiAI Track</b><span>by Amaya Technologies</span></div>
+            <div><b>KudiAI Track</b><span>by {COMPANY}</span></div>
           </a>
           <a className="fdr-toplink" href="/">Open KudiAI Track →</a>
         </div>
@@ -272,8 +274,8 @@ export default function FounderPage() {
                 <h3>{NAME}</h3>
                 <p className="fdr-role">{TITLE}</p>
                 <p className="fdr-p" style={{ fontSize: 17, marginBottom: 0 }}>
-                  {NAME} is the founder and chief executive of Amaya Technologies, the company behind KudiAI Track, a business,
-                  savings and payments app built for Nigerian traders, artisans and Ajo collectors.
+                  {NAME} is the founder and chief executive of {COMPANY} (Amaya Technologies), the company behind KudiAI Track,
+                  a business, savings and payments app built for Nigerian traders, artisans and Ajo collectors.
                 </p>
                 <div className="fdr-social">
                   {SOCIAL.map((s) => (
@@ -299,7 +301,7 @@ export default function FounderPage() {
       </main>
 
       <footer className="fdr-foot">
-        <div>© {new Date().getFullYear()} Amaya Technologies · KudiAI Track</div>
+        <div>© {new Date().getFullYear()} {COMPANY} · KudiAI Track</div>
         <div style={{ marginTop: 10 }}>
           <a href="/verify">Verify a receipt</a>·<a href="/privacy">Privacy</a>·<a href="/terms">Terms</a>·<a href="mailto:support@kudiai.app">support@kudiai.app</a>
         </div>

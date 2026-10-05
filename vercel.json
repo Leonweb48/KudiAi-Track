@@ -66,6 +66,14 @@
       "destination": "/payment-return.html"
     },
     {
+      "source": "/founder",
+      "destination": "/founder.html"
+    },
+    {
+      "source": "/founder/",
+      "destination": "/founder.html"
+    },
+    {
       "source": "/sb/:path*",
       "destination": "https://eztohcuzbxxxvnondxfz.supabase.co/:path*"
     },

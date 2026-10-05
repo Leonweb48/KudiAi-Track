@@ -41,7 +41,7 @@
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
-    "postbuild": "node scripts/build-sw.js",
+    "postbuild": "node scripts/seo-founder.js && node scripts/build-sw.js",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },
