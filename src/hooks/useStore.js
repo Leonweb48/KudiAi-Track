@@ -704,8 +704,17 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
       }
     }
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from("transactions").insert(payload).select().single();
+
+    // A duplicate client_txn_id means THIS transaction is already saved: the request reached the server twice (a
+    // connection that drops before the reply can make the phone send it again) and the unique key refused the copy.
+    // Carry on with the saved row instead of telling the user it failed and dropping it from the list.
+    if (error?.code === "23505" && /client_txn_id/.test(error.message || "")) {
+      const { data: saved } = await supabase
+        .from("transactions").select().eq("client_txn_id", localId).maybeSingle();
+      if (saved) { data = saved; error = null; }
+    }
 
     if (error) {
       setTransactions(p => p.filter(tx => tx.id !== tempId));
