@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import SEO from "../content/founderSeo.json";   // also read by scripts/seo-founder.js, which writes /founder's own HTML head for search engines
+import SEO from "../content/founderSeo.json";   // also read by scripts/seo-pages.js, which writes /founder's own HTML head for search engines
 
 /**
  * Public page at /founder — a magazine-style founder's note: the story, the problem, the why, what we are building now and
@@ -303,7 +303,7 @@ export default function FounderPage() {
       <footer className="fdr-foot">
         <div>© {new Date().getFullYear()} {COMPANY} · KudiAI Track</div>
         <div style={{ marginTop: 10 }}>
-          <a href="/verify">Verify a receipt</a>·<a href="/privacy">Privacy</a>·<a href="/terms">Terms</a>·<a href="mailto:support@kudiai.app">support@kudiai.app</a>
+          <a href="/features">Features</a>·<a href="/verify">Verify a receipt</a>·<a href="/privacy">Privacy</a>·<a href="/terms">Terms</a>·<a href="mailto:support@kudiai.app">support@kudiai.app</a>
         </div>
       </footer>
     </div>

@@ -74,6 +74,14 @@
       "destination": "/founder.html"
     },
     {
+      "source": "/features",
+      "destination": "/features.html"
+    },
+    {
+      "source": "/features/",
+      "destination": "/features.html"
+    },
+    {
       "source": "/sb/:path*",
       "destination": "https://eztohcuzbxxxvnondxfz.supabase.co/:path*"
     },

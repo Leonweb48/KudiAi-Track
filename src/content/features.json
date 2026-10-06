@@ -1,0 +1,129 @@
+{
+  "seo": {
+    "url": "https://kudiai.app/features",
+    "title": "KudiAI Track Features – Sales, Profit, Wallet, Bills & Ajo Savings App",
+    "description": "KudiAI Track by Amaya & Co. Technologies: record sales, see real profit, manage stock and debts, get paid into your own wallet, pay bills and run Ajo savings.",
+    "image": "https://kudiai.app/shots/dashboard.jpg",
+    "imageAlt": "KudiAI Track business dashboard showing today's sales and profit"
+  },
+  "hero": {
+    "kicker": "KudiAI Track · by Amaya & Co. Technologies",
+    "title": "Run your whole business from your phone.",
+    "lead": "Sales, real profit, stock, debts, a business wallet, bill payments and Ajo savings in one app, built for Nigerian traders, artisans and savings collectors. In English, Pidgin, Hausa, Igbo or Yoruba.",
+    "chips": ["5 Nigerian languages", "Works offline", "Your own account number", "Receipts anyone can verify"]
+  },
+  "summary": "KudiAI Track is a business, savings and payments app for Nigerian small businesses, made by Amaya & Co. Technologies. Business owners record sales and expenses, see real profit, manage stock and debts, send invoices, get paid into their own wallet account number and pay bills. Ajo and Esusu collectors run digital savings cards and rotations, and their savers get their own portal and wallet. Staff and branches get their own logins. Every receipt carries a QR code anyone can verify at kudiai.app/verify.",
+  "audiences": [
+    { "title": "Shop owners & traders", "text": "Know your profit every day, not at the end of the month. Stock, debts and sales in one place." },
+    { "title": "Artisans & service businesses", "text": "Tailors, salons, mechanics and caterers: send invoices, track part payments and see who still owes you." },
+    { "title": "Ajo & Esusu collectors", "text": "Digital savings cards, contributions, rotations and statements your savers can check for themselves." },
+    { "title": "Savers", "text": "Your own login and wallet: see every contribution, pay from your phone and get a statement every month." },
+    { "title": "Staff & branch managers", "text": "Your own login and permissions. Record sales, run shifts and close the day with a cash count." },
+    { "title": "Marketers", "text": "Join the KudiAI marketer team and earn commission on the businesses you bring. Email support@kudiai.app." }
+  ],
+  "groups": [
+    {
+      "id": "sales", "title": "Sales & real profit", "shot": "dashboard",
+      "intro": "Record a sale in seconds and see what you actually made.",
+      "items": [
+        ["Record a sale by tap or by voice", "Say it in your own words with Mic Sale, or tap through a few fields."],
+        ["Profit you can trust", "The cost price is saved with every sale, so profit is real profit, not a guess."],
+        ["Daily, weekly and monthly view", "Sales, profit, money in and money out at a glance."],
+        ["Expenses by category", "Rent, fuel, wages and restocking, all counted."],
+        ["Works offline", "No network? Sales are queued and sync when the connection returns."]
+      ]
+    },
+    {
+      "id": "stock", "title": "Stock & inventory", "shot": "stock",
+      "intro": "Never run out of your best sellers.",
+      "items": [
+        ["Products with cost and selling price", "Categories, SKUs and barcodes, with stock value worked out for you."],
+        ["Low-stock alerts", "Set a level per product and get warned before the shelf is empty."],
+        ["Restock in one tap", "Stock movement and value reports as PDF."]
+      ]
+    },
+    {
+      "id": "credit", "title": "Credit, invoices & customers", "shot": "credit",
+      "intro": "Know who owes you, and get paid.",
+      "items": [
+        ["Credit tracker", "Every debt with due dates, part payments and what is overdue."],
+        ["Reminders on WhatsApp", "Send a payment reminder in one tap."],
+        ["Professional invoices", "VAT (7.5%), part payments and your logo, shared as PDF on WhatsApp or email."],
+        ["Customer loyalty points", "Reward repeat customers with points they can redeem."]
+      ]
+    },
+    {
+      "id": "wallet", "title": "A wallet for your business", "shot": "wallet",
+      "intro": "Your own account number. Get paid, send money, pay bills.",
+      "items": [
+        ["Your own account number", "Customers pay you by bank transfer, straight into your KudiAI wallet."],
+        ["Send to any Nigerian bank", "With receipts that read like a bank alert."],
+        ["Protected by a transaction PIN", "Plus account tiers and limits backed by BVN and NIN checks."]
+      ]
+    },
+    {
+      "id": "bills", "title": "Bills & recharge", "shot": "bills",
+      "intro": "Pay for everything from the same wallet.",
+      "items": [
+        ["Airtime and data", "All networks, in seconds."],
+        ["Electricity and cable TV", "Prepaid and postpaid meters, DStv, GOtv and more."],
+        ["Exam and internet PINs", "WAEC and JAMB ePINs, Smile and Spectranet."],
+        ["Print airtime and data PINs", "Print recharge vouchers in batches and run a recharge business."]
+      ]
+    },
+    {
+      "id": "ajo", "title": "Ajo & Esusu, without paper", "shot": "ajo",
+      "intro": "For savings collectors who want records their savers can trust.",
+      "items": [
+        ["Register savers", "Daily, weekly or monthly plans, each with its own savings card."],
+        ["Fees handled for you", "Collector's commission (first day or a percentage) and registration fees, worked out automatically."],
+        ["Esusu rotations", "Who collects when, the size of the pot and who has paid this round."],
+        ["Today's collection list", "See who is due today, record contributions and approve withdrawals."]
+      ]
+    },
+    {
+      "id": "savers", "title": "For savers: your own portal", "shot": "savings-card",
+      "intro": "Ajo and Esusu savers get their own login.",
+      "items": [
+        ["Your savings card", "Every contribution ticked off, with the balance and history."],
+        ["Your own KudiAI wallet", "Fund it, pay your contribution, buy airtime and send money to any bank."],
+        ["Circles with friends", "Join your collector's esusu, or start a circle and invite people by wallet number."],
+        ["Monthly statements", "A savings and wallet statement as PDF on the 1st of every month."]
+      ]
+    },
+    {
+      "id": "trust", "title": "Proof, not promises", "shot": "receipt",
+      "intro": "End fake alerts and disputed records.",
+      "items": [
+        ["Verifiable receipts", "Every receipt and statement carries a reference and QR code anyone can check at kudiai.app/verify, no login needed."],
+        ["Two PINs", "An app lock PIN and a separate transaction PIN."],
+        ["Your data, your choice", "Delete your account yourself at any time."]
+      ]
+    }
+  ],
+  "extras": [
+    { "title": "Reports & statements", "text": "Sales, stock, credit and Ajo reports as PDF, plus a monthly business report and wallet statement on the 1st." },
+    { "title": "AI daily brief", "text": "A short summary of yesterday's business every morning, read aloud if you like." },
+    { "title": "KudiAI Assistant", "text": "Ask questions about your sales, credit, stock and Ajo in plain language." },
+    { "title": "Staff & permissions", "text": "Give staff their own logins and choose what they can see. Every sale is recorded under their name." },
+    { "title": "Branches & managers", "text": "Branch managers assign shifts and close each day with a cash count." },
+    { "title": "Field collections", "text": "Collectors record Ajo contributions on their phones. You review and approve before it counts." }
+  ],
+  "steps": [
+    ["Create your free account", "Sign up at kudiai.app as a business, or as a saver joining your collector."],
+    ["Add products or savers", "Or simply record your first sale. Everything else can come later."],
+    ["Watch your numbers update", "Profit, stock, debts and savings update as you work."]
+  ],
+  "faq": [
+    ["What is KudiAI Track?", "KudiAI Track is a business, savings and payments app for Nigerian small businesses. It records sales and expenses, shows real profit, manages stock and debts, sends invoices, gives each business its own wallet account number for payments and bills, and runs Ajo and Esusu savings."],
+    ["Who makes KudiAI Track?", "KudiAI Track is made by Amaya & Co. Technologies (Amaya Technologies). The founder and CEO is Solomon Leon Johnson."],
+    ["Is KudiAI Track free?", "You can start on a free plan and upgrade when your business needs more."],
+    ["Which languages does it support?", "English, Nigerian Pidgin, Hausa, Igbo and Yoruba."],
+    ["Does it work without internet?", "Yes. Sales recorded offline are queued and sync automatically when your connection returns."],
+    ["How do I check that a KudiAI receipt is real?", "Scan the QR code on the receipt, or enter its reference at kudiai.app/verify. No login is needed."],
+    ["Can my Ajo savers see their own savings?", "Yes. Each saver can have their own login to see their savings card, contributions and statements, and to use their own KudiAI wallet."],
+    ["How is my money protected?", "Every transfer from a wallet needs your transaction PIN, the app has its own lock PIN, and wallet limits are tied to identity checks (BVN and NIN)."],
+    ["What phone do I need?", "Any smartphone with a web browser. Open kudiai.app; on iPhone you can add it to your Home Screen."],
+    ["How do I contact support?", "Email support@kudiai.app."]
+  ]
+}

@@ -75,6 +75,7 @@ const Profile        = lazy(() => import("./screens/Profile"));
 const Loyalty        = lazy(() => import("./screens/Loyalty"));
 const Branches       = lazy(() => import("./screens/Branches"));
 const FounderPage    = lazy(() => import("./screens/FounderPage"));
+const FeaturesPage   = lazy(() => import("./screens/FeaturesPage"));
 // Portal screens (only rendered for specific account types)
 const StaffDashboard        = lazy(() => import("./screens/StaffDashboard"));
 const ManagerDashboard      = lazy(() => import("./screens/ManagerDashboard"));
@@ -518,8 +519,11 @@ export default function App() {
   if (location.pathname === "/verify") return <VerifyReceipt />;
   // Account-deletion URL for Google Play (Data safety) — explains deletion and takes requests from people who cannot sign in.
   if (location.pathname === "/delete-account") return <DeleteAccountPage />;
-  // The founder's note — a public, magazine-style page. Served from build/founder.html (scripts/seo-founder.js) so search engines get its own title, description and structured data.
-  if (location.pathname === "/founder") return <Suspense fallback={<div style={{ minHeight: "100dvh", background: "#F6F1E8" }} />}><FounderPage /></Suspense>;
+  // Public marketing pages: the founder's note and the product/features page. Each is served from its own HTML file
+  // (build/founder.html, build/features.html — scripts/seo-pages.js) so search engines get its own title, description and structured data.
+  const publicPath = location.pathname.replace(/\/+$/, "");   // "/founder/" too
+  if (publicPath === "/founder") return <Suspense fallback={<div style={{ minHeight: "100dvh", background: "#F6F1E8" }} />}><FounderPage /></Suspense>;
+  if (publicPath === "/features") return <Suspense fallback={<div style={{ minHeight: "100dvh", background: "#0f1c45" }} />}><FeaturesPage /></Suspense>;
   // The privacy policy and terms must be readable at a public address (Google Play requires a privacy-policy URL).
   if (location.pathname === "/privacy" || location.pathname === "/terms") {
     return <LegalScreen type={location.pathname === "/terms" ? "terms" : "privacy"} onBack={() => window.location.assign("/")} />;   // full load: this branch returns before later hooks, so no client-side navigate
