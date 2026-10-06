@@ -90,7 +90,7 @@ function TermsContent() {
   return (
     <>
       <InfoBox>
-        These Terms constitute a legally binding agreement between you and AMAYA & Co. Technologies, the operator of KudiTrack AI. By creating an account or using any part of the platform — including the mobile app, web app, Admin Portal, or Marketer Portal — you agree to be bound by these Terms. If you do not agree, you must immediately stop using the platform.
+        These Terms constitute a legally binding agreement between you and AMAYA & Co. Technologies, the operator of KudiAI Track. By creating an account or using any part of the platform — including the mobile app, web app, Admin Portal, or Marketer Portal — you agree to be bound by these Terms. If you do not agree, you must immediately stop using the platform.
       </InfoBox>
 
       <H2>1. Company Information</H2>
@@ -105,7 +105,7 @@ function TermsContent() {
 
       <H2>2. Definitions</H2>
       <UL items={[
-        '"Platform" — the KudiTrack AI app (iOS, Android, web), Admin Portal (admin.kudiai.app), and Marketer Portal in all forms.',
+        '"Platform" — the KudiAI Track app (iOS, Android, web), Admin Portal (admin.kudiai.app), and Marketer Portal in all forms.',
         '"Services" — all features including business management, bill payments, Ajo/Esusu, loyalty programmes, marketer affiliate, and AI insights.',
         '"Account" — your registered user profile.',
         '"Business Owner" — the primary account holder of a business entity.',
@@ -145,7 +145,7 @@ function TermsContent() {
       <H3>4.6 AI-Powered Features</H3>
       <P>The platform integrates Google's Gemini models for business insights, chatbot assistance, and analytics summaries, and OpenAI's speech-to-text/text-to-speech services for voice features. AI-generated outputs are for informational purposes only and do not constitute financial, legal, or professional advice. Do not rely solely on AI outputs for significant business or financial decisions.</P>
       <H3>4.7 Digital Wallet Services</H3>
-      <P>Business Owners and Ajo/Esusu Clients may optionally activate a KudiTrack AI Digital Wallet — a virtual account issued through our payment technology partner, Flutterwave. Activation requires a valid BVN (and optionally NIN), as required by Flutterwave and the CBN. Your BVN is sent directly to Flutterwave and is not stored on our servers. We are not a bank; wallet balances are not NDIC-insured. Wallet activation is never required to save, contribute, or withdraw through your Business Owner.</P>
+      <P>Business Owners and Ajo/Esusu Clients may optionally activate a KudiAI Track Digital Wallet — a virtual account issued through our payment technology partner, Flutterwave. Activation requires a valid BVN (and optionally NIN), as required by Flutterwave and the CBN. Your BVN is sent directly to Flutterwave and is not stored on our servers. We are not a bank; wallet balances are not NDIC-insured. Wallet activation is never required to save, contribute, or withdraw through your Business Owner.</P>
 
       <H2>5. Subscription Plans & Billing</H2>
       <DataTable rows={
@@ -181,7 +181,7 @@ function TermsContent() {
       <P>This is a convenience service only. We do not endorse betting activities. By using this feature, you confirm you are of legal age under Nigerian law and comply with all applicable regulations.</P>
 
       <H2>7. Ajo/Esusu Savings Groups</H2>
-      <P>The Ajo/Esusu management feature is a record-keeping and coordination tool only. KudiTrack AI does not hold, pool, or custodise funds. We are not a savings bank, microfinance bank, or any type of licensed financial institution. Disputes between Business Owners and Ajo members are entirely between those parties. We expressly disclaim liability for losses suffered by Ajo members arising from Business Owner actions, including misappropriation or fraud.</P>
+      <P>The Ajo/Esusu management feature is a record-keeping and coordination tool only. KudiAI Track does not hold, pool, or custodise funds. We are not a savings bank, microfinance bank, or any type of licensed financial institution. Disputes between Business Owners and Ajo members are entirely between those parties. We expressly disclaim liability for losses suffered by Ajo members arising from Business Owner actions, including misappropriation or fraud.</P>
 
       <H2>8. Marketer Affiliate Programme</H2>
       <P>Participation is by invitation or approved application only. Marketers must not make false representations about the platform, use spam or deceptive marketing, engage in self-referral, or manipulate the commission system. Violations result in immediate termination and forfeiture of unpaid commissions. Commission earnings may be subject to income tax under Nigerian law; you are solely responsible for declaring and paying applicable taxes.</P>
@@ -245,7 +245,7 @@ function PrivacyContent() {
   return (
     <>
       <InfoBox>
-        This Privacy Policy is issued pursuant to the Nigeria Data Protection Act (NDPA) 2023, the Nigeria Data Protection Regulation (NDPR) 2019, and guidelines issued by the Nigeria Data Protection Commission (NDPC). By using the KudiTrack AI platform, you acknowledge that you have read and understood this Policy.
+        This Privacy Policy is issued pursuant to the Nigeria Data Protection Act (NDPA) 2023, the Nigeria Data Protection Regulation (NDPR) 2019, and guidelines issued by the Nigeria Data Protection Commission (NDPC). By using the KudiAI Track platform, you acknowledge that you have read and understood this Policy.
       </InfoBox>
 
       <H2>1. Data Controller Details</H2>
@@ -742,7 +742,7 @@ export default function LegalScreen({ type, onBack }) {
           <div className="mt-8 pt-5 border-t border-slate-200 dark:border-slate-700 text-center">
             <p className="text-[11px] text-slate-400 dark:text-slate-500">
               © 2026 AMAYA & Co. Technologies · RC 9587896{"\n"}
-              KudiTrack AI is a product of AMAYA & Co. Technologies
+              KudiAI Track is a product of AMAYA & Co. Technologies
             </p>
             <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
               Questions? Email{" "}
