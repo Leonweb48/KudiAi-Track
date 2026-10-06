@@ -363,7 +363,8 @@ const PENDING_AJO_REG_KEY = "kuditrack_pending_ajo_reg";
 
 export default function Auth() {
   const t = useT();
-  const [mode,          setMode]         = useState("login"); // "login" | "register" | "forgot" | "otp" | "reset_otp"
+  // "login" | "register" | "forgot" | "otp" | "reset_otp" — the public website's "Get started" links open on register (?signup=1)
+  const [mode,          setMode]         = useState(() => (new URLSearchParams(window.location.search).get("signup") ? "register" : "login"));
   const [regType,       setRegType]      = useState("business"); // "business" | "client" — register mode only
   const [email,         setEmail]        = useState("");
   const [password,      setPass]         = useState("");

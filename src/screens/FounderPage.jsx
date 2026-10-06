@@ -303,7 +303,7 @@ export default function FounderPage() {
       <footer className="fdr-foot">
         <div>© {new Date().getFullYear()} {COMPANY} · KudiAI Track</div>
         <div style={{ marginTop: 10 }}>
-          <a href="/features">Features</a>·<a href="/verify">Verify a receipt</a>·<a href="/privacy">Privacy</a>·<a href="/terms">Terms</a>·<a href="mailto:support@kudiai.app">support@kudiai.app</a>
+          <a href="/home">Home</a>·<a href="/features">Features</a>·<a href="/about">About</a>·<a href="/verify">Verify a receipt</a>·<a href="/privacy">Privacy</a>·<a href="/terms">Terms</a>·<a href="mailto:support@kudiai.app">support@kudiai.app</a>
         </div>
       </footer>
     </div>

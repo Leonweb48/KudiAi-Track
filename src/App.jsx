@@ -55,7 +55,6 @@ import BvnVerificationReturn from "./screens/BvnVerificationReturn";
 import VerifyReceipt         from "./screens/VerifyReceipt";
 import DeleteAccountPage      from "./screens/DeleteAccountPage";
 import { canSellPlans }       from "./utils/platform";
-import LegalScreen           from "./screens/LegalScreen";
 // ── Lazy imports — split into separate chunks, loaded on first use ────────────
 // Heavy screen chunks (jsPDF + html2canvas live in Reports; AI SDK in AIAssistant)
 const Reports        = lazy(() => import("./screens/Reports"));
@@ -75,7 +74,17 @@ const Profile        = lazy(() => import("./screens/Profile"));
 const Loyalty        = lazy(() => import("./screens/Loyalty"));
 const Branches       = lazy(() => import("./screens/Branches"));
 const FounderPage    = lazy(() => import("./screens/FounderPage"));
-const FeaturesPage   = lazy(() => import("./screens/FeaturesPage"));
+// The public website (src/site) — one lazy chunk per page, rendered before the auth gate
+const LegalSitePage  = lazy(() => import("./site/LegalPage"));
+const SITE_PAGES = {
+  "/home":     lazy(() => import("./site/HomePage")),
+  "/features": lazy(() => import("./site/FeaturesPage")),
+  "/about":    lazy(() => import("./site/AboutPage")),
+  "/faq":      lazy(() => import("./site/FaqPage")),
+  "/contact":  lazy(() => import("./site/ContactPage")),
+  "/terms":    () => <LegalSitePage type="terms" />,
+  "/privacy":  () => <LegalSitePage type="privacy" />,
+};
 // Portal screens (only rendered for specific account types)
 const StaffDashboard        = lazy(() => import("./screens/StaffDashboard"));
 const ManagerDashboard      = lazy(() => import("./screens/ManagerDashboard"));
@@ -519,15 +528,13 @@ export default function App() {
   if (location.pathname === "/verify") return <VerifyReceipt />;
   // Account-deletion URL for Google Play (Data safety) — explains deletion and takes requests from people who cannot sign in.
   if (location.pathname === "/delete-account") return <DeleteAccountPage />;
-  // Public marketing pages: the founder's note and the product/features page. Each is served from its own HTML file
-  // (build/founder.html, build/features.html — scripts/seo-pages.js) so search engines get its own title, description and structured data.
+  // The public website (kudiai.app/home, /features, /about, /faq, /contact, /terms, /privacy) and the founder's note.
+  // Each is served from its own HTML file (build/<page>.html — scripts/seo-pages.js) so search engines get its own
+  // title, description and structured data. The privacy policy and terms must stay readable here (Google Play needs the URL).
   const publicPath = location.pathname.replace(/\/+$/, "");   // "/founder/" too
   if (publicPath === "/founder") return <Suspense fallback={<div style={{ minHeight: "100dvh", background: "#F6F1E8" }} />}><FounderPage /></Suspense>;
-  if (publicPath === "/features") return <Suspense fallback={<div style={{ minHeight: "100dvh", background: "#0f1c45" }} />}><FeaturesPage /></Suspense>;
-  // The privacy policy and terms must be readable at a public address (Google Play requires a privacy-policy URL).
-  if (location.pathname === "/privacy" || location.pathname === "/terms") {
-    return <LegalScreen type={location.pathname === "/terms" ? "terms" : "privacy"} onBack={() => window.location.assign("/")} />;   // full load: this branch returns before later hooks, so no client-side navigate
-  }
+  const SitePage = SITE_PAGES[publicPath];
+  if (SitePage) return <Suspense fallback={<div style={{ minHeight: "100dvh", background: "#0B1437" }} />}><SitePage /></Suspense>;
 
   const portalStatuses = ["ready", "staff", "branch_manager", "marketer", "organisation", "org_member", "ajo_client"];
 

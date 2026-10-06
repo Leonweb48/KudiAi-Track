@@ -1,0 +1,181 @@
+{
+  "seo": {
+    "home": {
+      "url": "https://kudiai.app/home",
+      "title": "KudiAI Track – Business, Savings & Payments App for Nigerian Businesses",
+      "description": "Record sales, see real profit, manage stock and debts, get your own account number, pay bills and run Ajo savings. KudiAI Track by Amaya & Co. Technologies.",
+      "image": "https://kudiai.app/shots/dashboard.jpg",
+      "imageAlt": "KudiAI Track dashboard"
+    },
+    "about": {
+      "url": "https://kudiai.app/about",
+      "title": "About KudiAI Track | Amaya & Co. Technologies",
+      "description": "KudiAI Track is built by Amaya & Co. Technologies to give every Nigerian trader, artisan and savings collector simple, smart tools to track money, grow profit and save.",
+      "image": "https://kudiai.app/shots/dashboard.jpg",
+      "imageAlt": "KudiAI Track dashboard"
+    },
+    "faq": {
+      "url": "https://kudiai.app/faq",
+      "title": "KudiAI Track FAQ – Sales, Wallet, Bills, Ajo Savings & Security",
+      "description": "Answers about KudiAI Track: recording sales and profit, stock, invoices, your wallet account number, bill payments, Ajo and Esusu savings, staff, languages and security.",
+      "image": "https://kudiai.app/shots/dashboard.jpg",
+      "imageAlt": "KudiAI Track dashboard"
+    },
+    "contact": {
+      "url": "https://kudiai.app/contact",
+      "title": "Contact KudiAI Track | Support",
+      "description": "Get help with KudiAI Track. Email support@kudiai.app or reach us on Instagram and X (@kudiai_track), Facebook and LinkedIn (@KudiTrack).",
+      "image": "https://kudiai.app/shots/dashboard.jpg",
+      "imageAlt": "KudiAI Track dashboard"
+    },
+    "terms": {
+      "url": "https://kudiai.app/terms",
+      "title": "Terms & Conditions | KudiAI Track",
+      "description": "The terms and conditions for using KudiAI Track, a product of Amaya & Co. Technologies.",
+      "image": "https://kudiai.app/shots/dashboard.jpg",
+      "imageAlt": "KudiAI Track"
+    },
+    "privacy": {
+      "url": "https://kudiai.app/privacy",
+      "title": "Privacy Policy | KudiAI Track",
+      "description": "How KudiAI Track, a product of Amaya & Co. Technologies, collects, uses and protects your information.",
+      "image": "https://kudiai.app/shots/dashboard.jpg",
+      "imageAlt": "KudiAI Track"
+    }
+  },
+  "nav": [["Home", "/home"], ["Features", "/features"], ["About", "/about"], ["FAQ", "/faq"], ["Contact", "/contact"]],
+  "social": [
+    ["Instagram", "@kudiai_track", "https://www.instagram.com/kudiai_track"],
+    ["X (Twitter)", "@kudiai_track", "https://x.com/kudiai_track"],
+    ["Facebook", "@KudiTrack", "https://www.facebook.com/KudiTrack"],
+    ["LinkedIn", "@KudiTrack", "https://www.linkedin.com/company/kuditrack"]
+  ],
+  "home": {
+    "kicker": "Business · Savings · Payments, in one app",
+    "title": "The money app built for Nigerian businesses.",
+    "lead": "Record sales and see your real profit, manage stock and debts, get paid into your own account number, pay bills and run Ajo savings. In English, Pidgin, Hausa, Igbo or Yoruba.",
+    "chips": ["Free to start", "5 Nigerian languages", "Works offline", "QR-verified receipts"],
+    "services": ["Airtime", "Data", "Electricity", "DStv", "GOtv", "WAEC ePIN", "JAMB ePIN", "Smile", "Spectranet", "Bank transfers", "Recharge PINs", "Invoices", "Ajo savings", "Esusu"],
+    "bento": [
+      ["chart", "Sales & real profit", "Record a sale by voice or tap. Cost price is saved with every sale, so your profit is real.", "/features#sales"],
+      ["boxes", "Stock & inventory", "Low-stock alerts before the shelf runs empty, with stock value worked out for you.", "/features#stock"],
+      ["invoice", "Credit & invoices", "Track who owes you, send WhatsApp reminders and share invoices with VAT as PDF.", "/features#credit"],
+      ["wallet", "Business wallet", "Your own account number. Get paid by transfer and send to any Nigerian bank.", "/features#wallet"],
+      ["bills", "Bills & recharge", "Airtime, data, electricity, cable TV, exam PINs, and printed recharge vouchers.", "/features#bills"],
+      ["pot", "Ajo & Esusu", "Digital savings cards, rotations and statements your savers can check themselves.", "/features#ajo"],
+      ["shield", "Proof, not promises", "Every receipt carries a QR code anyone can verify at kudiai.app/verify.", "/features#trust"],
+      ["ai", "AI daily brief", "A short summary of yesterday's business every morning, and an assistant you can ask.", "/features#more"],
+      ["team", "Staff & branches", "Staff logins with permissions, branch managers, shifts and end-of-day cash counts.", "/features#more"]
+    ],
+    "profit": {
+      "title": "See your profit, not just your sales.",
+      "text": "KudiAI Track saves the cost price with every sale, so the profit you see is real. Watch sales, profit and money out by day, week or month.",
+      "points": ["Daily, weekly and monthly view", "Expenses by category", "PDF reports and a monthly business report"]
+    },
+    "flow": {
+      "title": "Your money, in one place.",
+      "text": "Customers pay into your own account number. From the same wallet you pay suppliers, buy airtime and settle bills, and every movement has a receipt anyone can verify."
+    },
+    "ajo": {
+      "title": "Ajo and Esusu, without the notebook.",
+      "text": "Collectors register savers on daily, weekly or monthly plans. Every contribution fills the saver's card, fees are worked out automatically, and savers see it all in their own portal.",
+      "points": ["Savings cards that fill as people pay", "Esusu rotations: who collects when", "Monthly statements for every saver"]
+    },
+    "security": {
+      "title": "Built for trust.",
+      "points": [
+        ["Two PINs", "An app lock PIN, plus a separate transaction PIN for every transfer."],
+        ["Verified identity", "Wallet limits are tied to BVN and NIN checks."],
+        ["Verifiable records", "Receipts and statements carry a reference and QR code anyone can check."],
+        ["Your data, your choice", "Delete your account yourself at any time."]
+      ]
+    }
+  },
+  "about": {
+    "title": "Built in Nigeria, for the businesses that keep Nigeria moving.",
+    "lead": "KudiAI Track is made by Amaya & Co. Technologies. We build simple, smart money tools for traders, artisans, shop owners and savings collectors.",
+    "story": [
+      "Every evening, in markets, salons and workshops across Nigeria, a business owner closes for the day and asks one question: did I make money today? Too often the answer comes from memory or a worn notebook.",
+      "We built KudiAI Track so that question has a real answer, in seconds, in the language you think in, on the phone already in your pocket. It brings sales, profit, stock, debts, a business wallet, bill payments and Ajo savings into one app."
+    ],
+    "mission": "To give every Nigerian trader simple, smart tools to track money, grow profit and save for tomorrow.",
+    "vision": "A Nigeria where every trader, artisan and small business knows their numbers and grows with confidence.",
+    "values": [
+      ["Clarity", "Numbers anyone can understand at a glance, in their own language."],
+      ["Proof", "Every receipt and statement can be checked by anyone, so trust is never a guess."],
+      ["Inclusion", "Built for the market stall and the salon as much as the office."],
+      ["Simplicity", "Record a sale in seconds. Everything else can come later."]
+    ],
+    "facts": [["5", "Nigerian languages"], ["10+", "bill and recharge services"], ["36+", "features in one app"], ["24/7", "receipt verification"]]
+  },
+  "contact": {
+    "title": "We're here to help.",
+    "lead": "Questions, feedback or need a hand with your account? Reach us any way you like.",
+    "email": "support@kudiai.app",
+    "help": [
+      ["Verify a receipt", "Check any KudiAI receipt or statement by reference or QR code.", "/verify"],
+      ["Read the FAQ", "Quick answers about sales, the wallet, bills, Ajo and security.", "/faq"],
+      ["Delete an account", "How to delete your account and what happens to your data.", "/delete-account"]
+    ]
+  },
+  "faq": [
+    {
+      "cat": "Getting started",
+      "items": [
+        ["What is KudiAI Track?", "KudiAI Track is a business, savings and payments app for Nigerian small businesses. It records sales and expenses, shows real profit, manages stock and debts, sends invoices, gives each business its own wallet account number for payments and bills, and runs Ajo and Esusu savings."],
+        ["Is KudiAI Track free?", "You can start on a free plan and upgrade when your business needs more."],
+        ["What phone do I need?", "Any smartphone with a web browser. Open kudiai.app; on iPhone you can add it to your Home Screen."],
+        ["Which languages does it support?", "English, Nigerian Pidgin, Hausa, Igbo and Yoruba."],
+        ["Does it work without internet?", "Yes. Sales recorded offline are queued and sync automatically when your connection returns."]
+      ]
+    },
+    {
+      "cat": "Sales, stock & credit",
+      "items": [
+        ["How do I record a sale?", "Tap Record Sale and fill in a few fields, or use Mic Sale and say it in your own words."],
+        ["How is profit worked out?", "The cost price is saved with every sale, so profit is the selling price minus what that item actually cost you, not a guess."],
+        ["Can I get alerts when stock runs low?", "Yes. Set a low-stock level for each product and KudiAI Track warns you before it runs out."],
+        ["Can I track customers who owe me?", "Yes. The credit tracker records every debt with due dates and part payments, and you can send a reminder on WhatsApp in one tap."],
+        ["Can I send invoices?", "Yes. Create invoices with VAT (7.5%) and part payments, and share them as PDF on WhatsApp or by email."]
+      ]
+    },
+    {
+      "cat": "Wallet & bills",
+      "items": [
+        ["How do customers pay into my wallet?", "Your KudiAI wallet has its own account number. Customers pay by bank transfer, and the money lands in your wallet with a receipt."],
+        ["Can I send money to other banks?", "Yes. Send to any Nigerian bank from your wallet, confirmed with your transaction PIN."],
+        ["Are there wallet limits?", "Yes. Limits depend on your verification tier. Verifying your identity with BVN and NIN raises them."],
+        ["Which bills can I pay?", "Airtime and data on all networks, electricity (prepaid and postpaid), cable TV such as DStv and GOtv, WAEC and JAMB ePINs, and Smile and Spectranet."],
+        ["Can I print recharge cards?", "Yes. Print airtime and data PINs in batches and run a recharge business."]
+      ]
+    },
+    {
+      "cat": "Ajo & Esusu savings",
+      "items": [
+        ["How does a savings card work?", "Each saver has a card for their plan, daily, weekly or monthly. Every contribution ticks off a period, so both of you can see exactly what has been paid."],
+        ["Are collector fees handled automatically?", "Yes. The collector's commission (first day or a percentage) and any registration fee are worked out automatically."],
+        ["What is an Esusu rotation?", "A group where everyone contributes each round and one member collects the pot. KudiAI Track shows who collects when, the size of the pot and who has paid."],
+        ["Can my savers see their own savings?", "Yes. Each saver can have their own login to see their card, contributions and statements, and use their own KudiAI wallet."],
+        ["Do savers get statements?", "Yes. A savings and wallet statement as PDF on the 1st of every month."]
+      ]
+    },
+    {
+      "cat": "Staff, reports & AI",
+      "items": [
+        ["Can my staff use KudiAI Track?", "Yes. Give each staff member their own login and choose what they can see and do. Every sale is recorded under their name."],
+        ["Can I manage more than one branch?", "Yes. Add branches and branch managers, who can assign shifts and close each day with a cash count."],
+        ["Can I download reports?", "Yes. Sales, stock, credit and Ajo reports as PDF, plus a monthly business report and wallet statement on the 1st."],
+        ["What is the AI daily brief?", "A short summary of yesterday's business every morning, which can be read aloud. You can also ask the KudiAI Assistant questions about your sales, credit, stock and Ajo."]
+      ]
+    },
+    {
+      "cat": "Security & privacy",
+      "items": [
+        ["How is my money protected?", "Every transfer needs your transaction PIN, the app has its own lock PIN, and wallet limits are tied to identity checks."],
+        ["How do I check that a KudiAI receipt is real?", "Scan the QR code on the receipt, or enter its reference at kudiai.app/verify. No login is needed."],
+        ["Can I delete my account?", "Yes. You can delete your account yourself in the app. See kudiai.app/delete-account for what is erased and what must be settled first."],
+        ["How do I contact support?", "Email support@kudiai.app."]
+      ]
+    }
+  ]
+}

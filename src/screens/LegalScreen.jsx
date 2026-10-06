@@ -475,6 +475,35 @@ function BackArrow() {
 }
 
 /* ── Main exported component ────────────────────────────────────── */
+/**
+ * Just the document (published version from the database, or the built-in text), for pages that bring their own
+ * layout — the public website's /terms and /privacy. Calls onMeta({ version, publishedAt }) once the database copy loads.
+ */
+export function LegalContent({ type, onMeta }) {
+  const isTerms = type === "terms";
+  const [dbContent, setDbContent] = useState(null);
+  useEffect(() => {
+    let live = true;
+    supabase
+      .from("legal_documents")
+      .select("content, version, published_at")
+      .eq("type", isTerms ? "tnc" : "privacy")
+      .eq("status", "published")
+      .order("version", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!live || !data?.content) return;
+        setDbContent(data.content);
+        onMeta?.({ version: data.version, publishedAt: data.published_at });
+      })
+      .catch(() => { /* fall back to the built-in text */ });
+    return () => { live = false; };
+  }, [isTerms]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (dbContent) return <div className="legal-content" dangerouslySetInnerHTML={{ __html: sanitizeHtml(dbContent) }} />;
+  return isTerms ? <TermsContent /> : <PrivacyContent />;
+}
+
 export default function LegalScreen({ type, onBack }) {
   const isTerms = type === "terms";
   const title   = isTerms ? "Terms & Conditions" : "Privacy Policy";

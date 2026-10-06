@@ -8,8 +8,9 @@ import { installPromptDue, iosInstallTarget, markInstallChoice, markInstallShown
 // Once per device, then every 2 days until it is opened from the Home Screen. Schedule + detection: utils/iosInstall.js.
 // Sits under the app lock / PIN screens (z-modal < z-lock), so an unlock always stays on top.
 
-// Pages people reach without being users (receipt checks, legal pages, payment returns) never get the prompt.
-const PUBLIC_PATHS = ["/verify", "/privacy", "/terms", "/delete-account", "/payment-return", "/app/payment-callback", "/bvn-return"];
+// Pages people reach without being users (receipt checks, legal pages, payment returns, the public website) never get the prompt.
+const PUBLIC_PATHS = ["/verify", "/privacy", "/terms", "/delete-account", "/payment-return", "/app/payment-callback", "/bvn-return",
+  "/home", "/features", "/about", "/faq", "/contact", "/founder"];
 const SHOW_AFTER_MS = 4000;   // let the app finish loading first
 
 const safeStorage = () => { try { return window.localStorage; } catch { return null; } };
