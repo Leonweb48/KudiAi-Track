@@ -112,7 +112,7 @@ export default function AboutPage() {
             <div>
               <div className="ks-eyebrow">Our founder</div>
               <blockquote>“Nigerian youth are moving from learning to earning, from seeking validation to owning validation, from requesting a seat at the table to owning the table.”</blockquote>
-              <p style={{ margin: "0 0 18px", color: "var(--muted)" }}><b style={{ color: "var(--ink)" }}>Solomon Leon Johnson</b> · Founder &amp; CEO, Amaya Technologies</p>
+              <p style={{ margin: "0 0 18px", color: "var(--muted)" }}><b style={{ color: "var(--ink)" }}>Solomon Leon Johnson</b> · Founder &amp; CEO, Amaya &amp; Co. Technologies</p>
               <a className="ks-btn line" href="/founder">Read the founder’s note →</a>
             </div>
           </div>

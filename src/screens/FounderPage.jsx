@@ -7,7 +7,7 @@ import SEO from "../content/founderSeo.json";   // also read by scripts/seo-page
  * Reached with no session (rendered before the auth gate in App.jsx). Links out are plain anchors, so leaving is a full load.
  */
 const NAME = "Solomon Leon Johnson";
-const TITLE = "Founder & CEO, Amaya Technologies";
+const TITLE = "Founder & CEO, Amaya & Co. Technologies";
 const COMPANY = "Amaya & Co. Technologies";
 const PHOTO = "/people/solomon-leon-johnson.jpg";
 const EMAIL = "solomon.john@amayatechnologies.com";
@@ -166,7 +166,7 @@ export default function FounderPage() {
               <div className="fdr-caps fdr-kicker">{TITLE}</div>
               <h1 className="fdr-h1">The quiet power of <em>knowing your numbers.</em></h1>
               <p className="fdr-dek">
-                {NAME} started Amaya Technologies with one conviction: the people who keep Nigeria’s economy moving deserve
+                {NAME} started Amaya & Co. Technologies with one conviction: the people who keep Nigeria’s economy moving deserve
                 tools as serious as their hustle. KudiAI Track is the first of them.
               </p>
               <div className="fdr-by">
@@ -188,7 +188,7 @@ export default function FounderPage() {
                 feeling in the stomach.
               </p>
               <p className="fdr-p">
-                I started Amaya Technologies because that question deserves a real answer: in seconds, in the language you
+                I started Amaya & Co. Technologies because that question deserves a real answer: in seconds, in the language you
                 think in, on the phone already in your pocket. KudiAI Track is that answer. It is also only the beginning.
               </p>
             </section>
@@ -274,7 +274,7 @@ export default function FounderPage() {
                 <h3>{NAME}</h3>
                 <p className="fdr-role">{TITLE}</p>
                 <p className="fdr-p" style={{ fontSize: 17, marginBottom: 0 }}>
-                  {NAME} is the founder and chief executive of {COMPANY} (Amaya Technologies), the company behind KudiAI Track,
+                  {NAME} is the founder and chief executive of {COMPANY}, the company behind KudiAI Track,
                   a business, savings and payments app built for Nigerian traders, artisans and Ajo collectors.
                 </p>
                 <div className="fdr-social">

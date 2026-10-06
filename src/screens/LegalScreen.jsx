@@ -210,15 +210,15 @@ function TermsContent() {
       ]} />
 
       <H2>11. Data Responsibilities for Business Owners</H2>
-      <P>When you enter personal data of third parties (customers, staff, Ajo members, debtors) into the platform, you become a data controller for that data under the Nigeria Data Protection Act (NDPA) 2023. You are solely responsible for obtaining valid consent from those individuals, providing them with notice of how their data is used, and responding to their data rights requests. You agree to indemnify and hold Amaya Technologies harmless from any claims arising from your failure to comply with applicable data protection law.</P>
+      <P>When you enter personal data of third parties (customers, staff, Ajo members, debtors) into the platform, you become a data controller for that data under the Nigeria Data Protection Act (NDPA) 2023. You are solely responsible for obtaining valid consent from those individuals, providing them with notice of how their data is used, and responding to their data rights requests. You agree to indemnify and hold AMAYA & Co. Technologies harmless from any claims arising from your failure to comply with applicable data protection law.</P>
 
       <H2>12. Limitation of Liability</H2>
-      <P>To the maximum extent permitted by Nigerian law, Amaya Technologies shall not be liable for any loss of profit, revenue, business, data, or goodwill, or for indirect, special, incidental, consequential, or punitive damages arising from your use of the platform.</P>
+      <P>To the maximum extent permitted by Nigerian law, AMAYA & Co. Technologies shall not be liable for any loss of profit, revenue, business, data, or goodwill, or for indirect, special, incidental, consequential, or punitive damages arising from your use of the platform.</P>
       <P>Our total aggregate liability for any claims shall not exceed the total subscription fees paid by you in the 3 months immediately preceding the event, or ₦50,000, whichever is lower.</P>
       <P>Nothing herein limits your rights under the Federal Competition and Consumer Protection Act (FCCPA) 2018 or other mandatory Nigerian consumer protection legislation.</P>
 
       <H2>13. Intellectual Property</H2>
-      <P>All intellectual property rights in the platform — including software, design, trademarks, logos, content, and features — are owned by Amaya Technologies or its licensors. We grant you a limited, non-exclusive, non-transferable, revocable licence to use the platform solely for your personal or internal business purposes. You may not copy, modify, distribute, sell, sublicense, or reverse-engineer any part of the platform.</P>
+      <P>All intellectual property rights in the platform — including software, design, trademarks, logos, content, and features — are owned by AMAYA & Co. Technologies or its licensors. We grant you a limited, non-exclusive, non-transferable, revocable licence to use the platform solely for your personal or internal business purposes. You may not copy, modify, distribute, sell, sublicense, or reverse-engineer any part of the platform.</P>
 
       <H2>14. Suspension & Termination</H2>
       <P>You may terminate your account by deleting it in the app (Settings → Delete my account), at kudiai.app/delete-account, or by contacting support@kudiai.app. We may suspend or terminate your account, with or without notice, for breach of these Terms, suspected fraud or illegal activity, requirement of applicable law, non-payment of subscription fees, or prolonged inactivity (12 consecutive months for free accounts). Upon termination, your access ceases immediately and your data is retained per our Privacy Policy before deletion.</P>
@@ -351,7 +351,7 @@ function PrivacyContent() {
         ["ipapi.co",         "IP geolocation for session logs — Global"],
       ]} />
       <H3>6.2 Legal & Regulatory Disclosures</H3>
-      <P>We may disclose personal data to government authorities, regulators, courts, or law enforcement where required by applicable Nigerian law, or to protect the rights, property, or safety of Amaya Technologies, our users, or the public.</P>
+      <P>We may disclose personal data to government authorities, regulators, courts, or law enforcement where required by applicable Nigerian law, or to protect the rights, property, or safety of AMAYA & Co. Technologies, our users, or the public.</P>
       <H3>6.3 Business Transfer</H3>
       <P>In the event of a merger, acquisition, or sale, personal data may be transferred to the acquirer or successor. We will notify you of any such transfer.</P>
 
@@ -390,7 +390,7 @@ function PrivacyContent() {
       <P>In the event of a data breach that poses a risk to your rights, we will notify you and the NDPC within 72 hours of becoming aware.</P>
 
       <H2>11. Business Owners & Third-Party Data</H2>
-      <P>When Business Owners use credit management, Ajo/Esusu, staff management, or loyalty features, they may enter personal data about their customers and members. Amaya Technologies acts as a data processor for this data — storing and processing it only on the Business Owner's instructions to provide the Services. Business Owners are responsible for obtaining valid consent from and providing notice to those data subjects, and for responding to their data rights requests.</P>
+      <P>When Business Owners use credit management, Ajo/Esusu, staff management, or loyalty features, they may enter personal data about their customers and members. AMAYA & Co. Technologies acts as a data processor for this data — storing and processing it only on the Business Owner's instructions to provide the Services. Business Owners are responsible for obtaining valid consent from and providing notice to those data subjects, and for responding to their data rights requests.</P>
 
       <H2>12. AI & Automated Decision-Making</H2>
       <P>AI services (Google's Gemini models) process your transaction data and usage patterns to generate business insights and chatbot responses. We do not make legally significant automated decisions without human review — AI outputs are advisory only. When you use AI features, relevant contextual data is sent to Google's Gemini API. For voice features (OpenAI Whisper for speech-to-text, OpenAI TTS for spoken replies, where enabled), audio and text are transmitted to OpenAI; avoid including highly sensitive information such as passwords, BVN, or bank PINs in voice inputs.</P>
