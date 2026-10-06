@@ -44,6 +44,7 @@ export const TRANSLATIONS = {
                           ha:"An tsara don 'yan kasuwa Najeriya.",
                           ig:"Emere maka ndị olu azụmaahịa Naịjịrịa.",
                           yo:"Ṣe apẹrẹ fun awọn oniṣòwò Nàìjíríà."  },
+  "auth.aboutApp":      { en:"About KudiAI Track", pidgin:"Know more about KudiAI Track", ha:"Game da KudiAI Track", ig:"Banyere KudiAI Track", yo:"Nípa KudiAI Track" },
   "auth.signIn":        { en:"Sign In",    pidgin:"Sign In",    ha:"Shiga",    ig:"Banye",    yo:"Wọle"     },
   "auth.email":         { en:"Email address", pidgin:"Email address", ha:"Adireshin imel", ig:"Adreesị email", yo:"Adirẹsi imeeli" },
   "auth.password":      { en:"Password",   pidgin:"Password",   ha:"Kalmar sirri", ig:"Paswọọdụ", yo:"Ọrọ igbaniwọle" },

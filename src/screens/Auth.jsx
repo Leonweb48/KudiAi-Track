@@ -11,6 +11,7 @@ import LegalScreen from "./LegalScreen";
 import { registrationFeeNotice } from "../utils/registrationFee";
 
 const isNative = Capacitor.isNativePlatform();
+const SITE_HOME = "https://kudiai.app/home";
 const OAUTH_REDIRECT = isNative
   ? "com.amayatechnologies.kuditrack://login-callback"
   : window.location.origin;
@@ -96,6 +97,13 @@ function BgLayout({ children, center = false }) {
             <p className="text-white/90 text-sm font-medium" style={{ textShadow: "0 1px 6px rgba(0,0,0,0.7)" }}>
               {t("auth.designed")}
             </p>
+            {/* The website. In the app it opens in a browser tab so sign-in stays where it was. */}
+            <a href={isNative ? SITE_HOME : "/home"}
+              onClick={isNative ? (e) => { e.preventDefault(); Browser.open({ url: SITE_HOME }); } : undefined}
+              className="mt-2 self-start text-white/85 text-xs font-semibold underline underline-offset-4 decoration-white/40"
+              style={{ textShadow: "0 1px 6px rgba(0,0,0,0.7)" }}>
+              {t("auth.aboutApp")} →
+            </a>
           </div>
 
           {/* Bottom sheet — fixed height cap, scrolls internally if form is long */}
