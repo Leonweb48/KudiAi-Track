@@ -37,8 +37,8 @@ export async function loadFontBase64(url) {
 
 /**
  * Shrink an image data URL to at most `px` on its longest side (PNG, keeps transparency).
- * The brand logo is a ~1.5 MB file: embedded as-is it would make every receipt PDF
- * that large. Falls back to the original if the browser can't decode/draw it.
+ * The brand logo (384 px, ~80 KB) is still far bigger than a PDF needs: embedded as-is
+ * it would bloat every receipt PDF. Falls back to the original if the browser can't decode/draw it.
  */
 export function downscaleImage(dataUrl, px = 160) {
   return new Promise((resolve) => {
