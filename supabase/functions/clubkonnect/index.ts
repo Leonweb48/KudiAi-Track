@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import nodemailer from "npm:nodemailer@6";
 import { bankEmail, esc, cleanSubject, naira, appLink, htmlToText, type EmailRow } from "../_shared/bankEmail.ts";
 import { parseCkAmount } from "../_shared/ckAmount.ts";
+import { networkMismatch, networkMismatchMessage } from "../_shared/app/phoneNetwork.js";
 import { applyDataPrices, parseDiscountPct, parseSellingPrices, type SellingPrices } from "../_shared/dataPricing.ts";
 import { findExamProduct, parseCkExamCatalogue, providerExamCode, type ExamProduct } from "../_shared/examCatalogue.ts";
 import { checkBillGate, DEFAULT_CONFIG, PURCHASE_ACTIONS, type CouponRow, type GateConfig, type GateDeps, type GateMode } from "../_shared/billGate.ts";
@@ -933,6 +934,8 @@ serve(async (req) => {
       if (!phone || !network || !amount) return json({ error: "phone, network and amount required" });
       const netId = NET_ID[network];
       if (!netId) return json({ error: `Unknown network: ${network}` });
+      const ownNet = networkMismatch(phone, network);   // the app blocks this too; here for old builds and direct calls
+      if (ownNet) return json({ error: networkMismatchMessage(ownNet, network) });
       // ClubKonnect or VTpass (the admin's main provider, with failover) — see "Bill provider switch" above
       const digits = phone.replace(/\D/g, "");
       const sid = airtimeServiceId(network);
@@ -1038,6 +1041,8 @@ serve(async (req) => {
       if (!phone || !network || !planId) return json({ error: "phone, network and planId required" });
       const netId = NET_ID[network];
       if (!netId) return json({ error: `Unknown network: ${network}` });
+      const ownNet = networkMismatch(phone, network);   // the app blocks this too; here for old builds and direct calls
+      if (ownNet) return json({ error: networkMismatchMessage(ownNet, network) });
       console.log(`data purchase: net=${netId} plan=${planId} phone=${phone.replace(/\D/g,"").slice(-4)}`);
       // A plan belongs to the provider whose catalogue listed it ("vt:…" = VTpass), so the order goes there and only there.
       const digits = phone.replace(/\D/g, "");

@@ -27,7 +27,7 @@ import { saveReceiptPdf } from "../utils/generateReceiptPdf";
 import { createReportPdf, fmtCurrency as pdfFmtN } from "../utils/generateReportPdf";
 import { spanDays } from "../utils/statementPeriod";
 import { captureReceiptCanvas } from "../utils/captureReceipt";
-import { detectNetwork } from "../utils/phoneNetwork";
+import { detectNetwork, networkMismatch, networkMismatchMessage } from "../shared/phoneNetwork";
 import { getProviderLogo, getProviderBadge } from "../utils/logoMap";
 import { billVisual } from "../utils/historyEntries";
 import { HistoryAvatar } from "../components/shared/HistoryRow";
@@ -220,6 +220,21 @@ function PhoneInput({ value, onChange, label = "Phone Number *", placeholder = "
           </span>
         )}
       </div>
+    </div>
+  );
+}
+
+// Shown under the phone number while the selected network isn't the number's own; Pay stays off until it is.
+function WrongNetworkNotice({ own, selected, onSwitch }) {
+  const cfg = NET_CONFIG[own];
+  return (
+    <div role="alert" className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+      <p className="flex-1 text-xs font-semibold text-red-700 dark:text-red-300">{networkMismatchMessage(own, selected)}</p>
+      <button type="button" onClick={onSwitch}
+        className="flex-shrink-0 text-xs font-bold rounded-lg px-3 py-1.5 shadow-sm"
+        style={{ background: cfg?.bg ?? "#16a34a", color: cfg?.fg ?? "#fff" }}>
+        Switch to {own}
+      </button>
     </div>
   );
 }
@@ -1740,6 +1755,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
   // WAEC / JAMB: the PIN's price (they had none, so checkout stopped at "Invalid amount"); the charge is this amount
   const [examPrice,    setExamPrice]    = useState({ status: "idle", amount: 0, message: "" });   // idle | loading | ok | error
   const examPriceSeq = useRef(0);   // a newer exam-type choice wins over a slower earlier answer
+  const plansSeq = useRef(0);       // the latest network's plan list wins over a slower earlier one
 
   const bills = useMemo(
     () => transactions.filter(t => t.payment_type === "bill_payment"),
@@ -2073,10 +2089,16 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
   // Fill form from a saved beneficiary (user still needs to verify + pick amount)
   const applyBeneficiary = (ben) => {
+    // The number's own network wins over the one saved with it: airtime and data may only go to that network.
+    const cat = ben.cat || selectedCat;
+    const network = ((cat === "airtime" || cat === "data") && detectNetwork(ben.phone)) || ben.network;
+    const isData = cat === "data" && !!network;
+    if (isData) loadPlans("data-plans", { network });   // plans belong to one network
     setForm(f => ({
       ...f,
       ...(ben.phone      && { phone:      ben.phone      }),
-      ...(ben.network    && { network:    ben.network    }),
+      ...(network        && { network                    }),
+      ...(isData         && { planId: "", planName: "", amount: "" }),
       ...(ben.meterNo    && { meterNo:    ben.meterNo    }),
       ...(ben.meterType  && { meterType:  ben.meterType  }),
       ...(ben.company    && { company:    ben.company    }),
@@ -2108,9 +2130,11 @@ export default function BillPayments({ store, plan, session = null, staffName = 
   };
 
   const loadPlans = async (action, extra) => {
+    const seq = ++plansSeq.current;
     setPlansLoading(true); setPlans([]); setPlansError("");
     try {
       const r = await clubkonnect(action, extra);
+      if (seq !== plansSeq.current) return;
       if (r?.plans?.length) {
         const network = extra?.network || form.network || "";
         const priced = r.plans.map(p => {
@@ -2123,8 +2147,8 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         });
         setPlans(priced);
       } else { setPlansError(r?.error || "No plans returned from provider"); }
-    } catch (e) { setPlansError(e.message || "Failed to load plans"); }
-    finally { setPlansLoading(false); }
+    } catch (e) { if (seq === plansSeq.current) setPlansError(e.message || "Failed to load plans"); }
+    finally { if (seq === plansSeq.current) setPlansLoading(false); }
   };
 
   const loadPkgs = async (action, extra) => {
@@ -2150,6 +2174,16 @@ export default function BillPayments({ store, plan, session = null, staffName = 
   const handleNetworkChange = (network) => {
     setF("network", network); setF("planId", ""); setF("planName", ""); setF("amount", "");
     if (selectedCat === "data" || selectedCat === "print-data") loadPlans("data-plans", { network, ...(selectedCat === "print-data" ? { print: true } : {}) });
+  };
+
+  // Typing a number selects its network. Data plans belong to one network, so on Data a switch also reloads the plans
+  // and clears the chosen plan; airtime keeps its amount.
+  const handlePhoneChange = (phone) => {
+    const net = detectNetwork(phone);
+    setF("phone", phone);
+    if (!net || net === form.network) return;
+    if (selectedCat === "data") handleNetworkChange(net);
+    else setF("network", net);
   };
 
   // Verify handlers
@@ -2253,6 +2287,10 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       // Validate per service
       if (selectedCat === "airtime"     && (!form.phone || !form.network || !amount)) throw new Error("Phone, network and amount required");
       if (selectedCat === "data"        && (!form.phone || !form.planId))              throw new Error("Phone and data plan required");
+      if (selectedCat === "airtime" || selectedCat === "data") {
+        const own = networkMismatch(form.phone, form.network);
+        if (own) throw new Error(networkMismatchMessage(own, form.network));
+      }
       if (selectedCat === "cable"       && (!form.provider || !form.packageId || !form.smartcard || !form.phone)) throw new Error("All cable TV fields required");
       if (selectedCat === "cable"       && verifyStatus !== "ok")                      throw new Error("Please verify smartcard number first");
       if (selectedCat === "electricity" && (!form.company || !form.meterType || !form.meterNo || !amount || !form.phone)) throw new Error("All electricity fields required");
@@ -2980,6 +3018,9 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
   const cat = CATS.find(c => c.id === selectedCat);
   const detected = form.phone?.length >= 4 ? detectNetwork(form.phone) : null;
+  // Airtime and data only go to the number's own network: Pay stays off while another network is selected.
+  const wrongNet = (selectedCat === "airtime" || selectedCat === "data") ? networkMismatch(form.phone, form.network) : null;
+  const switchToOwnNet = () => (selectedCat === "data" ? handleNetworkChange(wrongNet) : setF("network", wrongNet));
 
   // Pre-compute UI charge amount so points savings displays correctly before submission
   const uiChargeAmt = (() => {
@@ -3381,7 +3422,8 @@ export default function BillPayments({ store, plan, session = null, staffName = 
               {/* ── AIRTIME ── */}
               {selectedCat === "airtime" && <>
                 <NetworkSelector value={form.network} onChange={handleNetworkChange} detected={detected && detected === form.network ? detected : null} />
-                <PhoneInput value={form.phone} onChange={e => { const v = e.target.value; const net = detectNetwork(v); setForm(f => ({ ...f, phone: v, ...(net ? { network: net } : {}) })); }} />
+                <PhoneInput value={form.phone} onChange={e => handlePhoneChange(e.target.value)} />
+                {wrongNet && <WrongNetworkNotice own={wrongNet} selected={form.network} onSwitch={switchToOwnNet} />}
                 <div className="space-y-3">
                   <div className="flex gap-2 flex-wrap">
                     {[50,100,200,500,1000].map(a => {
@@ -3431,7 +3473,8 @@ export default function BillPayments({ store, plan, session = null, staffName = 
               {/* ── DATA ── */}
               {selectedCat === "data" && <>
                 <NetworkSelector value={form.network} onChange={handleNetworkChange} detected={detected && detected === form.network ? detected : null} />
-                <PhoneInput value={form.phone} onChange={e => { const v = e.target.value; const net = detectNetwork(v); setForm(f => ({ ...f, phone: v, ...(net ? { network: net } : {}) })); }} />
+                <PhoneInput value={form.phone} onChange={e => handlePhoneChange(e.target.value)} />
+                {wrongNet && <WrongNetworkNotice own={wrongNet} selected={form.network} onSwitch={switchToOwnNet} />}
                 <div className="flex items-center gap-2 rounded-xl px-3 py-2 transition-all duration-200"
                   style={netTheme
                     ? { background: `${netTheme.bg}18`, border: `1px solid ${netTheme.bg}50` }
@@ -3828,9 +3871,9 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                 <button onClick={() => {
                   const finalAmt = Math.max(0, uiChargeAmt - ptsSavings - cbSavings - billCouponSavings);
                   setTxnPinAmount(finalAmt * 100);
-                }} disabled={saving || initPaying}
+                }} disabled={saving || initPaying || !!wrongNet}
                   className="w-full text-white font-bold rounded-xl py-3.5 text-sm transition-all disabled:opacity-60 bg-gradient-to-br from-green-600 to-green-700">
-                  {(() => {
+                  {wrongNet ? `Choose ${wrongNet} to pay for this number` : (() => {
                     const payWith = (walletEnabled && payMethod === "wallet") ? "from Wallet" : "with Paystack";
                     const connecting = (walletEnabled && payMethod === "wallet") ? "Charging wallet…" : "Connecting to Paystack…";
                     return initPaying ? connecting : saving ? (billAppliedCoupon && uiChargeAmt - ptsSavings - cbSavings - billCouponSavings <= 0 ? "Processing free bill…" : "Processing…") : (

@@ -110,6 +110,19 @@ reset({ "APIDatabundleV1.asp": "crash", "APIDatabundleV3.asp": "ok" });
 r = await call({ action: "data", phone: "08011111111", network: "MTN", planId: "500", requestId: "R6" });
 ok(r?.error && !r.error.includes("<!DOCTYPE") && !ckLog.some((c) => c.startsWith("APIQuery") || c.includes("V3")), "service not listed (data) → no lookup, no V3, clean error", JSON.stringify([r, ckLog]));
 
+// airtime and data only go to the number's own network: refused before anything reaches a provider (the app refunds)
+reset({ "APIAirtimeV1.asp": "ok", "APIDatabundleV1.asp": "ok" });
+r = await call({ action: "airtime", phone: "08021234567", network: "MTN", amount: "100", requestId: "R6a" });
+ok(r?.error === "This is an Airtel number, not MTN. Choose Airtel to continue." && !ckLog.some((c) => c.startsWith("APIAirtime")),
+  "airtime: an Airtel number with MTN selected → refused, nothing sent to the provider", JSON.stringify([r, ckLog]));
+r = await call({ action: "data", phone: "+234 805 123 4567", network: "MTN", planId: "500", requestId: "R6b" });
+ok(r?.error === "This is a Glo number, not MTN. Choose Glo to continue." && !ckLog.some((c) => c.startsWith("APIDatabundle")),
+  "data: a Glo number with MTN selected → refused, nothing sent to the provider", JSON.stringify([r, ckLog]));
+r = await call({ action: "airtime", phone: "08091234567", network: "t2mobile", amount: "100", requestId: "R6c" });
+ok(r?.status === "SUCCESS", "a 9mobile number under 9mobile's new name (t2mobile) still goes through", JSON.stringify([r, ckLog]));
+r = await call({ action: "airtime", phone: "08011111111", network: "Glo", amount: "100", requestId: "R6d" });
+ok(r?.status === "SUCCESS", "a number whose network isn't known from its prefix is never blocked", JSON.stringify([r, ckLog]));
+
 // pre-charge check
 reset({}, { "APIAirtimeV1.asp": "crash", "APIAirtimeV3.asp": "json" }); await resetHealthCache(); ckLog = []; alerts.length = 0;
 r = await call({ action: "bill-preflight", cat: "airtime", network: "MTN", amount: 100 });

@@ -126,8 +126,20 @@ the morning of 1 Oct.
 
 ### 10. Phone network detection
 
-`src/utils/phoneNetwork.js` maps prefixes to networks. **0704 and 07025/07026 are MTN.** A missing prefix makes the
+`src/shared/phoneNetwork.js` maps prefixes to networks. **0704 and 07025/07026 are MTN.** A missing prefix makes the
 order go out on the wrong network, and ClubKonnect refuses it.
+
+**Airtime and data only go to the number's own network** (owner's rule, 6 Oct 2026). When the prefix names a network
+and a different one is selected, the bill form shows "This is an Airtel number, not MTN…" with a one-tap switch and
+keeps Pay off. The bill server refuses the same order before it reaches a provider, so an old app or a direct call
+can't get through. A number whose prefix isn't known is never blocked.
+- Code: `networkMismatch` / `networkMismatchMessage` in `src/shared/phoneNetwork.js`. The bill server uses the synced
+  copy in `_shared/app/` (`node scripts/sync-shared.mjs`).
+- **The message must never contain "network" or other connection words** (rule 6). The app reads those as a dropped
+  connection and holds the order instead of refunding it. A unit test checks the wording against `CK_NET_ERR`.
+- On Data, typing a number that switches the network also reloads that network's plans and clears the chosen plan.
+  Before this, the first network's plans stayed on screen.
+- Ported numbers (moved to another network but keeping the old prefix) can't buy airtime or data until this rule changes.
 
 ### 11. Never log or print secrets
 
@@ -163,6 +175,6 @@ Production data is read through read-only `RAISE NOTICE` migrations (`supabase/m
 | `unclear-replies` | Rule 1: lookups before failing; clear refusals still fail; WAEC card details |
 | `print-pins`, `print-pin-recovery` | Rules 1 and 11: print orders and their recovery, lookups refused for our key |
 | `electricity` | Rules 1, 2, 3 and 11: refunds, the ~23 s wait, the sweep, lookups refused for our key, no secrets in logs |
-| `route-fallback`, `provider-switch` | Rules 5, 6 and 7: V1/V3 routing, ClubKonnect ⇄ VTpass |
+| `route-fallback`, `provider-switch` | Rules 5, 6, 7 and 10: V1/V3 routing, ClubKonnect ⇄ VTpass, wrong-network refusals |
 | `fixed-ip-relay`, `relay-server` | Rule 8 |
 | `supabase/functions/_shared/*.test.ts` | Rule 4 and the pure logic behind the rest |
