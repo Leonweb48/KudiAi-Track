@@ -5,6 +5,7 @@ import { App } from "@capacitor/app";
 import { Browser } from "@capacitor/browser";
 import { fetchAndCachePlans, invalidatePlansCache, normalizeSlug, hasHigherPlanAvailable } from "../utils/plans";
 import { sendEmailTrigger, setEmailToken } from "../utils/emailTrigger";
+import { finishGoogleWalletSignup, hasGoogleWalletChoice, takeGoogleWalletChoice, markAsClient } from "../utils/googleWalletSignup";
 
 const CACHE_KEY = "kuditrack_plan";
 const SESSION_LOGGED_KEY = "kuditrack_sess_logged";
@@ -112,6 +113,9 @@ export function useAuth() {
   const subVerified = useRef(false);
   // Retry counter for the profile query — reset on sign-out or successful profile load.
   const profileRetryRef = useRef(0);
+  // A Google "Open a KudiAI Wallet" sign-up being finished. resolve() runs for every auth event (often twice right
+  // after Google returns), so every run waits on this one registration instead of routing the new account meanwhile.
+  const googleWalletRef = useRef(null);
 
   const resolve = useCallback(async (sess) => {
     try {
@@ -478,6 +482,27 @@ export function useAuth() {
       return;
     }
 
+    // ── Google sign-up as a KudiAI Wallet (savings client) ─────────────
+    // The person chose "Open a KudiAI Wallet" before Google signed them in; Google accounts carry no account_type, so
+    // register them with the business they picked and route them as a client (see utils/googleWalletSignup.js).
+    if (!accountType && (googleWalletRef.current || hasGoogleWalletChoice())) {
+      if (!googleWalletRef.current) {
+        const choice = takeGoogleWalletChoice();
+        googleWalletRef.current = finishGoogleWalletSignup(supabase, sess, choice)
+          .catch(() => ({ status: "failed", message: "We couldn't open your KudiAI Wallet just now. Please try again." }));
+        googleWalletRef.current.finally(() => { setTimeout(() => { googleWalletRef.current = null; }, 5000); });
+      }
+      const outcome = await googleWalletRef.current;
+      if (outcome.status === "done") { await resolve(outcome.session); return; }
+      if (outcome.status === "failed") {
+        sessionStorage.setItem("auth_block_reason", outcome.message);
+        window.dispatchEvent(new CustomEvent("kuditrack_auth_error", { detail: outcome.message }));
+        await supabase.auth.signOut();
+        setStatus("unauthenticated");
+        return;
+      }
+    }
+
     // ── Hard gate: block known non-business account types from reaching business portals ──
     const PORTAL_ACCOUNT_TYPES = ["super_admin", "org_member", "ajo_client", "marketer", "organisation"];
     if (PORTAL_ACCOUNT_TYPES.includes(accountType)) {
@@ -564,9 +589,14 @@ export function useAuth() {
       if (isOAuth && email) {
         const [{ data: staffByEmail }, { data: ajoByEmail }, { data: orgMemberByEmail }] = await Promise.all([
           supabase.from("staff").select("id").eq("email", email).maybeSingle(),
-          supabase.from("aso_clients").select("id").eq("email", email).maybeSingle(),
+          supabase.from("aso_clients").select("id, client_user_id").eq("email", email).maybeSingle(),
           supabase.from("org_members").select("id").eq("email", email).maybeSingle(),
         ]);
+        // A KudiAI Wallet opened with Google: this very login is the client. Its account_type was lost, so restore it.
+        if (!staffByEmail && ajoByEmail && ajoByEmail.client_user_id === uid) {
+          await resolve(await markAsClient(supabase, sess));
+          return;
+        }
         if (staffByEmail || ajoByEmail || orgMemberByEmail) {
           const role = staffByEmail ? "staff member" : ajoByEmail ? "savings client" : "organisation member";
           sessionStorage.setItem(
