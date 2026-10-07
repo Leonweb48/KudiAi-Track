@@ -1,7 +1,7 @@
 # KudiTrack AI — Business Plan
 
 **Amaya Technologies** · RC 9587896
-No 14, Phase 1, Nyanya Check Point, Nyanya, FCT Abuja, Nigeria · support@kudiai.app
+Abuja, Nigeria · support@kudiai.app
 Version 1.0 · September 2026 · Confidential: prepared for investors, grant panels, accelerators and banking partners
 
 ---

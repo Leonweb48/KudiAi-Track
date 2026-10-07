@@ -9,7 +9,7 @@ import { sanitizeHtml } from "../utils/sanitizeHtml";
 const COMPANY = {
   name:    "AMAYA & Co. Technologies",
   cac:     "RC 9587896",
-  address: "No 14, Phase 1, Nyanya Check Point, Nyanya, FCT Abuja, Nigeria",
+  address: "Abuja, Nigeria",
   email:   "support@kudiai.app",
   updated: "1 July 2026",
 };

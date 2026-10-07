@@ -33,7 +33,7 @@ In these Terms, the following definitions apply:
 ## 2. COMPANY INFORMATION
 
 **Amaya Technologies**  
-No 14, Phase 1, Nyanya Check Point, Nyanya, FCT Abuja, Nigeria  
+Abuja, Nigeria  
 RC 9587896  
 Email: support@kudiai.app  
 Website: [Website URL]
