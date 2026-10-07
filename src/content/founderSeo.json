@@ -52,7 +52,8 @@
         "url": "https://kudiai.app/founder",
         "name": "Solomon Leon Johnson – Founder of KudiAI Track | Amaya & Co. Technologies",
         "inLanguage": "en-NG",
-        "dateModified": "2026-10-05",
+        "dateCreated": "2026-10-05T21:11:48+01:00",
+        "dateModified": "2026-10-06T17:44:42+01:00",
         "mainEntity": { "@id": "https://kudiai.app/founder#person" },
         "about": [{ "@id": "https://kudiai.app/#organization" }, { "@id": "https://kudiai.app/#app" }],
         "isPartOf": { "@type": "WebSite", "@id": "https://kudiai.app/#website", "name": "KudiAI Track", "url": "https://kudiai.app/", "publisher": { "@id": "https://kudiai.app/#organization" } }
