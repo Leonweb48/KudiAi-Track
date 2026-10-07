@@ -69,7 +69,6 @@ const CSS = `
 .ks-chips{display:flex;flex-wrap:wrap;gap:8px}
 .ks-chips span{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:#e2e8f0;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);padding:7px 12px;border-radius:999px}
 .ks-chips span:before{content:"";width:6px;height:6px;border-radius:50%;background:var(--green2);box-shadow:0 0 10px var(--green2)}
-.ks-kicker{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;color:#bff5b3;background:rgba(61,168,41,.13);border:1px solid rgba(94,210,74,.35);padding:7px 13px;border-radius:999px;margin-bottom:20px}
 
 /* page hero (inner pages) */
 .ks-phero{padding:64px 0 72px}

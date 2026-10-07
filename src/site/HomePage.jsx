@@ -88,7 +88,6 @@ export default function HomePage() {
       <section className="ks-dark ks-mesh hm-hero">
         <div className="ks-wrap">
           <div>
-            <div className="ks-kicker ks-reveal">{H.kicker}</div>
             <h1 className="ks-h1 ks-reveal d1">The money app built for <em>Nigerian businesses.</em></h1>
             <p className="hm-lead ks-reveal d2">{H.lead}</p>
             <div className="hm-ctas ks-reveal d3">

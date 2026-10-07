@@ -48,7 +48,6 @@ export default function FeaturesPage() {
       <section className="ks-dark ks-mesh ks-phero">
         <div className="ks-wrap">
           <div>
-            <div className="ks-kicker ks-reveal">{F.hero.kicker}</div>
             <h1 className="ks-h1 ks-reveal d1">Run your whole business <em>from your phone.</em></h1>
             <p className="ks-reveal d2">{F.hero.lead}</p>
             <div className="ks-chips ks-reveal d3" style={{ marginTop: 24 }}>{F.hero.chips.map((c) => <span key={c}>{c}</span>)}</div>

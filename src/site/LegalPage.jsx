@@ -29,7 +29,6 @@ export default function LegalPage({ type }) {
       <section className="ks-dark ks-mesh ks-phero" style={{ paddingBottom: 92 }}>
         <div className="ks-wrap" style={{ gridTemplateColumns: "1fr" }}>
           <div>
-            <div className="ks-kicker">Legal</div>
             <h1 className="ks-h1">{isTerms ? "Terms & Conditions" : "Privacy Policy"}</h1>
             <p>
               {isTerms ? "The rules for using KudiAI Track, a product of Amaya & Co. Technologies." : "How KudiAI Track, a product of Amaya & Co. Technologies, collects, uses and protects your information."}

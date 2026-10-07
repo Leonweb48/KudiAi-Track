@@ -38,7 +38,6 @@ export default function AboutPage() {
       <section className="ks-dark ks-mesh ks-phero">
         <div className="ks-wrap">
           <div>
-            <div className="ks-kicker ks-reveal">About us · Amaya &amp; Co. Technologies</div>
             <h1 className="ks-h1 ks-reveal d1">Built in Nigeria, for the businesses that <em>keep Nigeria moving.</em></h1>
             <p className="ks-reveal d2">{A.lead}</p>
           </div>

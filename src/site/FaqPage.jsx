@@ -32,7 +32,6 @@ export default function FaqPage() {
       <section className="ks-dark ks-mesh ks-phero" style={{ paddingBottom: 96 }}>
         <div className="ks-wrap">
           <div>
-            <div className="ks-kicker ks-reveal">Help centre</div>
             <h1 className="ks-h1 ks-reveal d1">Frequently asked <em>questions.</em></h1>
             <p className="ks-reveal d2">Everything about recording sales, the wallet, bill payments, Ajo and Esusu savings, staff and security.</p>
           </div>

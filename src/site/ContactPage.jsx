@@ -41,7 +41,6 @@ export default function ContactPage() {
       <section className="ks-dark ks-mesh ks-phero" style={{ paddingBottom: 110 }}>
         <div className="ks-wrap">
           <div>
-            <div className="ks-kicker ks-reveal">Contact</div>
             <h1 className="ks-h1 ks-reveal d1">We’re here <em>to help.</em></h1>
             <p className="ks-reveal d2">{C.lead}</p>
           </div>
