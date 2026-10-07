@@ -1,10 +1,11 @@
 import SITE from "../content/site.json";
-import SiteShell, { useSeo, Phone, Icon3D, TiltCard, CtaBand } from "./SiteShell";
+import SiteShell, { useSeo, Icon3D, TiltCard, CtaBand } from "./SiteShell";
 
 /** kudiai.app/about — the company: story, mission, vision, values, founder. */
 const CSS = `
 .ab-story{display:grid;gap:44px;align-items:center}
 @media(min-width:940px){.ab-story{grid-template-columns:1.1fr .9fr;gap:80px}}
+.ab-photo img{display:block;width:100%;height:auto;aspect-ratio:3/2;object-fit:cover;border-radius:28px;box-shadow:0 40px 80px -40px rgba(11,20,55,.55)}
 .ab-story p{font-size:17.5px;line-height:1.8;color:var(--text);margin:0 0 18px}
 .ab-mv{display:grid;gap:18px}
 @media(min-width:800px){.ab-mv{grid-template-columns:1fr 1fr}}
@@ -56,11 +57,8 @@ export default function AboutPage() {
             <h2 className="ks-h2">It started with one question.</h2>
             {A.story.map((p) => <p key={p.slice(0, 20)}>{p}</p>)}
           </div>
-          <div className="ks-scene ks-reveal d2" style={{ display: "flex", justifyContent: "center", minHeight: 440 }}>
-            <div className="ks-par" style={{ "--d": "8px" }}>
-              <Phone shot="dashboard" alt="The KudiAI Track dashboard" tilt="rotateY(-15deg) rotateX(5deg)" className="ks-float" />
-            </div>
-            <Icon3D name="wallet" size={120} depth={-18} className="ks-float d2" style={{ right: "4%", bottom: "30px" }} />
+          <div className="ab-photo ks-reveal d2">
+            <img src={A.storyImage} alt={A.storyImageAlt} width="1200" height="800" loading="lazy" />
           </div>
         </div>
       </section>

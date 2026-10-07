@@ -4,43 +4,43 @@
       "url": "https://kudiai.app/home",
       "title": "KudiAI Track – Business, Savings & Payments App for Nigerian Businesses",
       "description": "Record sales, see real profit, manage stock and debts, get your own account number, pay bills and run Ajo savings. KudiAI Track by Amaya & Co. Technologies.",
-      "image": "https://kudiai.app/shots/dashboard.jpg",
-      "imageAlt": "KudiAI Track dashboard"
+      "image": "https://kudiai.app/og/home.jpg",
+      "imageAlt": "A Nigerian trader smiling at her phone at her provisions stall, with the KudiAI Track headline"
     },
     "about": {
       "url": "https://kudiai.app/about",
       "title": "About KudiAI Track | Amaya & Co. Technologies",
       "description": "KudiAI Track is built by Amaya & Co. Technologies to give every Nigerian trader, artisan and savings collector simple, smart tools to track money, grow profit and save.",
-      "image": "https://kudiai.app/shots/dashboard.jpg",
-      "imageAlt": "KudiAI Track dashboard"
+      "image": "https://kudiai.app/og/about.jpg",
+      "imageAlt": "An Ajo collector with two women traders in a Nigerian market, with the KudiAI Track headline"
     },
     "faq": {
       "url": "https://kudiai.app/faq",
       "title": "KudiAI Track FAQ – Sales, Wallet, Bills, Ajo Savings & Security",
       "description": "Answers about KudiAI Track: recording sales and profit, stock, invoices, your wallet account number, bill payments, Ajo and Esusu savings, staff, languages and security.",
-      "image": "https://kudiai.app/shots/dashboard.jpg",
-      "imageAlt": "KudiAI Track dashboard"
+      "image": "https://kudiai.app/og/faq.jpg",
+      "imageAlt": "A young tailor checking her phone in her workshop, with the KudiAI Track FAQ headline"
     },
     "contact": {
       "url": "https://kudiai.app/contact",
       "title": "Contact KudiAI Track | Support",
       "description": "Get help with KudiAI Track. Email support@kudiai.app or reach us on Instagram and X (@kudiai_track), Facebook and LinkedIn (@KudiTrack).",
-      "image": "https://kudiai.app/shots/dashboard.jpg",
-      "imageAlt": "KudiAI Track dashboard"
+      "image": "https://kudiai.app/og/contact.jpg",
+      "imageAlt": "A KudiAI marketer showing his phone to a vegetable trader, with the KudiAI Track contact headline"
     },
     "terms": {
       "url": "https://kudiai.app/terms",
       "title": "Terms & Conditions | KudiAI Track",
       "description": "The terms and conditions for using KudiAI Track, a product of Amaya & Co. Technologies.",
-      "image": "https://kudiai.app/shots/dashboard.jpg",
-      "imageAlt": "KudiAI Track"
+      "image": "https://kudiai.app/og/terms.jpg",
+      "imageAlt": "A shop worker recording a sale at the till, with the KudiAI Track Terms and Conditions title"
     },
     "privacy": {
       "url": "https://kudiai.app/privacy",
       "title": "Privacy Policy | KudiAI Track",
       "description": "How KudiAI Track, a product of Amaya & Co. Technologies, collects, uses and protects your information.",
-      "image": "https://kudiai.app/shots/dashboard.jpg",
-      "imageAlt": "KudiAI Track"
+      "image": "https://kudiai.app/og/privacy.jpg",
+      "imageAlt": "A young mechanic checking his phone in his workshop, with the KudiAI Track Privacy Policy title"
     }
   },
   "nav": [["Home", "/home"], ["Features", "/features"], ["About", "/about"], ["FAQ", "/faq"], ["Contact", "/contact"]],
@@ -51,6 +51,20 @@
     ["LinkedIn", "@KudiTrack", "https://www.linkedin.com/company/kuditrack"]
   ],
   "home": {
+    "people": {
+      "eyebrow": "Real businesses",
+      "title": "Built for the people who keep Nigeria trading.",
+      "text": "Market women, Ajo collectors, tailors, mechanics and shop owners use one app to see their real profit, save with people they trust and get paid into their own account number.",
+      "points": [
+        "Record a sale by voice in English, Pidgin, Hausa, Igbo or Yoruba",
+        "See what you really made today, not just what came in",
+        "Keep working without data; it syncs when you are back online"
+      ],
+      "image": "/site/people/trader.webp",
+      "imageAlt": "A Nigerian trader smiling at her phone at her provisions stall",
+      "tagLabel": "Works offline",
+      "tagValue": "Syncs when you are back"
+    },
     "title": "The money app built for Nigerian businesses.",
     "lead": "Record sales and see your real profit, manage stock and debts, get paid into your own account number, pay bills and run Ajo savings. In English, Pidgin, Hausa, Igbo or Yoruba.",
     "chips": ["Free to start", "5 Nigerian languages", "Works offline", "QR-verified receipts"],
@@ -91,6 +105,8 @@
     }
   },
   "about": {
+    "storyImage": "/site/people/collector.webp",
+    "storyImageAlt": "An Ajo collector with his phone, talking with two women traders in a Nigerian market",
     "title": "Built in Nigeria, for the businesses that keep Nigeria moving.",
     "lead": "KudiAI Track is made by Amaya & Co. Technologies. We build simple, smart money tools for traders, artisans, shop owners and savings collectors.",
     "story": [
@@ -108,6 +124,8 @@
     "facts": [["5", "Nigerian languages"], ["10+", "bill and recharge services"], ["36+", "features in one app"], ["24/7", "receipt verification"]]
   },
   "contact": {
+    "image": "/site/people/marketer.webp",
+    "imageAlt": "A KudiAI marketer showing his phone to a smiling vegetable trader at her stall",
     "title": "We're here to help.",
     "lead": "Questions, feedback or need a hand with your account? Reach us any way you like.",
     "email": "support@kudiai.app",

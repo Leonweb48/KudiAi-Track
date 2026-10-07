@@ -28,7 +28,10 @@ const APP = {
   publisher: { "@id": ORG["@id"] },
 };
 const faqPage = (id, items) => ({ "@type": "FAQPage", "@id": id, mainEntity: items.map(([q, a]) => ({ "@type": "Question", name: q, acceptedAnswer: { "@type": "Answer", text: a } })) });
-const webPage = (type, seo, extra = {}) => ({ "@type": type, "@id": seo.url, url: seo.url, name: seo.title, description: seo.description, inLanguage: "en-NG", isPartOf: { "@id": WEBSITE["@id"] }, ...extra });
+// A page's share image: every /og/ card is 1200x630 (made from the photos in public/site/people).
+const imageSize = (url) => (/\/og\/[a-z-]+\.jpg$/.test(url || "") ? { width: 1200, height: 630 } : null);
+const imageObject = (seo) => ({ "@type": "ImageObject", url: seo.image, contentUrl: seo.image, caption: seo.imageAlt, ...(imageSize(seo.image) || {}) });
+const webPage = (type, seo, extra = {}) => ({ "@type": type, "@id": seo.url, url: seo.url, name: seo.title, description: seo.description, inLanguage: "en-NG", isPartOf: { "@id": WEBSITE["@id"] }, image: imageObject(seo), primaryImageOfPage: imageObject(seo), ...extra });
 const list = (rows) => `<ul>${rows.map(([t, d]) => `<li><b>${esc(t)}:</b> ${esc(d)}</li>`).join("")}</ul>`;
 const NAV = `<p><a href="https://kudiai.app/home">Home</a> · <a href="https://kudiai.app/features">Features</a> · <a href="https://kudiai.app/about">About</a> · <a href="https://kudiai.app/faq">FAQ</a> · <a href="https://kudiai.app/contact">Contact</a> · <a href="https://kudiai.app/">Sign in</a></p>`;
 
@@ -47,12 +50,16 @@ function page({ out, seo, ogType = "website", extraMeta = [], jsonld, noscript }
     `<meta property="og:title" content="${esc(seo.title)}"/>`,
     `<meta property="og:description" content="${esc(seo.description)}"/>`,
     `<meta property="og:image" content="${esc(seo.image)}"/>`,
+    `<meta property="og:image:secure_url" content="${esc(seo.image)}"/>`,
+    `<meta property="og:image:type" content="${/\.png$/i.test(seo.image) ? "image/png" : "image/jpeg"}"/>`,
+    ...(imageSize(seo.image) ? [`<meta property="og:image:width" content="1200"/>`, `<meta property="og:image:height" content="630"/>`] : []),
     `<meta property="og:image:alt" content="${esc(seo.imageAlt)}"/>`,
     ...extraMeta,
     `<meta name="twitter:card" content="summary_large_image"/>`,
     `<meta name="twitter:title" content="${esc(seo.title)}"/>`,
     `<meta name="twitter:description" content="${esc(seo.description)}"/>`,
     `<meta name="twitter:image" content="${esc(seo.image)}"/>`,
+    `<meta name="twitter:image:alt" content="${esc(seo.imageAlt)}"/>`,
     `<script type="application/ld+json">${JSON.stringify(jsonld).replace(/</g, "\\u003c")}</script>`,   // "<" escaped: the JSON can never close the tag
   ].join("");
   const html = src
@@ -73,7 +80,7 @@ const H = S.home;
 // ── /home ─────────────────────────────────────────────────────────────────────────────────────────────────────
 page({
   out: "home.html", seo: S.seo.home,
-  jsonld: graph(APP, webPage("WebPage", S.seo.home, { about: { "@id": APP["@id"] }, primaryImageOfPage: S.seo.home.image }), faqPage(`${S.seo.home.url}#faq`, ALL_FAQ.slice(0, 6))),
+  jsonld: graph(APP, webPage("WebPage", S.seo.home, { about: { "@id": APP["@id"] } }), faqPage(`${S.seo.home.url}#faq`, ALL_FAQ.slice(0, 6))),
   noscript:
     `<h1>KudiAI Track: ${esc(H.title)}</h1><p>${esc(H.lead)}</p><p>${esc(F.summary)}</p>` +
     `<h2>Everything in one app</h2>${list(H.bento.map(([, t, d]) => [t, d]))}` +
@@ -88,7 +95,7 @@ page({
 // ── /features ─────────────────────────────────────────────────────────────────────────────────────────────────
 page({
   out: "features.html", seo: F.seo,
-  jsonld: graph(APP, webPage("WebPage", F.seo, { about: { "@id": APP["@id"] }, primaryImageOfPage: F.seo.image }), faqPage(`${F.seo.url}#faq`, ALL_FAQ.slice(0, 8))),
+  jsonld: graph(APP, webPage("WebPage", F.seo, { about: { "@id": APP["@id"] } }), faqPage(`${F.seo.url}#faq`, ALL_FAQ.slice(0, 8))),
   noscript:
     `<h1>KudiAI Track features: ${esc(F.hero.title)}</h1><p>${esc(F.hero.lead)}</p><p>${esc(F.summary)}</p>` +
     F.groups.map((g) => `<h2>${esc(g.title)}</h2><p>${esc(g.intro)}</p>${list(g.items)}`).join("") +

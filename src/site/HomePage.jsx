@@ -67,6 +67,11 @@ const CSS = `
 .hm-sitem i{flex:none;width:40px;height:40px;border-radius:12px;background:rgba(94,210,74,.15);display:flex;align-items:center;justify-content:center;color:#7ee06a;font-style:normal;font-weight:800}
 .hm-sitem b{display:block;color:#fff;margin-bottom:3px}.hm-sitem span{color:#aab6d6;font-size:15px;line-height:1.55}
 .hm-aud{display:grid;gap:14px}
+.hm-audcard{padding:0;overflow:hidden}
+.hm-audcard img{display:block;width:100%;height:auto;aspect-ratio:3/2;object-fit:cover}
+.hm-photo{position:relative}
+.hm-photo img{display:block;width:100%;height:auto;aspect-ratio:16/10;object-fit:cover;border-radius:28px;box-shadow:0 40px 80px -40px rgba(11,20,55,.55)}
+.hm-photo .ks-glass{left:18px;bottom:18px;background:rgba(11,20,55,.82)}
 @media(min-width:700px){.hm-aud{grid-template-columns:repeat(3,1fr)}}
 .hm-steps{display:grid;gap:16px;position:relative}
 @media(min-width:860px){.hm-steps{grid-template-columns:repeat(3,1fr)}.hm-steps:before{content:"";position:absolute;top:34px;left:12%;right:12%;height:2px;background:repeating-linear-gradient(90deg,var(--line) 0 8px,transparent 8px 16px)}}
@@ -129,6 +134,21 @@ export default function HomePage() {
       </div>
 
       <section className="ks-sec">
+        <div className="ks-wrap hm-split">
+          <div className="hm-photo ks-reveal">
+            <img src={H.people.image} alt={H.people.imageAlt} width="1600" height="900" loading="lazy" />
+            <div className="ks-glass ks-float d2"><small>{H.people.tagLabel}</small><b style={{ fontSize: 17 }}>{H.people.tagValue}</b></div>
+          </div>
+          <div className="ks-reveal d2">
+            <div className="ks-eyebrow">{H.people.eyebrow}</div>
+            <h2 className="ks-h2">{H.people.title}</h2>
+            <p className="ks-sub">{H.people.text}</p>
+            <ul className="hm-list">{H.people.points.map((p) => <li key={p}>{p}</li>)}</ul>
+          </div>
+        </div>
+      </section>
+
+      <section className="ks-sec" style={{ paddingTop: 0 }}>
         <div className="ks-wrap">
           <div className="ks-center ks-reveal">
             <div className="ks-eyebrow">Everything in one app</div>
@@ -247,9 +267,12 @@ export default function HomePage() {
           </div>
           <div className="hm-aud" style={{ marginTop: 34 }}>
             {F.audiences.map((a, i) => (
-              <TiltCard className={`ks-card ks-reveal d${(i % 3) + 1}`} key={a.title}>
-                <h3 style={{ color: "var(--ink)", margin: "0 0 6px", fontSize: 18 }}>{a.title}</h3>
-                <p style={{ margin: 0, color: "var(--muted)", lineHeight: 1.6, fontSize: 15 }}>{a.text}</p>
+              <TiltCard className={`ks-card hm-audcard ks-reveal d${(i % 3) + 1}`} key={a.title}>
+                {a.image && <img src={a.image} alt={a.imageAlt} width="1200" height="800" loading="lazy" />}
+                <div style={{ padding: "18px 22px 22px" }}>
+                  <h3 style={{ color: "var(--ink)", margin: "0 0 6px", fontSize: 18 }}>{a.title}</h3>
+                  <p style={{ margin: 0, color: "var(--muted)", lineHeight: 1.6, fontSize: 15 }}>{a.text}</p>
+                </div>
               </TiltCard>
             ))}
           </div>

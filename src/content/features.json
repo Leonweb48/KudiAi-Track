@@ -3,8 +3,8 @@
     "url": "https://kudiai.app/features",
     "title": "KudiAI Track Features – Sales, Profit, Wallet, Bills & Ajo Savings App",
     "description": "KudiAI Track by Amaya & Co. Technologies: record sales, see real profit, manage stock and debts, get paid into your own wallet, pay bills and run Ajo savings.",
-    "image": "https://kudiai.app/shots/dashboard.jpg",
-    "imageAlt": "KudiAI Track business dashboard showing today's sales and profit"
+    "image": "https://kudiai.app/og/features.jpg",
+    "imageAlt": "A Nigerian shop owner recording a sale on his phone, with the KudiAI Track features headline"
   },
   "hero": {
     "title": "Run your whole business from your phone.",
@@ -20,27 +20,39 @@
   "audiences": [
     {
       "title": "Shop owners & traders",
-      "text": "Know your profit every day, not at the end of the month. Stock, debts and sales in one place."
+      "text": "Know your profit every day, not at the end of the month. Stock, debts and sales in one place.",
+      "image": "/site/people/shop.webp",
+      "imageAlt": "A shop owner records a sale on his phone while a customer pays"
     },
     {
       "title": "Artisans & service businesses",
-      "text": "Tailors, salons, mechanics and caterers: send invoices, track part payments and see who still owes you."
+      "text": "Tailors, salons, mechanics and caterers: send invoices, track part payments and see who still owes you.",
+      "image": "/site/people/saver.webp",
+      "imageAlt": "A young tailor smiling at her phone beside her sewing machine"
     },
     {
       "title": "Ajo & Esusu collectors",
-      "text": "Digital savings cards, contributions, rotations and statements your savers can check for themselves."
+      "text": "Digital savings cards, contributions, rotations and statements your savers can check for themselves.",
+      "image": "/site/people/collector.webp",
+      "imageAlt": "An Ajo collector with his phone, talking with two traders in a market"
     },
     {
       "title": "Savers",
-      "text": "Your own login and wallet: see every contribution, pay from your phone and get a statement every month."
+      "text": "Your own login and wallet: see every contribution, pay from your phone and get a statement every month.",
+      "image": "/site/people/mechanic.webp",
+      "imageAlt": "A young mechanic smiling at his phone in his workshop"
     },
     {
       "title": "Staff & branch managers",
-      "text": "Your own login and permissions. Record sales, run shifts and close the day with a cash count."
+      "text": "Your own login and permissions. Record sales, run shifts and close the day with a cash count.",
+      "image": "/site/people/staff.webp",
+      "imageAlt": "A shop worker recording a sale on her phone at the checkout"
     },
     {
       "title": "Marketers",
-      "text": "Join the KudiAI marketer team and earn commission on the businesses you bring. Email support@kudiai.app."
+      "text": "Join the KudiAI marketer team and earn commission on the businesses you bring. Email support@kudiai.app.",
+      "image": "/site/people/marketer.webp",
+      "imageAlt": "A marketer showing his phone to a trader at her vegetable stall"
     }
   ],
   "groups": [
