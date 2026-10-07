@@ -100,6 +100,7 @@ const StaffFirstLogin       = lazy(() => import("./screens/StaffFirstLogin"));
 const AjoClientOtpVerify    = lazy(() => import("./screens/AjoClientOtpVerify"));
 const AjoClientArchivedScreen = lazy(() => import("./screens/AjoClientArchivedScreen"));
 const AjoClientPendingScreen  = lazy(() => import("./screens/AjoClientPendingScreen"));
+const GoogleAccountChoice     = lazy(() => import("./screens/GoogleAccountChoice"));
 const AjoMemberPortal       = lazy(() => import("./screens/AjoMemberPortal"));
 const CoopList              = lazy(() => import("./screens/CoopList"));
 const CoopDashboard         = lazy(() => import("./screens/CoopDashboard"));
@@ -571,6 +572,8 @@ export default function App() {
   if (status === "org_member_archived") return <S><OrgMemberArchivedScreen member={orgMember} /></S>;
   if (status === "offline")             return <OfflineScreen onRetry={retryAuth} />;
   if (status === "unauthenticated")  return <Auth />;
+  // A brand-new Google account from the Sign in tab: business or KudiAI Wallet, before any setup
+  if (status === "choose_account")   return <S><GoogleAccountChoice session={session} onDone={retryAuth} /></S>;
   if (status === "onboarding")       return <Onboarding session={session} onComplete={refetch} />;
   if (status === "subscribing")      return <SubscriptionPlan session={session} onComplete={setReady} />;
   if (status === "marketer_setup")   return <S><MarketerFirstLogin marketer={marketer} /></S>;

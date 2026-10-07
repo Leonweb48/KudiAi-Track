@@ -5,7 +5,7 @@ import { App } from "@capacitor/app";
 import { Browser } from "@capacitor/browser";
 import { fetchAndCachePlans, invalidatePlansCache, normalizeSlug, hasHigherPlanAvailable } from "../utils/plans";
 import { sendEmailTrigger, setEmailToken } from "../utils/emailTrigger";
-import { finishGoogleWalletSignup, hasGoogleWalletChoice, takeGoogleWalletChoice, markAsClient } from "../utils/googleWalletSignup";
+import { finishGoogleWalletSignup, hasGoogleWalletChoice, takeGoogleWalletChoice, markAsClient, takeGoogleBusinessChoice, markSignupChoice } from "../utils/googleWalletSignup";
 
 const CACHE_KEY = "kuditrack_plan";
 const SESSION_LOGGED_KEY = "kuditrack_sess_logged";
@@ -725,6 +725,14 @@ export function useAuth() {
         logPlatformSession(supabase, uid, "organisation", orgSafetyCheck.name, email);
         if (mustChange) { setStatus("org_setup"); } else { setStatus("organisation"); }
         return;
+      }
+
+      // A brand-new Google account that hasn't said what it's for (it signed in from the Sign in tab): ask "business or
+      // KudiAI Wallet" (GoogleAccountChoice) instead of starting business setup. "Register a business" on the Create
+      // account tab already said so; it is recorded on the account so the question is asked only once.
+      if (isOAuth && !sess.user.user_metadata?.signup_choice) {
+        if (!takeGoogleBusinessChoice()) { setStatus("choose_account"); return; }
+        markSignupChoice(supabase, "business");
       }
 
       setStatus("onboarding");

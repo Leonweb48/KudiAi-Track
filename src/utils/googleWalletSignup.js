@@ -17,6 +17,39 @@ export function clearGoogleWalletChoice() {
   try { localStorage.removeItem(GOOGLE_WALLET_KEY); } catch { /* storage unavailable */ }
 }
 
+// "Register a business" chosen on the Create account tab: a brand-new Google account then goes straight to business setup
+// instead of being asked again (GoogleAccountChoice). Same 30-minute limit.
+export const GOOGLE_BUSINESS_KEY = "kuditrack_google_business_signup";
+
+export function saveGoogleBusinessChoice(now = Date.now()) {
+  try { localStorage.setItem(GOOGLE_BUSINESS_KEY, String(now)); } catch { /* storage unavailable: they'll be asked */ }
+}
+
+/** Reads and REMOVES the business choice; true only when it was made in the last 30 minutes. */
+export function takeGoogleBusinessChoice(now = Date.now()) {
+  let at = null;
+  try { at = localStorage.getItem(GOOGLE_BUSINESS_KEY); localStorage.removeItem(GOOGLE_BUSINESS_KEY); } catch { return false; }
+  const age = now - Number(at);
+  return at !== null && age >= 0 && age <= MAX_AGE_MS;
+}
+
+/** Forgets both choices: a Google sign-in from the Sign in tab, or one that was cancelled. */
+export function clearGoogleSignupChoices() {
+  clearGoogleWalletChoice();
+  try { localStorage.removeItem(GOOGLE_BUSINESS_KEY); } catch { /* storage unavailable */ }
+}
+
+/**
+ * Records on the account what it was opened for ("business"), so a Google account that hasn't finished business setup
+ * isn't asked again on its next sign-in. False when the update didn't go through.
+ */
+export async function markSignupChoice(supabase, kind) {
+  try {
+    const { error } = await supabase.auth.updateUser({ data: { signup_choice: kind } });
+    return !error;
+  } catch { return false; }
+}
+
 export function hasGoogleWalletChoice() {
   try { return !!localStorage.getItem(GOOGLE_WALLET_KEY); } catch { return false; }
 }
