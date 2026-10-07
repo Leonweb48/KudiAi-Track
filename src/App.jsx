@@ -76,12 +76,14 @@ const Branches       = lazy(() => import("./screens/Branches"));
 const FounderPage    = lazy(() => import("./screens/FounderPage"));
 // The public website (src/site) — one lazy chunk per page, rendered before the auth gate
 const LegalSitePage  = lazy(() => import("./site/LegalPage"));
+const BlogPostPage   = lazy(() => import("./site/BlogPostPage"));
 const SITE_PAGES = {
   "/home":     lazy(() => import("./site/HomePage")),
   "/features": lazy(() => import("./site/FeaturesPage")),
   "/about":    lazy(() => import("./site/AboutPage")),
   "/faq":      lazy(() => import("./site/FaqPage")),
   "/contact":  lazy(() => import("./site/ContactPage")),
+  "/blog":     lazy(() => import("./site/BlogPage")),
   "/terms":    () => <LegalSitePage type="terms" />,
   "/privacy":  () => <LegalSitePage type="privacy" />,
 };
@@ -529,13 +531,15 @@ export default function App() {
   if (location.pathname === "/verify") return <VerifyReceipt />;
   // Account-deletion URL for Google Play (Data safety) — explains deletion and takes requests from people who cannot sign in.
   if (location.pathname === "/delete-account") return <DeleteAccountPage />;
-  // The public website (kudiai.app/home, /features, /about, /faq, /contact, /terms, /privacy) and the founder's note.
+  // The public website (kudiai.app/home, /features, /about, /faq, /contact, /blog, /terms, /privacy) and the founder's note.
   // Each is served from its own HTML file (build/<page>.html — scripts/seo-pages.js) so search engines get its own
   // title, description and structured data. The privacy policy and terms must stay readable here (Google Play needs the URL).
   const publicPath = location.pathname.replace(/\/+$/, "");   // "/founder/" too
   if (publicPath === "/founder") return <Suspense fallback={<div style={{ minHeight: "100dvh", background: "#F6F1E8" }} />}><FounderPage /></Suspense>;
   const SitePage = SITE_PAGES[publicPath];
   if (SitePage) return <Suspense fallback={<div style={{ minHeight: "100dvh", background: "#0B1437" }} />}><SitePage /></Suspense>;
+  // Blog articles: kudiai.app/blog/<slug> (build/blog/<slug>.html carries each article's own head)
+  if (/^\/blog\/[a-z0-9-]+$/.test(publicPath)) return <Suspense fallback={<div style={{ minHeight: "100dvh", background: "#0B1437" }} />}><BlogPostPage slug={publicPath.slice(6)} /></Suspense>;
 
   const portalStatuses = ["ready", "staff", "branch_manager", "marketer", "organisation", "org_member", "ajo_client"];
 

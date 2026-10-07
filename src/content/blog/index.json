@@ -1,0 +1,188 @@
+{
+  "seo": {
+    "url": "https://kudiai.app/blog",
+    "title": "Blog & Insights: Business Guides for Nigerian SMEs | KudiAI Track",
+    "description": "Plain, practical guides for Nigerian traders and small businesses: profit, bookkeeping, tax, CAC registration, Ajo savings, credit sales, POS and pricing.",
+    "image": "https://kudiai.app/og/blog.jpg",
+    "imageAlt": "KudiAI Track Blog & Insights: practical business guides for Nigerian traders"
+  },
+  "intro": "Plain answers to the money and business questions Nigerian traders, artisans and savings collectors ask most: profit, records, tax, registration, savings and getting paid.",
+  "posts": [
+    {
+      "slug": "how-to-calculate-profit-in-business",
+      "title": "How to Calculate Profit in Your Business (With Naira Examples)",
+      "seoTitle": "How to Calculate Profit in Business: Naira Examples",
+      "description": "To calculate profit, take away the cost of the goods you sold, then expenses like rent and transport. Gross vs net profit, margin and markup in Naira.",
+      "category": "Guides",
+      "date": "2026-10-07T12:00:00+01:00",
+      "updated": "2026-10-07T12:00:00+01:00",
+      "readMinutes": 7,
+      "image": "/site/blog/how-to-calculate-profit-in-business.webp",
+      "imageAlt": "A Nigerian trader smiling at her phone at her provisions stall",
+      "og": "https://kudiai.app/og/blog-how-to-calculate-profit-in-business.jpg",
+      "keywords": [
+        "how to calculate profit in business",
+        "how to calculate profit and loss",
+        "gross profit vs net profit",
+        "how to know if my business is making profit",
+        "profit margin formula",
+        "markup vs margin",
+        "how to calculate profit in Naira"
+      ],
+      "featured": true
+    },
+    {
+      "slug": "nigeria-tax-small-business-2026",
+      "title": "Tax for Small Businesses in Nigeria in 2026: What the New Law Means",
+      "seoTitle": "Nigeria Small Business Tax 2026: What the New Law Means",
+      "description": "From January 2026, small companies pay 0% company tax and individuals pay 0% on their first ₦800,000. See what Nigeria's new tax law means for traders and SMEs.",
+      "category": "Insights",
+      "date": "2026-10-07T12:00:00+01:00",
+      "updated": "2026-10-07T12:00:00+01:00",
+      "readMinutes": 6,
+      "image": "/site/blog/nigeria-tax-small-business-2026.webp",
+      "imageAlt": "A Nigerian shop owner writing figures in a notebook beside a calculator at her counter",
+      "og": "https://kudiai.app/og/blog-nigeria-tax-small-business-2026.jpg",
+      "keywords": [
+        "new tax law Nigeria 2026 small business",
+        "small business tax exemption Nigeria",
+        "do I pay tax on my business in Nigeria",
+        "Nigeria Tax Act 2025 small company",
+        "personal income tax exemption 800,000",
+        "TIN for business",
+        "VAT exemption small business Nigeria"
+      ]
+    },
+    {
+      "slug": "cac-business-name-registration",
+      "title": "How to Register a Business Name with CAC in 2026: Cost and Steps",
+      "seoTitle": "CAC Business Name Registration 2026: Fee, Documents, Steps",
+      "description": "Registering a business name with CAC costs ₦21,000 in official fees in 2026. See the documents you need, each step on the CAC portal and annual return rules.",
+      "category": "Guides",
+      "date": "2026-10-07T12:00:00+01:00",
+      "updated": "2026-10-07T12:00:00+01:00",
+      "readMinutes": 7,
+      "image": "/site/blog/cac-business-name-registration.webp",
+      "imageAlt": "A Nigerian businesswoman working on a laptop in her stock room",
+      "og": "https://kudiai.app/og/blog-cac-business-name-registration.jpg",
+      "keywords": [
+        "CAC registration",
+        "how to register business name in Nigeria",
+        "CAC business name registration fee 2026",
+        "CAC registration online",
+        "business name vs limited company",
+        "CAC business name requirements",
+        "CAC annual returns business name"
+      ]
+    },
+    {
+      "slug": "simple-bookkeeping-for-small-business",
+      "title": "Simple Bookkeeping for Small Businesses in Nigeria",
+      "seoTitle": "Bookkeeping for Small Business in Nigeria: Simple Guide",
+      "description": "Keep five simple records: sales, expenses, stock, who owes you and what you owe. A 5-minute daily routine, tax record rules, and notebook vs app.",
+      "category": "Guides",
+      "date": "2026-10-07T12:00:00+01:00",
+      "updated": "2026-10-07T12:00:00+01:00",
+      "readMinutes": 7,
+      "image": "/site/blog/simple-bookkeeping-for-small-business.webp",
+      "imageAlt": "A shop owner records a sale on his phone while a customer pays",
+      "og": "https://kudiai.app/og/blog-simple-bookkeeping-for-small-business.jpg",
+      "keywords": [
+        "bookkeeping for small business in Nigeria",
+        "how to keep records of sales",
+        "how to record daily sales",
+        "simple record keeping for traders",
+        "how long to keep business records in Nigeria",
+        "small business record keeping"
+      ]
+    },
+    {
+      "slug": "how-ajo-esusu-works",
+      "title": "How Ajo and Esusu Work, and How to Run One Without Disputes",
+      "seoTitle": "What Is Ajo? How Ajo and Esusu Savings Work in Nigeria",
+      "description": "Ajo and Esusu are Nigerian group savings: a daily collector card or a rotating pot. How each works, what collectors charge and how to avoid disputes.",
+      "category": "Guides",
+      "date": "2026-10-07T12:00:00+01:00",
+      "updated": "2026-10-07T12:00:00+01:00",
+      "readMinutes": 7,
+      "image": "/site/blog/how-ajo-esusu-works.webp",
+      "imageAlt": "An Ajo collector with his phone, talking with two women traders in a Nigerian market",
+      "og": "https://kudiai.app/og/blog-how-ajo-esusu-works.jpg",
+      "keywords": [
+        "what is ajo",
+        "esusu meaning",
+        "how does ajo work",
+        "how to start ajo contribution",
+        "difference between ajo and esusu",
+        "ajo collector commission",
+        "adashe savings"
+      ]
+    },
+    {
+      "slug": "how-to-price-when-costs-rise",
+      "title": "How to Set Your Prices When Costs Keep Rising in Nigeria",
+      "seoTitle": "How to Price Products When Costs Rise in Nigeria",
+      "description": "How to price products when costs keep rising in Nigeria: cost-plus pricing, markup vs margin, break-even and ways to raise prices without losing customers.",
+      "category": "Insights",
+      "date": "2026-10-07T12:00:00+01:00",
+      "updated": "2026-10-07T12:00:00+01:00",
+      "readMinutes": 6,
+      "image": "/site/blog/how-to-price-when-costs-rise.webp",
+      "imageAlt": "A trader arranging tomatoes for a customer at a busy Nigerian market stall",
+      "og": "https://kudiai.app/og/blog-how-to-price-when-costs-rise.jpg",
+      "keywords": [
+        "how to price products",
+        "how to calculate selling price",
+        "markup formula",
+        "markup vs margin",
+        "inflation in Nigeria and small business",
+        "how to increase prices without losing customers",
+        "break-even point"
+      ]
+    },
+    {
+      "slug": "sell-on-credit-and-get-paid",
+      "title": "How to Sell on Credit and Get Paid Back Without Losing Customers",
+      "seoTitle": "How to Collect Debt From Customers Without Losing Them",
+      "description": "Give credit only to customers you know, set a limit and due date, write it down the same day and remind politely. With message scripts and a worked example.",
+      "category": "Guides",
+      "date": "2026-10-07T12:00:00+01:00",
+      "updated": "2026-10-07T12:00:00+01:00",
+      "readMinutes": 7,
+      "image": "/site/blog/sell-on-credit-and-get-paid.webp",
+      "imageAlt": "A young tailor smiling at her phone beside her sewing machine",
+      "og": "https://kudiai.app/og/blog-sell-on-credit-and-get-paid.jpg",
+      "keywords": [
+        "how to collect debt from customers",
+        "customers owing money in business",
+        "how to manage credit sales",
+        "should I give customers credit",
+        "how to remind customers to pay",
+        "payment reminder message to customer",
+        "selling on credit in Nigeria"
+      ]
+    },
+    {
+      "slug": "start-pos-business-nigeria",
+      "title": "How to Start a POS Business in Nigeria: Costs, Charges and Records",
+      "seoTitle": "How to Start a POS Business in Nigeria (2026 Guide)",
+      "description": "How to start a POS business in Nigeria: terminal and float costs, what agents charge, the CBN rules for 2026, a daily profit example and simple record keeping.",
+      "category": "Guides",
+      "date": "2026-10-07T12:00:00+01:00",
+      "updated": "2026-10-07T12:00:00+01:00",
+      "readMinutes": 7,
+      "image": "/site/blog/start-pos-business-nigeria.webp",
+      "imageAlt": "A POS agent counting naira notes at his roadside stand, with a card terminal on the table",
+      "og": "https://kudiai.app/og/blog-start-pos-business-nigeria.jpg",
+      "keywords": [
+        "how to start POS business in Nigeria",
+        "POS business profit per day",
+        "how much to start POS business",
+        "POS charges per withdrawal",
+        "best POS company to partner with",
+        "CBN rules for POS agents",
+        "POS agent daily limit"
+      ]
+    }
+  ]
+}

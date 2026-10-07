@@ -10,7 +10,7 @@ import { installPromptDue, iosInstallTarget, markInstallChoice, markInstallShown
 
 // Pages people reach without being users (receipt checks, legal pages, payment returns, the public website) never get the prompt.
 const PUBLIC_PATHS = ["/verify", "/privacy", "/terms", "/delete-account", "/payment-return", "/app/payment-callback", "/bvn-return",
-  "/home", "/features", "/about", "/faq", "/contact", "/founder"];
+  "/home", "/features", "/about", "/faq", "/contact", "/founder", "/blog"];
 const SHOW_AFTER_MS = 4000;   // let the app finish loading first
 
 const safeStorage = () => { try { return window.localStorage; } catch { return null; } };

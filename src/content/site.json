@@ -43,7 +43,7 @@
       "imageAlt": "A young mechanic checking his phone in his workshop, with the KudiAI Track Privacy Policy title"
     }
   },
-  "nav": [["Home", "/home"], ["Features", "/features"], ["About", "/about"], ["FAQ", "/faq"], ["Contact", "/contact"]],
+  "nav": [["Home", "/home"], ["Features", "/features"], ["About", "/about"], ["Blog", "/blog"], ["FAQ", "/faq"], ["Contact", "/contact"]],
   "social": [
     ["Instagram", "@kudiai_track", "https://www.instagram.com/kudiai_track"],
     ["X (Twitter)", "@kudiai_track", "https://x.com/kudiai_track"],

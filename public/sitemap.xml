@@ -28,6 +28,43 @@
     <image:image><image:loc>https://kudiai.app/og/founder.jpg</image:loc></image:image>
     <image:image><image:loc>https://kudiai.app/people/solomon-leon-johnson.jpg</image:loc></image:image>
   </url>
+  <!-- blog -->
+  <url><loc>https://kudiai.app/blog</loc><lastmod>2026-10-07</lastmod><changefreq>weekly</changefreq><priority>0.8</priority>
+    <image:image><image:loc>https://kudiai.app/og/blog.jpg</image:loc></image:image>
+  </url>
+  <url><loc>https://kudiai.app/blog/how-to-calculate-profit-in-business</loc><lastmod>2026-10-07</lastmod><changefreq>monthly</changefreq><priority>0.7</priority>
+    <image:image><image:loc>https://kudiai.app/og/blog-how-to-calculate-profit-in-business.jpg</image:loc></image:image>
+    <image:image><image:loc>https://kudiai.app/site/blog/how-to-calculate-profit-in-business.webp</image:loc></image:image>
+  </url>
+  <url><loc>https://kudiai.app/blog/nigeria-tax-small-business-2026</loc><lastmod>2026-10-07</lastmod><changefreq>monthly</changefreq><priority>0.7</priority>
+    <image:image><image:loc>https://kudiai.app/og/blog-nigeria-tax-small-business-2026.jpg</image:loc></image:image>
+    <image:image><image:loc>https://kudiai.app/site/blog/nigeria-tax-small-business-2026.webp</image:loc></image:image>
+  </url>
+  <url><loc>https://kudiai.app/blog/cac-business-name-registration</loc><lastmod>2026-10-07</lastmod><changefreq>monthly</changefreq><priority>0.7</priority>
+    <image:image><image:loc>https://kudiai.app/og/blog-cac-business-name-registration.jpg</image:loc></image:image>
+    <image:image><image:loc>https://kudiai.app/site/blog/cac-business-name-registration.webp</image:loc></image:image>
+  </url>
+  <url><loc>https://kudiai.app/blog/simple-bookkeeping-for-small-business</loc><lastmod>2026-10-07</lastmod><changefreq>monthly</changefreq><priority>0.7</priority>
+    <image:image><image:loc>https://kudiai.app/og/blog-simple-bookkeeping-for-small-business.jpg</image:loc></image:image>
+    <image:image><image:loc>https://kudiai.app/site/blog/simple-bookkeeping-for-small-business.webp</image:loc></image:image>
+  </url>
+  <url><loc>https://kudiai.app/blog/how-ajo-esusu-works</loc><lastmod>2026-10-07</lastmod><changefreq>monthly</changefreq><priority>0.7</priority>
+    <image:image><image:loc>https://kudiai.app/og/blog-how-ajo-esusu-works.jpg</image:loc></image:image>
+    <image:image><image:loc>https://kudiai.app/site/blog/how-ajo-esusu-works.webp</image:loc></image:image>
+  </url>
+  <url><loc>https://kudiai.app/blog/how-to-price-when-costs-rise</loc><lastmod>2026-10-07</lastmod><changefreq>monthly</changefreq><priority>0.7</priority>
+    <image:image><image:loc>https://kudiai.app/og/blog-how-to-price-when-costs-rise.jpg</image:loc></image:image>
+    <image:image><image:loc>https://kudiai.app/site/blog/how-to-price-when-costs-rise.webp</image:loc></image:image>
+  </url>
+  <url><loc>https://kudiai.app/blog/sell-on-credit-and-get-paid</loc><lastmod>2026-10-07</lastmod><changefreq>monthly</changefreq><priority>0.7</priority>
+    <image:image><image:loc>https://kudiai.app/og/blog-sell-on-credit-and-get-paid.jpg</image:loc></image:image>
+    <image:image><image:loc>https://kudiai.app/site/blog/sell-on-credit-and-get-paid.webp</image:loc></image:image>
+  </url>
+  <url><loc>https://kudiai.app/blog/start-pos-business-nigeria</loc><lastmod>2026-10-07</lastmod><changefreq>monthly</changefreq><priority>0.7</priority>
+    <image:image><image:loc>https://kudiai.app/og/blog-start-pos-business-nigeria.jpg</image:loc></image:image>
+    <image:image><image:loc>https://kudiai.app/site/blog/start-pos-business-nigeria.webp</image:loc></image:image>
+  </url>
+  <!-- /blog -->
   <url><loc>https://kudiai.app/</loc><lastmod>2026-10-06</lastmod><changefreq>monthly</changefreq><priority>0.6</priority></url>
   <url><loc>https://kudiai.app/verify</loc><lastmod>2026-10-06</lastmod><changefreq>monthly</changefreq><priority>0.5</priority></url>
   <url><loc>https://kudiai.app/privacy</loc><lastmod>2026-10-07</lastmod><changefreq>yearly</changefreq><priority>0.3</priority>

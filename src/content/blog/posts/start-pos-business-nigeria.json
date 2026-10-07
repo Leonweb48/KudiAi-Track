@@ -1,0 +1,67 @@
+{
+  "body": "A POS business makes you an agent for a licensed bank, mobile money operator or super-agent. Customers come to you to withdraw cash, deposit, send money or pay bills, and you earn a charge on each one. To start, you need a terminal, cash to pay out (your float), a busy spot and a CAC registration.\n\nThis guide covers start-up costs, how agents earn, the 2026 CBN rules, a worked daily example and record keeping.\n\n## What is a POS agent business?\n\nYou are the cash point for people whose money is in the bank but who need cash in hand. A customer pays by card or transfer, the money lands in your agent wallet, and you hand over cash from your box.\n\nThe bank or fintech you sign up with is called your principal. It gives you the terminal and the agent wallet, and sets the rules you must follow.\n\n## How much does it cost to start a POS business?\n\nThere is no single figure. Your start-up cost depends on the terminal, how much cash you can keep on hand, and where you set up.\n\n| Item | What it depends on |\n| --- | --- |\n| POS terminal | The model and your provider's terms |\n| Float (working cash) | How many withdrawals you expect each day |\n| Location | Rent for a kiosk or shop front in your area |\n| Branding | Umbrella, table and a sign with your principal's name |\n| CAC registration | The fee shown on the CAC portal before you pay |\n| Running items | Receipt paper, data, phone charging, a strong cash box |\n\nA [Nairametrics report from September 2025](https://nairametrics.com/2025/09/30/pos-terminals-cost-jumps-30-100-in-nigeria-over-two-years/) put entry-level terminals at about ₦21,500 and Android terminals at ₦62,000 to ₦85,000. Some providers ask for a caution deposit, or lease the device and expect higher transaction volumes. Get the full terms in writing before you pay.\n\nFloat is usually the biggest amount you need. It is not spent, but it stays tied up in the business.\n\nIf ten customers each withdraw ₦10,000 before noon, you need ₦100,000 in cash for them alone. Too little float means turning customers away.\n\n## What CBN rules apply to POS agents in 2026?\n\nThe CBN issued new [Guidelines for the Operations of Agent Banking](https://businessday.ng/business-economy/article/cbn-limits-daily-cash-withdrawals-via-agent-banking-to-n100000/) on 6 October 2025. Most rules started at once; the location and exclusivity rules started on 1 April 2026. These matter most for a small agent:\n\n- **One principal only.** Since 1 April 2026, you may work with only one bank, mobile money operator, microfinance bank or super-agent.\n- **A dedicated agent account.** Every agent transaction must go through the account or wallet your principal assigns, not your personal account.\n- **Daily limits.** A customer can cash out or cash in up to ₦100,000 a day and ₦500,000 a week through agents. Your total cash-out is capped at ₦1.2 million a day.\n- **A fixed location.** Your terminal must be geo-fenced to your registered location. A [CBN circular of 29 May 2026](https://businessday.ng/news/article/cbn-extends-pos-location-radius-by-600-sets-august-1-deadline/) widened the allowed radius from 10 to 70 metres, with enforcement from 1 August 2026.\n- **Proper premises and signs.** Work from a place no smaller than a kiosk and show your principal's name. You must never call yourself a bank, as a [Daily Trust explainer](https://dailytrust.com/explainer-understanding-pos-rules-for-agents/) sets out.\n\nSeparately, the CAC gave POS operators until 1 January 2026 to register their businesses. It warned that unregistered terminals would be seized or shut down ([BusinessDay](https://businessday.ng/news/article/cac-mandates-pos-registration-by-january-1-2026/)). Rules change often, so confirm the latest with your principal before you start.\n\n## How do POS agents make money?\n\nYou earn in two ways:\n\n1. **Your charge to the customer.** You set it, and for most agents it is the main income.\n2. **Commission from your provider.** Some providers pay commission on services such as bill payments, airtime or transfers. The rates are in your agent app or agreement.\n\nYour provider also deducts fees from your wallet on some transactions. Your real income is your charges plus commission, minus those fees.\n\n## How much do POS agents charge per withdrawal?\n\nCharges vary by area and by how hard cash is to find. In January 2025, [Techpoint Africa](https://techpoint.africa/insight/pos-withdrawal-charges-rise-as-agents-lament-cash-scarcity-and-rising-costs/) found agents charging ₦150 to ₦200 for withdrawals of ₦5,000 or less. Withdrawals of ₦5,000 to ₦10,000 cost ₦200, and some agents charged ₦300 for ₦10,000.\n\n> Check what agents near you charge today, and display your own charges clearly.\n\n## How much does a POS business make per day?\n\nHere is an **example** day at a POS stand in Nyanya, Abuja. The numbers only show the method; yours will differ. Customers pay the charges in cash.\n\n| Income | Amount |\n| --- | --- |\n| 18 withdrawals of ₦5,000 at ₦150 | ₦2,700 |\n| 14 withdrawals of ₦10,000 at ₦200 | ₦2,800 |\n| 6 withdrawals of ₦20,000 at ₦400 | ₦2,400 |\n| 8 transfers worth ₦120,000, at ₦100 each | ₦800 |\n| Commission on airtime and bills | ₦250 |\n| Less provider fees (example) | minus ₦1,140 |\n| Net income | ₦7,810 |\n\n| Daily cost | Amount |\n| --- | --- |\n| Rent (₦60,000 a month ÷ 30) | ₦2,000 |\n| Data, airtime and phone charging | ₦700 |\n| Transport to fetch cash | ₦500 |\n| Fee paid to a trader for cash | ₦500 |\n| Receipt paper | ₦200 |\n| Total | ₦3,900 |\n\nProfit for the day: ₦7,810 minus ₦3,900 = **₦3,910**. Twenty-six days like this would give ₦101,660 a month, but busy and quiet days differ.\n\nNotice the float. This agent paid out ₦350,000 in withdrawals in one day, well inside the ₦1.2 million cap. That is why float matters more than the terminal price.\n\n## What are the risks, and how do you protect yourself?\n\n- **Fake transfer alerts.** Never pay cash because of an SMS, a screenshot or the customer's phone. Pay only when the money shows in your agent wallet.\n- **Pending or failed card withdrawals.** If the terminal does not print an approved receipt, do not pay. Note the reference number and report it to your provider.\n- **Reversals and disputes.** Keep every receipt, and note the customer's phone number for large amounts. Principals must resolve customer complaints within seven working days, [Legit.ng reports](https://www.legit.ng/business-economy/economy/1705203-cbn-pos-rules-2026-8-key-affecting-cash-withdrawals-deposits-nigeria/).\n- **Network failures.** Keep the terminal and your phone charged, with backup data. When the network is down, say so and pause, rather than risk half-finished transactions.\n- **Fake notes.** Check the notes customers hand you for deposits and transfers.\n- **Cash safety.** Do not count large sums in public. Move extra cash out during the day and vary your closing routine.\n- **Your terminal, your liability.** Never lend your terminal or agent account. An agent who transacts outside the dedicated account is personally liable for any resulting fraud.\n\n## Why should you record every POS transaction daily?\n\nPOS money sits in two places: cash in your box and money in your wallet. Mistakes hide in the gap between them.\n\nAt closing, add your cash and wallet balance together, and compare it with the same total at opening. The increase should equal the day's income minus the costs you paid from the box.\n\nIn the example, the agent opened with ₦350,000 cash and ₦50,000 in the wallet, ₦400,000 in total. At closing, the box held ₦124,800 and the wallet ₦279,110, which makes ₦403,910. The ₦3,910 increase matches the day's profit exactly.\n\nIf the numbers do not match, a charge was missed, a transaction failed or cash is missing. Find it the same day, while receipts and faces are fresh. Write each transaction down as it happens: time, type, amount, charge and reference.\n\n## Which POS company should you partner with?\n\nBecause you can work with only one principal, choose carefully. Compare licensed providers on these points:\n\n- **Licence:** which CBN licence they operate under, and a written agent agreement.\n- **Terminal terms:** price, caution deposit, lease and any monthly target.\n- **Fees and commission:** what they deduct, and what they pay on bills and airtime.\n- **Settlement and reversals:** how fast money reaches your wallet, and how failed transactions come back.\n- **Support:** whether someone answers when a customer's money is stuck.\n- **Network:** how the service holds up in your area. Ask agents nearby.\n\n> Talk to two or three agents near you before you sign anything.\n\n## How KudiAI Track helps\n\nKudiAI Track is not a POS provider and does not process withdrawals. Use it as your record book: enter charges as sales and costs as expenses, by tap or by voice.\n\nIt works in English, Pidgin, Hausa, Igbo and Yoruba, shows today's real profit and keeps working offline. An attendant can have a staff login, so every entry carries their name.",
+  "faq": [
+    [
+      "Do I need CAC registration to run a POS business?",
+      "Yes. The CAC gave POS operators until 1 January 2026 to register, warning that unregistered terminals would be seized or shut down. The fee is shown on the CAC portal before you pay."
+    ],
+    [
+      "Can I work with more than one POS company?",
+      "No. Under the CBN agent banking guidelines, from 1 April 2026 an agent may work with only one principal: a bank, mobile money operator, microfinance bank or super-agent."
+    ],
+    [
+      "How much can a customer withdraw from a POS agent in a day?",
+      "Up to ₦100,000 a day and ₦500,000 a week. On your side as the agent, total cash-out is capped at ₦1.2 million a day."
+    ],
+    [
+      "How much float do I need to start?",
+      "It depends on how many withdrawals you expect. Add up the cash a busy morning needs, plus extra so you never turn customers away."
+    ]
+  ],
+  "sources": [
+    [
+      "BusinessDay: CBN limits daily cash withdrawals via agent banking to N100,000 (6 October 2025)",
+      "https://businessday.ng/business-economy/article/cbn-limits-daily-cash-withdrawals-via-agent-banking-to-n100000/"
+    ],
+    [
+      "LawPavilion: The regulatory earthquake, CBN's new rules for agent banking",
+      "https://blog.lawpavilion.com/the-regulatory-earthquake-cbns-new-rules-for-agent-banking-2/"
+    ],
+    [
+      "Daily Trust: Explainer, understanding POS rules for agents (November 2025)",
+      "https://dailytrust.com/explainer-understanding-pos-rules-for-agents/"
+    ],
+    [
+      "Legit.ng: CBN new PoS rules 2026, 8 key changes (April 2026)",
+      "https://www.legit.ng/business-economy/economy/1705203-cbn-pos-rules-2026-8-key-affecting-cash-withdrawals-deposits-nigeria/"
+    ],
+    [
+      "BusinessDay: CBN extends PoS location radius, sets August 1 deadline (29 May 2026)",
+      "https://businessday.ng/news/article/cbn-extends-pos-location-radius-by-600-sets-august-1-deadline/"
+    ],
+    [
+      "Leadership: CBN extends PoS geo-fencing enforcement deadline to August 2026",
+      "https://leadership.ng/cbn-extends-pos-geo-fencing-enforcement-deadline-to-august-2026/"
+    ],
+    [
+      "Legit.ng: CBN expands operating perimeter for PoS operators to 70 metres (May 2026)",
+      "https://www.legit.ng/business-economy/industry/1712363-cbn-expands-operating-perimeter-pos-operators-70-metres/"
+    ],
+    [
+      "BusinessDay: CAC mandates PoS registration by January 1, 2026",
+      "https://businessday.ng/news/article/cac-mandates-pos-registration-by-january-1-2026/"
+    ],
+    [
+      "News Agency of Nigeria: CAC moves against illegal PoS operators, sets Jan. 1 compliance deadline",
+      "https://nannews.ng/cac-moves-against-illegal-pos-operators-sets-jan-1-compliance-deadline/"
+    ],
+    [
+      "Nairametrics: PoS terminals cost jumps 30-100% in Nigeria over two years (30 September 2025)",
+      "https://nairametrics.com/2025/09/30/pos-terminals-cost-jumps-30-100-in-nigeria-over-two-years/"
+    ],
+    [
+      "Techpoint Africa: PoS withdrawal charges rise as agents lament cash scarcity and rising costs (January 2025)",
+      "https://techpoint.africa/insight/pos-withdrawal-charges-rise-as-agents-lament-cash-scarcity-and-rising-costs/"
+    ]
+  ]
+}

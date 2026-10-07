@@ -213,7 +213,7 @@ export default function SiteShell({ page, children }) {
             <span><b>KudiAI Track</b><small>by Amaya &amp; Co. Technologies</small></span>
           </a>
           <nav className="ks-nav" aria-label="Main">
-            {SITE.nav.map(([label, href]) => <a key={href} href={href} aria-current={here === href ? "page" : undefined}>{label}</a>)}
+            {SITE.nav.map(([label, href]) => <a key={href} href={href} aria-current={here === href || here.startsWith(`${href}/`) ? "page" : undefined}>{label}</a>)}
           </nav>
           <div className="ks-acts">
             <a className="ks-signin" href="/">Sign in</a>
@@ -259,7 +259,7 @@ export default function SiteShell({ page, children }) {
               <li><a href="/features">Features</a></li><li><a href="/verify">Verify a receipt</a></li><li><a href={SIGNUP}>Create an account</a></li><li><a href="/">Sign in</a></li>
             </ul></div>
             <div><h4>Company</h4><ul>
-              <li><a href="/about">About us</a></li><li><a href="/founder">Our founder</a></li><li><a href="/faq">FAQ</a></li><li><a href="/contact">Contact</a></li>
+              <li><a href="/about">About us</a></li><li><a href="/founder">Our founder</a></li><li><a href="/blog">Blog &amp; Insights</a></li><li><a href="/faq">FAQ</a></li><li><a href="/contact">Contact</a></li>
             </ul></div>
             <div><h4>Legal</h4><ul>
               <li><a href="/terms">Terms &amp; Conditions</a></li><li><a href="/privacy">Privacy Policy</a></li><li><a href="/delete-account">Delete an account</a></li>

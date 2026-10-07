@@ -166,6 +166,22 @@
       "destination": "/founder.html"
     },
     {
+      "source": "/blog",
+      "destination": "/blog.html"
+    },
+    {
+      "source": "/blog/",
+      "destination": "/blog.html"
+    },
+    {
+      "source": "/blog/([a-z0-9-]+)",
+      "destination": "/blog/$1.html"
+    },
+    {
+      "source": "/blog/([a-z0-9-]+)/",
+      "destination": "/blog/$1.html"
+    },
+    {
       "source": "/sb/:path*",
       "destination": "https://eztohcuzbxxxvnondxfz.supabase.co/:path*"
     },

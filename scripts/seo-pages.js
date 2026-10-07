@@ -2,9 +2,10 @@
 // AI crawlers (many of which do not run JavaScript) see the right content before the app loads.
 //   build/{home,features,about,faq,contact,terms,privacy,founder}.html — each is the app's index.html with that page's
 //   title, description, canonical, Open Graph / Twitter tags, schema.org JSON-LD and a full text version in <noscript>.
+//   build/blog.html and build/blog/<slug>.html — the Blog & Insights list and each article (BlogPosting, breadcrumb, FAQ).
 //   build/llms.txt — a plain-language summary of KudiAI Track for AI assistants (https://llmstxt.org).
 // vercel.json rewrites /home, /features, … to these files; the app then renders the page as usual.
-// Content: src/content/site.json, src/content/features.json, src/content/founderSeo.json.
+// Content: src/content/site.json, src/content/features.json, src/content/founderSeo.json, src/content/blog/.
 const fs = require("fs");
 const path = require("path");
 
@@ -33,7 +34,7 @@ const imageSize = (url) => (/\/og\/[a-z-]+\.jpg$/.test(url || "") ? { width: 120
 const imageObject = (seo) => ({ "@type": "ImageObject", url: seo.image, contentUrl: seo.image, caption: seo.imageAlt, ...(imageSize(seo.image) || {}) });
 const webPage = (type, seo, extra = {}) => ({ "@type": type, "@id": seo.url, url: seo.url, name: seo.title, description: seo.description, inLanguage: "en-NG", isPartOf: { "@id": WEBSITE["@id"] }, image: imageObject(seo), primaryImageOfPage: imageObject(seo), ...extra });
 const list = (rows) => `<ul>${rows.map(([t, d]) => `<li><b>${esc(t)}:</b> ${esc(d)}</li>`).join("")}</ul>`;
-const NAV = `<p><a href="https://kudiai.app/home">Home</a> · <a href="https://kudiai.app/features">Features</a> · <a href="https://kudiai.app/about">About</a> · <a href="https://kudiai.app/faq">FAQ</a> · <a href="https://kudiai.app/contact">Contact</a> · <a href="https://kudiai.app/">Sign in</a></p>`;
+const NAV = `<p><a href="https://kudiai.app/home">Home</a> · <a href="https://kudiai.app/features">Features</a> · <a href="https://kudiai.app/about">About</a> · <a href="https://kudiai.app/blog">Blog</a> · <a href="https://kudiai.app/faq">FAQ</a> · <a href="https://kudiai.app/contact">Contact</a> · <a href="https://kudiai.app/">Sign in</a></p>`;
 
 const src = fs.readFileSync(path.join(BUILD, "index.html"), "utf8");
 if (!/<title>[^<]*<\/title>/.test(src) || !/<meta name="description" content="[^"]*"\s*\/?>/.test(src)) {
@@ -157,6 +158,75 @@ page({
     `<p>${esc(founder.description)}</p><p>${esc(F.summary)}</p>`,
 });
 
+// ── /blog and /blog/<slug> (Blog & Insights) ──────────────────────────────────────────────────────────────────
+// The list of articles is src/content/blog/index.json; each article's words are src/content/blog/posts/<slug>.json.
+// src/site/blog/md.js is an ES module (the app bundles it too): load it here by turning its one export line into module.exports.
+const md = (() => {
+  const code = fs.readFileSync(path.join(__dirname, "..", "src", "site", "blog", "md.js"), "utf8")
+    .replace(/^export \{([^}]+)\};?\s*$/m, "module.exports = {$1};");
+  if (/^\s*(import|export)\s/m.test(code)) throw new Error("seo-pages: src/site/blog/md.js must have no imports and one export { ... } line");
+  const m = { exports: {} };
+  new Function("module", "exports", code)(m, m.exports);   // eslint-disable-line no-new-func
+  return m.exports;
+})();
+const BLOG = require("../src/content/blog/index.json");
+const abs = (u) => (String(u).startsWith("/") ? `https://kudiai.app${u}` : u);
+const postUrl = (p) => `https://kudiai.app/blog/${p.slug}`;
+const BLOG_ID = `${BLOG.seo.url}#blog`;
+fs.mkdirSync(path.join(BUILD, "blog"), { recursive: true });
+
+page({
+  out: "blog.html", seo: BLOG.seo,
+  jsonld: graph(
+    webPage("CollectionPage", BLOG.seo, {
+      mainEntity: { "@type": "ItemList", itemListElement: BLOG.posts.map((p, i) => ({ "@type": "ListItem", position: i + 1, url: postUrl(p), name: p.title })) },
+    }),
+    { "@type": "Blog", "@id": BLOG_ID, name: "KudiAI Track Blog & Insights", url: BLOG.seo.url, description: BLOG.seo.description, inLanguage: "en-NG",
+      publisher: { "@id": ORG["@id"] }, blogPost: BLOG.posts.map((p) => ({ "@id": `${postUrl(p)}#article` })) },
+  ),
+  noscript: `<h1>KudiAI Track Blog &amp; Insights</h1><p>${esc(BLOG.intro)}</p>` +
+    `<ul>${BLOG.posts.map((p) => `<li><a href="${postUrl(p)}">${esc(p.title)}</a>: ${esc(p.description)}</li>`).join("")}</ul>`,
+});
+
+for (const p of BLOG.posts) {
+  const c = require(`../src/content/blog/posts/${p.slug}.json`);
+  const blocks = md.parseBlocks(c.body);
+  const seo = { url: postUrl(p), title: `${p.seoTitle} | KudiAI Track`, description: p.description, image: p.og, imageAlt: p.imageAlt };
+  const modified = p.updated || p.date;
+  const article = {
+    "@type": "BlogPosting", "@id": `${seo.url}#article`, url: seo.url, headline: p.title, description: p.description,
+    image: [imageObject(seo), { "@type": "ImageObject", url: abs(p.image), contentUrl: abs(p.image), caption: p.imageAlt, width: 1600, height: 900 }],
+    datePublished: p.date, dateModified: modified,
+    author: { "@type": "Organization", name: "KudiAI Track team", url: "https://kudiai.app/about" },
+    publisher: { "@id": ORG["@id"] }, mainEntityOfPage: { "@id": seo.url }, isPartOf: { "@id": BLOG_ID },
+    articleSection: p.category, keywords: p.keywords.join(", "), wordCount: md.wordCount(c.body), inLanguage: "en-NG",
+  };
+  const crumbs = {
+    "@type": "BreadcrumbList", "@id": `${seo.url}#breadcrumb`,
+    itemListElement: [["Home", "https://kudiai.app/home"], ["Blog & Insights", BLOG.seo.url], [p.title, seo.url]]
+      .map(([name, item], i) => ({ "@type": "ListItem", position: i + 1, name, item })),
+  };
+  const nodes = [webPage("WebPage", seo, { breadcrumb: { "@id": crumbs["@id"] }, mainEntity: { "@id": article["@id"] }, datePublished: p.date, dateModified: modified }), article, crumbs];
+  if (c.faq && c.faq.length) nodes.push(faqPage(`${seo.url}#faq`, c.faq));
+  page({
+    out: `blog/${p.slug}.html`, seo, ogType: "article", jsonld: graph(...nodes),
+    extraMeta: [
+      `<meta property="article:published_time" content="${esc(p.date)}"/>`,
+      `<meta property="article:modified_time" content="${esc(modified)}"/>`,
+      `<meta property="article:section" content="${esc(p.category)}"/>`,
+      ...p.keywords.map((k) => `<meta property="article:tag" content="${esc(k)}"/>`),
+    ],
+    noscript:
+      `<p><a href="${BLOG.seo.url}">Blog &amp; Insights</a> / ${esc(p.category)}</p>` +
+      `<article><h1>${esc(p.title)}</h1><p>${esc(p.description)}</p><p>By the KudiAI Track team · ${esc(p.date.slice(0, 10))} · ${p.readMinutes} min read</p>` +
+      `<img src="${esc(abs(p.image))}" alt="${esc(p.imageAlt)}" width="1600" height="900"/>` +
+      md.toHtml(blocks) +
+      (c.faq && c.faq.length ? `<h2>Questions people ask</h2>${c.faq.map(([q, a]) => `<h3>${esc(q)}</h3><p>${esc(a)}</p>`).join("")}` : "") +
+      (c.sources && c.sources.length ? `<h2>Sources</h2><ol>${c.sources.filter(([, u]) => md.safeHref(u)).map(([n, u]) => `<li><a href="${esc(u)}" rel="noopener">${esc(n)}</a></li>`).join("")}</ol>` : "") +
+      `</article>`,
+  });
+}
+
 // ── /llms.txt ─────────────────────────────────────────────────────────────────────────────────────────────────
 const llms = [
   "# KudiAI Track",
@@ -192,8 +262,12 @@ const llms = [
   "- [FAQ](https://kudiai.app/faq)",
   "- [Contact](https://kudiai.app/contact)",
   "- [Founder](https://kudiai.app/founder): Solomon Leon Johnson, Founder & CEO",
+  "- [Blog & Insights](https://kudiai.app/blog): practical guides for Nigerian small businesses",
   "- [Verify a receipt](https://kudiai.app/verify): check any KudiAI receipt or statement by reference or QR code",
   "- [Privacy Policy](https://kudiai.app/privacy) · [Terms & Conditions](https://kudiai.app/terms) · [Delete an account](https://kudiai.app/delete-account)",
+  "",
+  "## Blog & Insights",
+  ...BLOG.posts.map((p) => `- [${p.title}](${postUrl(p)}): ${p.description}`),
   "",
 ].join("\n");
 fs.writeFileSync(path.join(BUILD, "llms.txt"), llms);
