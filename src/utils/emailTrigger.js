@@ -35,7 +35,7 @@ export async function sendEmailTrigger(event, data) {
         status:    "failed",
         error_msg: `HTTP ${res.status}: ${detail.slice(0, 200)}`,
         smtp_host: "kudiai-app-client",
-      }).catch(() => {});
+      }).then(() => {}, () => {});   // the query builder is thenable but has no .catch()
     }
   } catch (e) {
     // Network-level failure (CORS, offline, DNS) — log to Supabase so it's visible
@@ -45,6 +45,6 @@ export async function sendEmailTrigger(event, data) {
       status:    "failed",
       error_msg: String(e?.message || e).slice(0, 200),
       smtp_host: "kudiai-app-client",
-    }).catch(() => {});
+    })?.then(() => {}, () => {});
   }
 }

@@ -68,7 +68,7 @@ export default function AjoClientArchivedScreen({ ajoClient }) {
         <div className="w-14 h-14 rounded-2xl bg-green-500 flex items-center justify-center mx-auto mb-3">
           <span className="text-white font-black text-2xl">K</span>
         </div>
-        <p className="text-slate-400 text-sm">KudiTrack Ajo Portal</p>
+        <p className="text-slate-400 text-sm">KudiAI Track Ajo Portal</p>
       </div>
 
       <div className="w-full max-w-sm">

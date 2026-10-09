@@ -491,7 +491,7 @@ export default function ProfileCompleteFlow({ store, onClose }) {
           ))}
 
           <p style={{ textAlign: "center", fontSize: 11, color: dark ? "#4b5563" : "#9ca3af", marginTop: 6 }}>
-            None of this is required to use KudiTrack — complete at your own pace.
+            None of this is required to use KudiAI Track — complete at your own pace.
           </p>
         </div>
       </div>

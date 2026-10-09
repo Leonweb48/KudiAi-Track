@@ -1,5 +1,5 @@
 /**
- * KudiTrack AI — Inline SVG icon set
+ * KudiAI Track — Inline SVG icon set
  * All icons use a 24x24 viewBox with stroke-based rendering.
  */
 

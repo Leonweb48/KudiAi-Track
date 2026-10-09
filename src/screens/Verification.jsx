@@ -275,7 +275,7 @@ function Tier2Form({ dark, userId, profile, onSuccess }) {
         Step 2 — Enhanced verification
       </div>
       <div style={{ fontSize: 12, color: dark ? "#9ca3af" : "#6b7280", marginBottom: 6, lineHeight: 1.6 }}>
-        Required because {profile.tier2_trigger_detail || "your account requires additional due diligence."} A KudiTrack admin will review your documents within 2–3 business days.
+        Required because {profile.tier2_trigger_detail || "your account requires additional due diligence."} A KudiAI Track admin will review your documents within 2–3 business days.
       </div>
 
       {/* Why required — context-sensitive */}
@@ -321,7 +321,7 @@ function Tier2Form({ dark, userId, profile, onSuccess }) {
           Two guarantors — each independently verified
         </div>
         <div style={{ fontSize: 11, color: dark ? "#6b7280" : "#9ca3af", lineHeight: 1.5, marginTop: -8 }}>
-          Guarantors must be individuals (not companies) who can vouch for your business identity. They do not need to have a KudiTrack account.
+          Guarantors must be individuals (not companies) who can vouch for your business identity. They do not need to have a KudiAI Track account.
         </div>
         <GuarantorGroup num={1} value={g1} onChange={setG1} dark={dark} />
         <div style={{ height: 1, background: dark ? "#252525" : "#f0f0f0" }} />
@@ -341,7 +341,7 @@ function Tier2Form({ dark, userId, profile, onSuccess }) {
       </div>
 
       <div style={{ marginTop: 10, fontSize: 11, color: dark ? "#4b5563" : "#9ca3af", textAlign: "center", lineHeight: 1.5 }}>
-        After submission you continue using KudiTrack fully. No features are locked while under review.
+        After submission you continue using KudiAI Track fully. No features are locked while under review.
       </div>
     </Card>
   );
@@ -506,7 +506,7 @@ export default function Verification({ store }) {
                 ⏳ NIN submitted — under review
               </div>
               <div style={{ fontSize: 12, color: dark ? "#93c5fd" : "#3b82f6", lineHeight: 1.6 }}>
-                Your NIN has been securely received. A KudiTrack admin will review and approve your identity within 1–2 business days. You will be notified by app notification when the decision is made.
+                Your NIN has been securely received. A KudiAI Track admin will review and approve your identity within 1–2 business days. You will be notified by app notification when the decision is made.
               </div>
             </Card>
           )}

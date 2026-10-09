@@ -764,7 +764,7 @@ export function useAuth() {
           expires_at: null,
           cancel_at_period_end: false,
           cancelled_at: null,
-        }).eq("id", sub.id).catch(() => {});
+        }).eq("id", sub.id);   // resolves to { error } — never throws; the builder has no .catch()
         sub.plan = "kobo";
         sub.expires_at = null;
         sub.cancel_at_period_end = false;

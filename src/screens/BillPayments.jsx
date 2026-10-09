@@ -920,7 +920,7 @@ async function genBillStatement(allBills, catFilter, period, profile) {
     { label:"Total Amount", value:fmtN(totalAmt), bold:true, highlight:true },
   ]);
 
-  await pdf.save(`KudiTrack_Bill_Statement_${svcName.replace(/\s+/g, "_")}_${now.toISOString().slice(0, 10)}.pdf`);
+  await pdf.save(`KudiAI_Track_Bill_Statement_${svcName.replace(/\s+/g, "_")}_${now.toISOString().slice(0, 10)}.pdf`);
 }
 
 /* ─── Statement modal ────────────────────────────────────────────────────── */

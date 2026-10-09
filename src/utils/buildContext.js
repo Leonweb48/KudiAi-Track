@@ -210,6 +210,6 @@ export function buildContext(store, products, branches = [], invoices = []) {
     `BRANCHES: ${branches.length > 0 ? `${branches.length} branch(es) — ${branchLines}` : "None"}`,
     invoices.length > 0 ? buildInvoiceContext(invoices) : "INVOICES: None yet",
     ``,
-    `AI SCOPE: Focus on this owner's business data, KudiTrack features, and practical business advice. For questions about platform infrastructure, internal security implementation, or how the system works under the hood, acknowledge briefly and redirect to their actual business goals.`,
+    `AI SCOPE: Focus on this owner's business data, KudiAI Track features, and practical business advice. For questions about platform infrastructure, internal security implementation, or how the system works under the hood, acknowledge briefly and redirect to their actual business goals.`,
   ].join("\n");
 }

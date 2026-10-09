@@ -1116,7 +1116,7 @@ export default function AdminDashboard({ session, adminUser }) {
             <div className="w-7 h-7 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
               <span className="text-white text-xs font-bold">K</span>
             </div>
-            <span className="font-bold text-slate-800 text-sm">KudiTrack Admin</span>
+            <span className="font-bold text-slate-800 text-sm">KudiAI Track Admin</span>
           </div>
         </div>
         <div className="flex items-center gap-3">
