@@ -11,6 +11,7 @@ import { emailAllowed, claimEmailOnce } from "../utils/emailPref";
 import { attachOverdueEligibility, overdueEligible } from "../utils/asoOverdue";
 import { savePendingOp, getPendingCount, getPendingOps } from "../utils/offlineDb";
 import { syncPending } from "../utils/syncManager";
+import { creditFromSale } from "../utils/creditFromSale";
 
 const fireEmailTrigger = sendEmailTrigger;
 
@@ -694,6 +695,15 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
       try {
         await savePendingOp({ local_id: localId, table: "transactions", data: payload, user_id: userId });
         setPendingCount(p => p + 1);
+        // A credit sale also records what the customer owes (see utils/creditFromSale.js).
+        const owed = creditFromSale(t);
+        if (owed) {
+          const row = creditRow({ ...owed, date_given: payload.transaction_date });
+          const creditLocalId = uid();
+          await savePendingOp({ local_id: creditLocalId, table: "credits", data: row, user_id: userId }).catch(() => {});
+          setCredits(p => [{ ...row, id: `tmp-${creditLocalId}`, _pending: true }, ...p]);
+          setPendingCount(p => p + 1);
+        }
         // Leave the optimistic row in state with _pending=true so the user sees it.
         // syncPending() will replace it with the real server row on reconnect.
         return { _queued: true, id: tempId, ...payload };
@@ -732,6 +742,10 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
       });
     } else {
       setTransactions(p => p.map(tx => tx.id === tempId ? data : tx));
+      // A credit sale also records what the customer owes, so it shows in Credit outstanding, overdue alerts and
+      // reminders. Revenue is still counted once, from this transaction (see utils/creditFromSale.js).
+      const owed = creditFromSale(t, data);
+      if (owed) await addCredit({ ...owed, date_given: payload.transaction_date });
       // Notification delivered via realtime channel (staff-originated only).
       // Email sent only when a staff member records — owner self-recordings are silent.
       if (staffId) {
@@ -858,9 +872,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
   };
 
   // ── Credits ────────────────────────────────────────────────────
-  const addCredit = async (c) => {
-    const tempId = "tmp-" + uid();
-    const payload = {
+  const creditRow = (c) => ({
       user_id:              userId,
       staff_id:             staffId  || null,
       branch_id:            branchId || null,
@@ -882,12 +894,16 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
       interest_type:        c.interest_type   || null,
       interest_value:       c.interest_value  ? parseFloat(c.interest_value)  : null,
       interest_amount:      c.interest_amount ? parseFloat(c.interest_amount) : null,
-      date_given:           today(),
+      date_given:           c.date_given           || today(),
       due_date:             c.due_date             || null,
       status:               "active",
       notes:                c.notes               || "",
       items:                c.items               || null,
-    };
+  });
+
+  const addCredit = async (c) => {
+    const tempId = "tmp-" + uid();
+    const payload = creditRow(c);
 
     setCredits(p => [{ ...payload, id: tempId }, ...p]);
     setDbError(null);

@@ -3,6 +3,7 @@ import { Capacitor } from "@capacitor/core";
 import { today } from "../../utils/helpers";
 import { speakEvent } from "../../utils/tts";
 import { getLang, speakConfirmation } from "../../utils/i18n";
+import { isoDueDate } from "../../utils/creditFromSale";
 
 /* ── Fuzzy near-match ──────────────────────────────────────────── */
 function fuzzyMatch(query, target) {
@@ -317,6 +318,8 @@ export function AddTxnModal({
       note:             finalNote,
       transaction_date: txDate,
       line_items:       isSingle ? undefined : lineItems,
+      // structured due date for the matching credit record (utils/creditFromSale.js)
+      due_date:         category === "credit sale" ? isoDueDate(dueLabel, customDue) : null,
     };
   };
 

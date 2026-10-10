@@ -26,6 +26,7 @@ import ManagerStock           from "./manager/ManagerStock";
 import ManagerMe              from "./manager/ManagerMe";
 import ManagerBranchRoster      from "./manager/ManagerBranchRoster";
 import ManagerStaffManagement   from "./manager/ManagerStaffManagement";
+import { creditFromSale } from "../utils/creditFromSale";
 
 export default function ManagerDashboard({ session, staff: staffProp, pinLock }) {
   const t     = useT();
@@ -154,8 +155,11 @@ export default function ManagerDashboard({ session, staff: staffProp, pinLock })
       quantity:         parsed.quantity || 1,
       transaction_date: parsed.transaction_date || today(),
     });
-    if (error) console.error("handleVoiceSave:", error.message);
-  }, [ownerId, staffId, staff]);
+    if (error) { console.error("handleVoiceSave:", error.message); return; }
+    // A credit sale also records what the customer owes (utils/creditFromSale.js).
+    const owed = creditFromSale({ ...parsed, quantity: parsed.quantity || 1 });
+    if (owed) await store.addCredit({ ...owed, date_given: parsed.transaction_date || today() });
+  }, [ownerId, staffId, staff, store]);
 
   const todayStr  = today();
   const overdueCr = (store.credits || []).filter(c => c.status !== "paid" && c.due_date && c.due_date < todayStr).length;
