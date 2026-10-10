@@ -47,7 +47,13 @@ export const fmtDateTime = (iso) => {
   return d.toLocaleString("en-NG", { dateStyle: "medium", timeStyle: "short" });
 };
 
-export const today = () => new Date().toISOString().split("T")[0];
+// The LOCAL calendar date (YYYY-MM-DD). It used to be the UTC date, which in Nigeria (UTC+1) stamped every sale made
+// between midnight and 1 AM with yesterday's date — and Home then showed those sales in "Today's sales" but not in
+// today's profit (which uses the local day). Everything that dates or filters by "today" uses this.
+export const today = () => {
+  const d = new Date(), p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+};
 
 export const uid = () =>
   typeof crypto !== "undefined" && crypto.randomUUID

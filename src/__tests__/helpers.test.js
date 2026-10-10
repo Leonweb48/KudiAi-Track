@@ -28,13 +28,18 @@ describe("today", () => {
   it("returns a string in YYYY-MM-DD format", () => {
     expect(today()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
-  it("matches the current date", () => {
-    expect(today()).toBe(new Date().toISOString().split("T")[0]);
+  it("matches the current LOCAL date", () => {
+    const d = new Date();
+    expect(today()).toBe(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
+  });
+  it("just after midnight it is already the new day (not yesterday's UTC date)", () => {
+    jest.useFakeTimers().setSystemTime(new Date(2026, 9, 11, 0, 30));   // 00:30 local on 11 Oct
+    try { expect(today()).toBe("2026-10-11"); } finally { jest.useRealTimers(); }
   });
 });
 
 describe("filterByPeriod", () => {
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = today();   // local date, same as the app
 
   const txns = [
     { transaction_date: todayStr,   amount: 100 },
