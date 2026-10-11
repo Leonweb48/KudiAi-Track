@@ -106,6 +106,9 @@ paused all sales for about 36 h (28–30 Sept). The only health checks are the m
   works if the whitelist is set to `0.0.0.0`.
 - **Relay errors** carry `X-Relay-Error`. `ck()` treats them as network errors (retry, then hold), never as refusals.
 - **Never call ClubKonnect directly** from new code.
+- **No `CallBackURL`.** Since about 10 Oct 2026 ClubKonnect refuses every order that carries one
+  (`CALLBACK_NOT_SUPPORTED`), and every airtime order failed until `ck()` stopped sending it (a32108b). We never used
+  callbacks; orders are confirmed by lookup. The route check's dry runs show each service's normal bad-order answer.
 
 ### 9. The ClubKonnect API key
 
