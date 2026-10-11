@@ -220,14 +220,14 @@ function CircleActiveView({ detail, groupId, myUserId, reload, onChanged }) {
   const haveIPaid = (data._paidBy[myUserId] || 0) >= due;
   const creatorName = members.find((m) => m.user_id === group.creator_user_id)?.display_name || "the circle creator";
 
-  // Called by the dashboard after the creator's transaction PIN is confirmed (TransactionPinModal verifies it)
-  const executePayout = async () => {
+  // Called by the dashboard with the creator's transaction PIN; the server checks it again before moving the pot
+  const executePayout = async (_turnId, pin) => {
     const missing = data.members.filter((m) => !data.contribution_ticks[m.id]);
     if (missing.length) {
       return { blocked: true, missing_count: missing.length,
         missing_contributors: missing.map((m) => ({ client_name: m.display_name, amount_paid: data._paidBy[m.id] || 0, amount_due: due })) };
     }
-    const r = await peerEsusuFn("execute-payout", { group_id: groupId });
+    const r = await peerEsusuFn("execute-payout", { group_id: groupId, pin });
     onChanged?.();
     const nameOf = (uid) => members.find((m) => m.user_id === uid)?.display_name;
     return { ok: true, beneficiaries: (r.winners || []).map((w) => ({ name: nameOf(w.user_id) })),

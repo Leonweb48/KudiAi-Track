@@ -58,3 +58,24 @@ test("the creator gets Pay Out; a member who hasn't paid gets Pay my contributio
   expect(text).toContain("Pay Out");
   expect(text).toMatch(/Pay my .*5,000.* contribution/);
 });
+
+test("Pay Out asks for the PIN and sends it with the payout (the server checks it again)", async () => {
+  const allPaid = { ...detail, is_creator: true,
+    contributions: [{ user_id: "u1", amount: 5000 }, { user_id: "u2", amount: 5000 }, { user_id: "u3", amount: 5000 }] };
+  const calls = [];
+  supabase.functions.invoke.mockImplementation(async (fn, { body }) => {
+    calls.push({ fn, ...body });
+    if (fn === "pin-manager") return { data: { success: true }, error: null };
+    if (body.action === "execute-payout") return { data: { ok: true, winners: [{ user_id: "u1", amount: 15000 }], per_winner_amount: 15000, pot_amount: 15000 }, error: null };
+    return { data: allPaid, error: null };
+  });
+  await act(async () => { root.render(<PeerCircleDashboard groupId="g1" myUserId="u1" />); });
+  await act(async () => { await Promise.resolve(); });
+  const button = (label) => [...host.ownerDocument.querySelectorAll("button")].find((b) => b.textContent.trim() === label);
+  await act(async () => { button("Pay Out").click(); });
+  for (const d of "2468") await act(async () => { button(d).click(); });
+  await act(async () => { await new Promise((r) => setTimeout(r, 400)); });   // the PIN pad checks 150 ms after the 4th digit
+  const payout = calls.find((c) => c.action === "execute-payout");
+  expect(payout).toMatchObject({ group_id: "g1", pin: "2468" });
+  expect(host.ownerDocument.body.textContent).toContain("Payout Completed");
+});
