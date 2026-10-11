@@ -2921,7 +2921,9 @@ serve(async (req) => {
       // made-up-account probe can't see.
       const dry = async (path: string, key: string, extra: Record<string, string>) => {
         try {
-          const d = await ck(path, { APIKey: key, MobileNumber: "08000000000", RequestID: `KUDIAI-DRYRUN-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, CallBackURL: "https://kudiai.app/", ...extra }, { retries: 0, timeoutMs: 15000 });
+          const params: Record<string, string> = { APIKey: key, MobileNumber: "08000000000", RequestID: `KUDIAI-DRYRUN-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, CallBackURL: "https://kudiai.app/", ...extra };
+          if (params.CallBackURL === "") delete params.CallBackURL;   // "" = send no callback at all
+          const d = await ck(path, params, { retries: 0, timeoutMs: 15000 });
           if (typeof d._raw === "string") {
             // what the error page actually says (ClubKonnect's own text, tags stripped) — it may name the reason
             const txt = d._raw.replace(/<style[\s\S]*?<\/style>|<script[\s\S]*?<\/script>/gi, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 240);
@@ -2930,11 +2932,17 @@ serve(async (req) => {
           return String(d.status ?? d.Status ?? JSON.stringify(Object.keys(d)));
         } catch (e) { return `unreachable: ${(e as Error).message}`; }
       };
-      const [dryV1, dryV3, dryV1Net, dryV1Plan] = await Promise.all([
+      const [dryV1, dryV3, dryV1Net, dryV1Plan, cbNone, cbPath, cbHttp, cbV3] = await Promise.all([
         dry("APIAirtimeV1.asp", AIRTIME_K, { MobileNetwork: "01", Amount: "1" }),
         dry("APIAirtimeV3.asp", AIRTIME_K, { MobileNetwork: "01", Amount: "1" }),
         dry("APIAirtimeV1.asp", AIRTIME_K, { MobileNetwork: "99", Amount: "50" }),
         dry("APIDatabundleV1.asp", DATA_K, { MobileNetwork: "01", DataPlan: "KUDIAI-NO-SUCH-PLAN" }),
+        // Since ~10 Oct 2026 the bad-network order above answers CALLBACK_NOT_SUPPORTED (was INVALID_MOBILENETWORK), and
+        // real airtime orders fail the same way. Which callback form gets past that check? (Still a made-up network.)
+        dry("APIAirtimeV1.asp", AIRTIME_K, { MobileNetwork: "99", Amount: "50", CallBackURL: "" }),
+        dry("APIAirtimeV1.asp", AIRTIME_K, { MobileNetwork: "99", Amount: "50", CallBackURL: "https://kudiai.app/api/ck-callback" }),
+        dry("APIAirtimeV1.asp", AIRTIME_K, { MobileNetwork: "99", Amount: "50", CallBackURL: "http://kudiai.app/" }),
+        dry("APIAirtimeV3.asp", AIRTIME_K, { MobileNetwork: "99", Amount: "50" }),
       ]);
       // Is each service's key accepted? The wallet-balance lookup checks UserID + APIKey (catalogue lists don't check
       // credentials at all). Reports only "valid" or ClubKonnect's status — never the balance.
@@ -2978,7 +2986,8 @@ serve(async (req) => {
       return json({
         canary,
         purchaseService,
-        dryRun: { airtimeV1: dryV1, airtimeV3: dryV3, airtimeV1BadNetwork: dryV1Net, dataV1BadPlan: dryV1Plan },
+        dryRun: { airtimeV1: dryV1, airtimeV3: dryV3, airtimeV1BadNetwork: dryV1Net, dataV1BadPlan: dryV1Plan,
+          badNetworkNoCallback: cbNone, badNetworkCallbackPath: cbPath, badNetworkCallbackHttp: cbHttp, airtimeV3BadNetwork: cbV3 },
         keys,
         relay,
         account: { userIdSet: !!USER_ID, userIdLooksLikeCk: /^CK\d+$/i.test(USER_ID), egressIp, callsGoVia: relay.switchOn ? "relay" : "direct" },
