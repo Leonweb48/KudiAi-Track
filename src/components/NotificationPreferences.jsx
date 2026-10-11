@@ -366,7 +366,7 @@ export default function NotificationPreferences({ userId, onClose, portal = "own
             {portal === "owner" && (
               <PrefRow
                 label="Summary & Alert Emails"
-                sub="Daily summary, low-stock, and bill payment emails"
+                sub="Daily summary and bill payment emails"
                 on={prefs.email_enabled}
                 onChange={update("email_enabled")}
               />

@@ -2,6 +2,12 @@ import { createClient } from "@supabase/supabase-js";
 import nodemailer from "nodemailer";
 import { escapeHtml, escapeDeep, decodeEntities, cleanSubject } from "./_lib/escapeHtml.js";
 import { handleMoneyEmail } from "./_lib/moneyEmails.js";
+
+// Stock and credit events are in-app notifications only (owner's rule 2026-10-11) — refused here even if an old app asks.
+const IN_APP_ONLY_EVENTS = new Set([
+  "stock_entry", "low_stock_alert",
+  "credit_added", "credit_repayment", "credit_fully_paid", "credit_extended",
+]);
 import { singleEmail, countRecipients, overQuota } from "./_lib/relayLimits.js";
 
 const SUPABASE_URL = process.env.REACT_APP_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -301,6 +307,12 @@ export default async function handler(req, res) {
 
   const { event, data: rawData } = req.body || {};
   if (!event) return res.status(400).json({ error: "event required" });
+
+  // Owner's rule (2026-10-11): stock and credit are in-app notifications only, never email. The current app no longer
+  // asks for these; this also stops app builds that haven't updated yet.
+  if (IN_APP_ONLY_EVENTS.has(event)) {
+    return res.status(200).json({ ok: true, event, queued: 0, note: "in-app only — not emailed" });
+  }
 
   // Enrich with authenticated user email, then HTML-escape EVERY string in the
   // payload once, here. Nothing a user typed (names, notes, descriptions,

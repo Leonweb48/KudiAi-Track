@@ -1,9 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../utils/supabase";
 import { uid, today } from "../utils/helpers";
-import { sendEmailTrigger } from "../utils/emailTrigger";
 import { notify, notifyBranchManager, notifyBranchStaff } from "../lib/notifyEngine";
-import { emailAllowed } from "../utils/emailPref";
 
 function invCacheKey(userId, staffId) {
   return `kt_inv_${userId}${staffId ? `_${staffId}` : ""}`;
@@ -108,15 +106,14 @@ export function useInventory(userId, staffId = null, branchId = null, staffName 
     const { error } = await supabase.from("products").insert(prod);
     if (error) { setDbError(error.message); return false; }
     if (prod.quantity > 0) {
-      sendEmailTrigger("stock_entry", {
-        owner_id: userId,
-        staff_id: staffId || null,
-        branch_id: effectiveBranch,
-        product_name: prod.product_name,
-        quantity: prod.quantity,
-        category: prod.category || null,
-        entry_type: "new_product",
-      });
+      // In-app only (owner's rule 2026-10-11): stock entries notify in the app, never by email. A product added with
+      // opening stock by staff/manager tells the owner (and the branch manager); the owner's own entry needs no alert.
+      if (staffId) {
+        const entryData = { ownerId: userId, staffName: staffName || "Staff", productName: prod.product_name,
+          productId: prod.id, quantity: prod.quantity, branchId: effectiveBranch };
+        notify({ type: "stock_entry", userId, originUserId: staffId, data: entryData });
+        if (effectiveBranch) notifyBranchManager(userId, effectiveBranch, { type: "stock_entry", originUserId: staffId, data: entryData });
+      }
       // Auto-record opening stock cost as a financial transaction so it flows
       // into cash flow and working capital without manual entry.
       if (prod.cost_price > 0) {
@@ -142,7 +139,7 @@ export function useInventory(userId, staffId = null, branchId = null, staffName 
     }
     setProducts(prev => [...prev, prod].sort((a, b) => a.product_name.localeCompare(b.product_name)));
     return true;
-  }, [userId, staffId, branchId]);
+  }, [userId, staffId, staffName, branchId]);
 
   const updateProduct = useCallback(async (id, data) => {
     if (!supabase) return false;
@@ -309,15 +306,7 @@ export function useInventory(userId, staffId = null, branchId = null, staffName 
         client_txn_id:    uid(),
       });
 
-      sendEmailTrigger("stock_entry", {
-        owner_id:     userId,
-        staff_id:     staffId || null,
-        branch_id:    branchId || null,
-        product_name: product.product_name,
-        quantity:     absQty,
-        category:     product.category || null,
-        entry_type:   "restock",
-      });
+      // In-app only (owner's rule 2026-10-11): restocks are never emailed — staff/manager restocks notify in the app (branch_restock below).
     }
 
     if (type === "restock") {
@@ -361,20 +350,9 @@ export function useInventory(userId, staffId = null, branchId = null, staffName 
     ));
 
     if (newQty <= product.low_stock_threshold) {
-      // Fire email + push once when crossing below threshold (not on every subsequent sale)
+      // Alert once when crossing below the threshold (not on every subsequent sale).
+      // In-app only (owner's rule 2026-10-11): the low-stock alert is a notification, never an email.
       if (product.quantity > product.low_stock_threshold) {
-        emailAllowed(userId).then(ok => {
-          if (!ok) return;
-          sendEmailTrigger("low_stock_alert", {
-            owner_id:      userId,
-            staff_id:      staffId || null,
-            product_name:  product.product_name,
-            current_stock: newQty,
-            reorder_level: product.low_stock_threshold,
-            category:      product.category || null,
-            sku:           product.sku || "",
-          });
-        });
         notify({
           type:         "low_stock",
           userId,

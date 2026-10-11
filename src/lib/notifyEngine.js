@@ -370,6 +370,15 @@ const EVENTS = {
     dedupeKey: null,
   },
 
+  // ── Stock added by staff/manager (in-app only — stock entries are never emailed) ──
+  stock_entry: {
+    priority: "normal", category: "stock",
+    title: (d) => `New stock: ${d.productName || "Product"}`,
+    body:  (d) => `${d.staffName || "Staff"} added ${d.productName || "a product"} with ${d.quantity} unit${d.quantity === 1 ? "" : "s"} in stock`,
+    deepLink:  (d) => ({ tab: "stock", id: d.productId }),
+    dedupeKey: null,
+  },
+
   // ── Branch manager-received ──────────────────────────────────────────────
   branch_restock: {
     priority: "high", category: "stock",
@@ -514,6 +523,7 @@ const MANAGER_DEEP_LINKS = {
   manual_deposit:             { tab: "home" },
   staff_collection:           { tab: "home" },
   branch_restock:             (d) => ({ tab: "stock", id: d.productId }),
+  stock_entry:                (d) => ({ tab: "stock", id: d.productId }),
   assigned_client_withdrawal: { tab: "records" },
   assigned_client_deposit:    { tab: "records" },
 };

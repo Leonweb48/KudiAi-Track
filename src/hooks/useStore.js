@@ -953,24 +953,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
           module:  "credit",
           details: `₦${parseFloat(c.total_amount || 0).toLocaleString()} outstanding${due}` });
       }
-      fireEmailTrigger("credit_added", {
-        owner_id:        userId,
-        owner_email:     authEmailRef.current || profile.email || "",
-        staff_id:        staffId  || null,
-        staff_name:      staffName || "",
-        business_name:   profile.business_name || "",
-        business_phone:  profile.phone || "",
-        customer_name:   c.customer_name || "",
-        customer_email:  c.email  || "",
-        customer_phone:  c.phone  || "",
-        customer_address:c.address || "",
-        total_amount:    parseFloat(c.total_amount || 0),
-        due_date:        c.due_date || null,
-        notes:           c.notes || "",
-        nin:             c.nin   || "",
-        next_of_kin:     c.next_of_kin || "",
-        next_of_kin_phone: c.next_of_kin_phone || "",
-      });
+      // In-app only (owner's rule 2026-10-11): stock and credit are never emailed — the in-app notification covers it.
       if (staffId) {
         const creditData = { ownerId: userId, staffName: staffName || "Staff", amount: parseFloat(c.total_amount) || 0, customerName: c.customer_name || "", creditId: data.id };
         notify({ type: "credit_created", userId, originUserId: staffId, data: creditData });
@@ -1018,43 +1001,12 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     if (dp) setDebtPayments(prev => prev.some(p => p.id === dp.id) ? prev : [dp, ...prev]);
     if (updated) {
 
-        fireEmailTrigger("credit_repayment", {
-          payment_id:     dp?.id || "",     // server looks up the stored reference + balance-after
-          customer_name:  updated.customer_name || "",
-          customer_email: updated.email         || "",
-          customer_phone: updated.phone         || "",
-          amount_paid:    amount,
-          outstanding:    updated.outstanding,
-          total_amount:   updated.total_amount,
-          status:         updated.status,
-          payment_method: paymentMethod || "cash",
-          notes:          notes         || "",
-          owner_id:       userId,
-          owner_email:    authEmailRef.current || profile.email || "",
-          business_name:  profile.business_name || "",
-          business_phone: profile.phone || "",
-          staff_id:       staffId  || "",
-          staff_name:     staffName || "",
-        });
+        // In-app only (owner's rule 2026-10-11): stock and credit are never emailed — the in-app notification covers it.
         const repayData = { ownerId: userId, customerName: updated.customer_name || "", amount, outstanding: updated.outstanding, creditId: id };
         notify({ type: "credit_repayment", userId, originUserId: staffId || userId, data: repayData });
         if (branchId) notifyBranchManager(userId, branchId, { type: "credit_repayment", originUserId: staffId || userId, data: repayData });
         if (updated.status === "paid") {
-          fireEmailTrigger("credit_fully_paid", {
-            payment_id:     dp?.id || "",
-            owner_id:       userId,
-            owner_email:    authEmailRef.current || profile.email || "",
-            business_name:  profile.business_name || "",
-            business_phone: profile.phone || "",
-            customer_name:  updated.customer_name || "",
-            customer_email: updated.email  || "",
-            customer_phone: updated.phone  || "",
-            total_amount:   updated.total_amount,
-            amount_paid:    amount,
-            payment_method: paymentMethod || "cash",
-            staff_id:       staffId || null,
-            staff_name:     staffName || "",
-          });
+          // In-app only (owner's rule 2026-10-11): stock and credit are never emailed — the in-app notification covers it.
           const doneData = { ownerId: userId, customerName: updated.customer_name || "", total: updated.total_amount, creditId: id };
           notify({ type: "credit_completed", userId, originUserId: staffId || userId, data: doneData });
           if (branchId) notifyBranchManager(userId, branchId, { type: "credit_completed", originUserId: staffId || userId, data: doneData });
@@ -1215,18 +1167,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
   const addExtraCredit = async (id, updates, { amount, outstanding, customerName } = {}) => {
     const result = await updateCredit(id, updates);
     if (!result.error) {
-      const credit = credits.find(c => c.id === id);
-      // Email owner always; also email customer if they have an address on file
-      fireEmailTrigger("credit_extended", {
-        owner_id:       userId,
-        owner_email:    authEmailRef.current,
-        customer_email: credit?.email          || "",
-        customer_name:  customerName           || credit?.customer_name || "",
-        staff_name:     staffName              || "",
-        business_name:  profile?.business_name || "",
-        amount:         amount                 || 0,
-        outstanding:    outstanding            || 0,
-      });
+      // In-app only (owner's rule 2026-10-11): stock and credit are never emailed — the in-app notification covers it.
       if (staffId) {
         const extData = {
           ownerId:      userId,
