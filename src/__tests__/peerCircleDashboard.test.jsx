@@ -79,3 +79,21 @@ test("Pay Out asks for the PIN and sends it with the payout (the server checks i
   expect(payout).toMatchObject({ group_id: "g1", pin: "2468" });
   expect(host.ownerDocument.body.textContent).toContain("Payout Completed");
 });
+
+test("Pay my contribution asks for the PIN and sends it (the server checks it again)", async () => {
+  const calls = [];
+  supabase.functions.invoke.mockImplementation(async (fn, { body }) => {
+    calls.push({ fn, ...body });
+    if (fn === "pin-manager") return { data: { success: true }, error: null };
+    if (body.action === "pay-contribution") return { data: { ok: true }, error: null };
+    return { data: detail, error: null };
+  });
+  await act(async () => { root.render(<PeerCircleDashboard groupId="g1" myUserId="u3" />); });
+  await act(async () => { await Promise.resolve(); });
+  const button = (match) => [...host.ownerDocument.querySelectorAll("button")].find((b) => match.test(b.textContent.trim()));
+  await act(async () => { button(/^Pay my .* contribution$/).click(); });
+  expect(calls.some((c) => c.action === "pay-contribution")).toBe(false);   // nothing is paid before the PIN
+  for (const d of "2468") await act(async () => { button(new RegExp(`^${d}$`)).click(); });
+  await act(async () => { await new Promise((r) => setTimeout(r, 400)); });   // the PIN pad checks 150 ms after the 4th digit
+  expect(calls.find((c) => c.action === "pay-contribution")).toMatchObject({ group_id: "g1", amount: 5000, pin: "2468" });
+});

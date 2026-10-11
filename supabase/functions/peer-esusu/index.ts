@@ -98,6 +98,30 @@ serve(async (req: Request) => {
     global: { headers: { Authorization: `Bearer ${_jwt}` } }, auth: { persistSession: false },
   });
 
+  // Both money-moving actions (paying into a circle, paying out its pot) need the caller's transaction PIN, checked HERE
+  // (not only in the app) by the same PIN service as wallet transfers, so wrong tries count toward the same lockout.
+  // Returns null when the PIN is right, else the response to send.
+  const requireTxnPin = async (pin: unknown, what: string): Promise<Response | null> => {
+    if (!pin || !/^\d{4,6}$/.test(String(pin))) {
+      return json({ ok: false, error: `Enter your transaction PIN to ${what}`, code: "pin_required" }, 400);
+    }
+    const pv = await fetch(`${SUPABASE_URL}/functions/v1/pin-manager`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${_jwt}`, apikey: SUPABASE_ANON_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "verify_txn_pin", pin: String(pin) }),
+    }).catch(() => null);
+    const pj = pv ? await pv.json().catch(() => ({})) : {};
+    if (pj?.success) return null;
+    return json({
+      ok: false,
+      error: !pv ? "Couldn't check your PIN — please try again."
+           : pj?.locked ? "Too many PIN attempts — try again later."
+           : pj?.error === "Transaction PIN not set" ? "Set a transaction PIN first (Settings → Security)."
+           : "Incorrect PIN.",
+      code: !pv ? "pin_unavailable" : pj?.locked ? "pin_locked" : "pin_bad",
+    }, 403);
+  };
+
   // ── search-wallet-user ────────────────────────────────────────────────
   if (action === "search-wallet-user") {
     const { account_number } = body as { account_number?: string };
@@ -283,8 +307,10 @@ serve(async (req: Request) => {
 
   // ── pay-contribution ──────────────────────────────────────────────────
   if (action === "pay-contribution") {
-    const { group_id, amount } = body as { group_id?: string; amount?: number };
+    const { group_id, amount, pin } = body as { group_id?: string; amount?: number; pin?: string };
     if (!group_id || !(Number(amount) > 0)) return json({ error: "group_id and amount required" }, 400);
+    const pinDenied = await requireTxnPin(pin, "pay your contribution");
+    if (pinDenied) return pinDenied;
 
     const { data: rpcResult, error: rpcErr } = await asCaller().rpc("peer_esusu_pay_contribution", {
       p_group_id: group_id, p_amount_kobo: Math.round(Number(amount) * 100),
@@ -310,27 +336,9 @@ serve(async (req: Request) => {
     const { group_id, pin } = body as { group_id?: string; pin?: string };
     if (!group_id) return json({ error: "group_id required" }, 400);
 
-    // The payout moves the whole pot out of the creator's wallet: it needs the creator's transaction PIN, checked HERE
-    // (not only in the app) by the same PIN service as wallet transfers, so wrong tries count toward the same lockout.
-    if (!pin || !/^\d{4,6}$/.test(String(pin))) {
-      return json({ ok: false, error: "Enter your transaction PIN to pay out", code: "pin_required" }, 400);
-    }
-    const pv = await fetch(`${SUPABASE_URL}/functions/v1/pin-manager`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${_jwt}`, apikey: SUPABASE_ANON_KEY, "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "verify_txn_pin", pin: String(pin) }),
-    }).catch(() => null);
-    const pj = pv ? await pv.json().catch(() => ({})) : {};
-    if (!pj?.success) {
-      return json({
-        ok: false,
-        error: !pv ? "Couldn't check your PIN — please try again."
-             : pj?.locked ? "Too many PIN attempts — try again later."
-             : pj?.error === "Transaction PIN not set" ? "Set a transaction PIN first (Settings → Security)."
-             : "Incorrect PIN.",
-        code: !pv ? "pin_unavailable" : pj?.locked ? "pin_locked" : "pin_bad",
-      }, 403);
-    }
+    // The payout moves the whole pot out of the creator's wallet
+    const pinDenied = await requireTxnPin(pin, "pay out");
+    if (pinDenied) return pinDenied;
 
     const { data: rpcResult, error: rpcErr } = await asCaller().rpc("peer_esusu_execute_payout", { p_group_id: group_id });
     if (rpcErr) return json({ ok: false, error: rpcErr.message }, 500);

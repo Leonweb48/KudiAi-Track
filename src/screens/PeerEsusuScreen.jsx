@@ -5,6 +5,7 @@ import Icon from "../components/Icon";
 import { BottomSheet } from "../components/WalletPanel";
 import { friendlyError } from "../utils/errorMessages";
 import EsusuRotationDashboard from "../components/EsusuRotationDashboard";
+import TransactionPinModal from "../components/TransactionPinModal";
 
 async function peerEsusuFn(action, body = {}) {
   const { data, error } = await supabase.functions.invoke("peer-esusu", { body: { action, ...body } });
@@ -216,6 +217,7 @@ function CircleActiveView({ detail, groupId, myUserId, reload, onChanged }) {
   const data = useMemo(() => toRotationData(detail), [detail]);
   const [busy, setBusy] = useState(false);
   const [err,  setErr]  = useState("");
+  const [askPin, setAskPin] = useState(false);   // paying in needs the member's transaction PIN
   const due       = Number(group.contribution_amount || 0);
   const haveIPaid = (data._paidBy[myUserId] || 0) >= due;
   const creatorName = members.find((m) => m.user_id === group.creator_user_id)?.display_name || "the circle creator";
@@ -234,10 +236,11 @@ function CircleActiveView({ detail, groupId, myUserId, reload, onChanged }) {
       per_winner_amount: r.per_winner_amount, pot_amount: r.pot_amount };
   };
 
-  const payMyShare = async () => {
+  const payMyShare = async (pin) => {
+    setAskPin(false);
     setBusy(true); setErr("");
     try {
-      await peerEsusuFn("pay-contribution", { group_id: groupId, amount: due });
+      await peerEsusuFn("pay-contribution", { group_id: groupId, amount: due, pin });
       await reload();
     } catch (e) {
       setErr(friendlyError(e));
@@ -264,11 +267,14 @@ function CircleActiveView({ detail, groupId, myUserId, reload, onChanged }) {
       {data.round && (haveIPaid ? (
         <p className="text-[12px] text-green-600 dark:text-green-400 font-semibold">You've paid for this payout ✓</p>
       ) : (
-        <button onClick={payMyShare} disabled={busy}
+        <button onClick={() => { setErr(""); setAskPin(true); }} disabled={busy}
           className="w-full py-3.5 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99]">
           {busy ? "Paying…" : `Pay my ${fmt(due)} contribution`}
         </button>
       ))}
+      {askPin && (
+        <TransactionPinModal title="Confirm Contribution" onApprove={payMyShare} onCancel={() => setAskPin(false)} />
+      )}
     </div>
   );
 }
