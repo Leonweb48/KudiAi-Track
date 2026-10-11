@@ -31,6 +31,7 @@ import { InAppBrowser, ToolBarType } from "@capgo/capacitor-inappbrowser";
 import { friendlyError } from "../utils/errorMessage";
 import { useToast } from "../components/Toast";
 import { overdueEligible } from "../utils/asoOverdue";
+import { daysDiff } from "../utils/localDays";
 
 const BLANK = {
   full_name: "", contribution_frequency: "daily", contribution_amount: "",
@@ -81,12 +82,6 @@ async function uploadPhoto(file, id) {
   return `${data.publicUrl}?v=${Date.now()}`;
 }
 
-function daysDiff(dateStr) {
-  if (!dateStr) return 0;
-  const t = new Date(); t.setHours(0, 0, 0, 0);
-  const d = new Date(dateStr);
-  return Math.floor((t - d) / 86400000);
-}
 
 function getMissedPayments(c) {
   if (!c.registration_date || !c.contribution_amount || c.contribution_amount <= 0) return 0;
