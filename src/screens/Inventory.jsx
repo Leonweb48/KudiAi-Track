@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { canSellPlans } from "../utils/platform";
 import { useDeepLink } from "../utils/deepLinkBus";
-import { fmt } from "../utils/helpers";
+import { fmt, today } from "../utils/helpers";
 import { TxRow } from "../components/shared/TxRow";
 import Field from "../components/shared/Field";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
@@ -240,7 +240,7 @@ function MovementModal({ product, movType, onRecord, onClose, saving }) {
             onChange={e => setPrice(e.target.value)}
             min="0" step="0.01"
           />
-          <Field label="Notes (optional)" value={notes} onChange={e => setNotes(e.target.value)} placeholder="e.g. Customer: Amara Jones" />
+          <Field label="Notes (optional)" value={notes} onChange={e => setNotes(e.target.value)} placeholder={movType === "restock" ? "e.g. Supplier: Mile 12 market" : "e.g. Customer: Mrs Bello"} />
         </div>
 
         <button onClick={() => onRecord({ product_id: product.id, type: movType, quantity: qty, unit_price: price, notes })}
@@ -707,7 +707,7 @@ function CostingSheet({ prod, onSave, onClose, onDiscard, saving, discarding }) 
 }
 
 /* ── Main Screen ──────────────────────────────────────────────── */
-export default function Inventory({ inventory, isOwner = true, canAdd, plan = "starter", onUpgrade, branches = [], staffBranchId = null, staffList = [] }) {
+export default function Inventory({ inventory, isOwner = true, canAdd, plan = "starter", onUpgrade, branches = [], staffBranchId = null, staffList = [], onRecordSale }) {
   // canAdd allows staff to add new products without full owner privileges
   const canAddStock = canAdd !== undefined ? canAdd : isOwner;
   const t = useT();
@@ -804,8 +804,26 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
   const handleRecord = async (movData) => {
     setSaving(true);
     const movType = movData.type;
+    const product = products.find(p => p.id === movData.product_id);
     const ok = await recordMovement(movData);
     setSaving(false);
+    // A sale recorded HERE must also be booked as a sale (Today's sales, profit, the Sales list). recordMovement only
+    // moves stock — the Sales screen books its own sales and calls it just to deduct stock, so the booking can't live
+    // there. Cost price is snapshotted now, like any sale (profit never re-derived from a later cost price).
+    if (ok && movType === "sale" && onRecordSale && product) {
+      const qty   = Math.abs(parseInt(movData.quantity) || 0);
+      const price = parseFloat(movData.unit_price) || 0;
+      if (qty > 0 && price > 0) {
+        onRecordSale({
+          type: "in", category: "sale", amount: qty * price, unit_price: price,
+          item_name: product.product_name, quantity: qty,
+          cost_price: product.cost_price ?? null,
+          customer_name: "", payment_type: "cash",
+          note: String(movData.notes || "").trim() || "Sold from Stock",
+          transaction_date: today(),
+        });
+      }
+    }
     if (ok) {
       setMovModal(null);
       if (movType === "restock") speakConfirmation("stockIn", getLang());

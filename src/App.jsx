@@ -693,7 +693,8 @@ export default function App() {
                     plan={plan}
                     onUpgrade={openUpgrade}
                     branches={branchesHook.branches}
-                    staffList={store.staffList || []} /></S>,
+                    staffList={store.staffList || []}
+                    onRecordSale={store.addTransaction} /></S>,
     bills:        <S><BillPayments store={store} plan={plan} session={session}
                     walletOnly
                     markup={canDo(plan, "apiAccess") ? 1.01 : 1.098}

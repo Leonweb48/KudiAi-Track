@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../utils/supabase";
-import { uid } from "../utils/helpers";
+import { uid, today } from "../utils/helpers";
 import { sendEmailTrigger } from "../utils/emailTrigger";
 import { notify, notifyBranchManager, notifyBranchStaff } from "../lib/notifyEngine";
 import { emailAllowed } from "../utils/emailPref";
@@ -134,7 +134,7 @@ export function useInventory(userId, staffId = null, branchId = null, staffName 
           customer_name:    "",
           payment_type:     "cash",
           note:             "Opening stock (auto)",
-          transaction_date: new Date().toISOString().slice(0, 10),
+          transaction_date: today(),   // local date — toISOString() is UTC, a day behind 00:00–01:00
           bill_status:      null,
           client_txn_id:    uid(),
         });
@@ -304,7 +304,7 @@ export function useInventory(userId, staffId = null, branchId = null, staffName 
         customer_name:    "",
         payment_type:     "cash",
         note:             "Stock restock (auto)",
-        transaction_date: new Date().toISOString().slice(0, 10),
+        transaction_date: today(),   // local date — toISOString() is UTC, a day behind 00:00–01:00
         bill_status:      null,
         client_txn_id:    uid(),
       });

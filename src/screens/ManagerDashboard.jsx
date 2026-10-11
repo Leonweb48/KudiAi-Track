@@ -240,7 +240,7 @@ IMPORTANT: Net profit, cost prices, and business-wide figures are owner-private 
         />
       );
       case "stock":   return (
-        <ManagerStock inventory={inventory} staff={staff} livePerms={livePerms} plan={plan} />
+        <ManagerStock inventory={inventory} staff={staff} livePerms={livePerms} plan={plan} onRecordSale={store.addTransaction} />
       );
       case "me":      return (
         <ManagerMe

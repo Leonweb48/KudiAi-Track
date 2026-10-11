@@ -202,7 +202,7 @@ If asked about business-wide figures (total business revenue, all staff performa
       case "home":    return <StaffHome    staff={staff} store={store} inventory={inventory} plan={plan} onGoTo={goTo} onVoiceOpen={() => setVoiceOpen(true)} onAddCash={openAddTxn} canAddTxn={canAddTxn} />;
       case "sales":   return <StaffSales   store={store} staff={staff} session={session} livePerms={livePerms} initialSub={subNav} initialData={subData} onVoiceOpen={() => setVoiceOpen(true)} inventory={inventory} onAddCash={openAddTxn} plan={plan} />;
       case "records": return <StaffRecords store={store} staff={staff} livePerms={livePerms} initialSub={subNav} plan={plan} invoiceHook={invoiceHook} inventory={inventory} ownerId={ownerId} />;
-      case "stock":   return <StaffStock   inventory={inventory} staff={staff} livePerms={livePerms} plan={plan} />;
+      case "stock":   return <StaffStock   inventory={inventory} staff={staff} livePerms={livePerms} plan={plan} onRecordSale={store.addTransaction} />;
       case "me":      return <StaffMe      staff={staff} session={session} store={store} inventory={inventory} livePerms={livePerms} staffId={staffId} pinLock={pinLock} plan={plan} initialView={subNav} onStaffUpdate={p => setStaffPatch(prev => ({ ...prev, ...p }))} />;
       default:        return null;
     }

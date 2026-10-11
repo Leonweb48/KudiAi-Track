@@ -4,7 +4,7 @@ import Inventory from "../Inventory";
 /* ═══════════════════════════════════════════════════════════════════
    STOCK TAB
 ═══════════════════════════════════════════════════════════════════ */
-export default function StaffStock({ inventory, staff, livePerms, plan }) {
+export default function StaffStock({ inventory, staff, livePerms, plan, onRecordSale }) {
   const planAllows = canDo(plan, "inventory");
   const allowed    = livePerms.filter(p => p.can_view).map(p => p.module);
   const canView    = planAllows && allowed.includes("inventory");
@@ -28,7 +28,7 @@ export default function StaffStock({ inventory, staff, livePerms, plan }) {
   }
   return (
     <div className="h-full overflow-hidden">
-      <Inventory inventory={inventory} isOwner={false} canAdd={canAdd} plan={plan || "starter"} staffBranchId={staff?.branch_id || null} />
+      <Inventory inventory={inventory} isOwner={false} canAdd={canAdd} plan={plan || "starter"} staffBranchId={staff?.branch_id || null} onRecordSale={onRecordSale} />
     </div>
   );
 }
