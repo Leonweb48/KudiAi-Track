@@ -72,7 +72,11 @@ async function ck(
   opts: { timeoutMs?: number; retries?: number } = {},
 ): Promise<Record<string, unknown>> {
   const { timeoutMs = 45000, retries = 2 } = opts;
-  const qs  = new URLSearchParams({ UserID: USER_ID, ...params });
+  // Never send CallBackURL. Since ~10 Oct 2026 ClubKonnect refuses every order that carries one with CALLBACK_NOT_SUPPORTED
+  // (proven with free bad-network dry runs: any callback → CALLBACK_NOT_SUPPORTED, none → INVALID_MOBILENETWORK), which
+  // failed every real airtime order. We never used callbacks (it pointed at the home page): orders are confirmed by lookup.
+  const { CallBackURL: _noCallback, ...sendParams } = params;
+  const qs  = new URLSearchParams({ UserID: USER_ID, ...sendParams });
   const relay = await ckViaRelay();
   const url = relay ? `${RELAY_URL}/ck/${path}?${qs}` : `${BASE}${path}?${qs}`;
   const headers: Record<string, string> = { "Accept": "application/json" };
@@ -2922,7 +2926,6 @@ serve(async (req) => {
       const dry = async (path: string, key: string, extra: Record<string, string>) => {
         try {
           const params: Record<string, string> = { APIKey: key, MobileNumber: "08000000000", RequestID: `KUDIAI-DRYRUN-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, CallBackURL: "https://kudiai.app/", ...extra };
-          if (params.CallBackURL === "") delete params.CallBackURL;   // "" = send no callback at all
           const d = await ck(path, params, { retries: 0, timeoutMs: 15000 });
           if (typeof d._raw === "string") {
             // what the error page actually says (ClubKonnect's own text, tags stripped) — it may name the reason
@@ -2932,17 +2935,16 @@ serve(async (req) => {
           return String(d.status ?? d.Status ?? JSON.stringify(Object.keys(d)));
         } catch (e) { return `unreachable: ${(e as Error).message}`; }
       };
-      const [dryV1, dryV3, dryV1Net, dryV1Plan, cbNone, cbPath, cbHttp, cbV3] = await Promise.all([
+      const [dryV1, dryV3, dryV1Net, dryV1Plan, dryDataNet, dryCable, dryElec] = await Promise.all([
         dry("APIAirtimeV1.asp", AIRTIME_K, { MobileNetwork: "01", Amount: "1" }),
         dry("APIAirtimeV3.asp", AIRTIME_K, { MobileNetwork: "01", Amount: "1" }),
         dry("APIAirtimeV1.asp", AIRTIME_K, { MobileNetwork: "99", Amount: "50" }),
         dry("APIDatabundleV1.asp", DATA_K, { MobileNetwork: "01", DataPlan: "KUDIAI-NO-SUCH-PLAN" }),
-        // Since ~10 Oct 2026 the bad-network order above answers CALLBACK_NOT_SUPPORTED (was INVALID_MOBILENETWORK), and
-        // real airtime orders fail the same way. Which callback form gets past that check? (Still a made-up network.)
-        dry("APIAirtimeV1.asp", AIRTIME_K, { MobileNetwork: "99", Amount: "50", CallBackURL: "" }),
-        dry("APIAirtimeV1.asp", AIRTIME_K, { MobileNetwork: "99", Amount: "50", CallBackURL: "https://kudiai.app/api/ck-callback" }),
-        dry("APIAirtimeV1.asp", AIRTIME_K, { MobileNetwork: "99", Amount: "50", CallBackURL: "http://kudiai.app/" }),
-        dry("APIAirtimeV3.asp", AIRTIME_K, { MobileNetwork: "99", Amount: "50" }),
+        // ck() never sends a callback (see there). These show each service still refuses a bad order by its normal
+        // validation (not CALLBACK_* or a "missing parameter" answer) without one — still nothing that can be fulfilled.
+        dry("APIDatabundleV1.asp", DATA_K, { MobileNetwork: "99", DataPlan: "KUDIAI-NO-SUCH-PLAN" }),
+        dry("APICableTVV1.asp", CABLETV_K, { CableTV: "kudiai-no-such-tv", Package: "KUDIAI-NO-SUCH-PACKAGE", SmartCardNo: "0" }),
+        dry("APIElectricityV1.asp", ELECTRICITY_K, { ElectricCompany: "99", MeterType: "01", MeterNo: "0", Amount: "1" }),
       ]);
       // Is each service's key accepted? The wallet-balance lookup checks UserID + APIKey (catalogue lists don't check
       // credentials at all). Reports only "valid" or ClubKonnect's status — never the balance.
@@ -2987,7 +2989,7 @@ serve(async (req) => {
         canary,
         purchaseService,
         dryRun: { airtimeV1: dryV1, airtimeV3: dryV3, airtimeV1BadNetwork: dryV1Net, dataV1BadPlan: dryV1Plan,
-          badNetworkNoCallback: cbNone, badNetworkCallbackPath: cbPath, badNetworkCallbackHttp: cbHttp, airtimeV3BadNetwork: cbV3 },
+          dataV1BadNetwork: dryDataNet, cableV1BadTv: dryCable, electricityV1BadCompany: dryElec },
         keys,
         relay,
         account: { userIdSet: !!USER_ID, userIdLooksLikeCk: /^CK\d+$/i.test(USER_ID), egressIp, callsGoVia: relay.switchOn ? "relay" : "direct" },
