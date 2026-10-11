@@ -3,6 +3,8 @@ import { friendlyError, moneyError } from "../utils/errorMessages";
 import { supabase } from "../utils/supabase";
 import BillPayments from "./BillPayments";
 import CashbackCard from "../components/CashbackCard";
+import Badge from "../components/shared/Badge";
+import { effectiveNextDue } from "../utils/asoOverdue";
 import { fmt, fmtDate, fmtDateTime, ledgerTypeLabel } from "../utils/helpers";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
 import Icon from "../components/Icon";
@@ -50,7 +52,7 @@ import ClientStatements from "./ClientStatements";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import EsusuRotationDashboard from "../components/EsusuRotationDashboard";
 import LegalScreen from "./LegalScreen";
-import PeerEsusuScreen from "./PeerEsusuScreen";
+import PeerEsusuScreen, { ActiveCirclesOnHome } from "./PeerEsusuScreen";
 import { DeleteAccountLink } from "../components/shared/DeleteAccountSheet";
 
 async function ajoFn(action, body = {}) {
@@ -2100,7 +2102,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
 }
 
 // ── Overview tab ──────────────────────────────────────────────────────────
-function OverviewTab({ client, contributions, cycles = [], rotationsData = [], rotationLoading, onWithdrawClick, onPayClick, onDepositClick, ownerInfo, withdrawRequests = [], pendingPayouts = [], onBillsClick, userEmail, onGoToMe, walletEnabled, wallet, onWalletClick, onWalletAction }) {
+function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsData = [], rotationLoading, onWithdrawClick, onPayClick, onDepositClick, ownerInfo, withdrawRequests = [], pendingPayouts = [], onBillsClick, userEmail, onGoToMe, walletEnabled, wallet, onWalletClick, onWalletAction }) {
   const t = useT();
   const { lang } = useLanguage();
   const toast = useToast();
@@ -2203,9 +2205,11 @@ function OverviewTab({ client, contributions, cycles = [], rotationsData = [], r
 
   const _now = new Date();
   const _todayStr = `${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,"0")}-${String(_now.getDate()).padStart(2,"0")}`;
-  const daysUntilDue = client.next_contribution_date
+  // Nothing is due until the client has an active card, esusu round or savings group, and never before it started
+  const nextDueDate = effectiveNextDue(client);
+  const daysUntilDue = nextDueDate
     ? Math.round(
-        (new Date(client.next_contribution_date.slice(0,10) + "T00:00:00") -
+        (new Date(nextDueDate.slice(0,10) + "T00:00:00") -
          new Date(_todayStr + "T00:00:00")) / 86400000
       )
     : null;
@@ -2382,7 +2386,7 @@ function OverviewTab({ client, contributions, cycles = [], rotationsData = [], r
       </div>
 
       {/* Status line — compact next-contribution status beneath hero */}
-      {client.next_contribution_date && client.contribution_amount > 0 && (
+      {nextDueDate && client.contribution_amount > 0 && (
         <div className={`flex items-center gap-1.5 text-[12px] font-semibold px-1 ${
           daysUntilDue != null && daysUntilDue < 0
             ? "text-red-500 dark:text-red-400"
@@ -2765,6 +2769,9 @@ function OverviewTab({ client, contributions, cycles = [], rotationsData = [], r
         </div>
       ))}
 
+      {/* ── The client's own esusu circles — same dashboard as the business's esusu groups ── */}
+      <ActiveCirclesOnHome myUserId={client?.client_user_id || myUserId} />
+
       {/* ── Savings Groups ── */}
       {rotationsData.filter(rd => rd.group?.group_mode !== "rotating").length > 0 && (
         <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider px-1 mt-2">
@@ -3136,17 +3143,81 @@ function PendingInfoSheet({ item, onClose }) {
 }
 
 // ── History tab ───────────────────────────────────────────────────────────
+/* Closed esusu round / savings group: one row in History's "Closed Savings" list, and the sheet it opens */
+function ClosedHistoryRow({ title, detail, onClick }) {
+  return (
+    <button onClick={onClick}
+      className="w-full text-left flex items-center justify-between gap-3 rounded-2xl border border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3 active:scale-[0.98] transition-transform">
+      <div className="min-w-0">
+        <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate">{title}</p>
+        <p className="text-[10px] text-slate-400 mt-0.5">{detail}</p>
+      </div>
+      <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-300 dark:text-slate-600 flex-shrink-0" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+    </button>
+  );
+}
+
+function ClosedHistorySheet({ title, subtitle, stats = [], children, onClose, closeLabel }) {
+  return (
+    <div className="fixed inset-0 z-[300] flex flex-col justify-end">
+      <div onClick={onClose} className="fixed inset-0 bg-black/55" />
+      <div className="relative bg-white dark:bg-slate-900 rounded-t-3xl max-h-[85vh] overflow-y-auto"
+        style={{ paddingBottom: "env(safe-area-inset-bottom, 16px)" }}>
+        <div className="flex justify-center pt-3 pb-2">
+          <div className="w-10 h-1 bg-slate-200 dark:bg-slate-700 rounded-full" />
+        </div>
+        <div className="px-4 pb-3 space-y-4">
+          <div>
+            <p className="text-base font-extrabold text-slate-800 dark:text-white">{title}</p>
+            <p className="text-xs text-slate-400 mt-0.5">{subtitle}</p>
+          </div>
+          <div className="bg-[#16255A] rounded-2xl px-5 py-4 grid grid-cols-2 gap-4">
+            {stats.map(st => (
+              <div key={st.label} className="min-w-0">
+                <p className="text-[10px] font-bold text-white/50 uppercase tracking-wider">{st.label}</p>
+                <p className="text-base font-black text-white truncate" style={{ fontVariantNumeric: "tabular-nums" }}>{st.value}</p>
+              </div>
+            ))}
+          </div>
+          {children}
+        </div>
+        <div className="px-4 pb-4">
+          <button onClick={onClose}
+            className="w-full py-3.5 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-2xl font-bold text-sm active:scale-[0.99] transition">
+            {closeLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, cycles = [], rotationsData = [], wallet, onOpenStatements }) {
   const t = useT();
   // Build lookup maps so each row can show its entity name
   const cycleNameMap = Object.fromEntries(cycles.map(c => [c.id, c.label || "Personal Savings"]));
-  const groupNameMap = Object.fromEntries(
-    rotationsData.filter(rd => rd.group?.id).map(rd => [rd.group.id, rd.group.name])
-  );
   // Closed cards (completed/settled) no longer show on the main portal view —
   // they're referenced here instead, so the client can still look back at them.
   const closedCycles = cycles.filter(cy => cy.status === "completed" || cy.status === "settled");
   const [closedCardView, setClosedCardView] = useState(null);
+  // Finished esusu rounds + savings groups that closed or that the client left — the same look-back as closed cards
+  const [closedHist,      setClosedHist]      = useState({ esusu_rounds: [], savings_groups: [] });
+  const [closedRoundView, setClosedRoundView] = useState(null);
+  const [closedGroupView, setClosedGroupView] = useState(null);
+  useEffect(() => {
+    if (!client?.id) return;
+    let live = true;
+    ajoFn("get-closed-history", { client_id: client.id })
+      .then(d => { if (live) setClosedHist({ esusu_rounds: d?.esusu_rounds || [], savings_groups: d?.savings_groups || [] }); })
+      .catch(() => {});
+    return () => { live = false; };
+  }, [client?.id]);
+  const groupNameMap = {
+    ...Object.fromEntries(closedHist.esusu_rounds.map(r => [r.group_id, r.group_name])),
+    ...Object.fromEntries(closedHist.savings_groups.map(g => [g.group_id, g.group_name])),
+    ...Object.fromEntries(rotationsData.filter(rd => rd.group?.id).map(rd => [rd.group.id, rd.group.name])),
+  };
+  const hasClosed = closedCycles.length > 0 || closedHist.esusu_rounds.length > 0 || closedHist.savings_groups.length > 0;
   const [typeFilter,     setTypeFilter]     = useState("all");
   const [receipt,        setReceipt]        = useState(null);
   const [pendingSheet,   setPendingSheet]   = useState(null);
@@ -3426,11 +3497,66 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
         </div>
       )}
 
-      {/* Closed savings cards — no longer active, still referenceable here */}
-      {closedCycles.length > 0 && (
-        <div className="mb-5">
-          <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2.5 px-1">Closed Savings Cards</p>
+      {closedRoundView && (
+        <ClosedHistorySheet onClose={() => setClosedRoundView(null)} closeLabel={t("common.close")}
+          title={`${closedRoundView.group_name} · Round ${closedRoundView.round_number}`}
+          subtitle={`Esusu · ${closedRoundView.status === "cancelled" ? "Ended early" : "Completed"}${closedRoundView.completed_at ? ` ${fmtDate(closedRoundView.completed_at)}` : ""}`}
+          stats={[
+            { label: "You paid in", value: fmt(closedRoundView.my_contributed) },
+            { label: "You received", value: fmt(closedRoundView.my_received) },
+          ]}>
+          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Rotation Order</p>
           <div className="space-y-2">
+            {closedRoundView.turns.map(turn => (
+              <div key={turn.position} className={`rounded-2xl border px-4 py-3 bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 ${turn.is_me ? "ring-1 ring-brand-400 dark:ring-brand-500" : ""}`}>
+                <div className="flex items-center gap-3">
+                  <span className="w-7 h-7 flex-shrink-0 rounded-full flex items-center justify-center text-[11px] font-black bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300">{turn.position}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap min-w-0">
+                      <p className="text-sm font-bold text-slate-800 dark:text-white truncate min-w-0">
+                        {turn.client_name || "Member"}{turn.is_me && <span className="ml-1 text-[10px] font-semibold text-brand-500">(You)</span>}
+                      </p>
+                      <Badge status={turn.status === "paid" ? "paid" : turn.status === "skipped" ? "skipped" : "expired"}
+                        label={turn.status === "paid" ? "Collected" : turn.status === "skipped" ? "Skipped" : "Not paid"} />
+                    </div>
+                    {turn.status === "skipped" && turn.skip_reason && (
+                      <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">Skipped: {turn.skip_reason}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </ClosedHistorySheet>
+      )}
+
+      {closedGroupView && (
+        <ClosedHistorySheet onClose={() => setClosedGroupView(null)} closeLabel={t("common.close")}
+          title={closedGroupView.group_name}
+          subtitle={`Savings group · ${closedGroupView.membership_status === "left" ? `You left${closedGroupView.left_at ? ` ${fmtDate(closedGroupView.left_at)}` : ""}` : "Closed"}`}
+          stats={[
+            { label: "You saved", value: fmt(closedGroupView.my_contributed) },
+            { label: "Released to you", value: fmt(closedGroupView.my_released) },
+            ...(closedGroupView.target_amount > 0 ? [{ label: "Group target", value: fmt(closedGroupView.target_amount) }] : []),
+            ...(closedGroupView.joined_at ? [{ label: "Joined", value: fmtDate(closedGroupView.joined_at) }] : []),
+          ]} />
+      )}
+
+      {/* Closed savings — cards, esusu rounds and savings groups that have ended, still referenceable here */}
+      {hasClosed && (
+        <div className="mb-5">
+          <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2.5 px-1">Closed Savings</p>
+          <div className="space-y-2">
+            {closedHist.esusu_rounds.map(r => (
+              <ClosedHistoryRow key={`${r.group_id}-${r.round_number}`} onClick={() => setClosedRoundView(r)}
+                title={`${r.group_name} · Round ${r.round_number}`}
+                detail={`Esusu · ${r.status === "cancelled" ? "Ended early" : "Completed"} · Paid in ${fmt(r.my_contributed)} · Received ${fmt(r.my_received)}`} />
+            ))}
+            {closedHist.savings_groups.map(g => (
+              <ClosedHistoryRow key={g.group_id} onClick={() => setClosedGroupView(g)}
+                title={g.group_name}
+                detail={`Savings group · ${g.membership_status === "left" ? "Left" : "Closed"} · Saved ${fmt(g.my_contributed)}`} />
+            ))}
             {closedCycles.map(cyc => {
               const stats = getCycleStats(cyc, contributions);
               return (
@@ -5677,10 +5803,12 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
     return () => { supabase.removeChannel(channel); };
   }, [ajoClient?.id, ajoClient?.owner_id, ajoClient?.user_id, refreshWithdrawRequests]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const [circleToOpen, setCircleToOpen] = useState(null);   // a circle a notification tap asked to open
   usePushNotifications(session?.user?.id ?? null, (dl) => {
     if (dl?.openWallet) setShowWallet(true);
     if (dl?.openStatements) setStatementsView({ tab: "monthly", month: typeof dl.month === "string" ? dl.month : "" });
     if (!dl?.tab) return;
+    if (dl.tab === "circles" && dl.groupId) setCircleToOpen(dl.groupId);
     setTab(["home","bills","circles","history","me"].includes(dl.tab) ? dl.tab : "home");
   });
 
@@ -5719,6 +5847,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
                 // Server-side notifications say "contributions"; in this portal
                 // that content is the History tab (it isn't a tab of its own).
                 const target = dl.tab === "contributions" ? "history" : dl.tab;
+                if (target === "circles" && dl.groupId) setCircleToOpen(dl.groupId);
                 setTab(["home","bills","circles","history","me"].includes(target) ? target : "home");
               }}
               toast={toast}
@@ -5758,6 +5887,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
           {tab === "home" && client && (
             <OverviewTab
               client={client}
+              myUserId={session?.user?.id}
               userEmail={client?.email || null}
               contributions={contributions}
               cycles={cycles}
@@ -5801,7 +5931,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
           )}
           {tab === "circles" && (
             <div className="h-full overflow-y-auto">
-              <PeerEsusuScreen session={session} />
+              <PeerEsusuScreen session={session} openGroupId={circleToOpen} onDeepLinkHandled={() => setCircleToOpen(null)} />
             </div>
           )}
           {tab === "me" && (

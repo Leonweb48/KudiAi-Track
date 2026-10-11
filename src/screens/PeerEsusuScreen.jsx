@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "../utils/supabase";
 import { fmt } from "../utils/helpers";
 import Icon from "../components/Icon";
 import { BottomSheet } from "../components/WalletPanel";
 import { friendlyError } from "../utils/errorMessages";
+import EsusuRotationDashboard from "../components/EsusuRotationDashboard";
 
 async function peerEsusuFn(action, body = {}) {
   const { data, error } = await supabase.functions.invoke("peer-esusu", { body: { action, ...body } });
@@ -184,6 +185,165 @@ function InviteMemberSheet({ groupId, onClose, onInvited }) {
   );
 }
 
+/* ── Circle dashboard — the same dashboard an owner-run esusu shows ──────
+ * A client-started circle lives in its own tables (peer_esusu_*), keyed by the members' login ids. toRotationData
+ * maps get-group-detail onto the shape EsusuRotationDashboard renders for business-run esusu groups, so a circle shows
+ * the same Current Pot card, this-period ticks, avatar rail, "your turn is next" and rotation order. */
+function toRotationData(detail) {
+  const { group, members = [], round, turns = [], contributions = [] } = detail || {};
+  if (!group) return null;
+  const nameOf = (uid) => members.find((m) => m.user_id === uid)?.display_name || "Member";
+  const paidBy = {};
+  for (const c of contributions) paidBy[c.user_id] = (paidBy[c.user_id] || 0) + Number(c.amount || 0);
+  const active = members.filter((m) => m.status === "active");
+  const due = Number(group.contribution_amount || 0);
+  return {
+    group: { ...group, privacy_show_names: true },
+    round: round ? { ...round, payout_slots_per_round: round.payout_slots_per_round || group.payout_slots_per_round || 1 } : null,
+    turns: [...turns].sort((a, b) => a.position - b.position).map((t) => ({
+      ...t, client_id: t.user_id, client_name: nameOf(t.user_id),
+      payout_contribution_id: t.status === "paid" ? (t.payout_contribution_id || t.id) : null,
+    })),
+    members: active.map((m) => ({ id: m.user_id, display_name: m.display_name })),
+    contribution_ticks: Object.fromEntries(active.map((m) => [m.user_id, due > 0 && (paidBy[m.user_id] || 0) >= due])),
+    pot_size: contributions.reduce((n, c) => n + Number(c.amount || 0), 0),
+    _paidBy: paidBy,
+  };
+}
+
+function CircleActiveView({ detail, groupId, myUserId, reload, onChanged }) {
+  const { group, members = [], is_creator: isCreator } = detail;
+  const data = useMemo(() => toRotationData(detail), [detail]);
+  const [busy, setBusy] = useState(false);
+  const [err,  setErr]  = useState("");
+  const due       = Number(group.contribution_amount || 0);
+  const haveIPaid = (data._paidBy[myUserId] || 0) >= due;
+  const creatorName = members.find((m) => m.user_id === group.creator_user_id)?.display_name || "the circle creator";
+
+  // Called by the dashboard after the creator's transaction PIN is confirmed (TransactionPinModal verifies it)
+  const executePayout = async () => {
+    const missing = data.members.filter((m) => !data.contribution_ticks[m.id]);
+    if (missing.length) {
+      return { blocked: true, missing_count: missing.length,
+        missing_contributors: missing.map((m) => ({ client_name: m.display_name, amount_paid: data._paidBy[m.id] || 0, amount_due: due })) };
+    }
+    const r = await peerEsusuFn("execute-payout", { group_id: groupId });
+    onChanged?.();
+    const nameOf = (uid) => members.find((m) => m.user_id === uid)?.display_name;
+    return { ok: true, beneficiaries: (r.winners || []).map((w) => ({ name: nameOf(w.user_id) })),
+      per_winner_amount: r.per_winner_amount, pot_amount: r.pot_amount };
+  };
+
+  const payMyShare = async () => {
+    setBusy(true); setErr("");
+    try {
+      await peerEsusuFn("pay-contribution", { group_id: groupId, amount: due });
+      await reload();
+    } catch (e) {
+      setErr(friendlyError(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {data.round ? (
+        <EsusuRotationDashboard data={data} loading={false} isOwner={!!isCreator} myClientId={myUserId}
+          onRefresh={reload} onExecutePayout={isCreator ? executePayout : undefined} />
+      ) : (
+        <p className="text-xs text-slate-500 dark:text-slate-400">No active rotation round yet.</p>
+      )}
+      {err && <p className="text-[12px] text-red-500">{err}</p>}
+      {/* Where the money goes: the circle's collection account is the creator's own wallet */}
+      <p className="text-[11px] text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/60 rounded-xl px-3 py-2.5 leading-relaxed">
+        {isCreator
+          ? "Members pay into your KudiAI Wallet, and each payout is taken from it. Keep the pot in your wallet until you pay out — spending it will block the payout."
+          : `Your ${fmt(due)} is paid into ${creatorName}'s KudiAI Wallet, and each payout is paid out of it.`}
+      </p>
+      {data.round && (haveIPaid ? (
+        <p className="text-[12px] text-green-600 dark:text-green-400 font-semibold">You've paid for this payout ✓</p>
+      ) : (
+        <button onClick={payMyShare} disabled={busy}
+          className="w-full py-3.5 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99]">
+          {busy ? "Paying…" : `Pay my ${fmt(due)} contribution`}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* One circle as a dashboard card — on My Circles and on the client's Home, like an owner-run esusu group */
+export function PeerCircleDashboard({ groupId, myUserId, onChanged, onOpen }) {
+  const [detail, setDetail] = useState(null);
+  const [err,    setErr]    = useState("");
+  // Silent reload: the dashboard stays mounted, so its payout success screen isn't lost
+  const reload = useCallback(async () => {
+    try { setDetail(await peerEsusuFn("get-group-detail", { group_id: groupId })); setErr(""); }
+    catch (e) { setErr(friendlyError(e)); }
+  }, [groupId]);
+  useEffect(() => { reload(); }, [reload]);
+
+  const group = detail?.group;
+  return (
+    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4 space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider truncate">{group?.name || "Circle"}</p>
+          {group && (
+            <p className="text-[10px] text-slate-400 mt-0.5">
+              My circle · {fmt(group.contribution_amount)} / {group.frequency}{detail?.is_creator ? " · You run it" : ""}
+            </p>
+          )}
+        </div>
+        {onOpen && group && (
+          <button onClick={onOpen} className="text-[10px] font-bold text-brand-500 dark:text-brand-400 px-2 py-1 rounded-lg bg-brand-50 dark:bg-brand-900/20 flex-shrink-0">
+            Members
+          </button>
+        )}
+      </div>
+      {err && !detail && <p className="text-[12px] text-red-500">{err}</p>}
+      {!detail && !err && <div className="h-24 rounded-2xl bg-slate-100 dark:bg-slate-700/50 animate-pulse" />}
+      {detail && group.status === "active" && (
+        <CircleActiveView detail={detail} groupId={groupId} myUserId={myUserId} reload={reload} onChanged={onChanged} />
+      )}
+      {detail && group.status === "forming" && (
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          Forming — {(detail.members || []).length} member{(detail.members || []).length === 1 ? "" : "s"} so far. {detail.is_creator ? "Invite members and start the circle." : "Waiting for the creator to start it."}
+        </p>
+      )}
+      {detail && (group.status === "completed" || group.status === "cancelled") && (
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          {group.status === "completed" ? "This circle has completed — every member has collected." : "This circle was cancelled."}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/* Active circles on the client's Home — the same section look as the business's esusu groups */
+export function ActiveCirclesOnHome({ myUserId }) {
+  const [ids, setIds] = useState([]);
+  useEffect(() => {
+    let live = true;
+    peerEsusuFn("list-my-groups")
+      .then((res) => {
+        if (!live) return;
+        const all = [...(res?.created || []), ...(res?.member_of || [])].filter((g) => g.status === "active");
+        setIds([...new Set(all.map((g) => g.id))]);
+      })
+      .catch(() => {});
+    return () => { live = false; };
+  }, []);
+  if (!myUserId || ids.length === 0) return null;
+  return (
+    <>
+      <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider px-1 mt-2">My Circles</p>
+      {ids.map((id) => <PeerCircleDashboard key={id} groupId={id} myUserId={myUserId} />)}
+    </>
+  );
+}
+
 /* ── Circle detail ────────────────────────────────────────────────────── */
 function CircleDetail({ groupId, myUserId, onClose, onChanged }) {
   const [detail,   setDetail]   = useState(null);
@@ -194,7 +354,6 @@ function CircleDetail({ groupId, myUserId, onClose, onChanged }) {
   const [order,    setOrder]    = useState([]); // local reorder buffer while forming
 
   const load = useCallback(async () => {
-    setLoading(true);
     try {
       const res = await peerEsusuFn("get-group-detail", { group_id: groupId });
       setDetail(res);
@@ -216,15 +375,9 @@ function CircleDetail({ groupId, myUserId, onClose, onChanged }) {
     );
   }
 
-  const { group, members, round, turns, contributions, is_creator: isCreator, pending_invites: pendingInvites } = detail;
+  const { group, members, is_creator: isCreator, pending_invites: pendingInvites } = detail;
   const forming  = group.status === "forming";
   const active   = group.status === "active";
-  const myPaid   = (contributions || []).filter(c => c.user_id === myUserId).reduce((s, c) => s + Number(c.amount), 0);
-  const haveIPaid = myPaid >= Number(group.contribution_amount);
-  const allPaid  = (members || []).filter(m => m.status === "active").every(m =>
-    (contributions || []).filter(c => c.user_id === m.user_id).reduce((s, c) => s + Number(c.amount), 0) >= Number(group.contribution_amount)
-  );
-  const currentTurns = (turns || []).filter(t => t.status === "current");
 
   const moveMember = (idx, dir) => {
     const next = [...order];
@@ -253,31 +406,6 @@ function CircleDetail({ groupId, myUserId, onClose, onChanged }) {
     setBusy(true); setErr("");
     try {
       await peerEsusuFn("start-group", { group_id: groupId });
-      await load();
-      onChanged?.();
-    } catch (e) {
-      setErr(friendlyError(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const payMyShare = async () => {
-    setBusy(true); setErr("");
-    try {
-      await peerEsusuFn("pay-contribution", { group_id: groupId, amount: Number(group.contribution_amount) });
-      await load();
-    } catch (e) {
-      setErr(friendlyError(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const executePayout = async () => {
-    setBusy(true); setErr("");
-    try {
-      await peerEsusuFn("execute-payout", { group_id: groupId });
       await load();
       onChanged?.();
     } catch (e) {
@@ -351,50 +479,13 @@ function CircleDetail({ groupId, myUserId, onClose, onChanged }) {
           </>
         )}
 
-        {active && round && (
-          <>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-2">Round {round.round_number} — paid for this payout</p>
-            <div className="flex flex-wrap gap-2 mb-4">
-              {(members || []).filter(m => m.status === "active").map(m => {
-                const paid = (contributions || []).filter(c => c.user_id === m.user_id).reduce((s, c) => s + Number(c.amount), 0) >= Number(group.contribution_amount);
-                return (
-                  <span key={m.id} className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold border ${
-                    paid ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800/50 text-green-700 dark:text-green-300"
-                         : "bg-slate-50 dark:bg-slate-700/50 border-slate-200 dark:border-slate-600 text-slate-400"
-                  }`}>
-                    <span>{paid ? "✓" : "·"}</span>{m.display_name}{m.user_id === myUserId ? " (You)" : ""}
-                  </span>
-                );
-              })}
-            </div>
-
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-2">This round's collector{currentTurns.length > 1 ? "s" : ""}</p>
-            <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-4">
-              {currentTurns.map(t => (members || []).find(m => m.user_id === t.user_id)?.display_name || "—").join(", ") || "—"}
-            </p>
-
-            {/* Where the money goes: the circle's collection account is the creator's own wallet */}
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/60 rounded-xl px-3 py-2.5 mb-3 leading-relaxed">
-              {isCreator
-                ? "Members pay into your KudiAI Wallet, and each payout is taken from it. Keep the pot in your wallet until you pay out — spending it will block the payout."
-                : `Your ${fmt(group.contribution_amount)} is paid into ${(members || []).find(m => m.user_id === group.creator_user_id)?.display_name || "the circle creator"}'s KudiAI Wallet, and each payout is paid out of it.`}
-            </p>
-
-            {!haveIPaid && (
-              <button onClick={payMyShare} disabled={busy}
-                className="w-full py-3.5 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] mb-2">
-                {busy ? "Paying…" : `Pay my ${fmt(group.contribution_amount)} contribution`}
-              </button>
-            )}
-            {haveIPaid && <p className="text-[12px] text-green-600 dark:text-green-400 font-semibold mb-2">You've paid for this payout ✓</p>}
-
-            {isCreator && (
-              <button onClick={executePayout} disabled={busy || !allPaid}
-                className="w-full py-3.5 bg-navy hover:opacity-90 disabled:opacity-40 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99]">
-                {busy ? "Paying out…" : allPaid ? "Execute payout" : "Waiting for everyone to pay"}
-              </button>
-            )}
-          </>
+        {active && (
+          <CircleActiveView detail={detail} groupId={groupId} myUserId={myUserId} reload={load} onChanged={onChanged} />
+        )}
+        {(group.status === "completed" || group.status === "cancelled") && (
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            {group.status === "completed" ? "This circle has completed — every member has collected." : "This circle was cancelled."}
+          </p>
         )}
       </BottomSheet>
 
@@ -407,7 +498,7 @@ function CircleDetail({ groupId, myUserId, onClose, onChanged }) {
 }
 
 /* ── Main screen — list of circles + invites inbox ────────────────────── */
-export default function PeerEsusuScreen({ session }) {
+export default function PeerEsusuScreen({ session, openGroupId: deepLinkGroupId, onDeepLinkHandled }) {
   const myUserId = session?.user?.id;
   const [data,       setData]       = useState(null);
   const [loading,     setLoading]    = useState(true);
@@ -429,6 +520,13 @@ export default function PeerEsusuScreen({ session }) {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // A notification tap (deep link {tab:"circles", groupId}) opens that circle
+  useEffect(() => {
+    if (!deepLinkGroupId) return;
+    setOpenGroupId(deepLinkGroupId);
+    onDeepLinkHandled?.();
+  }, [deepLinkGroupId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const respondInvite = async (inviteId, accept) => {
     setBusyInvite(inviteId);
@@ -486,7 +584,9 @@ export default function PeerEsusuScreen({ session }) {
             <p className="text-sm text-slate-400 mb-1">No circles yet</p>
             <p className="text-[12px] text-slate-400">Create one, or wait for an invite</p>
           </div>
-        ) : groups.map(g => (
+        ) : groups.map(g => g.status === "active" ? (
+          <PeerCircleDashboard key={g.id} groupId={g.id} myUserId={myUserId} onChanged={load} onOpen={() => setOpenGroupId(g.id)} />
+        ) : (
           <button key={g.id} onClick={() => setOpenGroupId(g.id)}
             className="w-full text-left bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl px-4 py-3.5 flex items-center justify-between active:scale-[0.99] transition-transform">
             <div className="min-w-0">

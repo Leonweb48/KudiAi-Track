@@ -1,12 +1,14 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { supabase } from "../utils/supabase";
 import TransactionPinModal from "./TransactionPinModal";
+import { effectiveNextDue } from "../utils/asoOverdue";
+import { today as localToday } from "../utils/helpers";
 
 const AMBER_DAYS = 3;
 const RED_DAYS   = 7;
 
 const fmtCur = (n) => "₦" + Number(n || 0).toLocaleString();
-const todayISO = () => new Date().toISOString().split("T")[0];
+const todayISO = () => localToday();   // the local (Lagos) date — toISOString() was the UTC date, a day behind 00:00–01:00
 
 function OverduePill({ days }) {
   if (days === 0) return <span className="text-[10px] font-bold text-green-600 dark:text-green-400">Due today</span>;
@@ -45,12 +47,13 @@ export default function TodaysCollection({ clients, groups, onRecord, staffCanRe
 
   const today = todayISO();
 
-  // All active clients with a due/overdue date
+  // Active clients due today or overdue — only those counting (an active card, esusu round or savings group), and
+  // never due before counting started (utils/asoOverdue)
   const dueClients = useMemo(() =>
     clients
-      .filter(c => c.status === "active" && c.next_contribution_date && c.next_contribution_date <= today)
+      .filter(c => { const due = effectiveNextDue(c); return c.status === "active" && !!due && due <= today; })
       .map(c => {
-        const days = Math.max(0, Math.floor((new Date(today) - new Date(c.next_contribution_date)) / 86400000));
+        const days = Math.max(0, Math.floor((new Date(today) - new Date(effectiveNextDue(c))) / 86400000));
         return { ...c, daysOverdue: days };
       })
       .sort((a, b) => b.daysOverdue - a.daysOverdue)

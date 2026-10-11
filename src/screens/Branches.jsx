@@ -4,8 +4,8 @@ import Modal from "../components/shared/Modal";
 import { useBranches } from "../hooks/useBranches";
 import { canDo, featureLimit, upgradeLabel, planAvailableText } from "../utils/plans";
 import { supabase } from "../utils/supabase";
-import { fmt, isBillPayment } from "../utils/helpers";
-import { overdueEligible } from "../utils/asoOverdue";
+import { fmt, isBillPayment, today } from "../utils/helpers";
+import { effectiveNextDue } from "../utils/asoOverdue";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
 import { useT } from "../contexts/LanguageContext";
 
@@ -324,7 +324,8 @@ function AjoTab({ asoClients }) {
   const totalSaved = asoClients.reduce((s, c) => s + (c.total_saved     || 0), 0);
   const active     = asoClients.filter(c => c.status === "active").length;
   const now        = new Date(); now.setHours(0, 0, 0, 0);
-  const overdue    = asoClients.filter(c => c.next_contribution_date && c.status === "active" && overdueEligible(c) && now > new Date(c.next_contribution_date));
+  // Overdue only on something active, and never due before counting started (utils/asoOverdue)
+  const overdue    = asoClients.filter(c => { const due = effectiveNextDue(c); return c.status === "active" && !!due && due < today(); });
 
   return (
     <div className="px-4 pt-4 pb-6 space-y-4">
@@ -363,7 +364,8 @@ function AjoTab({ asoClients }) {
           <div className="divide-y divide-slate-100 dark:divide-slate-700/60">
             {asoClients.map(c => {
               const initials = (c.full_name || "?")[0].toUpperCase();
-              const isOverdue = c.status === "active" && overdueEligible(c) && c.next_contribution_date && now > new Date(c.next_contribution_date);
+              const due       = effectiveNextDue(c);
+              const isOverdue = c.status === "active" && !!due && due < today();
               return (
                 <div key={c.id} className="px-4 py-3 flex items-center gap-3">
                   <div className="w-9 h-9 rounded-xl overflow-hidden flex-shrink-0">

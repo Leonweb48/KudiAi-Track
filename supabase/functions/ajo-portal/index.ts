@@ -192,6 +192,7 @@ serve(async (req) => {
       "send-txn-pin-otp","verify-txn-pin-otp",
       "request-reactivation","get-reactivation-status",
       "get-savings-statement","get-monthly-statement",
+      "get-closed-history",
     ]);
     if (_clientScoped.has(action as string)) {
       const { client_id } = body as { client_id: string };
@@ -371,7 +372,12 @@ serve(async (req) => {
         client = fallback as Record<string, unknown> | null;
       }
       if (!client) return json({ error: "Client not found" }, 404);
-      return json({ client: normalizeClient(client) });
+      const out = normalizeClient(client) as Record<string, unknown>;
+      // When this client started counting (first active card / esusu round / savings group); none = nothing is due.
+      // Older databases without the function: leave the fields off and the portal keeps its old behaviour.
+      const { data: since, error: sinceErr } = await sb.rpc("ajo_client_counting_since", { p_client_id: client_id });
+      if (!sinceErr) { out.counting_since = since ?? null; out.overdue_eligible = since != null; }
+      return json({ client: out });
     }
 
     // ── Contribution history ───────────────────────────────────────
@@ -1355,6 +1361,105 @@ serve(async (req) => {
       });
 
       return json({ pot, members });
+    }
+
+    // ── Client history: finished esusu rounds + closed/left savings groups ──
+    // Closed savings CARDS already come with get-active-cycle (every status). This adds what the client could not see
+    // once it ended: esusu rounds that completed or were cancelled, and savings groups that closed or that they left.
+    if (action === "get-closed-history") {
+      const { client_id: hCid } = body as { client_id: string };
+      const { data: hMems } = await sb.from("aso_client_group_memberships")
+        .select("group_id, status, joined_at, left_at").eq("client_id", hCid);
+      const { data: hLeg } = await sb.from("aso_clients").select("ajo_group_id").eq("id", hCid).maybeSingle();
+      const memByGroup: Record<string, { status: string; joined_at?: string; left_at?: string }> = {};
+      for (const m of (hMems || []) as Array<{ group_id: string; status: string; joined_at?: string; left_at?: string }>) {
+        if (m.group_id) memByGroup[m.group_id] = m;
+      }
+      const legacyGid = (hLeg as { ajo_group_id?: string } | null)?.ajo_group_id;
+      if (legacyGid && !memByGroup[legacyGid]) memByGroup[legacyGid] = { status: "active" };
+      const hGroupIds = Object.keys(memByGroup);
+      if (hGroupIds.length === 0) return json({ esusu_rounds: [], savings_groups: [] });
+
+      const { data: hGroups } = await sb.from("ajo_groups")
+        .select("id, name, group_mode, round_status, contribution_amount, contribution_frequency, target_amount, started_at, privacy_show_names")
+        .in("id", hGroupIds);
+      const { data: hContribs } = await sb.from("ajo_contributions")
+        .select("group_id, amount, type, created_at")
+        .eq("aso_client_id", hCid).in("group_id", hGroupIds).eq("status", "completed");
+      const myRows = (hContribs || []) as Array<{ group_id: string; amount: number; type: string; created_at: string }>;
+      const sumMine = (gid: string, types: string[], from?: string | null, to?: string | null) => myRows
+        .filter((r) => r.group_id === gid && types.includes(r.type)
+          && (!from || r.created_at >= from) && (!to || r.created_at <= to))
+        .reduce((n, r) => n + Number(r.amount || 0), 0);
+      const lastMine = (gid: string) => myRows.filter((r) => r.group_id === gid)
+        .reduce((d: string | null, r) => (!d || r.created_at > d ? r.created_at : d), null);
+      const shortName = (full: string, show: boolean) => show ? full
+        : (full || "").split(" ").map((w: string, i: number) => i === 0 ? w : (w[0] || "") + ".").join(" ");
+
+      type HGroup = { id: string; name: string; group_mode?: string; round_status?: string; contribution_amount?: number;
+        contribution_frequency?: string; target_amount?: number; started_at?: string; privacy_show_names?: boolean };
+      const groups = (hGroups || []) as HGroup[];
+      const rotating = groups.filter((g) => g.group_mode === "rotating");
+      const flexible = groups.filter((g) => g.group_mode !== "rotating");
+
+      // Esusu: every finished round this client had a turn in
+      const esusu_rounds: unknown[] = [];
+      if (rotating.length > 0) {
+        const { data: hRounds } = await sb.from("ajo_group_rounds")
+          .select("id, group_id, round_number, status, started_at, completed_at, payout_slots_per_round")
+          .in("group_id", rotating.map((g) => g.id)).in("status", ["completed", "cancelled"])
+          .order("started_at", { ascending: false }).limit(50);
+        const roundIds = (hRounds || []).map((r: { id: string }) => r.id);
+        const { data: hTurns } = roundIds.length
+          ? await sb.from("ajo_group_turns").select("round_id, position, client_id, status, expected_payout_date, skip_reason")
+              .in("round_id", roundIds).order("position", { ascending: true })
+          : { data: [] };
+        const turnRows = (hTurns || []) as Array<{ round_id: string; position: number; client_id: string; status: string;
+          expected_payout_date?: string; skip_reason?: string }>;
+        const nameIds = [...new Set(turnRows.map((t) => t.client_id))];
+        const { data: hNames } = nameIds.length
+          ? await sb.from("aso_clients").select("id, full_name").in("id", nameIds) : { data: [] };
+        const nameMap: Record<string, string> = {};
+        for (const c of (hNames || []) as Array<{ id: string; full_name: string }>) nameMap[c.id] = c.full_name || "";
+
+        for (const r of (hRounds || []) as Array<{ id: string; group_id: string; round_number: number; status: string;
+          started_at?: string; completed_at?: string | null; payout_slots_per_round?: number }>) {
+          const turns = turnRows.filter((t) => t.round_id === r.id);
+          if (!turns.some((t) => t.client_id === hCid)) continue;   // not in this round
+          const g = rotating.find((x) => x.id === r.group_id)!;
+          const show = g.privacy_show_names !== false;
+          esusu_rounds.push({
+            group_id: g.id, group_name: g.name, round_number: r.round_number, status: r.status,
+            started_at: r.started_at || null, completed_at: r.completed_at || null,
+            contribution_amount: g.contribution_amount || 0, frequency: g.contribution_frequency || null,
+            payout_slots_per_round: r.payout_slots_per_round || 1,
+            my_contributed: sumMine(g.id, ["contribution"], r.started_at, r.completed_at),
+            my_received:    sumMine(g.id, ["esusu_payout"], r.started_at, r.completed_at),
+            turns: turns.map((t) => ({
+              position: t.position, status: t.status, is_me: t.client_id === hCid,
+              client_name: t.client_id === hCid ? nameMap[t.client_id] : shortName(nameMap[t.client_id] || "", show),
+              expected_payout_date: t.expected_payout_date || null, skip_reason: t.skip_reason || null,
+            })),
+          });
+        }
+      }
+
+      // Savings groups that closed, or that this client left
+      const savings_groups = flexible
+        .filter((g) => g.round_status === "closed" || memByGroup[g.id]?.status === "left")
+        .map((g) => ({
+          group_id: g.id, group_name: g.name, round_status: g.round_status || null,
+          membership_status: memByGroup[g.id]?.status || null,
+          joined_at: memByGroup[g.id]?.joined_at || null, left_at: memByGroup[g.id]?.left_at || null,
+          target_amount: g.target_amount || 0, contribution_amount: g.contribution_amount || 0,
+          frequency: g.contribution_frequency || null, started_at: g.started_at || null,
+          my_contributed: sumMine(g.id, ["contribution"]),
+          my_released:    sumMine(g.id, ["group_release", "withdrawal", "disbursement"]),
+          last_activity:  lastMine(g.id),
+        }))
+        .sort((a, b) => String(b.last_activity || b.started_at || "").localeCompare(String(a.last_activity || a.started_at || "")));
+
+      return json({ esusu_rounds, savings_groups });
     }
 
     // ── Submit a dispute ticket for a contribution ────────────────────────

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { createReportPdf } from "../utils/generateReportPdf";
 import { fmt, isBillPayment } from "../utils/helpers";
+import { countingStart } from "../utils/asoOverdue";
 
 /* ── MANAGER-ONLY: rendered only under Reports & Insights in ManagerDashboard ─ */
 
@@ -185,7 +186,7 @@ function buildAsoData(asoClients) {
   const totalSaved=asoClients.reduce((s,c)=>s+(c.total_saved||0),0);
   const totalWithdr=asoClients.reduce((s,c)=>s+(c.total_withdrawn||0),0);
   const FREQ={daily:1,weekly:7,monthly:30};
-  const enriched=asoClients.map(c=>{ const days=FREQ[c.contribution_frequency]||30,since=c.registration_date?Math.floor((new Date()-new Date(c.registration_date))/86400000):0,expected=Math.floor(since/days),made=c.contribution_amount>0?Math.floor((c.total_saved||0)/c.contribution_amount):0,missed=Math.max(0,expected-made); return {...c,made,expected,missed}; });
+  const enriched=asoClients.map(c=>{ const days=FREQ[c.contribution_frequency]||30,start=countingStart(c),since=start?Math.max(0,Math.floor((new Date()-new Date(start))/86400000)):0,expected=Math.floor(since/days),made=c.contribution_amount>0?Math.floor((c.total_saved||0)/c.contribution_amount):0,missed=Math.max(0,expected-made); return {...c,made,expected,missed}; });
   const bars=asoClients.slice(0,20).map(c=>({label:(c.full_name||"?").split(" ")[0],v:c.current_balance||0,color:"#7c3aed"}));
   return { enriched, totalBal, totalSaved, totalWithdr, bars };
 }

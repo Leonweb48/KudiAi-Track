@@ -8,7 +8,7 @@ import { sendEmailTrigger } from "../utils/emailTrigger";
 import { compute, computeCapital } from "../lib/profitEngine";
 import { notify, notifyBranchManager } from "../lib/notifyEngine";
 import { emailAllowed, claimEmailOnce } from "../utils/emailPref";
-import { attachOverdueEligibility, overdueEligible } from "../utils/asoOverdue";
+import { attachCounting, overdueEligible } from "../utils/asoOverdue";
 import { savePendingOp, getPendingCount, getPendingOps } from "../utils/offlineDb";
 import { syncPending } from "../utils/syncManager";
 import { creditFromSale } from "../utils/creditFromSale";
@@ -141,8 +141,9 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     // Stamp each Ajo client with whether they have anything ACTIVE to be overdue on (active card / group / esusu
     // round). Done on the fetched rows so the state, the offline cache and the digest below all see the same answer.
     if (asoRes.data) {
-      asoRes.data = await attachOverdueEligibility(asoRes.data, (ids) =>
-        supabase.rpc("ajo_overdue_eligible_clients", { p_client_ids: ids }));
+      asoRes.data = await attachCounting(asoRes.data,
+        (ids) => supabase.rpc("ajo_clients_counting_since", { p_client_ids: ids }),
+        (ids) => supabase.rpc("ajo_overdue_eligible_clients", { p_client_ids: ids }));
     }
 
     if (txRes.data) {
@@ -511,11 +512,35 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     return () => clearInterval(id);
   }, [rtConnected]);
 
+  // ── Ajo counting (due / expected / overdue) starts when a card, esusu round or savings group is active ──
+  // Re-asked whenever a savings card opens or closes (live, below) or a screen changes a group (refreshAsoCounting).
+  const asoClientsRef = useRef(asoClients);
+  asoClientsRef.current = asoClients;
+  const countingTimerRef = useRef(null);
+  const refreshAsoCounting = useCallback(() => {
+    clearTimeout(countingTimerRef.current);
+    countingTimerRef.current = setTimeout(async () => {
+      const rows = asoClientsRef.current || [];
+      if (rows.length === 0) return;
+      const fresh = await attachCounting(rows,
+        (ids) => supabase.rpc("ajo_clients_counting_since", { p_client_ids: ids }),
+        (ids) => supabase.rpc("ajo_overdue_eligible_clients", { p_client_ids: ids }));
+      const byId = new Map(fresh.map((r) => [r.id, r]));
+      setAsoClients((prev) => prev.map((r) => {
+        const n = byId.get(r.id);
+        return n && "overdue_eligible" in n ? { ...r, overdue_eligible: n.overdue_eligible, counting_since: n.counting_since ?? r.counting_since } : r;
+      }));
+    }, 800);
+  }, []);
+  useEffect(() => () => clearTimeout(countingTimerRef.current), []);
+
   // ── Realtime: live sync for aso_clients balance changes ───────────────
   useEffect(() => {
     if (!userId) return;
     let rtReady = false;
     const channel = supabase.channel(`aso_clients_rt_${userId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "ajo_cycles", filter: `owner_id=eq.${userId}` },
+        () => refreshAsoCounting())
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "aso_clients", filter: `user_id=eq.${userId}` },
         (payload) => {
           if (!payload.new) return;
@@ -1096,7 +1121,8 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
       setDbError(`Failed to save client: ${error.message}`);
       return { data: null, error };
     } else {
-      setAsoClients(p => p.map(c => c.id === tempId ? data : c));
+      // A new client has no card or group yet, so they are not counting (no due/overdue) until they get one
+      setAsoClients(p => p.map(c => c.id === tempId ? { ...data, overdue_eligible: false, counting_since: null } : c));
       if (staffId) {
         logAudit({ ownerId: userId, staffId, staffName: staffName || "Staff",
           action:  `Aso client added: ${cl.full_name}`,
@@ -1221,7 +1247,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
   const updateAsoClient = async (id, rawUpdates) => {
     // overdue_eligible is a client-side annotation (attachOverdueEligibility), NOT a column — and the profile form
     // sends back the whole client row, so it must never reach the database (or overwrite the fresh value locally).
-    const { overdue_eligible: _annotation, ...updates } = rawUpdates;
+    const { overdue_eligible: _annotation, counting_since: _since, ...updates } = rawUpdates;
     setAsoClients(p => p.map(c => c.id === id ? { ...c, ...updates } : c));
     const { error } = await supabase.from("aso_clients").update(updates).eq("id", id);
     if (error) { console.error("updateAsoClient:", error); loadData(); return { error }; }
@@ -1353,7 +1379,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     // Staff cannot delete transactions — only business owners (no staffId) can
     deleteTransaction: staffId ? null : deleteTransaction,
     addCredit, repayCredit, updateCredit, addExtraCredit, debtPayments,
-    addAsoClient, asoContribute, asoCollectionRecord, asoWithdraw, asoFundWallet, updateAsoClient, deleteAsoClient, requestAsoClientArchive, cancelAsoClientArchive,
+    addAsoClient, refreshAsoCounting, asoContribute, asoCollectionRecord, asoWithdraw, asoFundWallet, updateAsoClient, deleteAsoClient, requestAsoClientArchive, cancelAsoClientArchive,
     asoReverseContribution,
   };
 }

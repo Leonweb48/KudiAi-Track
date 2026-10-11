@@ -1,5 +1,5 @@
 import { today, fmt, isBillPayment } from "./helpers";
-import { overdueEligible } from "./asoOverdue";
+import { effectiveNextDue } from "./asoOverdue";
 
 export function buildCoopOrgContext(org = {}, members = [], wallet = null, programs = [], loans = [], announcements = []) {
   if (!org || !org.name) return "Cooperative Organisation Portal | Organisation data is still loading.";
@@ -73,7 +73,8 @@ export function buildAjoMemberContext(client = {}, contributions = [], ownerInfo
   });
   const monthlyTotal = mContribs.reduce((s, c) => s + Number(c.amount || 0), 0);
 
-  const isOverdue = client.next_contribution_date && new Date() > new Date(client.next_contribution_date);
+  const nextDue   = effectiveNextDue(client);   // null = no active card/group: nothing is due
+  const isOverdue = !!nextDue && nextDue < today();
 
   const recentLines = contributions.slice(0, 10).map(c =>
     `  • ₦${fmt(c.amount || 0)} on ${c.transaction_date || c.date || "unknown"} — ${c.transaction_type || c.type || "contribution"}`
@@ -82,7 +83,7 @@ export function buildAjoMemberContext(client = {}, contributions = [], ownerInfo
   return [
     `AJO SAVINGS MEMBER PORTAL | Member: ${client.full_name} | Today: ${today()}`,
     `SAVINGS BALANCE: ₦${fmt(client.current_balance || 0)} | Total Deposited: ₦${fmt(client.total_saved || 0)} | Total Withdrawn: ₦${fmt(client.total_withdrawn || 0)}`,
-    `CONTRIBUTION PLAN: ₦${fmt(client.contribution_amount || 0)} ${client.contribution_frequency || ""} | Next Due: ${client.next_contribution_date || "N/A"}${isOverdue ? " [OVERDUE]" : ""}`,
+    `CONTRIBUTION PLAN: ₦${fmt(client.contribution_amount || 0)} ${client.contribution_frequency || ""} | Next Due: ${nextDue || "N/A (no active savings card or group)"}${isOverdue ? " [OVERDUE]" : ""}`,
     `STATUS: ${client.status || "active"} | Group: ${client.group_name || client.ajo_group || "No group"}`,
     `THIS MONTH: ₦${fmt(monthlyTotal)} contributed across ${mContribs.length} transaction(s)`,
     `TOTAL CONTRIBUTION RECORDS: ${contributions.length}`,
@@ -181,7 +182,7 @@ export function buildContext(store, products, branches = [], invoices = []) {
   const ajoSaved  = asoClients.reduce((s, c) => s + (c.total_saved      || 0), 0);
   const ajoWithdr = asoClients.reduce((s, c) => s + (c.total_withdrawn  || 0), 0);
   // Overdue = an active client past their due date who still has something active (card / group / esusu) to be overdue on
-  const isAsoOverdue = (c) => c.status === "active" && overdueEligible(c) && c.next_contribution_date && new Date() > new Date(c.next_contribution_date);
+  const isAsoOverdue = (c) => { const due = effectiveNextDue(c); return c.status === "active" && !!due && due < today(); };
   const ajoOver   = asoClients.filter(isAsoOverdue);
 
   const ajoClientLines = asoClients.slice(0, 30).map(c => {

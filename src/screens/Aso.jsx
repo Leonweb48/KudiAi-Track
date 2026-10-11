@@ -30,7 +30,7 @@ import { App as CapApp } from "@capacitor/app";
 import { InAppBrowser, ToolBarType } from "@capgo/capacitor-inappbrowser";
 import { friendlyError } from "../utils/errorMessage";
 import { useToast } from "../components/Toast";
-import { overdueEligible } from "../utils/asoOverdue";
+import { overdueEligible, countingStart, effectiveNextDue, isCounting } from "../utils/asoOverdue";
 import { daysDiff } from "../utils/localDays";
 
 const BLANK = {
@@ -83,10 +83,13 @@ async function uploadPhoto(file, id) {
 }
 
 
+// Expected / missed count from when the client started counting — their first active card, esusu round or savings
+// group (utils/asoOverdue) — never from registration alone. Nothing active = nothing expected, nothing missed.
 function getMissedPayments(c) {
-  if (!c.registration_date || !c.contribution_amount || c.contribution_amount <= 0) return 0;
+  const start = countingStart(c);
+  if (!start || !c.contribution_amount || c.contribution_amount <= 0) return 0;
   const days = FREQ_DAYS[c.contribution_frequency] || 30;
-  const since = daysDiff(c.registration_date);
+  const since = Math.max(0, daysDiff(start));
   const expected = Math.floor(since / days);
   const actual   = Math.floor((c.total_saved || 0) / c.contribution_amount);
   return Math.max(0, expected - actual);
@@ -98,16 +101,19 @@ function getContribsMade(c) {
 }
 
 function getExpectedContribs(c) {
-  if (!c.registration_date || !c.contribution_amount || c.contribution_amount <= 0) return 0;
+  const start = countingStart(c);
+  if (!start || !c.contribution_amount || c.contribution_amount <= 0) return 0;
   const days  = FREQ_DAYS[c.contribution_frequency] || 30;
-  const since = daysDiff(c.registration_date);
+  const since = Math.max(0, daysDiff(start));
   return Math.floor(since / days);
 }
 
 // Overdue = active client, past their due date, who still has something ACTIVE to be overdue on (an active card,
-// savings group or esusu round — see utils/asoOverdue). Settled cards / unstarted or closed groups don't count.
+// savings group or esusu round — see utils/asoOverdue). Settled cards / unstarted or closed groups don't count, and
+// the due date never falls before counting started (a stale date from before their first card isn't overdue).
 function isOverdue(c) {
-  return c.status === "active" && overdueEligible(c) && c.next_contribution_date && daysDiff(c.next_contribution_date) > 0;
+  const due = effectiveNextDue(c);
+  return c.status === "active" && overdueEligible(c) && !!due && daysDiff(due) > 0;
 }
 
 function buildReminderMsg(c, businessName) {
@@ -117,7 +123,7 @@ function buildReminderMsg(c, businessName) {
     ? `\n⚠ Missed payments: ${missed}`
     : "";
   const biz = businessName ? `\nBusiness: ${businessName}` : "";
-  return `Dear ${c.full_name},\n\nThis is a friendly reminder about your Aso savings contribution.${missedLine}\n\nFrequency: ${freqMap[c.contribution_frequency] || c.contribution_frequency}\nContribution Amount: ${fmt(c.contribution_amount)}\nNext Due Date: ${c.next_contribution_date || "N/A"}\nCurrent Balance: ${fmt(c.current_balance)}\nTotal Contributed: ${fmt(c.total_saved)}${biz}\n\nPlease keep your contributions up to date. Thank you!`;
+  return `Dear ${c.full_name},\n\nThis is a friendly reminder about your Aso savings contribution.${missedLine}\n\nFrequency: ${freqMap[c.contribution_frequency] || c.contribution_frequency}\nContribution Amount: ${fmt(c.contribution_amount)}\nNext Due Date: ${effectiveNextDue(c) || "N/A"}\nCurrent Balance: ${fmt(c.current_balance)}\nTotal Contributed: ${fmt(c.total_saved)}${biz}\n\nPlease keep your contributions up to date. Thank you!`;
 }
 
 function isGroupAccount(c) {
@@ -1591,7 +1597,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       if (filter === "groups")   return isGroupAccount(c);
       return true;
     })
-    .filter(c => !dueBefore || (c.next_contribution_date && c.next_contribution_date <= dueBefore));
+    .filter(c => { if (!dueBefore) return true; const due = effectiveNextDue(c); return !!due && due <= dueBefore; });
 
   const pendingRegList = asoClients.filter(c => c.status === "pending_approval");
 
@@ -2688,9 +2694,10 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             const made           = getContribsMade(c);
             const expected       = getExpectedContribs(c);
             const isGroup        = isGroupAccount(c);
-            const nextDaysDiff   = daysDiff(c.next_contribution_date);
-            const nextIsToday    = c.next_contribution_date === today();
-            const nextIsSoon     = nextDaysDiff > -3 && nextDaysDiff <= 0;
+            const nextDue        = effectiveNextDue(c);           // null = no active card/group, so nothing is due
+            const nextDaysDiff   = nextDue ? daysDiff(nextDue) : 0;
+            const nextIsToday    = !!nextDue && nextDue === today();
+            const nextIsSoon     = !!nextDue && nextDaysDiff > -3 && nextDaysDiff <= 0;
 
             return (
               <div key={c.id}
@@ -2790,12 +2797,12 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                         {missed} missed
                       </span>
                     )}
-                    {nextDaysDiff >= 7 && (
+                    {overdue && nextDaysDiff >= 7 && (
                       <span className="text-[10px] font-bold text-white bg-red-500 px-1.5 py-0.5 rounded-full">
                         {nextDaysDiff}d overdue
                       </span>
                     )}
-                    {nextDaysDiff >= 3 && nextDaysDiff < 7 && (
+                    {overdue && nextDaysDiff >= 3 && nextDaysDiff < 7 && (
                       <span className="text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/30 px-1.5 py-0.5 rounded-full">
                         {nextDaysDiff}d overdue
                       </span>
@@ -2843,7 +2850,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                         : nextIsToday || nextIsSoon ? "text-amber-500 dark:text-amber-400"
                         : "text-slate-700 dark:text-slate-200"
                     }`}>
-                      {c.next_contribution_date || "—"}
+                      {nextDue || (isCounting(c) ? "—" : "Not started")}
                     </p>
                     {nextIsToday && <p className="text-[9px] text-amber-500 font-bold">Today!</p>}
                     {overdue && <p className="text-[9px] text-red-500 font-bold">{nextDaysDiff}d late</p>}
@@ -3893,7 +3900,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             <div className="flex-1">
               <p className="font-extrabold text-slate-800 dark:text-white text-base">Today's Collection</p>
               <p className="text-[10px] text-slate-400 dark:text-slate-500">
-                {asoClients.filter(c => c.status === "active" && c.next_contribution_date && c.next_contribution_date <= today()).length} clients due
+                {asoClients.filter(c => { const due = effectiveNextDue(c); return c.status === "active" && !!due && due <= today(); }).length} clients due
               </p>
             </div>
           </div>

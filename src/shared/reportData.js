@@ -166,7 +166,12 @@ export function buildAsoLedger(asoClients, contributions, from, to) {
   const FREQ = {daily:1,weekly:7,monthly:30};
   const enriched = asoClients.map(c => {
     const days     = FREQ[c.contribution_frequency]||30;
-    const since    = c.registration_date ? Math.floor((new Date()-new Date(c.registration_date))/86400000) : 0;
+    // Counting starts with the client's first active card / esusu round / savings group (counting_since, stamped by
+    // the app — see src/utils/asoOverdue.js), never at registration alone; no active obligation = nothing expected.
+    const reg      = c.registration_date ? String(c.registration_date).slice(0, 10) : null;
+    const cs       = c.counting_since ? String(c.counting_since).slice(0, 10) : null;
+    const start    = c.overdue_eligible === false ? null : (cs && (!reg || cs > reg) ? cs : reg);
+    const since    = start ? Math.max(0, Math.floor((new Date()-new Date(start))/86400000)) : 0;
     const expected = Math.floor(since/days);
     const made     = c.contribution_amount>0 ? Math.floor((c.total_saved||0)/c.contribution_amount) : 0;
     const missed   = Math.max(0, expected-made);
