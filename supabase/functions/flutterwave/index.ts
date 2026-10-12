@@ -509,7 +509,8 @@ serve(async (req) => {
         if (!isConfigured(a)) { report[key] = { configured: false }; continue; }
         const inBand: Record<string, Agg> = {}, outBand: Record<string, Agg> = {};
         const feeParts: Record<string, { count: number; total: number }> = {};
-        let inErr = "", outErr = "", inSeen = 0, outSeen = 0;
+        let inErr = "", outErr = "", inSeen = 0, outSeen = 0, outPagesRepeat = false;
+        const seenIds = new Set<string>();   // the transfer list may ignore the page number — count each transfer once
         const inRange = (iso: unknown) => { const d = String(iso ?? "").slice(0, 10); return d >= from && d <= to; };
         const older = (iso: unknown) => String(iso ?? "").slice(0, 10) < from;
         const num = (v: unknown) => typeof v === "object" && v !== null ? Number((v as Record<string, unknown>).value ?? (v as Record<string, unknown>).amount ?? 0) : Number(v ?? 0);
@@ -542,13 +543,17 @@ serve(async (req) => {
             if (!r.ok) { outErr = `HTTP ${r.status}`; break; }
             const dd = (r.data as Record<string, unknown>)?.data as unknown;
             const list = (Array.isArray(dd) ? dd : Array.isArray((dd as Record<string, unknown>)?.transfers) ? (dd as Record<string, unknown>).transfers : []) as Record<string, unknown>[];
-            let past = false;
+            let past = false, fresh = 0;
             for (const t of list) {
-              outSeen++;
+              const id = String(t.id ?? "");
+              if (id && seenIds.has(id)) continue;
+              if (id) seenIds.add(id);
+              fresh++; outSeen++;
               if (older(t.created_datetime)) { past = true; continue; }
               if (!inRange(t.created_datetime)) continue;
               add(outBand, `${band(num(t.amount))} (${String(t.status ?? "?").toUpperCase()})`, num(t.amount), num(t.fee));
             }
+            if (list.length && !fresh) { outPagesRepeat = true; break; }   // same page again: the list doesn't page this way
             if (!list.length || past) break;
           }
         } catch (e) { outErr = (e as Error).message.slice(0, 80); }
@@ -556,7 +561,7 @@ serve(async (req) => {
           api: "v4",
           money_in: { by_amount: tidy(inBand), fee_parts: Object.fromEntries(Object.entries(feeParts).map(([k, v]) => [k, { count: v.count, total: r2(v.total) }])),
                       rows_read: inSeen, error: inErr || null },
-          money_out: { by_amount_and_status: tidy(outBand), rows_read: outSeen, error: outErr || null },
+          money_out: { by_amount_and_status: tidy(outBand), rows_read: outSeen, only_newest_page: outPagesRepeat, error: outErr || null },
         };
         continue;
       }
