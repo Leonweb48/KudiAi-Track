@@ -13,6 +13,10 @@ on:
         description: "From date (YYYY-MM-DD)"
         required: false
         default: "2026-09-20"
+      who:
+        description: "clients or businesses"
+        required: false
+        default: "clients"
 
 permissions:
   contents: read
@@ -26,14 +30,15 @@ jobs:
           URL: ${{ secrets.REACT_APP_SUPABASE_URL }}
           KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SINCE: ${{ inputs.since }}
+          WHO: ${{ inputs.who }}
         run: |
           set -uo pipefail
           H=(-H "apikey: $KEY" -H "Authorization: Bearer $KEY")
           IDS=$(curl -s "${H[@]}" "$URL/rest/v1/aso_clients?select=client_user_id&client_user_id=not.is.null&limit=5000" \
                 | jq -r '[.[].client_user_id] | unique | join(",")')
           [ -n "$IDS" ] || { echo "no client logins"; exit 0; }
-          curl -s "${H[@]}" "$URL/rest/v1/transactions?select=category,note,created_at,bill_status,bill_details&payment_type=eq.bill_payment&created_at=gte.${SINCE}&user_id=in.($IDS)&order=created_at.asc&limit=1000" > bills.json
-          echo "client-portal bills since $SINCE: $(jq length bills.json)"
+          curl -s "${H[@]}" "$URL/rest/v1/transactions?select=category,note,created_at,bill_status,bill_details&payment_type=eq.bill_payment&created_at=gte.${SINCE}&user_id=$( [ "$WHO" = "businesses" ] && echo "not." )in.($IDS)&order=created_at.asc&limit=1000" > bills.json
+          echo "$WHO bills since $SINCE: $(jq length bills.json)"
           jq -r 'group_by(.category + " " + (.bill_status // "?"))[] | "  \(.[0].category) \(.[0].bill_status // "?") = \(length)"' bills.json
           echo "with details saved (token/order id/paid_via): $(jq '[.[] | select(.bill_details != null)] | length' bills.json)"
           echo
