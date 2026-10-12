@@ -1,0 +1,36 @@
+name: Bill charge sweep (by hand)
+
+# Runs the clubkonnect `bill-charge-sweep` by hand (it also runs on its own every 15 minutes once scheduled).
+# Wallet bill charges still pending after 30 minutes are looked up with the provider: delivered → settled;
+# the provider confirms no order / refused it → refunded to the wallet; unclear → left alone.
+# DRY RUN by default: reports what it would do and changes nothing. Prints date, service, the provider's answer and the
+# decision — no references, amounts or names (CI logs are public).
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Preview only (true) or act (false)"
+        required: true
+        default: "true"
+
+permissions:
+  contents: read
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sweep
+        env:
+          URL: ${{ secrets.REACT_APP_SUPABASE_URL }}
+          KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DRY: ${{ inputs.dry_run }}
+        run: |
+          set -uo pipefail
+          BODY=$(jq -nc --arg d "$DRY" '{action:"bill-charge-sweep", dryRun: ($d != "false")}')
+          curl -s -m 280 -o out.json -w "HTTP %{http_code}\n" -X POST "$URL/functions/v1/clubkonnect" \
+            -H "Authorization: Bearer $KEY" -H "apikey: $KEY" -H "Content-Type: application/json" -d "$BODY"
+          jq -c '{dryRun, checked, settled, refunded, waiting, alerted, errors, error}' out.json || head -c 300 out.json
+          jq -r '.items[]? | "\(.at) | \(.svc) | age \(.ageMin) min | provider: \(.provider // "-") | \(.result // "-")\(if .error then " | error: " + .error else "" end)"' out.json
+          rm -f out.json
