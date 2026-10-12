@@ -27,6 +27,22 @@ function loadCacheLS(key) {
   try { return JSON.parse(localStorage.getItem(key) || "null"); } catch { return null; }
 }
 
+// The API returns at most 1000 rows per request. Loading a business's records in ONE request silently dropped everything
+// past the newest 1000 — older sales, bills and credits would "disappear" once a shop got busy. Page through instead.
+// `make()` must return a fresh, filtered query each time; newest first, id breaks ties so pages never overlap or skip.
+export async function fetchAllRows(make, page = 1000) {
+  const out = [];
+  for (let from = 0; from < 100_000; from += page) {
+    const { data, error } = await make()
+      .order("created_at", { ascending: false }).order("id", { ascending: false })
+      .range(from, from + page - 1);
+    if (error) return { data: from ? out : null, error };
+    out.push(...(data || []));
+    if (!data || data.length < page) break;
+  }
+  return { data: out, error: null };
+}
+
 export function useStore(userId, staffId = null, staffName = null, branchId = null, role = null) {
   const [transactions, setTransactions] = useState([]);
   const [credits,      setCredits]      = useState([]);
@@ -93,35 +109,26 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     }
 
     // ── Online: fetch from Supabase ───────────────────────────
-    let txQ  = supabase.from("transactions").select("*").eq("user_id", userId);
-    let crQ  = supabase.from("credits").select("*").eq("user_id", userId);
-    let asoQ = supabase.from("aso_clients").select("*").eq("user_id", userId).eq("portal_active", true);
-    let dpQ  = supabase.from("debt_payments").select("*").eq("owner_id", userId);
-    if (staffId) {
-      if (role === "manager" && branchId) {
-        // Manager: all records for their branch (RLS enforces the same on the server)
-        txQ  = txQ.eq("branch_id", branchId);
-        crQ  = crQ.eq("branch_id", branchId);
-        asoQ = asoQ.eq("branch_id", branchId);
-        dpQ  = dpQ.eq("staff_id",  staffId);
-      } else {
-        // Regular staff: own records only — never the whole branch
-        txQ  = txQ.eq("staff_id",  staffId);
-        crQ  = crQ.eq("staff_id",  staffId);
-        asoQ = asoQ.eq("staff_id", staffId);
-        dpQ  = dpQ.eq("staff_id",  staffId);
+    // Who sees what: a manager sees their branch (debt payments: their own), regular staff only their own records, an
+    // owner viewing one branch that branch. RLS enforces the same on the server.
+    const scope = (q, kind) => {
+      if (staffId) {
+        if (role === "manager" && branchId) return kind === "dp" ? q.eq("staff_id", staffId) : q.eq("branch_id", branchId);
+        return q.eq("staff_id", staffId);
       }
-    } else if (branchId) {
-      txQ  = txQ.eq("branch_id", branchId);
-      crQ  = crQ.eq("branch_id", branchId);
-      asoQ = asoQ.eq("branch_id", branchId);
-    }
+      if (branchId && kind !== "dp") return q.eq("branch_id", branchId);
+      return q;
+    };
+    const txQ  = () => scope(supabase.from("transactions").select("*").eq("user_id", userId), "tx");
+    const crQ  = () => scope(supabase.from("credits").select("*").eq("user_id", userId), "cr");
+    const asoQ = () => scope(supabase.from("aso_clients").select("*").eq("user_id", userId).eq("portal_active", true), "aso");
+    const dpQ  = () => scope(supabase.from("debt_payments").select("*").eq("owner_id", userId), "dp");
 
     try {
     const [txRes, crRes, asoRes, profRes, staffRes, sessRes, dpRes, brRes] = await Promise.all([
-      txQ.order("created_at",  { ascending: false }),
-      crQ.order("created_at",  { ascending: false }),
-      asoQ.order("created_at", { ascending: false }),
+      fetchAllRows(txQ),
+      fetchAllRows(crQ),
+      fetchAllRows(asoQ),
       supabase.from("profiles")
         .select(staffId
           ? "id, business_name, full_name, email, currency, dark_mode, profile_image_url, store_image_url"
@@ -131,7 +138,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
         ? supabase.from("staff").select("id, full_name, branch_id, role").eq("owner_id", userId)
         : Promise.resolve({ data: null }),
       supabase.auth.getSession(),
-      dpQ.order("created_at", { ascending: false }),
+      fetchAllRows(dpQ),
       !staffId
         ? supabase.from("branches").select("id, name").eq("owner_id", userId).order("name")
         : Promise.resolve({ data: [] }),
