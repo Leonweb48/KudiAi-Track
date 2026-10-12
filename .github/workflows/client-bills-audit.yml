@@ -67,7 +67,8 @@ jobs:
           IDS=$(curl -s "${H[@]}" "$URL/rest/v1/aso_clients?select=client_user_id&client_user_id=not.is.null&limit=5000" | jq -r '[.[].client_user_id] | unique | join(",")')
           WIDS=$(curl -s "${H[@]}" "$URL/rest/v1/wallets?select=id&user_id=in.($IDS)&limit=5000" | jq -r '[.[].id] | join(",")')
           CUT=$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)
-          curl -s "${H[@]}" "$URL/rest/v1/wallet_ledger?select=reference,created_at,meta,description&source=eq.bill_spend&status=eq.pending&created_at=lt.$CUT&wallet_id=in.($WIDS)&order=created_at.asc" > pend.json
+          curl -s "${H[@]}" "$URL/rest/v1/wallet_ledger?select=reference,created_at,meta&source=eq.bill_spend&status=eq.pending&created_at=lt.$CUT&wallet_id=in.($WIDS)&order=created_at.asc" > pend.json
+          if [ "$(jq -r 'type' pend.json)" != "array" ]; then echo "query refused: $(jq -r '.message // .' pend.json | cut -c1-120)"; exit 1; fi
           echo "pending client bill charges: $(jq length pend.json)"
           jq -c '.[]' pend.json | while read -r row; do
             REF=$(echo "$row" | jq -r '.reference // empty'); DAY=$(echo "$row" | jq -r '.created_at[5:16]')
