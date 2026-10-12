@@ -68,6 +68,14 @@ ClubKonnect's `ORDER_REFUNDED` (statuscode `899`), `CANCEL…`, `REVERS…` and 
   guesses by amount or time. Anything else becomes an admin "manual refund" alert.
 - **Reference lookups:** a reference starting `KDT-BILL-` is looked up as `RequestID`, anything else as `OrderID`.
 
+### 3b. A wallet charge must never stay pending
+
+The wallet is charged (`bill_spend`, pending) before the order is placed. The app settles or refunds it when the answer
+comes; when it never does (app closed, line dropped, a retry under a new reference), the `bill-charge-sweep` (every 15
+min) asks the provider by the charge's own reference after 30 minutes: delivered → settled, confirmed no order or
+refused → refunded and the customer told, unclear → left alone (rule 1) with an admin alert after 48 hours.
+Electricity charges are only settled there; the electricity sweep owns their refunds.
+
 ### 4. Every purchase needs proof of payment, and a coupon can be that proof
 
 - **What counts as proof:** a wallet debit for the reference, a Paystack charge verified with Paystack, or a coupon
@@ -168,6 +176,8 @@ Tokens, PINs, meter/phone/account numbers, names and our ClubKonnect balance mus
 | ClubKonnect print-PIN recovery | Preview, then deliver PINs for print orders we wrongly failed |
 | ClubKonnect set API key | Install `CK_API_KEY` into all 11 services |
 | ClubKonnect live server test | **Costs ₦50.** One real airtime order: the only proof that purchases work |
+| Bill charge sweep (by hand) | Wallet bill charges still pending after 30 min: delivered → settled, no order → refunded (dry run by default; also runs every 15 min) |
+| Client bills audit | Client-portal bills since a date, each checked with ClubKonnect (statuses only) |
 
 Production data is read through read-only `RAISE NOTICE` migrations (`supabase/migrations/*readout*`), following rule 11.
 
