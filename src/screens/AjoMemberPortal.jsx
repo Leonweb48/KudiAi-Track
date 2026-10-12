@@ -5,7 +5,7 @@ import BillPayments from "./BillPayments";
 import CashbackCard from "../components/CashbackCard";
 import Badge from "../components/shared/Badge";
 import { effectiveNextDue } from "../utils/asoOverdue";
-import { fmt, fmtDate, fmtDateTime, ledgerTypeLabel } from "../utils/helpers";
+import { fmt, fmtDate, fmtDateTime, ledgerTypeLabel, today } from "../utils/helpers";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
 import Icon from "../components/Icon";
 import Modal from "../components/shared/Modal";
@@ -5028,37 +5028,70 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
 
 // ── Bills wrapper — mirrors same store shape as CoopMemberPortal ──────────
 function AjoMemberBillsWrapper({ client, ownerInfo, session, wallet }) {
+  const uid = session?.user?.id || null;
   const [bills, setBills] = useState([]);
 
+  // The client's bill history. This list used to start empty and only hold the bills bought since the Bills tab was
+  // opened — leave the tab and come back and the history "disappeared" (the bills were saved, just never read back).
+  useEffect(() => {
+    if (!uid) return;
+    let live = true;
+    supabase.from("transactions").select("*")
+      .eq("user_id", uid).eq("payment_type", "bill_payment")
+      .order("created_at", { ascending: false }).limit(500)
+      .then(({ data }) => {
+        if (!live || !Array.isArray(data)) return;
+        // keep anything bought while the list was loading
+        setBills(prev => { const have = new Set(data.map(r => r.id)); return [...prev.filter(r => !have.has(r.id)), ...data]; });
+      });
+    return () => { live = false; };
+  }, [uid]);
+
+  // Saves a bill exactly as the bills screen hands it over — including bill_details (electricity token, the provider's
+  // order id, how it was paid), which used to be dropped — and RETURNS the saved row: the screen links the wallet
+  // charge to it (wallet_settle_bill) and finishes late electricity tokens by its id.
   const addTransaction = useCallback(async (payload) => {
     try {
-      const { data } = await supabase.from("transactions").insert({
-        user_id:          session?.user?.id || null,
+      const { data, error } = await supabase.from("transactions").insert({
+        user_id:          uid,
         type:             payload.type,
         category:         payload.category   || "sale",
         amount:           parseFloat(payload.amount) || 0,
         item_name:        payload.item_name  || "",
-        quantity:         1,
+        quantity:         payload.quantity ?? 1,
         customer_name:    payload.customer_name || "",
         payment_type:     payload.payment_type  || "cash",
         note:             payload.note          || "",
-        transaction_date: payload.transaction_date || new Date().toISOString().slice(0, 10),
+        transaction_date: payload.transaction_date || today(),
         bill_status:      payload.bill_status !== undefined ? payload.bill_status : null,
+        bill_details:     payload.bill_details ?? null,
       }).select().single();
+      if (error) throw error;
       if (data) setBills(prev => [data, ...prev]);
-    } catch (_) {}
-  }, [session?.user?.id]);
+      return data || null;
+    } catch (e) {
+      console.warn("[client bills] could not save the bill record:", e?.message || e);
+      return null;
+    }
+  }, [uid]);
+
+  // The bills screen updates a bill's note on screen when a late electricity token arrives (it was missing here, so
+  // "retrieve token" on a client's receipt threw).
+  const patchTransactionNote = useCallback((id, note) => {
+    setBills(prev => prev.map(t => (t.id === id ? { ...t, note } : t)));
+  }, []);
 
   const store = useMemo(() => ({
     transactions: bills,
     addTransaction,
+    patchTransactionNote,
     profile: {
       email:         client?.email || session?.user?.email || "",
       owner_name:    client?.full_name || "",
       business_name: ownerInfo?.business_name || "",
       id:            session?.user?.id || null,
     },
-  }), [bills, addTransaction, client, ownerInfo, session]);
+  }), [bills, addTransaction, patchTransactionNote, client, ownerInfo, session]);
 
   return (
     <BillPayments
