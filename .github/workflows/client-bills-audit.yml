@@ -39,13 +39,16 @@ jobs:
           echo
           echo "date  | service | ours | ClubKonnect says | message"
           jq -c '.[] | select(.bill_status == "success" or .bill_status == "pending")' bills.json | while read -r row; do
+            # successful bills keep the provider's order id as "Ref: …"; pending/failed ones keep our request id as "PS: …"
+            OID=$(echo "$row" | jq -r '.note // "" | capture("Ref: (?<r>[A-Za-z0-9_-]+)").r // empty')
             REF=$(echo "$row" | jq -r '.note // "" | capture("PS: (?<r>[A-Za-z0-9_-]+)").r // empty')
             CAT=$(echo "$row" | jq -r '.category'); DAY=$(echo "$row" | jq -r '.created_at[5:16]'); OURS=$(echo "$row" | jq -r '.bill_status')
-            if [ -z "$REF" ]; then echo "$DAY | $CAT | $OURS | (no reference in the record)"; continue; fi
-            echo "::add-mask::$REF"
+            HASREF=$(echo "$row" | jq -r '.note // "" | test("Ref:")')
+            if [ -z "$REF$OID" ]; then echo "$DAY | $CAT | $OURS | (no provider order id in the record; 'Ref:' present=$HASREF)"; continue; fi
+            [ -n "$REF" ] && echo "::add-mask::$REF"; [ -n "$OID" ] && echo "::add-mask::$OID"
             SVC=$CAT; case "$CAT" in electricity|airtime|data|cable|betting|waec|jamb|smile|spectranet) ;; *) SVC=airtime;; esac
             V=$(curl -s -m 60 -X POST "$URL/functions/v1/clubkonnect" "${H[@]}" -H "Content-Type: application/json" \
-                  -d "$(jq -nc --arg r "$REF" --arg s "$SVC" '{action:"verify", requestId:$r, service:$s}')")
+                  -d "$(jq -nc --arg r "$REF" --arg o "$OID" --arg s "$SVC" '{action:"verify", service:$s} + (if $o != "" then {orderId:$o} else {requestId:$r} end)')")
             ST=$(echo "$V" | jq -r '.status // "?"'); MSG=$(echo "$V" | jq -r '.message // ""' | sed 's/[0-9]/#/g' | cut -c1-60)
             echo "$DAY | $CAT | $OURS | $ST | $MSG"
             sleep 1
