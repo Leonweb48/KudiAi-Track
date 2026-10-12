@@ -540,7 +540,8 @@ serve(async (req) => {
           for (let page = 1; page <= maxPages * 2; page++) {
             const r = await flwFetch(`/transfers?page=${page}&size=50`, { account: a });
             if (!r.ok) { outErr = `HTTP ${r.status}`; break; }
-            const list = (((r.data as Record<string, unknown>)?.data) || []) as Record<string, unknown>[];
+            const dd = (r.data as Record<string, unknown>)?.data as unknown;
+            const list = (Array.isArray(dd) ? dd : Array.isArray((dd as Record<string, unknown>)?.transfers) ? (dd as Record<string, unknown>).transfers : []) as Record<string, unknown>[];
             let past = false;
             for (const t of list) {
               outSeen++;
