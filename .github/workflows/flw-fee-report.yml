@@ -1,0 +1,38 @@
+name: Flutterwave fee report
+
+# Manual, read-only (2026-10-12): what Flutterwave ACTUALLY charged, from Flutterwave's own records, per account —
+# money in (deposits: amount, Flutterwave's fee, what was settled to us, whether the fee was added on top for the
+# customer or taken from us) and money out (transfers: Flutterwave's fee), aggregated by amount band. Platform totals
+# and rates only — no names, account numbers or references. Changes nothing.
+
+on:
+  workflow_dispatch:
+    inputs:
+      from:
+        description: "From (YYYY-MM-DD). Empty = 60 days ago"
+        required: false
+        default: ""
+      to:
+        description: "To (YYYY-MM-DD). Empty = today"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fee report
+        env:
+          URL: ${{ secrets.REACT_APP_SUPABASE_URL }}
+          KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          FROM: ${{ inputs.from }}
+          TO: ${{ inputs.to }}
+        run: |
+          BODY=$(jq -nc --arg f "$FROM" --arg t "$TO" '{action:"fee-report"} + (if $f != "" then {from:$f} else {} end) + (if $t != "" then {to:$t} else {} end)')
+          curl -s -m 280 -o out.json -w "HTTP %{http_code}\n" -X POST "$URL/functions/v1/flutterwave" \
+            -H "Authorization: Bearer $KEY" -H "apikey: $KEY" -H "Content-Type: application/json" -d "$BODY"
+          jq . out.json || head -c 400 out.json
+          rm -f out.json

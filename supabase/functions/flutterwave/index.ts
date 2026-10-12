@@ -464,6 +464,91 @@ serve(async (req) => {
   // Which Flutterwave account is active right now (legacy until the switch).
   ACTIVE = resolveActive(ACCOUNTS, await cfg("flw_active_account", "legacy"), (m) => console.warn("[flutterwave]", m));
 
+  // ═══ fee-report — service only, read-only. What Flutterwave ACTUALLY charged us, from Flutterwave's own records:
+  //    money in (deposits/collections: amount, app_fee, merchant_fee, amount_settled) and money out (transfers: fee),
+  //    per account, aggregated by amount band. Totals and rates only — never a name, account number or reference.
+  //    Body: { from?: "YYYY-MM-DD" (default 60 days ago), to?: "YYYY-MM-DD" (default today), pages?: 1..20 }. ═══
+  if (action === "fee-report") {
+    if (!(await isServiceCall(req, token))) return json({ error: "Unauthorized" }, 401);
+    const b = body as { from?: string; to?: string; pages?: number };
+    const day = (d: Date) => d.toISOString().slice(0, 10);
+    const isD = (x?: string) => !!x && /^\d{4}-\d{2}-\d{2}$/.test(x);
+    const from = isD(b.from) ? b.from! : day(new Date(Date.now() - 60 * 86400_000));
+    const to = isD(b.to) ? b.to! : day(new Date());
+    const maxPages = Math.min(Math.max(Number(b.pages) || 10, 1), 20);
+    const band = (n: number) => n <= 5000 ? "a: up to 5,000" : n <= 10000 ? "b: 5,001-10,000" : n <= 50000 ? "c: 10,001-50,000" : "d: above 50,000";
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    type Agg = { count: number; amount: number; fee: number; settled: number; feeMin: number | null; feeMax: number | null; pctMin: number | null; pctMax: number | null };
+    const add = (m: Record<string, Agg>, k: string, amount: number, fee: number, settled = 0) => {
+      const a = (m[k] ??= { count: 0, amount: 0, fee: 0, settled: 0, feeMin: null, feeMax: null, pctMin: null, pctMax: null });
+      a.count++; a.amount += amount; a.fee += fee; a.settled += settled;
+      a.feeMin = a.feeMin === null ? fee : Math.min(a.feeMin, fee); a.feeMax = a.feeMax === null ? fee : Math.max(a.feeMax, fee);
+      const pct = amount > 0 ? (fee / amount) * 100 : 0;
+      a.pctMin = a.pctMin === null ? pct : Math.min(a.pctMin, pct); a.pctMax = a.pctMax === null ? pct : Math.max(a.pctMax, pct);
+    };
+    const tidy = (m: Record<string, Agg>) => Object.fromEntries(Object.entries(m).sort().map(([k, a]) => [k, {
+      count: a.count, amount: r2(a.amount), fee: r2(a.fee), settled: r2(a.settled),
+      fee_min: r2(a.feeMin ?? 0), fee_max: r2(a.feeMax ?? 0), fee_pct_min: r2(a.pctMin ?? 0), fee_pct_max: r2(a.pctMax ?? 0),
+      fee_pct_overall: a.amount > 0 ? r2((a.fee / a.amount) * 100) : 0,
+    }]));
+    const report: Record<string, unknown> = { from, to };
+    // Flutterwave's v3 list endpoints carry app_fee / merchant_fee / amount_settled per transaction and fee per transfer;
+    // each account has its own v3 secret key. Nothing is logged from these responses (they hold customer details).
+    const v3get = async (a: FlwAccount, path: string) => {
+      const res = await fetch(`${FLW_V3_BASE}${path}`, { headers: { Authorization: `Bearer ${a.v3Key}`, "Content-Type": "application/json" } });
+      let data: Record<string, unknown> = {};
+      try { data = await res.json(); } catch { /* not JSON */ }
+      return { ok: res.ok, status: res.status, data };
+    };
+    for (const key of ["business", "legacy"] as AccountKey[]) {
+      const a = ACCOUNTS[key];
+      if (!a.v3Key) { report[key] = { v3_key: false }; continue; }
+      const inByBand: Record<string, Agg> = {}, inByType: Record<string, Agg> = {}, outByBand: Record<string, Agg> = {};
+      let customerPaidFee = 0, merchantPaidFee = 0, inPages = 0, outPages = 0, inErr = "", outErr = "";
+      const merchantFees: number[] = [];
+      try {
+        for (let page = 1; page <= maxPages; page++) {
+          const r = await v3get(a, `/v3/transactions?from=${from}&to=${to}&status=successful&currency=NGN&page=${page}`);
+          if (!r.ok) { inErr = `HTTP ${r.status}`; break; }
+          inPages = page;
+          const rows = ((r.data as { data?: Record<string, unknown>[] })?.data) || [];
+          for (const t of rows) {
+            const amount = Number(t.amount ?? 0), appFee = Number(t.app_fee ?? 0), merchantFee = Number(t.merchant_fee ?? 0);
+            const charged = Number(t.charged_amount ?? amount), settled = Number(t.amount_settled ?? (amount - appFee));
+            add(inByBand, band(amount), amount, appFee, settled);
+            add(inByType, String(t.payment_type ?? "?"), amount, appFee, settled);
+            if (charged > amount + 0.001) customerPaidFee++; else merchantPaidFee++;
+            if (merchantFee) merchantFees.push(merchantFee);
+          }
+          const pi = (r.data as { meta?: { page_info?: { total_pages?: number } } })?.meta?.page_info;
+          if (!rows.length || (pi?.total_pages && page >= pi.total_pages)) break;
+        }
+      } catch (e) { inErr = (e as Error).message.slice(0, 80); }
+      try {
+        for (let page = 1; page <= maxPages; page++) {
+          const r = await v3get(a, `/v3/transfers?from=${from}&to=${to}&page=${page}`);
+          if (!r.ok) { outErr = `HTTP ${r.status}`; break; }
+          outPages = page;
+          const rows = ((r.data as { data?: Record<string, unknown>[] })?.data) || [];
+          for (const t of rows) {
+            if (String(t.currency ?? "NGN") !== "NGN") continue;
+            const st = String(t.status ?? "").toUpperCase();
+            add(outByBand, `${band(Number(t.amount ?? 0))} (${st || "?"})`, Number(t.amount ?? 0), Number(t.fee ?? 0));
+          }
+          const pi = (r.data as { meta?: { page_info?: { total_pages?: number } } })?.meta?.page_info;
+          if (!rows.length || (pi?.total_pages && page >= pi.total_pages)) break;
+        }
+      } catch (e) { outErr = (e as Error).message.slice(0, 80); }
+      report[key] = {
+        money_in: { by_amount: tidy(inByBand), by_payment_type: tidy(inByType), fee_added_on_top_for_customer: customerPaidFee,
+                    fee_taken_from_us: merchantPaidFee, merchant_fee_entries: merchantFees.length,
+                    merchant_fee_total: r2(merchantFees.reduce((x, y) => x + y, 0)), pages: inPages, error: inErr || null },
+        money_out: { by_amount_and_status: tidy(outByBand), pages: outPages, error: outErr || null },
+      };
+    }
+    return json(report);
+  }
+
   // ═══ check-accounts — service only. Proves each Flutterwave account's credentials work BEFORE the switch, so it
   //    is never made blind. Returns yes/no facts only — never a secret, token or hash. Runs ahead of the
   //    "configured" guard below because diagnosing that is its job. ═══
