@@ -503,25 +503,61 @@ serve(async (req) => {
     for (const key of ["business", "legacy"] as AccountKey[]) {
       const a = ACCOUNTS[key];
       if (!a.v3Key) {
-        // No v3 key on this account (the business account runs on the newer API): probe its list endpoints and report
-        // only HTTP status, the field names of the first item and counts — enough to learn the shape, never values.
-        const probe: Record<string, unknown> = { v3_key: false };
-        if (isConfigured(a)) {
-          for (const [label, path] of [["transfers", `/transfers?page=1&size=50`], ["charges", `/charges?page=1&size=50`],
-                                       ["transactions", `/transactions?page=1&size=50`]] as const) {
-            try {
-              const r = await flwFetch(path, { account: a });
-              const d = r.data as Record<string, unknown>;
-              const list = (Array.isArray(d?.data) ? d.data : Array.isArray((d?.data as Record<string, unknown>)?.transfers) ? (d.data as Record<string, unknown>).transfers
-                : Array.isArray((d?.data as Record<string, unknown>)?.charges) ? (d.data as Record<string, unknown>).charges : []) as Record<string, unknown>[];
-              const first = list[0] || {};
-              const nested = (o: unknown) => o && typeof o === "object" && !Array.isArray(o) ? Object.keys(o as Record<string, unknown>) : null;
-              probe[label] = { status: r.status, top_keys: Object.keys(d || {}), items: list.length, item_keys: Object.keys(first),
-                               fee_keys: nested(first.fee) ?? nested(first.fees) ?? null, amount_keys: nested(first.amount) };
-            } catch (e) { probe[label] = { error: (e as Error).message.slice(0, 60) }; }
+        // No v3 key: the business account runs on the newer API. Its lists (newest first, no date filter) — page until
+        // past `from`. Transfers: amount.value, fee.value, status. Charges (deposits): amount, fees (one number, or a list
+        // of parts whose TYPE names are reported — e.g. whether VAT or stamp duty is a separate part). Totals only.
+        if (!isConfigured(a)) { report[key] = { configured: false }; continue; }
+        const inBand: Record<string, Agg> = {}, outBand: Record<string, Agg> = {};
+        const feeParts: Record<string, { count: number; total: number }> = {};
+        let inErr = "", outErr = "", inSeen = 0, outSeen = 0;
+        const inRange = (iso: unknown) => { const d = String(iso ?? "").slice(0, 10); return d >= from && d <= to; };
+        const older = (iso: unknown) => String(iso ?? "").slice(0, 10) < from;
+        const num = (v: unknown) => typeof v === "object" && v !== null ? Number((v as Record<string, unknown>).value ?? (v as Record<string, unknown>).amount ?? 0) : Number(v ?? 0);
+        try {
+          for (let page = 1; page <= maxPages * 2; page++) {
+            const r = await flwFetch(`/charges?page=${page}&size=50`, { account: a });
+            if (!r.ok) { inErr = `HTTP ${r.status}`; break; }
+            const list = (((r.data as Record<string, unknown>)?.data) || []) as Record<string, unknown>[];
+            let past = false;
+            for (const c of list) {
+              inSeen++;
+              if (older(c.created_datetime)) { past = true; continue; }
+              if (!inRange(c.created_datetime) || String(c.status ?? "").toLowerCase() !== "succeeded" && String(c.status ?? "").toLowerCase() !== "successful") continue;
+              const amount = num(c.amount);
+              let fee = 0;
+              if (Array.isArray(c.fees)) {
+                for (const f of c.fees as Record<string, unknown>[]) {
+                  const v = num(f.amount ?? f.value ?? f); fee += v;
+                  const t = String(f.type ?? f.name ?? "fee"); (feeParts[t] ??= { count: 0, total: 0 }).count++; feeParts[t].total += v;
+                }
+              } else fee = num(c.fees);
+              add(inBand, band(amount), amount, fee, amount - fee);
+            }
+            if (!list.length || past) break;
           }
-        }
-        report[key] = probe; continue;
+        } catch (e) { inErr = (e as Error).message.slice(0, 80); }
+        try {
+          for (let page = 1; page <= maxPages * 2; page++) {
+            const r = await flwFetch(`/transfers?page=${page}&size=50`, { account: a });
+            if (!r.ok) { outErr = `HTTP ${r.status}`; break; }
+            const list = (((r.data as Record<string, unknown>)?.data) || []) as Record<string, unknown>[];
+            let past = false;
+            for (const t of list) {
+              outSeen++;
+              if (older(t.created_datetime)) { past = true; continue; }
+              if (!inRange(t.created_datetime)) continue;
+              add(outBand, `${band(num(t.amount))} (${String(t.status ?? "?").toUpperCase()})`, num(t.amount), num(t.fee));
+            }
+            if (!list.length || past) break;
+          }
+        } catch (e) { outErr = (e as Error).message.slice(0, 80); }
+        report[key] = {
+          api: "v4",
+          money_in: { by_amount: tidy(inBand), fee_parts: Object.fromEntries(Object.entries(feeParts).map(([k, v]) => [k, { count: v.count, total: r2(v.total) }])),
+                      rows_read: inSeen, error: inErr || null },
+          money_out: { by_amount_and_status: tidy(outBand), rows_read: outSeen, error: outErr || null },
+        };
+        continue;
       }
       const inByBand: Record<string, Agg> = {}, inByType: Record<string, Agg> = {}, outByBand: Record<string, Agg> = {};
       let customerPaidFee = 0, merchantPaidFee = 0, inPages = 0, outPages = 0, inErr = "", outErr = "";
