@@ -156,7 +156,7 @@ export default function Wallet({ session, store }) {
             </div>
             <p className="text-[15px] font-extrabold text-slate-900 dark:text-slate-50 mb-1 text-center">Activate your wallet</p>
             <p className="text-[12px] text-slate-500 dark:text-slate-400 mb-5 text-center leading-relaxed">
-              Get a dedicated account number. Fund it, get paid into it, transfer out, and pay bills — all fee-free.
+              Get a dedicated account number. Fund it and get paid into it free, transfer out at low fees, and pay bills.
             </p>
             {!walletTestMode && (
               <div className="space-y-3 mb-4">

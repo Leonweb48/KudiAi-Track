@@ -5359,7 +5359,7 @@ function MemberWalletSheet({ pendingPayouts = [], wallet, testMode, bvnVerificat
           </p>
           <p className="text-[13px] text-slate-500 dark:text-slate-400 mb-4 leading-relaxed">
             Get your own dedicated account number. Fund it, pay your savings contributions from it, and cash out
-            to any bank — fee-free.
+            to any bank — your first 3 transfers each day are free.
           </p>
           {!testMode && (
             <div className="space-y-3 mb-4">

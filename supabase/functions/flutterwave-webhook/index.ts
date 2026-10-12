@@ -193,6 +193,14 @@ serve(async (req) => {
       // re-verify with Flutterwave before giving value
       let amountNaira = Number(data.amount || 0);
       let status = String(data.status || "");
+      // What Flutterwave keeps of this deposit (its `fees` parts: app + vat + …), kept on the ledger row for the profit report
+      const feeKobo = (c: Record<string, unknown> | null | undefined) => {
+        const f = c?.fees as unknown;
+        const val = (x: unknown) => typeof x === "object" && x !== null ? Number((x as Record<string, unknown>).amount ?? (x as Record<string, unknown>).value ?? 0) : Number(x ?? 0);
+        const naira = Array.isArray(f) ? f.reduce((n: number, x: unknown) => n + val(x), 0) : val(f);
+        return Number.isFinite(naira) && naira > 0 ? Math.round(naira * 100) : 0;
+      };
+      let flwFeeKobo = feeKobo(data);
       try {
         // verify with the credentials of the account that SIGNED the event — a charge id only exists on its own account
         const token = await flwToken(srcAcct);
@@ -200,6 +208,7 @@ serve(async (req) => {
         const vj = await vr.json().catch(() => ({}));
         if (vr.ok && vj?.data) {
           amountNaira = Number(vj.data.amount || amountNaira);
+          flwFeeKobo = feeKobo(vj.data) || flwFeeKobo;
           status = String(vj.data.status || status);
         }
       } catch (e) { console.warn("[flw-webhook] verify failed, using payload:", (e as Error).message); }
@@ -376,6 +385,7 @@ serve(async (req) => {
           originator: (pm.bank_transfer as Record<string, unknown>)?.originator_name || null,
           originator_bank: originatorBank || null,
           sender_narration: senderNarration || null,
+          ...(flwFeeKobo > 0 ? { flw_fee_kobo: flwFeeKobo } : {}),
         },
       });
       if (error) { console.error("[flw-webhook] wallet_credit:", error.message); return bad("credit failed", 500); }
@@ -438,6 +448,16 @@ serve(async (req) => {
         : ["SUCCESSFUL", "successful", "COMPLETED"].includes(String(data.status || "")) ? "successful" : "failed";
       const { error } = await sb.rpc("wallet_mark_withdrawal", { p_flw_transfer_id: transferId, p_status: st, p_reference: ref });
       if (error) console.error("[flw-webhook] wallet_mark_withdrawal:", error.message);
+
+      // Flutterwave's real fee for this transfer (the transfer response comes before it is priced, so it's only known here)
+      // — kept on the withdrawal so the profit report uses the real cost instead of an estimate.
+      try {
+        const fv = data.fee as unknown;
+        const feeNaira = typeof fv === "object" && fv !== null ? Number((fv as Record<string, unknown>).value ?? (fv as Record<string, unknown>).amount ?? 0) : Number(fv ?? 0);
+        if (ref && Number.isFinite(feeNaira) && feeNaira > 0) {
+          await sb.from("wallet_withdrawals").update({ fee_kobo: Math.round(feeNaira * 100) }).eq("id", ref);
+        }
+      } catch { /* non-fatal */ }
 
       // A transfer Flutterwave accepted but the bank side failed / reversed: tell finance admins Flutterwave's own reason
       // (provider_response code / type / message) — 2026-10-02, a failure with code 0309 was invisible outside the raw

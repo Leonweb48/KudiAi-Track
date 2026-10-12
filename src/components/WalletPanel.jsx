@@ -504,6 +504,26 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
   const dailyLeftKobo = Math.max(0, dailyCapKobo - dailyUsedKobo);
   const cap = Math.min(balanceKobo, maxKobo, dailyCapKobo > 0 ? dailyLeftKobo : Infinity);
 
+  // The fee for THIS transfer, shown before the customer confirms (wallet_bank_transfer_quote: the price for the amount,
+  // or free within their allowance — 3 a day for personal wallets, by plan a month for businesses). The server decides
+  // the actual charge the same way when the bank accepts the transfer.
+  const [quote, setQuote] = useState(null);
+  useEffect(() => {
+    if (step !== "review" || !kobo) return;
+    let live = true;
+    setQuote(null);
+    supabase.rpc("wallet_bank_transfer_quote", { p_amount_kobo: kobo })
+      .then(({ data, error }) => { if (live && !error && data) setQuote(data); });
+    return () => { live = false; };
+  }, [step, kobo]);
+  const quoteFee = Number(quote?.fee_kobo || 0);
+  const shortForFee = !!quote && !quote.free && kobo + quoteFee > balanceKobo;
+  const freeNote = quote
+    ? (quote.free
+        ? `Free — ${Math.max(Number(quote.free_left) - 1, 0)} of your ${quote.allowance} free transfers left ${quote.period === "day" ? "today" : "this month"} after this one`
+        : `${quote.allowance > 0 ? `Your ${quote.allowance} free transfers ${quote.period === "day" ? "today" : "this month"} are used · ` : ""}₦20 up to ₦5,000 · ₦35 up to ₦50,000 · ₦60 above`)
+    : "";
+
   const doTransfer = async (pin) => {
     setBusy(true); setErr("");
     try {
@@ -593,6 +613,7 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
             <div className="mt-4 rounded-2xl border border-slate-100 dark:border-slate-700/60 divide-y divide-slate-100 dark:divide-slate-800">
               {[["Recipient", recipientName], ["Account", acctNo], ["Bank", bank?.name],
                 ["Narration", narration || "—"],
+                ["Fee", !quote ? "…" : quote.free ? "Free" : fmt(quoteFee / 100)],
                 ...(repeat ? [["Repeats", frequency[0].toUpperCase() + frequency.slice(1)]] : [])].map(([k, v]) => (
                 <div key={k} className="flex items-center justify-between px-4 py-3">
                   <span className="text-[12px] text-slate-400">{k}</span>
@@ -607,8 +628,14 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
                 </div>
               ))}
             </div>
+            {freeNote && <p className="text-[11px] text-slate-400 mt-2 px-1">{freeNote}</p>}
+            {shortForFee && (
+              <p className="text-[12px] text-red-500 mt-2">
+                Your balance doesn't cover the {fmt(quoteFee / 100)} fee on top of {fmt(kobo / 100)} — send up to {fmt(Math.max(balanceKobo - quoteFee, 0) / 100)}.
+              </p>
+            )}
             {err && <p className="text-[12px] text-red-500 mt-3">{err}</p>}
-            <button onClick={() => setStep("pin")} disabled={busy} className={primaryBtn + " mt-4"}>
+            <button onClick={() => setStep("pin")} disabled={busy || shortForFee} className={primaryBtn + " mt-4"}>
               {repeat ? `Confirm — ${fmt(kobo / 100)} ${frequency}` : `Transfer ${fmt(kobo / 100)}`}
             </button>
           </div>

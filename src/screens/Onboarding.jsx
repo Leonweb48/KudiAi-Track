@@ -308,7 +308,7 @@ export default function Onboarding({ session, onComplete }) {
           ) : (
             <>
               <p className="text-white text-xl font-bold text-center">Open your KudiAI Wallet</p>
-              <p className="text-white/80 text-sm text-center mt-1">Get a dedicated account number — free transfers &amp; bill payments</p>
+              <p className="text-white/80 text-sm text-center mt-1">Get a dedicated account number — low-fee transfers &amp; bill payments</p>
             </>
           )}
         </div>
@@ -481,7 +481,7 @@ export default function Onboarding({ session, onComplete }) {
               <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center flex-shrink-0 text-base">🏦</div>
               <p className="text-xs text-blue-800 dark:text-blue-300 leading-relaxed">
                 Every KudiAI business gets a dedicated bank account number — top up once, then pay bills
-                and transfer fee-free. Your BVN or NIN opens the account with our banking partner and verifies your
+                and send money at low fees (free transfers come with the Standard and Premium plans). Your BVN or NIN opens the account with our banking partner and verifies your
                 identity (Flutterwave/NIBSS KYC); it isn't stored by KudiAI. The name and date of birth on it
                 must match your profile.
               </p>
