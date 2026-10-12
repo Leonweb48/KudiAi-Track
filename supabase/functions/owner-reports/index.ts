@@ -9,6 +9,10 @@
 // owner turned the email off) → record what went out.
 //
 // Body (all optional): { month: "YYYY-MM", limit }
+//
+// Admin portal: { action: "business_report_pdf", owner_id, from: "YYYY-MM-DD", to: "YYYY-MM-DD" } (service role only —
+// the admin portal checks the admin's role first) → the same General Business Report PDF the owner gets, for any
+// period, with its own verify reference. Nothing is emailed or notified.
 // Test modes — nothing is recorded and nobody is notified:
 //   dry_run: true          build everything and have the email pipeline render (not send) the email; counts only back
 //   override_email: "a@b"  send the email to this address instead of the owner's (limit 1)
@@ -132,11 +136,10 @@ type Built = {
   businessPdf: Uint8Array; walletPdf: Uint8Array | null; verified: number; name: string; ownerName: string;
 };
 
-/** Build both PDFs for one owner's month. `sample` = a dry run: a sample reference, nothing saved. */
-async function build(sb: Any, ownerId: string, month: string, sample: boolean): Promise<Built> {
-  const { fromDate: from, toDate: to } = monthDates(month);
-  const t0 = `${from}T00:00:00+01:00`;
-  const t1 = `${monthDates(nextMonth(month)).fromDate}T00:00:00+01:00`;
+const sampleVerify = (ref: string) => ({ ref, qr: qrMatrix(verifyUrl(ref)) });
+
+/** The General Business Report PDF for one owner and period — exactly what the owner's Reports page draws. */
+async function buildBusiness(sb: Any, ownerId: string, from: string, to: string, sample: boolean) {
   const [{ data: profile }, { data: inv }] = await Promise.all([
     sb.from("profiles").select("*").eq("id", ownerId).maybeSingle(),
     sb.from("invoice_settings").select("logo_url, contact_email, contact_phone, address").eq("user_id", ownerId).maybeSingle(),
@@ -145,11 +148,8 @@ async function build(sb: Any, ownerId: string, month: string, sample: boolean): 
   const generatedAt = new Date();
   const letterhead = letterheadFrom(profile, inv, generatedAt);
   const name = letterhead.businessName;
-
-  // ── Business Report (the Reports page's General Business Report for the month) ──
   const data: Any = buildGeneralData((await businessReportSource(sb, ownerId, { from, to })) as Any, from, to);
   const a = await assets();
-  const sampleVerify = (ref: string) => ({ ref, qr: qrMatrix(verifyUrl(ref)) });
   const bizVerify: Verify = sample ? sampleVerify("KDR-000000-SAMPLEQR")
     : await registerVerify(sb, ownerId, "general", from, to, name, businessReportSummary(data));
   const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
@@ -158,7 +158,18 @@ async function build(sb: Any, ownerId: string, month: string, sample: boolean): 
     verifyRef: bizVerify?.ref || "",
   }, { appLogo: a.logo, fontReg: a.fontReg, fontMed: a.fontMed, bizLogo: await bizLogo(letterhead.logoUrl), qr: bizVerify?.qr || null });
   drawBusinessReport(pdf, data);
-  const businessPdf = new Uint8Array(pdf.getDoc().output("arraybuffer"));
+  return { profile, letterhead, name, data, bizVerify, a, generatedAt,
+           businessPdf: new Uint8Array(pdf.getDoc().output("arraybuffer")) };
+}
+
+/** Build both PDFs for one owner's month. `sample` = a dry run: a sample reference, nothing saved. */
+async function build(sb: Any, ownerId: string, month: string, sample: boolean): Promise<Built> {
+  const { fromDate: from, toDate: to } = monthDates(month);
+  const t0 = `${from}T00:00:00+01:00`;
+  const t1 = `${monthDates(nextMonth(month)).fromDate}T00:00:00+01:00`;
+
+  // ── Business Report (the Reports page's General Business Report for the month) ──
+  const { profile, letterhead, name, data, bizVerify, a, generatedAt, businessPdf } = await buildBusiness(sb, ownerId, from, to, sample);
 
   // ── Wallet statement for the month ──
   const { data: w } = await sb.rpc("client_wallet_statement", { p_user_id: ownerId, p_from: t0, p_to: t1 });
@@ -255,6 +266,33 @@ Deno.serve(async (req) => {
 
   let body: Record<string, unknown> = {};
   try { body = await req.json(); } catch { /* defaults */ }
+
+  // ── Admin portal: one business's General Business Report PDF for a chosen period (service role only) ──
+  if (body.action === "business_report_pdf") {
+    if (!(await isServiceCall((req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim()))) {
+      return json({ error: "Unauthorized" }, 401);
+    }
+    const ownerId = String(body.owner_id || "");
+    const from = String(body.from || ""), to = String(body.to || "");
+    const isDate = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(`${d}T00:00:00Z`));
+    if (!/^[0-9a-f-]{36}$/i.test(ownerId)) return json({ error: "owner_id required" }, 400);
+    if (!isDate(from) || !isDate(to) || from > to) return json({ error: "from and to must be dates, from ≤ to" }, 400);
+    if ((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000 > 731) {
+      return json({ error: "Choose a period of two years or less" }, 400);
+    }
+    try {
+      const b = await buildBusiness(sb, ownerId, from, to, false);
+      return new Response(b.businessPdf, { status: 200, headers: {
+        "Content-Type": "application/pdf",
+        "X-Report-Ref": b.bizVerify?.ref || "",
+        "X-Business-Name": encodeURIComponent(b.name || ""),
+      } });
+    } catch (e) {
+      const msg = String((e as Error)?.message || e);
+      return json({ error: msg === "no profile" ? "Business not found" : "Couldn't build the report" }, msg === "no profile" ? 404 : 500);
+    }
+  }
+
   const month = typeof body.month === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(body.month) ? body.month : lastMonthWAT();
   const dryRun = body.dry_run === true;
   const override = typeof body.override_email === "string" && /^[^\s@]+@[^\s@]+[.][^\s@]+$/.test(body.override_email) ? body.override_email : "";
