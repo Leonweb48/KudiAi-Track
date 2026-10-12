@@ -28,6 +28,7 @@ jobs:
             accounts: ((.accounts // {}) | with_entries(.value = {
               configured: .value.configured, mode: .value.mode, auth: .value.auth, banks: .value.banks,
               balance_read: ((.value.ngn_available | type) == "number"),
+              balance_error: (if (.value.ngn_available | type) == "string" then .value.ngn_available else null end),
               balance_zero: (if (.value.ngn_available | type) == "number" then .value.ngn_available <= 0 else null end),
               balance_over_10k: (if (.value.ngn_available | type) == "number" then .value.ngn_available >= 10000 else null end)
             })),
