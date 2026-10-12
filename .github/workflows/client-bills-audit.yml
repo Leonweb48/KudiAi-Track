@@ -54,3 +54,31 @@ jobs:
             sleep 1
           done
           rm -f bills.json
+
+      # Client bill charges left 'pending' for over an hour (money held, outcome never recorded): what does
+      # ClubKonnect say about each order? Date, the service it was for, ClubKonnect's verdict — no reference or amount.
+      - name: Pending client bill charges
+        env:
+          URL: ${{ secrets.REACT_APP_SUPABASE_URL }}
+          KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -uo pipefail
+          H=(-H "apikey: $KEY" -H "Authorization: Bearer $KEY")
+          IDS=$(curl -s "${H[@]}" "$URL/rest/v1/aso_clients?select=client_user_id&client_user_id=not.is.null&limit=5000" | jq -r '[.[].client_user_id] | unique | join(",")')
+          WIDS=$(curl -s "${H[@]}" "$URL/rest/v1/wallets?select=id&user_id=in.($IDS)&limit=5000" | jq -r '[.[].id] | join(",")')
+          CUT=$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)
+          curl -s "${H[@]}" "$URL/rest/v1/wallet_ledger?select=reference,created_at,meta,description&source=eq.bill_spend&status=eq.pending&created_at=lt.$CUT&wallet_id=in.($WIDS)&order=created_at.asc" > pend.json
+          echo "pending client bill charges: $(jq length pend.json)"
+          jq -c '.[]' pend.json | while read -r row; do
+            REF=$(echo "$row" | jq -r '.reference // empty'); DAY=$(echo "$row" | jq -r '.created_at[5:16]')
+            CAT=$(echo "$row" | jq -r '(.meta.category // .meta.service // .meta.cat // "") | ascii_downcase')
+            KEYS=$(echo "$row" | jq -r '(.meta // {}) | keys | join(",")')
+            [ -n "$REF" ] || { echo "$DAY | no reference | meta keys: $KEYS"; continue; }
+            echo "::add-mask::$REF"
+            for SVC in ${CAT:-airtime data}; do
+              V=$(curl -s -m 60 -X POST "$URL/functions/v1/clubkonnect" "${H[@]}" -H "Content-Type: application/json" \
+                    -d "$(jq -nc --arg r "$REF" --arg s "$SVC" '{action:"verify", requestId:$r, service:$s}')")
+              echo "$DAY | asked as $SVC | ClubKonnect: $(echo "$V" | jq -r '.status // "?"') | $(echo "$V" | jq -r '.message // ""' | sed 's/[0-9]/#/g' | cut -c1-50) | meta keys: $KEYS"
+            done
+          done
+          rm -f pend.json
