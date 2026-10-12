@@ -1,0 +1,53 @@
+name: Client bills audit
+
+# Manual, read-only (2026-10-12): bills bought through the Ajo CLIENT portal — did ClubKonnect really deliver the
+# ones our records call successful? For each client-portal bill since SINCE, asks the clubkonnect function's `verify`
+# (ClubKonnect's own lookup by our reference) and prints: date, service, our status, ClubKonnect's verdict and its
+# message (digits masked), and whether the bill kept its details (token / order id). No references, phone numbers,
+# meter numbers, names or amounts (CI logs are public). Changes nothing.
+
+on:
+  workflow_dispatch:
+    inputs:
+      since:
+        description: "From date (YYYY-MM-DD)"
+        required: false
+        default: "2026-09-20"
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Audit
+        env:
+          URL: ${{ secrets.REACT_APP_SUPABASE_URL }}
+          KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SINCE: ${{ inputs.since }}
+        run: |
+          set -uo pipefail
+          H=(-H "apikey: $KEY" -H "Authorization: Bearer $KEY")
+          IDS=$(curl -s "${H[@]}" "$URL/rest/v1/aso_clients?select=client_user_id&client_user_id=not.is.null&limit=5000" \
+                | jq -r '[.[].client_user_id] | unique | join(",")')
+          [ -n "$IDS" ] || { echo "no client logins"; exit 0; }
+          curl -s "${H[@]}" "$URL/rest/v1/transactions?select=category,note,created_at,bill_status,bill_details&payment_type=eq.bill_payment&created_at=gte.${SINCE}&user_id=in.($IDS)&order=created_at.asc&limit=1000" > bills.json
+          echo "client-portal bills since $SINCE: $(jq length bills.json)"
+          jq -r 'group_by(.category + " " + (.bill_status // "?"))[] | "  \(.[0].category) \(.[0].bill_status // "?") = \(length)"' bills.json
+          echo "with details saved (token/order id/paid_via): $(jq '[.[] | select(.bill_details != null)] | length' bills.json)"
+          echo
+          echo "date  | service | ours | ClubKonnect says | message"
+          jq -c '.[] | select(.bill_status == "success" or .bill_status == "pending")' bills.json | while read -r row; do
+            REF=$(echo "$row" | jq -r '.note // "" | capture("PS: (?<r>[A-Za-z0-9_-]+)").r // empty')
+            CAT=$(echo "$row" | jq -r '.category'); DAY=$(echo "$row" | jq -r '.created_at[5:16]'); OURS=$(echo "$row" | jq -r '.bill_status')
+            if [ -z "$REF" ]; then echo "$DAY | $CAT | $OURS | (no reference in the record)"; continue; fi
+            echo "::add-mask::$REF"
+            SVC=$CAT; case "$CAT" in electricity|airtime|data|cable|betting|waec|jamb|smile|spectranet) ;; *) SVC=airtime;; esac
+            V=$(curl -s -m 60 -X POST "$URL/functions/v1/clubkonnect" "${H[@]}" -H "Content-Type: application/json" \
+                  -d "$(jq -nc --arg r "$REF" --arg s "$SVC" '{action:"verify", requestId:$r, service:$s}')")
+            ST=$(echo "$V" | jq -r '.status // "?"'); MSG=$(echo "$V" | jq -r '.message // ""' | sed 's/[0-9]/#/g' | cut -c1-60)
+            echo "$DAY | $CAT | $OURS | $ST | $MSG"
+            sleep 1
+          done
+          rm -f bills.json
