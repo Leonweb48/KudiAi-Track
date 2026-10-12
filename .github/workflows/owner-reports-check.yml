@@ -40,3 +40,32 @@ jobs:
                                            preview: (.preview // {} | {dry_run, html_bytes, attachment_bytes, attachments, error})}]}' out.json \
             || head -c 300 out.json
           rm -f out.json
+
+      # The admin portal's "Business Report (PDF)" (2026-10-12): the same General Business Report the owner downloads,
+      # for the fictional Play demo business, this month. Prints status, type, size and whether it is a PDF with a
+      # verify reference — nothing from inside it. (Registers one verify ref for the demo business, like report-verify-check.)
+      - name: Admin business report (demo business)
+        env:
+          URL: ${{ secrets.REACT_APP_SUPABASE_URL }}
+          KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ANON: ${{ secrets.REACT_APP_SUPABASE_ANON_KEY }}
+          PW: ${{ secrets.DEMO_REVIEWER_PASSWORD }}
+        run: |
+          set +e
+          SIGNIN=$(curl -sS -m 30 -X POST "$URL/auth/v1/token?grant_type=password" -H "apikey: $ANON" -H "Content-Type: application/json" \
+            -d "$(jq -n --arg p "$PW" '{email:"demo.reviewer@kudiai.app", password:$p}')")
+          UTOKEN=$(echo "$SIGNIN" | jq -r '.access_token // empty'); OWNER=$(echo "$SIGNIN" | jq -r '.user.id // empty')
+          echo "::add-mask::$UTOKEN"; echo "::add-mask::$OWNER"
+          [ -n "$OWNER" ] || { echo "demo sign-in failed"; exit 1; }
+          FROM=$(TZ=Africa/Lagos date +%Y-%m-01); TO=$(TZ=Africa/Lagos date +%F)
+          BODY=$(jq -nc --arg o "$OWNER" --arg f "$FROM" --arg t "$TO" '{action:"business_report_pdf", owner_id:$o, from:$f, to:$t}')
+          curl -s -m 120 -D h.txt -o r.pdf -w "admin request: HTTP %{http_code}, %{size_download} bytes\n" "$URL/functions/v1/owner-reports" \
+            -H "Authorization: Bearer $KEY" -H "apikey: $KEY" -H "Content-Type: application/json" -d "$BODY"
+          echo "content-type: $(grep -i '^content-type:' h.txt | tr -d '\r' | cut -d' ' -f2-)"
+          echo "is a PDF: $([ "$(head -c 5 r.pdf)" = "%PDF-" ] && echo yes || echo no)"
+          echo "verify ref issued: $(grep -i '^x-report-ref:' h.txt | grep -q 'KDR-' && echo yes || echo no)"
+          echo "pages: $(grep -c '/Type /Page$\|/Type /Page[^s]' r.pdf)"
+          # An ordinary business login must NOT be able to ask for another business's report
+          curl -s -m 60 -o /dev/null -w "business-login request (must be 401): HTTP %{http_code}\n" "$URL/functions/v1/owner-reports" \
+            -H "Authorization: Bearer $UTOKEN" -H "apikey: $ANON" -H "Content-Type: application/json" -d "$BODY"
+          rm -f r.pdf h.txt
