@@ -502,7 +502,27 @@ serve(async (req) => {
     };
     for (const key of ["business", "legacy"] as AccountKey[]) {
       const a = ACCOUNTS[key];
-      if (!a.v3Key) { report[key] = { v3_key: false }; continue; }
+      if (!a.v3Key) {
+        // No v3 key on this account (the business account runs on the newer API): probe its list endpoints and report
+        // only HTTP status, the field names of the first item and counts — enough to learn the shape, never values.
+        const probe: Record<string, unknown> = { v3_key: false };
+        if (isConfigured(a)) {
+          for (const [label, path] of [["transfers", `/transfers?page=1&size=50`], ["charges", `/charges?page=1&size=50`],
+                                       ["transactions", `/transactions?page=1&size=50`]] as const) {
+            try {
+              const r = await flwFetch(path, { account: a });
+              const d = r.data as Record<string, unknown>;
+              const list = (Array.isArray(d?.data) ? d.data : Array.isArray((d?.data as Record<string, unknown>)?.transfers) ? (d.data as Record<string, unknown>).transfers
+                : Array.isArray((d?.data as Record<string, unknown>)?.charges) ? (d.data as Record<string, unknown>).charges : []) as Record<string, unknown>[];
+              const first = list[0] || {};
+              const nested = (o: unknown) => o && typeof o === "object" && !Array.isArray(o) ? Object.keys(o as Record<string, unknown>) : null;
+              probe[label] = { status: r.status, top_keys: Object.keys(d || {}), items: list.length, item_keys: Object.keys(first),
+                               fee_keys: nested(first.fee) ?? nested(first.fees) ?? null, amount_keys: nested(first.amount) };
+            } catch (e) { probe[label] = { error: (e as Error).message.slice(0, 60) }; }
+          }
+        }
+        report[key] = probe; continue;
+      }
       const inByBand: Record<string, Agg> = {}, inByType: Record<string, Agg> = {}, outByBand: Record<string, Agg> = {};
       let customerPaidFee = 0, merchantPaidFee = 0, inPages = 0, outPages = 0, inErr = "", outErr = "";
       const merchantFees: number[] = [];
