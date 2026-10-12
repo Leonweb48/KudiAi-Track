@@ -471,7 +471,7 @@ async function notifyCustomer(userId: string | null | undefined, n: { type: stri
 
 // Cron-driven actions: pg_cron → pg_net sends the Vault's cron_secret in x-cron-secret (checked by the service-only
 // verify_cron_secret RPC, which never returns the secret — same pattern as flutterwave / notify-send). The service key works too.
-const CRON_ACTIONS = new Set(["electricity-sweep"]);
+const CRON_ACTIONS = new Set(["electricity-sweep", "bill-charge-sweep"]);
 async function cronAuthorized(req: Request): Promise<boolean> {
   const provided = req.headers.get("x-cron-secret") ?? "";
   if (!provided || !SUPABASE_URL || !SERVICE_KEY) return false;
@@ -1511,10 +1511,16 @@ serve(async (req) => {
     if (action === "verify") {
       const svc     = String((body as Record<string, unknown>).service ?? "").toLowerCase().trim();
       const orderId = String((body as Record<string, unknown>).orderId ?? "").trim();
+      return json(await verifyOrder(svc, orderId, rid));
+    }
+
+    // The provider's word on one order (by our RequestID, or its OrderID) across every provider it was sent to —
+    // `verify`, and the stuck-charge sweep below. SUCCESS / FAILED / NOT_FOUND / PENDING / UNKNOWN.
+    async function verifyOrder(svc: string, orderId: string, rid: string): Promise<Record<string, unknown>> {
       // Which provider(s) was this order sent to? No record = ClubKonnect only (every order from before the provider
       // switch, and every bill VTpass doesn't carry). The provider it was sent to LAST decides (see combineVerdicts).
       const claimRow = orderId ? null : await readClaim(rid);
-      if (claimRow === "error") return json({ status: "UNKNOWN", requestId: rid, message: "verify unavailable: order record unreadable" });
+      if (claimRow === "error") return { status: "UNKNOWN", requestId: rid, message: "verify unavailable: order record unreadable" };
       const providers: Provider[] = claimRow?.providers ?? ["clubkonnect"];
       const verdicts: ProviderVerdict[] = await Promise.all(providers.map(async (p): Promise<ProviderVerdict> => {
         if (p === "clubkonnect") { const b = await ckVerify(svc, orderId, rid); return { provider: p, state: b.status as ProviderVerdict["state"], body: b }; }
@@ -1531,7 +1537,87 @@ serve(async (req) => {
             : { status: state, requestId: rid, message: state === "FAILED" ? vtMessage(rq) : state === "UNKNOWN" ? "VTpass unavailable" : state.toLowerCase(), provider: p, _vt: { code: vtCode(rq) || null, status: vtTxnStatus(rq) || null } },
         };
       }));
-      return json(combineVerdicts(verdicts)!.body);
+      return combineVerdicts(verdicts)!.body as Record<string, unknown>;
+    }
+
+    // ── Stuck bill charges (pg_cron every 15 min; or by hand with the service key) ───────────────────────────────────────
+    // A wallet bill charge (wallet_ledger 'bill_spend') is taken BEFORE the order is placed; the app settles it (delivered)
+    // or refunds it (failed) when the answer comes. If the app is closed, the line drops, or a retry goes out under a new
+    // reference, the charge stays 'pending' — the customer's money held with nothing recorded (2026-10-12: one client was
+    // charged twice for one data bundle that way). After 30 minutes, ask the provider about the charge's own reference:
+    //   delivered → settle the charge (no money moves);
+    //   the provider confirms there is NO order, or refused it → refund it to the wallet and tell the customer;
+    //   anything unclear → leave it (docs/BILL-PAYMENTS.md rule 1: never refund an order that may have gone through);
+    //   admins are alerted once if a charge is still unclear after 48 hours.
+    // Electricity charges are only ever SETTLED here — the electricity sweep owns electricity refunds.
+    // Body: { dryRun?: true → report only, change nothing; sinceDays?: 1..90 (default 60) }. Counts only, never a reference.
+    if (action === "bill-charge-sweep") {
+      const b2 = body as { dryRun?: unknown; sinceDays?: unknown };
+      const dryRun = b2.dryRun === true;
+      const sinceD = Math.min(Math.max(Number(b2.sinceDays) || 60, 1), 90);
+      const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+      const { data: rows, error: selErr } = await db.from("wallet_ledger")
+        .select("id, user_id, amount_kobo, reference, narration, created_at")
+        .eq("source", "bill_spend").eq("status", "pending")
+        .lt("created_at", new Date(Date.now() - 30 * 60_000).toISOString())
+        .gt("created_at", new Date(Date.now() - sinceD * 86400_000).toISOString())
+        .order("created_at", { ascending: true }).limit(20);
+      if (selErr) return json({ error: selErr.message });
+      const sum = { dryRun, checked: 0, settled: 0, refunded: 0, waiting: 0, alerted: 0, errors: 0 };
+      const items: Record<string, unknown>[] = [];
+      const svcOf = (n: string) => /data/i.test(n) ? "data" : /electric|prepaid|postpaid|meter/i.test(n) ? "electricity"
+        : /dstv|gotv|startimes|cable/i.test(n) ? "cable" : /bet/i.test(n) ? "betting" : /waec/i.test(n) ? "waec"
+        : /jamb/i.test(n) ? "jamb" : /smile/i.test(n) ? "smile" : /spectranet/i.test(n) ? "spectranet" : "airtime";
+      for (const r of (rows ?? []) as { id: string; user_id: string | null; amount_kobo: number; reference: string | null; narration: string | null; created_at: string }[]) {
+        sum.checked++;
+        const ageMin = Math.round((Date.now() - Date.parse(r.created_at)) / 60000);
+        const svc = svcOf(String(r.narration ?? ""));
+        const item: Record<string, unknown> = { at: r.created_at.slice(0, 16), ageMin, svc };
+        items.push(item);
+        const ref = String(r.reference ?? "").trim();
+        if (!ref) { item.result = "no reference"; sum.waiting++; continue; }
+        let v: Record<string, unknown>;
+        try { v = await verifyOrder(svc, "", ref); }
+        catch (e) { item.result = `lookup failed: ${(e as Error).message.slice(0, 80)}`; sum.errors++; continue; }
+        const st = String(v.status ?? "UNKNOWN");
+        item.provider = st;
+        if (st === "SUCCESS") {
+          item.result = "delivered — settle"; sum.settled++;
+          if (dryRun) continue;
+          const { error } = await db.rpc("wallet_settle_bill", { p_ledger_id: r.id, p_txn_id: null });
+          if (error) { item.error = error.message.slice(0, 100); sum.errors++; sum.settled--; }
+          continue;
+        }
+        if ((st === "NOT_FOUND" || st === "FAILED") && svc !== "electricity") {
+          item.result = st === "NOT_FOUND" ? "no order at the provider — refund" : "refused by the provider — refund"; sum.refunded++;
+          if (dryRun) continue;
+          const naira = (Number(r.amount_kobo) / 100).toLocaleString("en-NG");
+          const { error } = await db.rpc("wallet_reverse_bill", { p_ledger_id: r.id, p_reason: "Bill payment not completed — refunded to wallet" });
+          if (error) { item.error = error.message.slice(0, 100); sum.errors++; sum.refunded--; continue; }
+          // the order's record, if one was kept (failed/pending bills carry our reference as "PS: …")
+          await db.from("transactions").update({ bill_status: "failed" })
+            .eq("payment_type", "bill_payment").eq("bill_status", "pending").ilike("note", `%PS: ${ref}%`);
+          await notifyCustomer(r.user_id, {
+            type: "bill_payment_failed", title: "Bill payment refunded",
+            body: `Your ₦${naira} ${svc} payment didn't go through, so ₦${naira} is back in your wallet.`,
+          });
+          continue;
+        }
+        item.result = "unclear — leave"; sum.waiting++;
+        if (!dryRun && ageMin > 48 * 60) {
+          const { count } = await db.from("admin_notifications").select("id", { count: "exact", head: true })
+            .eq("title", "Bill charge still unresolved after 48 hours").contains("metadata", { ledger_id: r.id });
+          if (!count) {
+            await db.from("admin_notifications").insert({
+              type: "warning", category: "finance", title: "Bill charge still unresolved after 48 hours",
+              message: `A ₦${(Number(r.amount_kobo) / 100).toLocaleString("en-NG")} ${svc} wallet charge has been pending for over 48 hours and the provider's answer is unclear (${st}). Check it with the provider and settle or refund it. Ledger ${r.id}.`,
+              metadata: { ledger_id: r.id, provider_status: st },
+            });
+            sum.alerted++;
+          }
+        }
+      }
+      return json({ ...sum, items });
     }
 
     // ClubKonnect's side of `verify`: its lookup of one order (by RequestID, or OrderID when given). Fails safe — can't
