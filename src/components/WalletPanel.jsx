@@ -517,7 +517,10 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
     return () => { live = false; };
   }, [step, kobo]);
   const quoteFee = Number(quote?.fee_kobo || 0);
-  const shortForFee = !!quote && !quote.free && kobo + quoteFee > balanceKobo;
+  // ₦50 stamp duty on bank transfers of ₦10,000 or more (Nigeria Tax Act 2025), as every bank charges — even when our fee is free
+  const quoteDuty = Number(quote?.stamp_duty_kobo || 0);
+  const charges = quoteFee + quoteDuty;
+  const shortForFee = !!quote && charges > 0 && kobo + charges > balanceKobo;
   const freeNote = quote
     ? (quote.free
         ? `Free — ${Math.max(Number(quote.free_left) - 1, 0)} of your ${quote.allowance} free transfers left ${quote.period === "day" ? "today" : "this month"} after this one`
@@ -614,6 +617,8 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
               {[["Recipient", recipientName], ["Account", acctNo], ["Bank", bank?.name],
                 ["Narration", narration || "—"],
                 ["Fee", !quote ? "…" : quote.free ? "Free" : fmt(quoteFee / 100)],
+                ...(quoteDuty > 0 ? [["Stamp duty", fmt(quoteDuty / 100)]] : []),
+                ...(charges > 0 ? [["Total debit", fmt((kobo + charges) / 100)]] : []),
                 ...(repeat ? [["Repeats", frequency[0].toUpperCase() + frequency.slice(1)]] : [])].map(([k, v]) => (
                 <div key={k} className="flex items-center justify-between px-4 py-3">
                   <span className="text-[12px] text-slate-400">{k}</span>
@@ -631,7 +636,7 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
             {freeNote && <p className="text-[11px] text-slate-400 mt-2 px-1">{freeNote}</p>}
             {shortForFee && (
               <p className="text-[12px] text-red-500 mt-2">
-                Your balance doesn't cover the {fmt(quoteFee / 100)} fee on top of {fmt(kobo / 100)} — send up to {fmt(Math.max(balanceKobo - quoteFee, 0) / 100)}.
+                Your balance doesn't cover the {fmt(charges / 100)} in charges on top of {fmt(kobo / 100)} — send up to {fmt(Math.max(balanceKobo - charges, 0) / 100)}.
               </p>
             )}
             {err && <p className="text-[12px] text-red-500 mt-3">{err}</p>}

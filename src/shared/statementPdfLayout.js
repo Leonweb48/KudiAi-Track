@@ -96,7 +96,7 @@ export const WALLET_SOURCE_TITLES = {
   withdrawal_reversal:   "Transfer Refund",
   adjustment:            "Wallet Adjustment",
   transfer_fee:          "Transfer Fee",
-  cbn_levy:              "CBN Electronic Transfer Levy",
+  cbn_levy:              "Stamp Duty",
 };
 export function walletTitle(source) {
   return WALLET_SOURCE_TITLES[source] || String(source || "").replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());

@@ -650,7 +650,7 @@ export const WALLET_TITLES = {
   withdrawal_reversal: 'Transfer Refund',
   adjustment:          'Wallet Adjustment',
   transfer_fee:        'Transfer Fee',
-  cbn_levy:            'CBN Electronic Transfer Levy',
+  cbn_levy:            'Stamp Duty',
 };
 
 // A two-line "Name / Bank • Account" value, OPay-receipt style. ReceiptCard
