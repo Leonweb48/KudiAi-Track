@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 560" font-family="Arial, Helvetica, sans-serif">
+  <rect width="860" height="560" fill="#eef2f7"/>
+  <g transform="translate(40 30)">
+    <rect width="780" height="490" rx="28" fill="#ffffff" stroke="#cbd5e1" stroke-width="3"/>
+    <path d="M0 28a28 28 0 0 1 28-28h724a28 28 0 0 1 28 28v62H0z" fill="#15803d"/>
+    <text x="390" y="56" text-anchor="middle" font-size="30" font-weight="700" fill="#fff" letter-spacing="2">GOVERNMENT-ISSUED ID CARD</text>
+    <rect x="40" y="125" width="200" height="250" rx="12" fill="#e2e8f0"/>
+    <circle cx="140" cy="215" r="58" fill="#94a3b8"/>
+    <path d="M55 375c8-70 45-100 85-100s77 30 85 100z" fill="#94a3b8"/>
+    <g font-size="17" fill="#64748b" font-weight="700">
+      <text x="280" y="140">SURNAME</text>
+      <text x="280" y="210">FIRST NAME / OTHER NAMES</text>
+      <text x="280" y="280">DATE OF BIRTH</text>
+      <text x="530" y="280">SEX</text>
+      <text x="280" y="350">ID NUMBER</text>
+      <text x="530" y="350">EXPIRY DATE</text>
+    </g>
+    <g font-size="26" fill="#0f172a" font-weight="700">
+      <text x="280" y="172">ADEYEMI</text>
+      <text x="280" y="242">CHIOMA GRACE</text>
+      <text x="280" y="312">14 MAR 1990</text>
+      <text x="530" y="312">F</text>
+      <text x="280" y="382">12345678901</text>
+      <text x="530" y="382">14 MAR 2031</text>
+    </g>
+    <path d="M60 440c30-25 55 10 85-12s45-18 70 4" fill="none" stroke="#334155" stroke-width="3"/>
+    <text x="40" y="472" font-size="15" fill="#64748b">Holder's signature</text>
+  </g>
+  <g fill="none" stroke="#16a34a" stroke-width="8" stroke-linecap="round">
+    <path d="M24 70V14h56"/><path d="M780 14h56v56"/><path d="M836 490v56h-56"/><path d="M80 546H24v-56"/>
+  </g>
+  <text x="430" y="330" text-anchor="middle" font-size="120" font-weight="900" fill="#dc2626" fill-opacity="0.16" transform="rotate(-18 430 300)">SAMPLE</text>
+</svg>

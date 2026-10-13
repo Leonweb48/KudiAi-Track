@@ -1591,16 +1591,78 @@ serve(async (req) => {
       return json({ ok: true, tier: 2, changed: !!(applied as { changed?: boolean } | null)?.changed });
     }
 
-    // ── request-tier — Tier 3 needs a person to review it ──────────────────────────────────────────────────────────
+    // ── request-tier — Tier 3: documents uploaded in the app, reviewed by a person ─────────────────────────────────
+    // The app uploads each document to the PRIVATE kyc_documents bucket under "<uid>/tier3/" (the only place a signed-in
+    // user may write there), then sends their paths here. Every path must be the caller's own and must exist; the request
+    // is then created for an admin to check document by document (wallet_admin_review_tier refuses a Tier 3 approval
+    // without them). An older app that sends no documents is told to update.
     if (action === "request-tier") {
       const b = body as Record<string, unknown>;
       if (Number(b.target_tier) !== 3) return json({ error: "Only Tier 3 is requested this way", code: "bad_tier" }, 400);
       const { data: tw } = await sb.from("wallets").select("tier, flw_account_number").eq("user_id", uid).maybeSingle();
       if (!tw?.flw_account_number) return json({ error: "Open your wallet first", code: "no_wallet" }, 400);
+      if (Number(tw.tier ?? 1) >= 3) return json({ ok: true, requested: false, already_at_tier: true });
       if (Number(tw.tier ?? 1) < 2) return json({ error: "Complete Tier 2 first, then request Tier 3", code: "tier2_first" }, 400);
-      const { data: rq, error: rErr } = await sb.rpc("wallet_request_tier", { p_user_id: uid, p_target: 3, p_note: String(b.note ?? "") });
-      if (rErr) { console.error("[flutterwave] wallet_request_tier:", rErr.message); return json({ error: "Could not send your request. Please try again." }, 500); }
-      return json({ ok: true, ...(rq as Record<string, unknown>) });
+
+      const docsIn = Array.isArray(b.documents) ? b.documents as Array<Record<string, unknown>> : [];
+      if (!docsIn.length) {
+        return json({ error: "Tier 3 now needs your documents uploaded in the app. Please update KudiAI, then tap Upgrade to Tier 3 again.", code: "documents_required" }, 400);
+      }
+      const ID_RULES: Record<string, { re: RegExp; label: string }> = {
+        national_id:     { re: /^\d{11}$/,          label: "Your NIN must be exactly 11 digits" },
+        nin_slip:        { re: /^\d{11}$/,          label: "Your NIN must be exactly 11 digits" },
+        voters_card:     { re: /^[A-Z0-9]{9,23}$/,  label: "Enter the VIN on your voter's card" },
+        drivers_license: { re: /^[A-Z0-9-]{6,20}$/, label: "Enter your driver's licence number" },
+        passport:        { re: /^[A-Z]\d{8}$/,      label: "Enter your passport number (a letter and 8 digits, e.g. A12345678)" },
+      };
+      const idType = String(b.id_type ?? "");
+      const rule = ID_RULES[idType];
+      if (!rule) return json({ error: "Choose the type of ID you are uploading", code: "id_type" }, 400);
+      const idNumber = String(b.id_number ?? "").toUpperCase().replace(/\s+/g, "");
+      if (!rule.re.test(idNumber)) return json({ error: rule.label, code: "id_number" }, 400);
+      const address = String(b.address ?? "").trim().replace(/\s+/g, " ");
+      if (address.length < 8 || address.length > 200) return json({ error: "Enter your home address as it appears on your utility bill", code: "address_invalid" }, 400);
+
+      const KINDS = new Set(["id_front", "id_back", "utility_bill", "passport_photo"]);
+      const pathRe = new RegExp(`^${uid}/tier3/[A-Za-z0-9_.-]{1,100}$`);
+      const { data: listed, error: lErr } = await sb.storage.from("kyc_documents").list(`${uid}/tier3`, { limit: 200 });
+      if (lErr) { console.error("[flutterwave] kyc list:", lErr.message); return json({ error: "Could not check your documents. Please try again." }, 500); }
+      const files = new Map((listed ?? []).map((o) => [o.name, o]));
+      const documents: Array<Record<string, unknown>> = [];
+      const seen = new Set<string>();
+      for (const d of docsIn.slice(0, 8)) {
+        const kind = String(d?.kind ?? ""), path = String(d?.path ?? "");
+        if (!KINDS.has(kind) || seen.has(kind)) return json({ error: "Something is wrong with your documents — please upload them again", code: "documents_invalid" }, 400);
+        if (!pathRe.test(path)) return json({ error: "Something is wrong with your documents — please upload them again", code: "documents_invalid" }, 400);
+        const obj = files.get(path.split("/").pop()!);
+        const size = Number((obj?.metadata as Record<string, unknown> | undefined)?.size ?? 0);
+        if (!obj || size <= 0) return json({ error: "One of your documents didn't finish uploading — please upload it again", code: "document_missing", kind }, 400);
+        seen.add(kind);
+        documents.push({ kind, path, mime: (obj.metadata as Record<string, unknown> | undefined)?.mimetype ?? null, size });
+      }
+      const { data: rq, error: rErr } = await sb.rpc("wallet_submit_tier3", {
+        p_user_id: uid, p_id_type: idType, p_id_number: idNumber, p_address: address, p_documents: documents, p_note: String(b.note ?? "").slice(0, 300),
+      });
+      if (rErr) { console.error("[flutterwave] wallet_submit_tier3:", rErr.message); return json({ error: "Could not send your documents. Please try again." }, 500); }
+      const res = (rq ?? {}) as Record<string, unknown>;
+      if (res.error === "missing_documents") return json({ error: "Upload every document on the list before submitting", code: "missing_documents", missing: res.missing }, 400);
+      if (res.error === "tier2_first") return json({ error: "Complete Tier 2 first, then request Tier 3", code: "tier2_first" }, 400);
+
+      if (res.requested) {
+        try {
+          const who = await resolveIdentity(sb, uid);
+          await sendWalletEmail(sb, who.email, "We've received your Tier 3 documents", () => bankEmail({
+            title: "Tier 3 Documents Received", tone: "neutral", timestamp: new Date(),
+            preheader: "Our team is reviewing your documents",
+            intro: "Thanks — we've received your documents for a Tier 3 upgrade. Our team checks each one by hand, usually within 1–2 working days. We'll let you know as soon as it's done.",
+            rows: [["Upgrade", "Tier 2 → Tier 3"], ["Documents", String(documents.length)], ["Status", "Under review"]],
+            note: "We will never ask for your PIN, password or OTP. If anyone contacts you about this request asking for them, it isn't us.",
+            button: { label: "Open Profile →", url: appLink({ tab: "profile" }) },
+            security: false,
+          }));
+        } catch (e) { console.warn("[flutterwave] tier-3 received email failed:", (e as Error).message); }
+      }
+      return json({ ok: true, ...res });
     }
 
     // ── list-banks ────────────────────────────────────────────────────────

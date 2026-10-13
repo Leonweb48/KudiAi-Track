@@ -1,12 +1,25 @@
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { STATES, getLGAs } from "../utils/nigeriaData";
 import { compressImage } from "../utils/compressImage";
 import { supabase } from "../utils/supabase";
+import { useHistoryStep } from "../hooks/useHistoryStep";
+import { useVisibleViewport, revealOnFocus } from "../hooks/useVisibleViewport";
 import {
   COMPLETION_SECTIONS,
   getSectionStatus,
   computeCompletion,
 } from "../utils/profileCompletion";
+
+// "Complete your profile" — a full-screen, one-step-at-a-time form (2026-10-13 rework).
+// The old version was a bottom sheet with every section open at once: on phones the keyboard covered the lower inputs and
+// the user had to hunt for the right "Save this section" button. Now:
+//   • the screen's height follows the VISIBLE viewport (window.visualViewport), so the keyboard never sits on top of the
+//     form and the Back / Save & continue bar stays just above it;
+//   • a focused input is scrolled into the middle of the screen once the keyboard has opened;
+//   • one section per step, with step chips to jump around; typed values live here (not per section), so moving between
+//     steps never loses them, and closing with unsaved changes asks first;
+//   • inputs are 16px (smaller text makes iOS zoom the page on focus).
 
 const BUSINESS_CATEGORIES = [
   "Retail & Trading", "Food & Beverage", "Fashion & Beauty",
@@ -21,264 +34,99 @@ const BUSINESS_TYPES = [
   "Cooperative", "Startup", "Other",
 ];
 
+const SHORT = { about: "About you", business: "Business", location: "Location", verification: "Document" };
+const BRAND = "linear-gradient(135deg, #FF6B35 0%, #FF8C42 100%)";
+const ALL_KEYS = COMPLETION_SECTIONS.flatMap((s) => s.fields.map((f) => f.key));
+const initialFields = (p) => Object.fromEntries(ALL_KEYS.map((k) => [k, p?.[k] || ""]));
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+function palette(dark) {
+  return {
+    bg: dark ? "#0a0a0a" : "#f9fafb",
+    card: dark ? "#111" : "#fff",
+    border: dark ? "#2a2a2a" : "#e5e7eb",
+    text: dark ? "#f3f4f6" : "#111827",
+    sub: dark ? "#9ca3af" : "#6b7280",
+    faint: dark ? "#4b5563" : "#9ca3af",
+    track: dark ? "#1f1f1f" : "#e5e7eb",
+  };
+}
 
 function inputStyle(dark) {
   return {
     width: "100%",
-    padding: "10px 12px",
-    borderRadius: 10,
+    minHeight: 48,
+    padding: "12px 14px",
+    borderRadius: 12,
     border: `1.5px solid ${dark ? "#3a3a3a" : "#e5e7eb"}`,
-    background: dark ? "#1c1c1c" : "#f9fafb",
+    background: dark ? "#1c1c1c" : "#fff",
     color: dark ? "#f3f4f6" : "#111827",
-    fontSize: 14,
+    fontSize: 16,
     boxSizing: "border-box",
     outline: "none",
     fontFamily: "inherit",
+    scrollMarginBottom: 96,
   };
 }
 
-function Label({ children, dark }) {
+function Field({ label, hint, dark, children }) {
+  const c = palette(dark);
   return (
-    <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: dark ? "#9ca3af" : "#6b7280", marginBottom: 4 }}>
+    <div>
+      <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: c.text, marginBottom: 6 }}>{label}</label>
       {children}
-    </label>
-  );
-}
-
-function StatusDot({ filled, total }) {
-  const done = filled === total;
-  const partial = filled > 0 && !done;
-  return (
-    <span style={{
-      display: "inline-flex", alignItems: "center", gap: 4,
-      fontSize: 11, fontWeight: 600,
-      color: done ? "#16a34a" : partial ? "#d97706" : "#9ca3af",
-    }}>
-      <span style={{
-        width: 7, height: 7, borderRadius: "50%",
-        background: done ? "#16a34a" : partial ? "#f59e0b" : "#d1d5db",
-        display: "inline-block",
-      }} />
-      {done ? "Done" : `${filled}/${total}`}
-    </span>
-  );
-}
-
-// ── Section wrapper ───────────────────────────────────────────────────────────
-
-function Section({ section, profile, dark, onSave }) {
-  const { filled, total, done } = getSectionStatus(section, profile);
-  const [open, setOpen]     = useState(!done);
-  const [fields, setFields] = useState(() => initFields(section, profile));
-  const [saving, setSaving] = useState(false);
-  const [saved,  setSaved]  = useState(false);
-  const [error,  setError]  = useState("");
-  const [logoPreview,    setLogoPreview]    = useState(profile.store_image_url || "");
-  const [logoFile,       setLogoFile]       = useState(null);
-  const [docFileName,    setDocFileName]    = useState(profile.reg_doc_url ? "Uploaded" : "");
-  const [docFile,        setDocFile]        = useState(null);
-  const [uploading,      setUploading]      = useState("");
-
-  const userId = profile.id;
-
-  function initFields(sec, p) {
-    const out = {};
-    sec.fields.forEach(f => { out[f.key] = p[f.key] || ""; });
-    return out;
-  }
-
-  function set(key, val) { setFields(prev => ({ ...prev, [key]: val })); }
-
-  async function handleSave() {
-    setSaving(true);
-    setError("");
-    try {
-      let extra = {};
-
-      // Handle logo upload
-      if (section.id === "business" && logoFile) {
-        setUploading("Compressing…");
-        const compressed = await compressImage(logoFile, 900);
-        setUploading("Uploading logo…");
-        const path = `${userId}/store.jpg`;
-        const { error: upErr } = await supabase.storage
-          .from("avatars")
-          .upload(path, compressed, { upsert: true, contentType: "image/jpeg" });
-        if (upErr) throw upErr;
-        const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(path);
-        extra.store_image_url = `${publicUrl}?v=${Date.now()}`;
-        setUploading("");
-      }
-
-      // Handle document upload
-      if (section.id === "verification" && docFile) {
-        setUploading("Uploading document…");
-        const ext  = docFile.name.split(".").pop();
-        const path = `${userId}/reg_doc.${ext}`;
-        const { error: upErr } = await supabase.storage
-          .from("avatars")
-          .upload(path, docFile, { upsert: true });
-        if (upErr) throw upErr;
-        const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(path);
-        extra.reg_doc_url = publicUrl;
-        setUploading("");
-      }
-
-      // industry + business_category sync
-      const patch = { ...fields, ...extra };
-      if (patch.industry) patch.business_category = patch.industry;
-
-      const result = await onSave(patch);
-      if (result?.error) throw new Error(result.error.message || "Failed to save. Please try again.");
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2500);
-      setOpen(false);
-    } catch (e) {
-      setError(e.message || "Failed to save. Please try again.");
-    } finally {
-      setSaving(false);
-      setUploading("");
-    }
-  }
-
-  const lgas         = fields.business_state ? getLGAs(fields.business_state) : [];
-  const personalLgas = fields.state ? getLGAs(fields.state) : [];
-
-  return (
-    <div style={{
-      border: `1.5px solid ${dark ? "#2a2a2a" : "#e5e7eb"}`,
-      borderRadius: 14,
-      overflow: "hidden",
-      background: dark ? "#111" : "#fff",
-    }}>
-      {/* Header */}
-      <button
-        onClick={() => {
-          if (!open) {
-            setFields(initFields(section, profile));
-            setLogoPreview(profile.store_image_url || "");
-            setLogoFile(null);
-            setDocFileName(profile.reg_doc_url ? "Uploaded" : "");
-            setDocFile(null);
-            setError("");
-          }
-          setOpen(o => !o);
-        }}
-        style={{
-          width: "100%", textAlign: "left",
-          background: "none", border: "none", cursor: "pointer",
-          padding: "14px 16px",
-          display: "flex", alignItems: "center", gap: 12,
-        }}
-      >
-        <span style={{ fontSize: 20 }}>{section.icon}</span>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 700, fontSize: 14, color: dark ? "#f3f4f6" : "#111827" }}>
-            {section.title}
-          </div>
-          <StatusDot filled={saved ? total : filled} total={total} />
-        </div>
-        <span style={{ fontSize: 16, color: dark ? "#6b7280" : "#9ca3af", transition: "transform .2s", display: "inline-block", transform: open ? "rotate(180deg)" : "rotate(0deg)" }}>▾</span>
-      </button>
-
-      {/* Body */}
-      {open && (
-        <div style={{ padding: "0 16px 16px" }}>
-          {/* Why it matters */}
-          <div style={{
-            background: dark ? "#1a2a1a" : "#f0fdf4",
-            border: `1px solid ${dark ? "#2d4a2d" : "#bbf7d0"}`,
-            borderRadius: 8, padding: "8px 12px", marginBottom: 16,
-            fontSize: 12, color: dark ? "#86efac" : "#15803d", lineHeight: 1.5,
-          }}>
-            💡 {section.why}
-          </div>
-
-          {/* Fields */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {renderFields(section, fields, set, dark, logoPreview, setLogoPreview, setLogoFile, docFileName, setDocFileName, setDocFile, lgas, personalLgas)}
-          </div>
-
-          {error && (
-            <div style={{ marginTop: 10, fontSize: 12, color: "#ef4444", background: dark ? "#2a1111" : "#fef2f2", borderRadius: 8, padding: "8px 12px" }}>
-              {error}
-            </div>
-          )}
-
-          {uploading && (
-            <div style={{ marginTop: 10, fontSize: 12, color: dark ? "#9ca3af" : "#6b7280", textAlign: "center" }}>
-              {uploading}
-            </div>
-          )}
-
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            style={{
-              marginTop: 14, width: "100%",
-              padding: "12px",
-              background: saved ? "#16a34a" : saving ? (dark ? "#4a3010" : "#fed7aa") : "linear-gradient(135deg, #FF6B35 0%, #FF8C42 100%)",
-              color: saved ? "#fff" : saving ? (dark ? "#d97706" : "#92400e") : "#fff",
-              border: "none", borderRadius: 10,
-              fontWeight: 700, fontSize: 14, cursor: saving ? "not-allowed" : "pointer",
-              transition: "background .3s",
-            }}
-          >
-            {saved ? "✓ Saved!" : saving ? (uploading || "Saving…") : "Save this section"}
-          </button>
-        </div>
-      )}
+      {hint && <p style={{ fontSize: 12, color: c.sub, marginTop: 5, lineHeight: 1.45 }}>{hint}</p>}
     </div>
   );
 }
 
-// ── Field renderers by section ────────────────────────────────────────────────
+// ── Fields per step ───────────────────────────────────────────────────────────
 
-function renderFields(section, fields, set, dark, logoPreview, setLogoPreview, setLogoFile, docFileName, setDocFileName, setDocFile, lgas, personalLgas) {
+function StepFields({ section, fields, set, dark, logo, setLogo, doc, setDoc }) {
   const inp = inputStyle(dark);
+  const c = palette(dark);
+  const focus = { onFocus: revealOnFocus };
+  const personalLgas = fields.state ? getLGAs(fields.state) : [];
+  const lgas = fields.business_state ? getLGAs(fields.business_state) : [];
+  const pick = (k) => (e) => set(k, e.target.value);
 
   if (section.id === "about") {
     return (
       <>
-        <div>
-          <Label dark={dark}>Gender</Label>
-          <select value={fields.gender} onChange={e => set("gender", e.target.value)} style={inp}>
+        <Field label="Gender" dark={dark}>
+          <select value={fields.gender} onChange={pick("gender")} style={inp} {...focus}>
             <option value="">Select…</option>
-            {["Male", "Female", "Prefer not to say"].map(g => <option key={g} value={g}>{g}</option>)}
+            {["Male", "Female", "Prefer not to say"].map((g) => <option key={g} value={g}>{g}</option>)}
           </select>
-        </div>
-        <div>
-          <Label dark={dark}>Date of birth</Label>
-          <input type="date" value={fields.date_of_birth} onChange={e => set("date_of_birth", e.target.value)}
+        </Field>
+        <Field label="Date of birth" dark={dark} hint="You must be 18 or older.">
+          <input type="date" value={fields.date_of_birth} onChange={pick("date_of_birth")}
             max={new Date(new Date().setFullYear(new Date().getFullYear() - 18)).toISOString().split("T")[0]}
-            style={inp} />
-        </div>
-        <div>
-          <Label dark={dark}>Home address</Label>
-          <input value={fields.address} onChange={e => set("address", e.target.value)}
-            placeholder="12 Elm Street, Lagos" style={inp} />
-        </div>
-        <div>
-          <Label dark={dark}>State of residence</Label>
-          <select value={fields.state} onChange={e => { set("state", e.target.value); set("lga", ""); }} style={inp}>
+            style={inp} {...focus} />
+        </Field>
+        <Field label="Home address" dark={dark}>
+          <input value={fields.address} onChange={pick("address")} placeholder="12 Elm Street, Lagos"
+            autoComplete="street-address" enterKeyHint="next" style={inp} {...focus} />
+        </Field>
+        <Field label="State of residence" dark={dark}>
+          <select value={fields.state} onChange={(e) => { set("state", e.target.value); set("lga", ""); }} style={inp} {...focus}>
             <option value="">Select state…</option>
-            {STATES.map(s => <option key={s} value={s}>{s}</option>)}
+            {STATES.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
-        </div>
-        <div>
-          <Label dark={dark}>LGA of residence</Label>
-          <select value={fields.lga} onChange={e => set("lga", e.target.value)}
-            disabled={!fields.state} style={{ ...inp, opacity: fields.state ? 1 : 0.5 }}>
+        </Field>
+        <Field label="LGA of residence" dark={dark}>
+          <select value={fields.lga} onChange={pick("lga")} disabled={!fields.state}
+            style={{ ...inp, opacity: fields.state ? 1 : 0.5 }} {...focus}>
             <option value="">{fields.state ? "Select LGA…" : "Select state first"}</option>
-            {personalLgas.map(l => <option key={l} value={l}>{l}</option>)}
+            {personalLgas.map((l) => <option key={l} value={l}>{l}</option>)}
           </select>
-        </div>
-        <div>
-          <Label dark={dark}>National ID Number (NIN)</Label>
-          <input value={fields.nin} onChange={e => set("nin", e.target.value.replace(/\D/g, ""))}
-            placeholder="12345678901" maxLength={11} inputMode="numeric" style={inp} />
-        </div>
+        </Field>
+        <Field label="National ID Number (NIN)" dark={dark} hint="11 digits — on your NIN slip or National ID card.">
+          <input value={fields.nin} onChange={(e) => set("nin", e.target.value.replace(/\D/g, "").slice(0, 11))}
+            placeholder="12345678901" maxLength={11} inputMode="numeric" enterKeyHint="done"
+            style={{ ...inp, letterSpacing: 1 }} {...focus} />
+        </Field>
       </>
     );
   }
@@ -286,70 +134,57 @@ function renderFields(section, fields, set, dark, logoPreview, setLogoPreview, s
   if (section.id === "business") {
     return (
       <>
-        <div>
-          <Label dark={dark}>Business logo</Label>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            {logoPreview && (
-              <img src={logoPreview} alt="logo" style={{ width: 52, height: 52, borderRadius: 10, objectFit: "cover", flexShrink: 0 }} />
-            )}
-            <label style={{
-              flex: 1, padding: "10px 12px", borderRadius: 10, cursor: "pointer", textAlign: "center",
-              border: `1.5px dashed ${dark ? "#3a3a3a" : "#d1d5db"}`,
-              color: dark ? "#9ca3af" : "#6b7280", fontSize: 12, fontWeight: 600,
-            }}>
-              {logoPreview ? "Change logo" : "Upload logo"}
-              <input type="file" accept="image/*" style={{ display: "none" }} onChange={e => {
-                const f = e.target.files?.[0];
-                if (!f) return;
-                setLogoFile(f);
-                const url = URL.createObjectURL(f);
-                setLogoPreview(url);
-              }} />
-            </label>
-          </div>
-        </div>
-        <div>
-          <Label dark={dark}>Business type</Label>
-          <select value={fields.business_type} onChange={e => set("business_type", e.target.value)} style={inp}>
+        <Field label="Business logo" dark={dark}>
+          <label style={{
+            display: "flex", alignItems: "center", gap: 12, padding: 12, borderRadius: 12, cursor: "pointer",
+            border: `1.5px dashed ${dark ? "#3a3a3a" : "#d1d5db"}`, background: c.card,
+          }}>
+            {logo.preview
+              ? <img src={logo.preview} alt="" style={{ width: 52, height: 52, borderRadius: 10, objectFit: "cover", flexShrink: 0 }} />
+              : <span style={{ width: 52, height: 52, borderRadius: 10, background: c.track, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>🏪</span>}
+            <span style={{ fontSize: 14, fontWeight: 700, color: c.text }}>{logo.preview ? "Change logo" : "Upload logo"}
+              <span style={{ display: "block", fontSize: 12, fontWeight: 500, color: c.sub }}>A photo or image of your logo</span></span>
+            <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (!f) return;
+              setLogo({ file: f, preview: URL.createObjectURL(f) });
+            }} />
+          </label>
+        </Field>
+        <Field label="Business type" dark={dark}>
+          <select value={fields.business_type} onChange={pick("business_type")} style={inp} {...focus}>
             <option value="">Select type…</option>
-            {BUSINESS_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+            {BUSINESS_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
-        </div>
-        <div>
-          <Label dark={dark}>Registration status</Label>
-          <select value={fields.reg_status} onChange={e => set("reg_status", e.target.value)} style={inp}>
+        </Field>
+        <Field label="Registration status" dark={dark}>
+          <select value={fields.reg_status} onChange={pick("reg_status")} style={inp} {...focus}>
             <option value="">Select…</option>
-            {["Registered (CAC)", "Registered (Other)", "Not yet registered", "Exempt (informal)"].map(r => (
-              <option key={r} value={r}>{r}</option>
-            ))}
+            {["Registered (CAC)", "Registered (Other)", "Not yet registered", "Exempt (informal)"].map((r) => <option key={r} value={r}>{r}</option>)}
           </select>
-        </div>
-        <div>
-          <Label dark={dark}>Industry / Category</Label>
-          <select value={fields.industry} onChange={e => set("industry", e.target.value)} style={inp}>
+        </Field>
+        <Field label="Industry / Category" dark={dark}>
+          <select value={fields.industry} onChange={pick("industry")} style={inp} {...focus}>
             <option value="">Select category…</option>
-            {BUSINESS_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+            {BUSINESS_CATEGORIES.map((x) => <option key={x} value={x}>{x}</option>)}
           </select>
-        </div>
-        <div>
-          <Label dark={dark}>Business size</Label>
-          <select value={fields.business_size} onChange={e => set("business_size", e.target.value)} style={inp}>
+        </Field>
+        <Field label="Business size" dark={dark}>
+          <select value={fields.business_size} onChange={pick("business_size")} style={inp} {...focus}>
             <option value="">Select…</option>
-            {["Solo / 1 person", "2–5 people", "6–20 people", "21–50 people", "51+ people"].map(s => (
-              <option key={s} value={s}>{s}</option>
-            ))}
+            {["Solo / 1 person", "2–5 people", "6–20 people", "21–50 people", "51+ people"].map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
-        </div>
-        <div>
-          <Label dark={dark}>Products / services sold</Label>
-          <input value={fields.products_services_type} onChange={e => set("products_services_type", e.target.value)}
-            placeholder="e.g. Electronics, ready-to-wear fashion" style={inp} />
-        </div>
-        <div>
-          <Label dark={dark}>Operating model</Label>
-          <input value={fields.operating_model} onChange={e => set("operating_model", e.target.value)}
-            placeholder="e.g. Physical store, Online, Both" style={inp} />
-        </div>
+        </Field>
+        <Field label="Products / services sold" dark={dark}>
+          <input value={fields.products_services_type} onChange={pick("products_services_type")}
+            placeholder="e.g. Electronics, ready-to-wear fashion" enterKeyHint="next" style={inp} {...focus} />
+        </Field>
+        <Field label="Operating model" dark={dark}>
+          <select value={fields.operating_model} onChange={pick("operating_model")} style={inp} {...focus}>
+            <option value="">Select…</option>
+            {[...new Set(["Physical store", "Online", "Both", fields.operating_model].filter(Boolean))].map((m) => <option key={m} value={m}>{m}</option>)}
+          </select>
+        </Field>
       </>
     );
   }
@@ -357,58 +192,51 @@ function renderFields(section, fields, set, dark, logoPreview, setLogoPreview, s
   if (section.id === "location") {
     return (
       <>
-        <div>
-          <Label dark={dark}>State</Label>
-          <select value={fields.business_state} onChange={e => set("business_state", e.target.value)} style={inp}>
+        <Field label="State" dark={dark}>
+          <select value={fields.business_state} onChange={(e) => { set("business_state", e.target.value); set("business_lga", ""); }} style={inp} {...focus}>
             <option value="">Select state…</option>
-            {STATES.map(s => <option key={s} value={s}>{s}</option>)}
+            {STATES.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
-        </div>
-        <div>
-          <Label dark={dark}>Local Government Area</Label>
-          <select value={fields.business_lga} onChange={e => set("business_lga", e.target.value)}
-            disabled={!fields.business_state} style={{ ...inp, opacity: fields.business_state ? 1 : 0.5 }}>
+        </Field>
+        <Field label="Local Government Area" dark={dark}>
+          <select value={fields.business_lga} onChange={pick("business_lga")} disabled={!fields.business_state}
+            style={{ ...inp, opacity: fields.business_state ? 1 : 0.5 }} {...focus}>
             <option value="">{fields.business_state ? "Select LGA…" : "Select state first"}</option>
-            {lgas.map(l => <option key={l} value={l}>{l}</option>)}
+            {lgas.map((l) => <option key={l} value={l}>{l}</option>)}
           </select>
-        </div>
-        <div>
-          <Label dark={dark}>Business address</Label>
-          <input value={fields.business_address} onChange={e => set("business_address", e.target.value)}
-            placeholder="12 Market Road, Onitsha" style={inp} />
-        </div>
+        </Field>
+        <Field label="Business address" dark={dark} hint="This appears on your invoices and receipts.">
+          <input value={fields.business_address} onChange={pick("business_address")} placeholder="12 Market Road, Onitsha"
+            autoComplete="street-address" enterKeyHint="done" style={inp} {...focus} />
+        </Field>
       </>
     );
   }
 
   if (section.id === "verification") {
     return (
-      <>
-        <div>
-          <Label dark={dark}>Business registration document</Label>
-          <p style={{ fontSize: 12, color: dark ? "#9ca3af" : "#6b7280", marginBottom: 8, lineHeight: 1.5 }}>
-            CAC certificate, business name certificate, or any government-issued registration document. PDF or image.
-          </p>
-          <label style={{
-            display: "flex", alignItems: "center", gap: 10,
-            padding: "12px", borderRadius: 10, cursor: "pointer",
-            border: `1.5px dashed ${dark ? "#3a3a3a" : "#d1d5db"}`,
-            color: dark ? "#9ca3af" : "#6b7280", fontSize: 13,
-          }}>
-            <span style={{ fontSize: 20 }}>📎</span>
-            <span>{docFileName || "Choose file…"}</span>
-            <input type="file" accept="image/*,.pdf,.doc,.docx" style={{ display: "none" }} onChange={e => {
-              const f = e.target.files?.[0];
-              if (!f) return;
-              setDocFile(f);
-              setDocFileName(f.name);
-            }} />
-          </label>
-          {fields.reg_doc_url && !docFileName && (
-            <p style={{ fontSize: 11, color: "#16a34a", marginTop: 6 }}>✓ Document already on file</p>
-          )}
-        </div>
-      </>
+      <Field label="Business registration document" dark={dark}
+        hint="Your CAC certificate, business name certificate or any government registration document. Take a clear photo with all four corners showing, or choose an image (JPG or PNG).">
+        <label style={{
+          display: "flex", alignItems: "center", gap: 12, padding: 14, borderRadius: 12, cursor: "pointer",
+          border: `1.5px dashed ${dark ? "#3a3a3a" : "#d1d5db"}`, background: c.card,
+        }}>
+          {doc.preview
+            ? <img src={doc.preview} alt="" style={{ width: 56, height: 56, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} />
+            : <span style={{ fontSize: 26 }}>📎</span>}
+          <span style={{ fontSize: 14, fontWeight: 700, color: c.text, minWidth: 0 }}>
+            {doc.file ? "Change photo" : fields.reg_doc_url ? "Replace document" : "Take or choose a photo"}
+            <span style={{ display: "block", fontSize: 12, fontWeight: 500, color: doc.file || fields.reg_doc_url ? "#16a34a" : c.sub, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {doc.file ? doc.file.name : fields.reg_doc_url ? "✓ Document already on file" : "Opens your camera or gallery"}
+            </span>
+          </span>
+          <input type="file" accept="image/jpeg,image/png,image/webp" style={{ display: "none" }} onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (!f) return;
+            setDoc({ file: f, preview: URL.createObjectURL(f) });
+          }} />
+        </label>
+      </Field>
     );
   }
 
@@ -418,83 +246,233 @@ function renderFields(section, fields, set, dark, logoPreview, setLogoPreview, s
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function ProfileCompleteFlow({ store, onClose }) {
-  const profile = store.profile || {};
-  const dark    = profile.dark_mode ?? false;
-  const { pct } = computeCompletion(profile);
+  const profile = useMemo(() => store.profile || {}, [store.profile]);
+  const dark = profile.dark_mode ?? false;
+  const c = palette(dark);
+  const vp = useVisibleViewport();
+  const userId = profile.id;
 
-  async function handleSectionSave(patch) {
-    const result = await store.setProfile(prev => ({ ...prev, ...patch }));
-    return result;
+  const sections = COMPLETION_SECTIONS;
+  const firstOpen = Math.max(0, sections.findIndex((s) => !getSectionStatus(s, profile).done));
+  const [step, setStep] = useState(firstOpen);
+  const [fields, setFields] = useState(() => initialFields(profile));
+  const [logo, setLogo] = useState({ file: null, preview: profile.store_image_url || "" });
+  const [doc, setDoc] = useState({ file: null, preview: "" });
+  const [saving, setSaving] = useState("");
+  const [error, setError] = useState("");
+  const [finished, setFinished] = useState(false);
+  const scrollRef = useRef(null);
+
+  const section = sections[step];
+  const isLast = step === sections.length - 1;
+  // what the user has typed but not saved yet (any step)
+  const dirtyKeys = ALL_KEYS.filter((k) => (fields[k] || "") !== (profile[k] || ""));
+  const stepDirty = section.fields.some((f) => dirtyKeys.includes(f.key))
+    || (section.id === "business" && !!logo.file) || (section.id === "verification" && !!doc.file);
+  const anyDirty = dirtyKeys.length > 0 || !!logo.file || !!doc.file;
+  const { pct } = computeCompletion({ ...profile });
+
+  const set = (k, v) => setFields((p) => ({ ...p, [k]: v }));
+
+  const requestClose = useCallback(() => {
+    if (saving) return;
+    if (anyDirty && !window.confirm("You have changes you haven't saved. Close and lose them?")) return;
+    onClose();
+  }, [anyDirty, saving, onClose]);
+
+  // Phone back button: one step back, or close on the first step. Each press uses up the history entry, so it is
+  // re-armed (a new `arm` value) whenever the screen stays open.
+  const [arm, setArm] = useState(1);
+  const backRef = useRef(null);
+  backRef.current = () => {
+    if (finished || step === 0) {
+      if (saving || (anyDirty && !window.confirm("You have changes you haven't saved. Close and lose them?"))) { setArm((a) => a + 1); return; }
+      onClose();
+    } else { setStep((s) => s - 1); setArm((a) => a + 1); }
+  };
+  const historyBack = useHistoryStep(`arm-${arm}`, () => backRef.current?.());
+
+  // stop the page behind from scrolling while this is open
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+
+  useEffect(() => { scrollRef.current?.scrollTo?.({ top: 0 }); setError(""); }, [step]);
+
+  async function saveStep() {
+    setError("");
+    if (!stepDirty) return true;
+    if (section.id === "about" && fields.nin && !/^\d{11}$/.test(fields.nin)) {
+      setError("Your NIN must be exactly 11 digits — or leave it empty for now.");
+      return false;
+    }
+    try {
+      const extra = {};
+      if (section.id === "business" && logo.file) {
+        setSaving("Uploading logo…");
+        const compressed = await compressImage(logo.file, 900);
+        const path = `${userId}/store.jpg`;
+        const { error: upErr } = await supabase.storage.from("avatars").upload(path, compressed, { upsert: true, contentType: "image/jpeg" });
+        if (upErr) throw upErr;
+        const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(path);
+        extra.store_image_url = `${publicUrl}?v=${Date.now()}`;
+      }
+      if (section.id === "verification" && doc.file) {
+        if (!/^image\//.test(doc.file.type || "")) throw new Error("Please choose a photo (JPG or PNG) of your document.");
+        setSaving("Uploading document…");
+        const compressed = await compressImage(doc.file, 1200);
+        const path = `${userId}/reg_doc.jpg`;
+        const { error: upErr } = await supabase.storage.from("avatars").upload(path, compressed, { upsert: true, contentType: "image/jpeg" });
+        if (upErr) throw upErr;
+        const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(path);
+        extra.reg_doc_url = `${publicUrl}?v=${Date.now()}`;
+      }
+      setSaving("Saving…");
+      const patch = {};
+      section.fields.forEach((f) => { patch[f.key] = fields[f.key]; });
+      Object.assign(patch, extra);
+      if (patch.industry) patch.business_category = patch.industry;
+      const result = await store.setProfile((prev) => ({ ...prev, ...patch }));
+      if (result?.error) throw new Error(result.error.message || "Could not save. Please try again.");
+      if (extra.store_image_url) setLogo({ file: null, preview: extra.store_image_url });
+      if (extra.reg_doc_url) { setDoc({ file: null, preview: "" }); set("reg_doc_url", extra.reg_doc_url); }
+      if (extra.store_image_url) set("store_image_url", extra.store_image_url);
+      return true;
+    } catch (e) {
+      setError(e?.message || "Could not save. Please check your connection and try again.");
+      return false;
+    } finally {
+      setSaving("");
+    }
   }
 
-  return (
+  async function next() {
+    if (!(await saveStep())) return;
+    if (isLast) setFinished(true);
+    else setStep((s) => s + 1);
+  }
+
+  async function jumpTo(i) {
+    if (i === step || saving) return;
+    if (stepDirty && !(await saveStep())) return;
+    setFinished(false);
+    setStep(i);
+  }
+
+  const status = (s) => getSectionStatus(s, { ...profile, ...fields });
+  const { filled, total } = status(section);
+  const footerPad = vp.keyboardOpen ? 8 : "max(14px, env(safe-area-inset-bottom))";
+
+  const ui = (
     <div
+      role="dialog" aria-modal="true" aria-label="Complete your profile"
       style={{
-        position: "fixed", inset: 0, zIndex: 300,
-        background: "rgba(0,0,0,0.55)",
-        display: "flex", flexDirection: "column", justifyContent: "flex-end",
+        position: "fixed", left: 0, right: 0, top: vp.top, height: vp.h || "100dvh",
+        zIndex: 300, background: c.bg, display: "flex", flexDirection: "column",
       }}
-      onClick={onClose}
     >
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{
-          background: dark ? "#0a0a0a" : "#f9fafb",
-          borderRadius: "20px 20px 0 0",
-          maxHeight: "92dvh",
-          display: "flex", flexDirection: "column",
-          overflow: "hidden",
-        }}
-      >
-        {/* Drag handle + header */}
-        <div style={{ padding: "12px 20px 0", textAlign: "center" }}>
-          <div style={{ width: 36, height: 4, borderRadius: 2, background: dark ? "#3a3a3a" : "#d1d5db", margin: "0 auto 12px" }} />
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-            <div>
-              <div style={{ fontWeight: 800, fontSize: 17, color: dark ? "#f3f4f6" : "#111827" }}>
-                Complete your profile
-              </div>
-              <div style={{ fontSize: 12, color: dark ? "#9ca3af" : "#6b7280", marginTop: 2 }}>
-                {pct}% complete · Each section saves independently
+      <div style={{ width: "100%", maxWidth: 560, margin: "0 auto", height: "100%", display: "flex", flexDirection: "column", minHeight: 0 }}>
+        {/* Header */}
+        <div style={{ flexShrink: 0, padding: "max(12px, env(safe-area-inset-top)) 16px 10px", borderBottom: `1px solid ${c.border}`, background: c.bg }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <button onClick={historyBack} aria-label={step === 0 || finished ? "Close" : "Back"}
+              style={{ width: 38, height: 38, borderRadius: 12, border: "none", background: c.track, color: c.text, fontSize: 18, cursor: "pointer", flexShrink: 0 }}>
+              {step === 0 || finished ? "✕" : "←"}
+            </button>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 800, fontSize: 17, color: c.text }}>Complete your profile</div>
+              <div style={{ fontSize: 12, color: c.sub, marginTop: 1 }}>
+                {finished ? `${pct}% complete` : `Step ${step + 1} of ${sections.length} · ${section.title}`}
               </div>
             </div>
-            <button
-              onClick={onClose}
-              style={{
-                background: dark ? "#1f1f1f" : "#e5e7eb",
-                border: "none", borderRadius: "50%",
-                width: 30, height: 30, fontSize: 14, cursor: "pointer",
-                color: dark ? "#9ca3af" : "#6b7280",
-                display: "flex", alignItems: "center", justifyContent: "center",
-              }}
-            >
-              ✕
-            </button>
+            {!finished && <button onClick={requestClose} style={{ border: "none", background: "none", color: c.sub, fontSize: 13, fontWeight: 700, cursor: "pointer", padding: 6 }}>Later</button>}
           </div>
-
-          {/* Global progress bar */}
-          <div style={{ height: 5, background: dark ? "#1f1f1f" : "#e5e7eb", borderRadius: 999, margin: "10px 0 16px", overflow: "hidden" }}>
-            <div style={{ height: "100%", width: `${pct}%`, background: "linear-gradient(90deg, #FF6B35, #FF8C42)", borderRadius: 999, transition: "width .4s" }} />
+          {/* step chips — tap to jump */}
+          <div style={{ display: "grid", gridTemplateColumns: `repeat(${sections.length}, minmax(0, 1fr))`, gap: 6, marginTop: 12 }}>
+            {sections.map((s, i) => {
+              const st = status(s);
+              const active = i === step && !finished;
+              return (
+                <button key={s.id} onClick={() => jumpTo(i)}
+                  style={{
+                    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, minWidth: 0,
+                    padding: "6px 2px", borderRadius: 12, cursor: "pointer", fontSize: 11, fontWeight: 700, lineHeight: 1.2,
+                    border: `1.5px solid ${active ? "#FF6B35" : st.done ? (dark ? "#14532d" : "#bbf7d0") : c.border}`,
+                    background: active ? (dark ? "#2a160c" : "#fff4ee") : st.done ? (dark ? "#0f2416" : "#f0fdf4") : c.card,
+                    color: active ? "#ea580c" : st.done ? "#16a34a" : c.sub,
+                  }}>
+                  <span style={{ fontSize: 15 }}>{st.done ? "✓" : s.icon}</span>
+                  <span style={{ maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{SHORT[s.id] || s.title}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        {/* Scrollable sections */}
-        <div style={{ overflowY: "auto", padding: "0 16px 32px", display: "flex", flexDirection: "column", gap: 10 }}>
-          {COMPLETION_SECTIONS.map(section => (
-            <Section
-              key={section.id}
-              section={section}
-              profile={profile}
-              dark={dark}
-              onSave={handleSectionSave}
-            />
-          ))}
+        {/* Body — the only part that scrolls */}
+        <div ref={scrollRef} style={{ flex: 1, minHeight: 0, overflowY: "auto", overscrollBehavior: "contain", WebkitOverflowScrolling: "touch", padding: "16px 16px 24px" }}>
+          {finished ? (
+            <div style={{ textAlign: "center", padding: "40px 8px" }}>
+              <div style={{ fontSize: 46 }}>{pct >= 100 ? "🎉" : "👍"}</div>
+              <div style={{ fontWeight: 800, fontSize: 20, color: c.text, marginTop: 10 }}>{pct >= 100 ? "Your profile is complete" : "Saved"}</div>
+              <p style={{ fontSize: 14, color: c.sub, marginTop: 6, lineHeight: 1.5 }}>
+                {pct >= 100
+                  ? "Thanks — your reports, invoices and insights now use your full business details."
+                  : `Your profile is ${pct}% complete. Tap a step above any time to finish the rest.`}
+              </p>
+            </div>
+          ) : (
+            <>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                <span style={{ fontSize: 26 }}>{section.icon}</span>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 18, color: c.text }}>{section.title}</div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: filled === total ? "#16a34a" : c.sub }}>{filled === total ? "All done" : `${filled} of ${total} filled`}</div>
+                </div>
+              </div>
+              <div style={{
+                background: dark ? "#1a2a1a" : "#f0fdf4", border: `1px solid ${dark ? "#2d4a2d" : "#bbf7d0"}`,
+                borderRadius: 10, padding: "9px 12px", marginBottom: 18, fontSize: 13, color: dark ? "#86efac" : "#15803d", lineHeight: 1.5,
+              }}>
+                💡 {section.why}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                <StepFields section={section} fields={fields} set={set} dark={dark} logo={logo} setLogo={setLogo} doc={doc} setDoc={setDoc} />
+              </div>
+              <p style={{ textAlign: "center", fontSize: 12, color: c.faint, marginTop: 22 }}>
+                Every field is optional — fill what you can and continue.
+              </p>
+            </>
+          )}
+        </div>
 
-          <p style={{ textAlign: "center", fontSize: 11, color: dark ? "#4b5563" : "#9ca3af", marginTop: 6 }}>
-            None of this is required to use KudiAI Track — complete at your own pace.
-          </p>
+        {/* Footer — always visible, sits just above the keyboard */}
+        <div style={{ flexShrink: 0, padding: `10px 16px`, paddingBottom: footerPad, borderTop: `1px solid ${c.border}`, background: c.bg }}>
+          {error && (
+            <div role="alert" style={{ marginBottom: 8, fontSize: 13, color: "#ef4444", background: dark ? "#2a1111" : "#fef2f2", borderRadius: 10, padding: "8px 12px" }}>{error}</div>
+          )}
+          {finished ? (
+            <button onClick={onClose} style={{ width: "100%", padding: 14, background: BRAND, color: "#fff", border: "none", borderRadius: 12, fontWeight: 800, fontSize: 15, cursor: "pointer" }}>Done</button>
+          ) : (
+            <div style={{ display: "flex", gap: 10 }}>
+              {step > 0 && (
+                <button onClick={historyBack} disabled={!!saving}
+                  style={{ flex: "0 0 32%", padding: 14, background: c.card, color: c.text, border: `1.5px solid ${c.border}`, borderRadius: 12, fontWeight: 700, fontSize: 15, cursor: "pointer" }}>
+                  Back
+                </button>
+              )}
+              <button onClick={next} disabled={!!saving}
+                style={{ flex: 1, padding: 14, background: saving ? (dark ? "#4a3010" : "#fed7aa") : BRAND, color: saving ? (dark ? "#d97706" : "#92400e") : "#fff", border: "none", borderRadius: 12, fontWeight: 800, fontSize: 15, cursor: saving ? "wait" : "pointer" }}>
+                {saving || (stepDirty ? (isLast ? "Save & finish" : "Save & continue") : (isLast ? "Finish" : "Continue"))}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
   );
+
+  return createPortal(ui, document.body);
 }

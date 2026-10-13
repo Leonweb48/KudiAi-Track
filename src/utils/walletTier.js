@@ -24,10 +24,62 @@ export const TIER_INFO = {
   3: {
     name: "Fully Verified",
     requirements: [
-      "A valid ID — National ID, Voter's card, International Passport or Driver's License",
-      "A utility bill as proof of address",
-      "A passport photograph",
+      "A valid ID — National ID or NIN slip, Voter's card, Driver's licence or International passport (photo of the front, and the back for cards)",
+      "A utility bill or bank statement from the last 3 months, showing your address",
+      "A recent passport photograph",
     ],
+  },
+};
+
+// ── Tier 3 documents (uploaded in the app, checked by an admin) ─────────────────────────────────────────────────────
+// Must match public.wallet_tier3_required_docs() and the request-tier action in supabase/functions/flutterwave.
+export const TIER3_ID_TYPES = [
+  { id: "national_id",     label: "National ID card",       numberLabel: "NIN",             placeholder: "11-digit NIN",      numeric: true,  back: true,  front: "Front of your National ID card" },
+  { id: "nin_slip",        label: "NIN slip",               numberLabel: "NIN",             placeholder: "11-digit NIN",      numeric: true,  back: false, front: "Your NIN slip" },
+  { id: "voters_card",     label: "Voter's card (PVC)",     numberLabel: "VIN",             placeholder: "VIN on the card",   numeric: false, back: true,  front: "Front of your voter's card" },
+  { id: "drivers_license", label: "Driver's licence",       numberLabel: "Licence number",  placeholder: "e.g. ABC12345AA01", numeric: false, back: true,  front: "Front of your driver's licence" },
+  { id: "passport",        label: "International passport", numberLabel: "Passport number", placeholder: "e.g. A12345678",   numeric: false, back: false, front: "Your passport's photo page" },
+];
+
+export const tier3IdType = (id) => TIER3_ID_TYPES.find((t) => t.id === id) || null;
+
+/** Which documents an ID type needs, in upload order. */
+export function tier3RequiredDocs(idType) {
+  const t = tier3IdType(idType);
+  return t && !t.back ? ["id_front", "utility_bill", "passport_photo"] : ["id_front", "id_back", "utility_bill", "passport_photo"];
+}
+
+/** Check an ID number the same way the server does. Returns an error message or "". */
+export function tier3IdNumberError(idType, raw) {
+  const v = String(raw || "").toUpperCase().replace(/\s+/g, "");
+  if (!v) return "Enter your ID number";
+  if (idType === "national_id" || idType === "nin_slip") return /^\d{11}$/.test(v) ? "" : "Your NIN must be exactly 11 digits";
+  if (idType === "voters_card") return /^[A-Z0-9]{9,23}$/.test(v) ? "" : "Enter the VIN on your voter's card";
+  if (idType === "drivers_license") return /^[A-Z0-9-]{6,20}$/.test(v) ? "" : "Enter your driver's licence number";
+  if (idType === "passport") return /^[A-Z]\d{8}$/.test(v) ? "" : "Enter your passport number (a letter and 8 digits, e.g. A12345678)";
+  return "Choose the type of ID";
+}
+
+export const TIER3_DOCS = {
+  id_front: {
+    title: "ID — front", sample: "/kyc-samples/id-front.svg", camera: "environment", pdf: false,
+    good: ["All four corners inside the photo", "Every word sharp and readable", "Your ID has not expired"],
+    bad: ["Glare or flash on the card", "Fingers covering any part", "A photocopy or screenshot"],
+  },
+  id_back: {
+    title: "ID — back", sample: "/kyc-samples/id-back.svg", camera: "environment", pdf: false,
+    good: ["All four corners inside the photo", "Barcode and writing readable"],
+    bad: ["Glare or blur", "Cropped edges"],
+  },
+  utility_bill: {
+    title: "Utility bill (proof of address)", sample: "/kyc-samples/utility-bill.svg", camera: "environment", pdf: true,
+    good: ["Electricity, water, waste or cable TV bill — or a bank statement", "Dated within the last 3 months", "Shows your name and the same address you entered"],
+    bad: ["Older than 3 months", "Someone else's name (unless you explain in the note)", "Only part of the page"],
+  },
+  passport_photo: {
+    title: "Passport photograph", sample: "/kyc-samples/passport-photo.svg", camera: "user", pdf: false,
+    good: ["Plain white or light background", "Face the camera — face and ears visible", "Taken in the last 6 months"],
+    bad: ["Cap, sunglasses or face covering (religious head covering is fine)", "Filters or beauty effects", "A group photo or a photo of a photo"],
   },
 };
 

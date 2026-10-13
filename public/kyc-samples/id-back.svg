@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 560" font-family="Arial, Helvetica, sans-serif">
+  <rect width="860" height="560" fill="#eef2f7"/>
+  <g transform="translate(40 30)">
+    <rect width="780" height="490" rx="28" fill="#ffffff" stroke="#cbd5e1" stroke-width="3"/>
+    <rect x="40" y="40" width="300" height="110" rx="8" fill="#f1f5f9"/>
+    <g fill="#0f172a">
+      <rect x="55" y="55" width="6" height="80"/><rect x="66" y="55" width="3" height="80"/><rect x="74" y="55" width="9" height="80"/>
+      <rect x="88" y="55" width="4" height="80"/><rect x="97" y="55" width="7" height="80"/><rect x="110" y="55" width="3" height="80"/>
+      <rect x="118" y="55" width="10" height="80"/><rect x="133" y="55" width="4" height="80"/><rect x="142" y="55" width="6" height="80"/>
+      <rect x="154" y="55" width="3" height="80"/><rect x="162" y="55" width="9" height="80"/><rect x="176" y="55" width="5" height="80"/>
+      <rect x="186" y="55" width="3" height="80"/><rect x="194" y="55" width="8" height="80"/><rect x="207" y="55" width="4" height="80"/>
+      <rect x="216" y="55" width="6" height="80"/><rect x="228" y="55" width="3" height="80"/><rect x="236" y="55" width="10" height="80"/>
+      <rect x="251" y="55" width="4" height="80"/><rect x="260" y="55" width="7" height="80"/><rect x="272" y="55" width="3" height="80"/>
+      <rect x="280" y="55" width="9" height="80"/><rect x="294" y="55" width="5" height="80"/><rect x="304" y="55" width="8" height="80"/>
+    </g>
+    <g font-size="18" fill="#475569">
+      <text x="380" y="70" font-weight="700">ADDRESS</text>
+      <text x="380" y="100">12 SAMPLE CLOSE, IKEJA</text>
+      <text x="380" y="128">LAGOS STATE</text>
+      <text x="40" y="200" font-weight="700">ISSUE DATE</text>
+      <text x="40" y="228">14 MAR 2021</text>
+      <text x="300" y="200" font-weight="700">ISSUING AUTHORITY</text>
+      <text x="300" y="228">GOVERNMENT AGENCY</text>
+    </g>
+    <rect x="40" y="290" width="700" height="150" rx="8" fill="#f8fafc" stroke="#e2e8f0"/>
+    <g font-family="Courier New, monospace" font-size="27" fill="#0f172a" letter-spacing="3">
+      <text x="60" y="340">IDNGA1234567890&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;</text>
+      <text x="60" y="378">9003141F3103145NGA&lt;&lt;&lt;&lt;&lt;&lt;</text>
+      <text x="60" y="416">ADEYEMI&lt;&lt;CHIOMA&lt;GRACE&lt;&lt;&lt;</text>
+    </g>
+  </g>
+  <g fill="none" stroke="#16a34a" stroke-width="8" stroke-linecap="round">
+    <path d="M24 70V14h56"/><path d="M780 14h56v56"/><path d="M836 490v56h-56"/><path d="M80 546H24v-56"/>
+  </g>
+  <text x="430" y="330" text-anchor="middle" font-size="120" font-weight="900" fill="#dc2626" fill-opacity="0.16" transform="rotate(-18 430 300)">SAMPLE</text>
+</svg>

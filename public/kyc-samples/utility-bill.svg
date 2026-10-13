@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 820" font-family="Arial, Helvetica, sans-serif">
+  <rect width="620" height="820" fill="#eef2f7"/>
+  <g transform="translate(30 20)">
+    <rect width="560" height="780" rx="10" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <rect width="560" height="90" rx="10" fill="#1e3a8a"/>
+    <rect y="60" width="560" height="30" fill="#1e3a8a"/>
+    <text x="30" y="46" font-size="26" font-weight="700" fill="#fff">ELECTRICITY BILL</text>
+    <text x="30" y="74" font-size="15" fill="#bfdbfe">Your electricity company</text>
+
+    <rect x="22" y="112" width="516" height="150" rx="8" fill="#fef9c3" stroke="#eab308" stroke-width="3"/>
+    <g font-size="15" fill="#713f12" font-weight="700">
+      <text x="40" y="140">CUSTOMER NAME</text>
+      <text x="40" y="200">SERVICE ADDRESS</text>
+    </g>
+    <g font-size="21" fill="#0f172a" font-weight="700">
+      <text x="40" y="168">CHIOMA GRACE ADEYEMI</text>
+      <text x="40" y="228">12 Sample Close, Ikeja,</text>
+      <text x="40" y="252">Lagos State</text>
+    </g>
+
+    <rect x="22" y="280" width="250" height="80" rx="8" fill="#fef9c3" stroke="#eab308" stroke-width="3"/>
+    <text x="40" y="308" font-size="15" font-weight="700" fill="#713f12">BILL DATE</text>
+    <text x="40" y="340" font-size="21" font-weight="700" fill="#0f172a">02 SEP 2026</text>
+    <text x="300" y="308" font-size="15" font-weight="700" fill="#64748b">ACCOUNT NUMBER</text>
+    <text x="300" y="340" font-size="21" font-weight="700" fill="#0f172a">0123 4567 89</text>
+
+    <line x1="22" y1="392" x2="538" y2="392" stroke="#e2e8f0" stroke-width="2"/>
+    <g font-size="17" fill="#334155">
+      <text x="30" y="430">Previous balance</text><text x="530" y="430" text-anchor="end">N0.00</text>
+      <text x="30" y="468">Energy charge (186 kWh)</text><text x="530" y="468" text-anchor="end">N38,750.00</text>
+      <text x="30" y="506">VAT</text><text x="530" y="506" text-anchor="end">N2,906.25</text>
+    </g>
+    <line x1="22" y1="530" x2="538" y2="530" stroke="#e2e8f0" stroke-width="2"/>
+    <text x="30" y="568" font-size="20" font-weight="700" fill="#0f172a">Total due</text>
+    <text x="530" y="568" text-anchor="end" font-size="20" font-weight="700" fill="#0f172a">N41,656.25</text>
+    <g fill="#e2e8f0">
+      <rect x="30" y="620" width="500" height="12" rx="6"/><rect x="30" y="646" width="430" height="12" rx="6"/><rect x="30" y="672" width="470" height="12" rx="6"/>
+    </g>
+  </g>
+  <text x="310" y="470" text-anchor="middle" font-size="110" font-weight="900" fill="#dc2626" fill-opacity="0.15" transform="rotate(-30 310 430)">SAMPLE</text>
+</svg>

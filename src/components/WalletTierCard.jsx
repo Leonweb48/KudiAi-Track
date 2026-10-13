@@ -8,6 +8,7 @@ import KycConsent from "./KycConsent";
 import SelfieCapture from "./SelfieCapture";
 import { kycConsentGiven } from "../utils/kycConsent";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
+import Tier3Upgrade from "./Tier3Upgrade";
 
 const FIELD = "w-full mt-1.5 px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/60 text-slate-900 dark:text-slate-50 text-[15px] font-semibold placeholder:font-normal placeholder:text-slate-400 focus:outline-none focus:border-brand-400";
 const LABEL = "text-[12px] font-semibold text-slate-500 dark:text-slate-400";
@@ -110,46 +111,6 @@ function Tier2Sheet({ open, onClose, tierApi, prefill }) {
   );
 }
 
-// ── Tier 3: needs a person to review it ────────────────────────────────────────────────────────────────────────────
-function Tier3Sheet({ open, onClose, tierApi }) {
-  const [note, setNote] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState("");
-  const [sent, setSent] = useState(false);
-  const submit = async () => {
-    setErr(""); setBusy(true);
-    try { await tierApi.requestTier3(note.trim()); setSent(true); }
-    catch (e) { setErr(e?.message || "Could not send your request. Please try again."); }
-    finally { setBusy(false); }
-  };
-  return (
-    <BottomSheet open={open} onClose={onClose} title={sent ? "" : "Request Tier 3"}>
-      {sent ? (
-        <div className="text-center py-3">
-          <p className="text-[17px] font-extrabold text-slate-900 dark:text-slate-50">Request received</p>
-          <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">Our team will contact you to collect your documents and review them.</p>
-          <button onClick={onClose} className={BTN + " mt-5"}>Done</button>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          <p className="text-[13px] text-slate-500 dark:text-slate-400 leading-relaxed">
-            Tier 3 lifts your limits to {formatKoboLimit(tierApi.nextLimits?.maxBalanceKobo)} balance and {formatKoboLimit(tierApi.nextLimits?.dailyKobo)} a day. Our team reviews it, so it isn't instant. Have these ready:
-          </p>
-          <ul className="space-y-1.5">
-            {TIER_INFO[3].requirements.map((r) => (
-              <li key={r} className="flex gap-2 text-[13px] text-slate-700 dark:text-slate-200"><span className="text-brand-600">•</span><span>{r}</span></li>
-            ))}
-          </ul>
-          <div><label className={LABEL}>Anything we should know? <span className="font-normal text-slate-300">optional</span></label>
-            <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} maxLength={300} className={FIELD} placeholder="e.g. the best time to reach you" /></div>
-          {err && <p className="text-[12px] text-red-500">{err}</p>}
-          <button onClick={submit} disabled={busy} className={BTN}>{busy ? "Sending…" : "Send request"}</button>
-        </div>
-      )}
-    </BottomSheet>
-  );
-}
-
 /**
  * The wallet TIER card for a profile screen: which tier the holder is on, what it allows, and how to reach the next one.
  * Everyone starts at Tier 1. Shown to owners, Ajo/Esusu clients, staff and managers (anyone who can hold a wallet).
@@ -207,9 +168,29 @@ export default function WalletTierCard({ userId, enabled = true, prefill, onOpen
             <ul className="mt-1.5 space-y-0.5">
               {TIER_INFO[3].requirements.map((r) => <li key={r} className="text-[12px] text-amber-800 dark:text-amber-200">• {r}</li>)}
             </ul>
-            {t.pending
-              ? <p className="mt-3 text-[12.5px] font-bold text-amber-800 dark:text-amber-200">Request received — our team will contact you.</p>
-              : <button onClick={() => setSheet("t3")} className={BTN + " mt-3"}>Request Tier 3</button>}
+            {t.pending && t.t3?.hasDocs ? (
+              <div className="mt-3 rounded-xl bg-white/70 dark:bg-slate-900/40 px-3 py-2.5">
+                <p className="text-[12.5px] font-extrabold text-amber-900 dark:text-amber-100">⏳ Documents under review</p>
+                <p className="text-[12px] text-amber-800 dark:text-amber-200 leading-relaxed">
+                  Submitted {t.t3.submittedAt ? new Date(t.t3.submittedAt).toLocaleDateString("en-NG", { day: "numeric", month: "short" }) : "recently"}. We usually finish within 1–2 working days and will notify you.
+                </p>
+              </div>
+            ) : t.pending ? (
+              <>
+                <p className="mt-3 text-[12.5px] font-bold text-amber-900 dark:text-amber-100">Your request is waiting for your documents — upload them in the app to finish.</p>
+                <button onClick={() => setSheet("t3")} className={BTN + " mt-2"}>Upload documents</button>
+              </>
+            ) : (
+              <>
+                {t.t3?.status === "rejected" && (
+                  <div className="mt-3 rounded-xl bg-rose-50 dark:bg-rose-900/20 border border-rose-100 dark:border-rose-900/40 px-3 py-2.5">
+                    <p className="text-[12.5px] font-extrabold text-rose-800 dark:text-rose-200">Your last request wasn't approved</p>
+                    {t.t3.reviewNote && <p className="text-[12px] text-rose-700 dark:text-rose-300 leading-relaxed">Reason: {t.t3.reviewNote}</p>}
+                  </div>
+                )}
+                <button onClick={() => setSheet("t3")} className={BTN + " mt-3"}>{t.t3?.status === "rejected" ? "Try again" : "Upgrade to Tier 3"}</button>
+              </>
+            )}
           </div>
         )}
 
@@ -219,7 +200,7 @@ export default function WalletTierCard({ userId, enabled = true, prefill, onOpen
       </div>
 
       {sheet === "t2" && <Tier2Sheet open onClose={() => setSheet(null)} tierApi={t} prefill={prefill} />}
-      {sheet === "t3" && <Tier3Sheet open onClose={() => setSheet(null)} tierApi={t} />}
+      {sheet === "t3" && <Tier3Upgrade onClose={() => setSheet(null)} tierApi={t} prefill={prefill} />}
     </>
   );
 }

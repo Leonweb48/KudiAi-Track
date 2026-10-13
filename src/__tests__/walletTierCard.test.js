@@ -4,7 +4,7 @@ import WalletTierCard from "../components/WalletTierCard";
 import { useWalletTier } from "../hooks/useWalletTier";
 import { tierLimits } from "../utils/walletTier";
 
-jest.mock("../hooks/useWalletTier", () => ({ useWalletTier: jest.fn() }));
+jest.mock("../hooks/useWalletTier", () => ({ useWalletTier: jest.fn(), uploadTier3Doc: jest.fn() }));
 // the real sheet animates via requestAnimationFrame/timeouts; a plain stand-in is enough here
 jest.mock("../components/WalletPanel", () => ({ BottomSheet: ({ open, title, children }) => (open ? <div role="dialog" aria-label={title}>{children}</div> : null) }));
 
@@ -29,7 +29,8 @@ const api = (tier, over = {}) => {
   return {
     loading: false, hasWallet: true, tier, next, pending: false,
     limits: tierLimits(tier), nextLimits: next ? tierLimits(next) : null,
-    refresh: jest.fn(), upgradeToTier2: jest.fn().mockResolvedValue({ ok: true, tier: 2, changed: true }), requestTier3: jest.fn().mockResolvedValue({ ok: true, requested: true }),
+    t3: null,
+    refresh: jest.fn(), upgradeToTier2: jest.fn().mockResolvedValue({ ok: true, tier: 2, changed: true }), submitTier3: jest.fn().mockResolvedValue({ ok: true, requested: true }),
     ...over,
   };
 };
@@ -67,16 +68,31 @@ describe("WalletTierCard", () => {
     expect(t).toContain("Upgrade to Tier 3");
     expect(t).toContain("Unlimited");
     expect(t).toContain("₦5,000,000");
-    expect(t).toContain("A passport photograph");
-    expect(t).toContain("A utility bill as proof of address");
-    expect(btn("Request Tier 3")).toBeTruthy();
+    expect(t).toContain("A recent passport photograph");
+    expect(t).toContain("from the last 3 months");
+    expect(btn("Upgrade to Tier 3")).toBeTruthy();
   });
 
-  it("a Tier 3 request already waiting is shown instead of the button", () => {
-    use(api(2, { pending: true }));
+  it("documents under review are shown instead of the button", () => {
+    use(api(2, { pending: true, t3: { id: "r1", status: "pending", hasDocs: true, submittedAt: "2026-10-13T09:00:00Z", reviewNote: "" } }));
     render({});
-    expect(host.textContent).toContain("Request received — our team will contact you.");
-    expect(btn("Request Tier 3")).toBeUndefined();
+    expect(host.textContent).toContain("Documents under review");
+    expect(btn("Upgrade to Tier 3")).toBeUndefined();
+  });
+
+  it("an old request without documents asks for them", () => {
+    use(api(2, { pending: true, t3: { id: "r0", status: "pending", hasDocs: false, reviewNote: "" } }));
+    render({});
+    expect(host.textContent).toContain("waiting for your documents");
+    expect(btn("Upload documents")).toBeTruthy();
+  });
+
+  it("a rejected request shows the reason and lets them try again", () => {
+    use(api(2, { t3: { id: "r2", status: "rejected", hasDocs: true, reviewNote: "The utility bill is older than 3 months" } }));
+    render({});
+    expect(host.textContent).toContain("wasn't approved");
+    expect(host.textContent).toContain("The utility bill is older than 3 months");
+    expect(btn("Try again")).toBeTruthy();
   });
 
   it("Tier 3: highest tier, nothing left to upgrade to", () => {
@@ -172,25 +188,86 @@ describe("WalletTierCard", () => {
     });
   });
 
-  describe("Tier 3 request", () => {
-    it("lists the documents and sends the request with the optional note", async () => {
-      const a = api(2);
-      use(a); render({});
-      await click(btn("Request Tier 3"));
-      expect(by('[role="dialog"]').textContent).toContain("Have these ready");
-      expect(by('[role="dialog"]').textContent).toContain("Voter's card");
-      type(by('[role="dialog"] textarea'), "call after 4pm");
-      await click(btn("Send request"));
-      expect(a.requestTier3).toHaveBeenCalledWith("call after 4pm");
-      expect(host.textContent).toContain("Request received");
+  describe("Tier 3 upgrade (documents + samples)", () => {
+    // the flow is a full-screen portal on document.body, not inside the card
+    const page = () => document.querySelector('[aria-label="Upgrade to Tier 3"]');
+    const pbtn = (t) => [...page().querySelectorAll("button")].find((b) => b.textContent.trim() === t);
+    const pickFile = (input, file) => act(async () => {
+      Object.defineProperty(input, "files", { value: [file], configurable: true });
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    beforeAll(() => { global.URL.createObjectURL = jest.fn(() => "blob:preview"); });
+
+    const start = async (a = api(2)) => {
+      use(a); render({ prefill: { address: "" } });
+      await click(btn("Upgrade to Tier 3"));
+      return a;
+    };
+
+    it("starts with what is needed and a sample of each document", async () => {
+      await start();
+      expect(page().textContent).toContain("What you'll need");
+      expect(page().textContent).toContain("Utility bill (proof of address)");
+      const samples = [...page().querySelectorAll("img")].map((i) => i.getAttribute("src"));
+      expect(samples).toEqual(expect.arrayContaining(["/kyc-samples/id-front.svg", "/kyc-samples/utility-bill.svg", "/kyc-samples/passport-photo.svg"]));
     });
 
-    it("shows the server's reason if the request fails", async () => {
-      const a = api(2, { requestTier3: jest.fn().mockRejectedValue(new Error("Could not send your request. Please try again.")) });
-      use(a); render({});
-      await click(btn("Request Tier 3"));
-      await click(btn("Send request"));
-      expect(host.textContent).toContain("Could not send your request");
+    it("checks the ID details before the uploads", async () => {
+      await start();
+      await click(pbtn("Start"));
+      await click(pbtn("Continue"));
+      expect(page().textContent).toContain("Choose the type of ID");
+      await click(pbtn("International passport"));
+      type(page().querySelector("#t3-idno"), "12345");
+      await click(pbtn("Continue"));
+      expect(page().textContent).toContain("a letter and 8 digits");
+      type(page().querySelector("#t3-idno"), "A12345678");
+      await click(pbtn("Continue"));
+      expect(page().textContent).toContain("as it appears on your utility bill");
+    });
+
+    it("uploads every document, then submits for review with the paths", async () => {
+      const { uploadTier3Doc } = jest.requireMock("../hooks/useWalletTier");
+      uploadTier3Doc.mockImplementation(async (kind) => ({ kind, path: `u1/tier3/${kind}-1.jpg` }));
+      const a = await start(api(2, { submitTier3: jest.fn().mockResolvedValue({ ok: true, requested: true }) }));
+      await click(pbtn("Start"));
+      await click(pbtn("National ID card"));
+      type(page().querySelector("#t3-idno"), "12345678901");
+      type(page().querySelector("#t3-addr"), "12 Market Road, Onitsha");
+      await click(pbtn("Continue"));
+      // a National ID card needs the back too: 4 documents
+      const choose = [...page().querySelectorAll("input[type=file]:not([capture])")];
+      expect(choose).toHaveLength(4);
+      await click(pbtn("Continue"));
+      expect(page().textContent).toContain("Upload every document");
+      for (const input of choose) await pickFile(input, new File(["x"], "doc.jpg", { type: "image/jpeg" }));
+      expect(uploadTier3Doc).toHaveBeenCalledTimes(4);
+      await click(pbtn("Continue"));
+      expect(pbtn("Submit for review").disabled).toBe(true);           // must confirm the documents first
+      await click(page().querySelector("input[type=checkbox]"));
+      await click(pbtn("Submit for review"));
+      expect(a.submitTier3).toHaveBeenCalledWith({
+        id_type: "national_id", id_number: "12345678901", address: "12 Market Road, Onitsha", note: "",
+        documents: ["id_front", "id_back", "utility_bill", "passport_photo"].map((k) => ({ kind: k, path: `u1/tier3/${k}-1.jpg` })),
+      });
+      expect(page().textContent).toContain("Documents submitted");
+    });
+
+    it("shows an upload error on that document and keeps Continue blocked", async () => {
+      const { uploadTier3Doc } = jest.requireMock("../hooks/useWalletTier");
+      uploadTier3Doc.mockRejectedValue(new Error("Upload failed — check your connection and try again."));
+      await start();
+      await click(pbtn("Start"));
+      await click(pbtn("International passport"));
+      type(page().querySelector("#t3-idno"), "A12345678");
+      type(page().querySelector("#t3-addr"), "12 Market Road, Onitsha");
+      await click(pbtn("Continue"));
+      const choose = [...page().querySelectorAll("input[type=file]:not([capture])")];
+      expect(choose).toHaveLength(3);                                    // passport: no back
+      await pickFile(choose[0], new File(["x"], "doc.jpg", { type: "image/jpeg" }));
+      expect(page().textContent).toContain("Upload failed");
+      await click(pbtn("Continue"));
+      expect(page().textContent).toContain("Upload every document");
     });
   });
 });
