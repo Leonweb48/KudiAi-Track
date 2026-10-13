@@ -860,14 +860,14 @@ export default function Auth() {
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
-              Open a KudiAI Wallet instead
+              Open a Kudi Wallet Account instead
             </button>
             <h2 className="text-lg font-bold text-gray-800 dark:text-white mt-2">Create a business account</h2>
             <p className="text-xs text-gray-500 dark:text-slate-400">For shop owners and savings collectors: sales, stock, staff, Ajo clients and a business wallet.</p>
           </div>
         ) : (
           <div className="mb-5">
-            <h2 className="text-lg font-bold text-gray-800 dark:text-white">Open your KudiAI Wallet</h2>
+            <h2 className="text-lg font-bold text-gray-800 dark:text-white">Open your Kudi Wallet Account</h2>
             <p className="text-xs text-gray-500 dark:text-slate-400">Send and receive money, pay bills and save — free to open.</p>
           </div>
         )
@@ -1116,7 +1116,7 @@ export default function Auth() {
               <div className="w-10 h-1 rounded-full bg-gray-200 dark:bg-slate-700 mx-auto mb-4 sm:hidden" />
 
               <>
-                  <h2 id="google-sheet-title" className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2"><GoogleMark /> Open a KudiAI Wallet</h2>
+                  <h2 id="google-sheet-title" className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2"><GoogleMark /> Open your Kudi Wallet Account</h2>
                   <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">
                     Your name and email come from Google. Tell us who you're saving with.
                   </p>
