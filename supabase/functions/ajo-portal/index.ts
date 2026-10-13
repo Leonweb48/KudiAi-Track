@@ -794,7 +794,7 @@ serve(async (req) => {
     if (action === "get-withdrawal-requests") {
       const { client_id } = body as { client_id: string };
       const { data } = await sb.from("ajo_withdrawal_requests")
-        .select("id, aso_client_id, owner_id, amount, status, requested_at, notes, bank_name, bank_code, account_number, account_name, review_notes, reviewed_at, cycle_id, group_id")
+        .select("id, aso_client_id, owner_id, amount, net_amount, status, requested_at, notes, bank_name, bank_code, account_number, account_name, review_notes, reviewed_at, cycle_id, group_id")
         .eq("aso_client_id", client_id)
         .order("requested_at", { ascending: false })
         .limit(20);

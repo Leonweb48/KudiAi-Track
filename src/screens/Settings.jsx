@@ -73,8 +73,13 @@ function ChangePinModal({ pinLength = 6, title, onVerifyCurrent, onSetNew, onClo
       if (step === "confirm") {
         if (next !== newPin) { setPin(""); setError("PINs don't match. Try again."); setStep("new"); setNewPin(""); return; }
         setChecking(true);
-        await onSetNew(verifiedPin, next);
+        const res = await onSetNew(verifiedPin, next);
         setChecking(false);
+        if (res && res.success === false) {
+          // nothing changed — start again from the current PIN so the owner isn't told it worked
+          setPin(""); setNewPin(""); setVerifiedPin(""); setStep("current"); setError(res.error || "Couldn't change your PIN.");
+          return;
+        }
         onClose();
       }
     }, 150);
@@ -1095,11 +1100,15 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
             };
           }}
           onSetNew={async (currentPinVerified, newPin) => {
+            // pin-manager reads current_pin / new_pin (it used to get currentPin / newPin, refused them, and the modal
+            // closed as if the PIN had changed — so no PIN change from Settings ever saved).
             const action = changePinType === "app" ? "change_app_pin" : "change_txn_pin";
-            await (supabase?.functions.invoke("pin-manager", {
-              body: { action, currentPin: currentPinVerified, newPin },
-            }) ?? Promise.resolve({}));
+            const { data, error } = await (supabase?.functions.invoke("pin-manager", {
+              body: { action, current_pin: currentPinVerified, new_pin: newPin },
+            }) ?? Promise.resolve({ data: null, error: null }));
             await lock?.refetch?.();
+            if (error || !data?.success) return { success: false, error: data?.error || "Couldn't change your PIN. Please try again." };
+            return { success: true };
           }}
           onClose={() => setShowChangePin(false)}
           onForgotPin={() => { setShowChangePin(false); setShowForgotPin(true); }}

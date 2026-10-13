@@ -536,7 +536,7 @@ export function buildBillReceipt(bill) {
 // ── Credit/loan statement (from Credit screen — tap "Statement" on a record) ──
 export function buildCreditStatementReceipt(credit, businessName, biz) {
   const { image, pdf } = receiptFilenames(credit.id, credit.created_at, 'Credit Statement');
-  const statusMap = { active: 'pending', overdue: 'failed', settled: 'success' };
+  const statusMap = { active: 'pending', partially_paid: 'pending', overdue: 'failed', settled: 'success', paid: 'success' };
 
   return {
     title:     'Credit Statement',
@@ -549,8 +549,9 @@ export function buildCreditStatementReceipt(credit, businessName, biz) {
       credit.customer_name && { label: 'Customer',     value: credit.customer_name },
       credit.phone         && { label: 'Phone',         value: credit.phone },
       credit.item_name     && { label: 'Item / Purpose', value: credit.item_name },
-      { label: 'Total Given',   value: fmtAmt(credit.amount_given || credit.amount || 0) },
-      { label: 'Total Repaid',  value: fmtAmt(credit.total_paid || 0) },
+      // credits rows carry total_amount / amount_paid (the old names here never existed, so both showed ₦0.00)
+      { label: 'Total Given',   value: fmtAmt(credit.total_amount ?? credit.amount_given ?? credit.amount ?? 0) },
+      { label: 'Total Repaid',  value: fmtAmt(credit.amount_paid ?? credit.total_paid ?? 0) },
       { label: 'Outstanding',   value: fmtAmt(credit.outstanding || 0) },
       credit.due_date && { label: 'Due Date', value: formatReceiptDateTime(credit.due_date) },
       credit.status && { label: 'Status', value: humanize(credit.status) },

@@ -1241,7 +1241,7 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], contribu
             setTxnPin({
               title: t("coopMem.confirmPaymentTitle"),
               amount: Math.round(amt * 100),
-              description: t("coopMem.savingsContribDesc"),
+              description: t("ajoPt.walletContribDesc"),
               hasPinSet: Boolean(client?.portal_pin_changed_at),
               onApprove: async (pin) => { await handlePayWallet(pin); setTxnPin(null); },
               onNeedPinSetup: () => onNeedPinSetup?.(),
@@ -1850,7 +1850,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
           <path d="M20 12V8H6a2 2 0 01-2-2c0-1.1.9-2 2-2h12v4M4 6v12a2 2 0 002 2h14v-4M18 12a2 2 0 00-2 2c0 1.1.9 2 2 2h4v-4h-4z" />
         </svg>
         <p className="text-[12px] text-slate-600 dark:text-slate-300 leading-relaxed">
-          Paid straight to your <strong>KudiAI Wallet</strong> — no bank account to set up. Once approved, it lands on the next business working day (no weekends or public holidays).
+          Paid straight to your <strong>KudiAI Wallet</strong> — no bank account to set up. Once approved, it lands in your wallet straight away.
         </p>
       </div>
 
