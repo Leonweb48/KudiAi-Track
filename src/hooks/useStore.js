@@ -997,11 +997,14 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
       loadData();
       return { error: data?.error || error?.message || "Payment failed" };
     }
-    const { payment: dp, outstanding: newOutstanding, status: newStatus } = data;
+    const { payment: dp, outstanding: newOutstanding, status: newStatus, amount_paid: serverPaid } = data;
     let updated;
     setCredits(p => p.map(c => {
       if (c.id !== id) return c;
-      updated = { ...c, amount_paid: c.amount_paid + amount, outstanding: newOutstanding, status: newStatus };
+      // Use the server's totals: the realtime UPDATE for this credit usually lands before this reply, so adding
+      // `amount` to the local row again showed the repayment twice ("Paid ₦10,000" after a ₦5,000 payment).
+      const paid = serverPaid ?? Math.max(0, (Number(c.total_amount) || 0) - (Number(newOutstanding) || 0));
+      updated = { ...c, amount_paid: paid, outstanding: newOutstanding, status: newStatus };
       return updated;
     }));
     // Dedup guard: same pattern as setTransactions — only prepend if not already present

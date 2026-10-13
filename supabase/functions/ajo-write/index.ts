@@ -2276,7 +2276,7 @@ serve(async (req: Request) => {
         owner_id:       credit.user_id,  // always the credit owner, not the JWT caller
         amount:         parsedAmount,
         payment_method: payment_method || "cash",
-        payment_date:   new Date().toISOString().slice(0, 10),
+        payment_date:   new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Lagos" }),
         notes:          notes || null,
         recorded_by:    user.id,         // actual caller — owner or branch manager staff
       })
@@ -2298,7 +2298,7 @@ serve(async (req: Request) => {
         customer_name:    credit.customer_name || "",
         payment_type:     payment_method || "cash",
         note:             notes || null,
-        transaction_date: new Date().toISOString().slice(0, 10),
+        transaction_date: new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Lagos" }),
         client_txn_id:    crypto.randomUUID(),
       };
       // Attach line_items only on full settlement so COGS isn't counted multiple times
@@ -2316,7 +2316,7 @@ serve(async (req: Request) => {
       if (txErr) console.error("record_credit_repayment: failed to insert transaction:", txErr.message);
     }
 
-    return json({ ok: true, payment, outstanding: newOutstanding, status: newStatus });
+    return json({ ok: true, payment, amount_paid: newAmountPaid, outstanding: newOutstanding, status: newStatus });
   }
 
   // ── reject_contribution (owner-only, no PIN) ──────────────────────────────
