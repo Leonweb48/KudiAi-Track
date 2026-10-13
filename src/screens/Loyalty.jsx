@@ -266,7 +266,8 @@ function RedeemModal({ customer, onRedeem, onClose }) {
   );
 }
 
-const COMING_SOON = true;
+// Live since 2026-10-13 (was a "coming soon" placeholder from July). Flip back to true to hide it again.
+const COMING_SOON = false;
 
 export default function Loyalty({ loyalty, plan, onUpgrade, onClose }) {
   const t = useT();

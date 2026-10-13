@@ -342,7 +342,8 @@ export default function App() {
 
   const addTransactionWithLoyalty = async (txnData) => {
     await store.addTransaction(txnData);
-    if (txnData.type === "in" && txnData.customer_name) {
+    // Sales only (cash or credit): a recorded debt repayment is money for goods already rewarded at the credit sale
+    if (txnData.type === "in" && txnData.customer_name && ["sale", "credit sale"].includes(txnData.category || "sale")) {
       loyalty.awardByName(txnData.customer_name, parseFloat(txnData.amount) || 0);
     }
   };
