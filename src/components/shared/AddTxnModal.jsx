@@ -113,6 +113,7 @@ export function AddTxnModal({
   const [customerName, setCustomerName] = useState("");
   const [paymentType,  setPaymentType]  = useState("cash");
   const [note,         setNote]         = useState("");
+  const [discount,     setDiscount]     = useState("");   // naira off this sale (Money In only)
   const [txDate,       setTxDate]       = useState(today());
   const [dueLabel,     setDueLabel]     = useState(null);
   const [customDue,    setCustomDue]    = useState("");
@@ -182,6 +183,9 @@ export function AddTxnModal({
   const unitPriceVal  = parseFloat(unitPrice) || 0;
   const lineTotal     = unitPriceVal * qtyNum;
   const cartTotal     = lineItems.reduce((s, li) => s + li.lineTotal, 0);
+  // A discount comes off the whole sale; the sale is saved at the net amount (profit rule R9)
+  const discountAmt   = type === "in" ? Math.min(Math.max(parseFloat(discount) || 0, 0), cartTotal) : 0;
+  const netTotal      = cartTotal - discountAmt;
   const canSave       = lineItems.length > 0;
 
   const matchedProduct = itemName
@@ -304,7 +308,8 @@ export function AddTxnModal({
     return {
       type,
       category,
-      amount:           cartTotal,
+      amount:           netTotal,
+      discount_amount:  discountAmt > 0 ? discountAmt : undefined,
       unit_price:       isSingle ? first.unitPrice : null,
       item_name:        isSingle ? (first.name || null) : null,
       quantity:         isSingle ? first.qty : null,
@@ -333,7 +338,7 @@ export function AddTxnModal({
     try {
       onAdd(payload);
       if (Capacitor.isNativePlatform()) {
-        speakEvent(type === "in" ? "cashIn" : "cashOut", getLang(), { amount: cartTotal }).catch(() => {});
+        speakEvent(type === "in" ? "cashIn" : "cashOut", getLang(), { amount: netTotal }).catch(() => {});
       } else {
         speakConfirmation(type === "in" ? "cashIn" : "cashOut", getLang());
       }
@@ -698,6 +703,26 @@ export function AddTxnModal({
                   </div>
                 </div>
 
+                {/* Discount — Money In only */}
+                {type === "in" && (
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-1.5">
+                      Discount <span className="normal-case font-medium">(optional)</span>
+                    </label>
+                    <div className="flex items-center gap-2 px-3.5 h-11 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700">
+                      <span className="text-sm font-bold text-slate-400">₦</span>
+                      <input type="number" inputMode="decimal" min="0" value={discount} onChange={e => setDiscount(e.target.value)}
+                        placeholder="Amount off this sale"
+                        className="flex-1 bg-transparent text-sm font-semibold text-slate-800 dark:text-slate-100 outline-none placeholder:font-normal placeholder:text-slate-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+                    </div>
+                    {discountAmt > 0 && (
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                        ₦{fmtMoney(cartTotal)} − ₦{fmtMoney(discountAmt)} discount = <strong className="text-slate-700 dark:text-slate-200">₦{fmtMoney(netTotal)}</strong>
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 {/* Customer */}
                 <div>
                   <label className="block text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-1.5">
@@ -779,7 +804,7 @@ export function AddTxnModal({
             {saveSuccess
               ? "Saved ✓"
               : canSave
-              ? `Save ${type === "in" ? "Sale" : "Expense"}${cartTotal > 0 ? ` · ₦${fmtMoney(cartTotal)}` : ""}`
+              ? `Save ${type === "in" ? "Sale" : "Expense"}${netTotal > 0 ? ` · ₦${fmtMoney(netTotal)}` : ""}`
               : "Add at least one item"}
           </button>
         </div>

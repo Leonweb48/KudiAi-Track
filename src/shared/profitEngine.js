@@ -60,6 +60,13 @@
  *       added to cash.in again. No compounding, no time-based accrual.
  *       Bills invariant: credits and bills are structurally separate tables.
  *       No bill path can carry interest_amount by construction.
+ *   R8  Refunds (2026-10-13) = "out" transactions with category "refund", recognised on the refund's own date: they
+ *       reduce revenue by the amount refunded (never an expense). A refund copies the sale's costing: with a cost price
+ *       it reduces measured revenue, and COGS by cost_price × quantity returned to stock (quantity 0 = nothing came
+ *       back, so the cost stays and profit falls by the full refund); without one it reduces unmeasured revenue.
+ *       Refunds are cash out (R6) and reported in byStream.refunds.
+ *   R9  Discounts (2026-10-13): a sale's `amount` is already net of transactions.discount_amount. A cart sale's line
+ *       revenues are scaled to that net amount, so gross profit reflects the discount (the line totals are pre-discount).
  */
 
 // ── Category constants ────────────────────────────────────────────────────────
@@ -69,6 +76,7 @@ const REVENUE_CATS = new Set([
 ]);
 const SERVICE_CATS   = new Set(["registration_fee", "withdrawal_fee", "commission"]);
 const STOCK_CATS     = new Set(["stock"]);
+const REFUND_CATS    = new Set(["refund"]);
 const AJO_INCOME_TYPES = SERVICE_CATS; // same three types, sourced from ajoEntries instead of transactions
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -126,6 +134,9 @@ export function saleLines(t, { productByName, productById }) {
     return [{ name: t.item_name || t.category, productId: null, qty: 1, revenue: t.amount, cost: 0, service: true }];
   }
   if (t.line_items && t.line_items.length > 0) {
+    // R9: line totals are before the sale's discount — spread the discount across the lines so revenue = t.amount
+    const gross = t.line_items.reduce((s, li) => s + (Number(li.lineTotal) || 0), 0);
+    const scale = Number(t.discount_amount) > 0 && gross > 0 ? (Number(t.amount) || 0) / gross : 1;
     return t.line_items.map((li) => {
       const liName = (li.name || "").toLowerCase().trim();
       const prod = li.productId
@@ -138,7 +149,7 @@ export function saleLines(t, { productByName, productById }) {
         ? snapshotCost
         : (prod && !prod.needs_costing ? (prod.cost_price || 0) : 0);
       const qty = li.qty || 1;
-      return { name: li.name || "", productId: li.productId || null, qty, revenue: li.lineTotal, cost: unitCost > 0 ? unitCost * qty : null, service: false };
+      return { name: li.name || "", productId: li.productId || null, qty, revenue: (Number(li.lineTotal) || 0) * scale, cost: unitCost > 0 ? unitCost * qty : null, service: false };
     });
   }
   const display = (t.item_name || "").trim();
@@ -221,6 +232,20 @@ export function compute(ledger, range) {
     if (c.hasUnmeasured) unmeasItems.push({ id: t.id, amount: c.unmeasured });
   }
 
+  // ── Refunds (R8) — less revenue; goods returned to stock take their cost back out of COGS ──
+  const refundTxs = txsOut.filter(t => REFUND_CATS.has(t.category));
+  let unmeasuredRefunds = 0;
+  for (const r of refundTxs) {
+    const amt = Number(r.amount) || 0;
+    const unitCost = Number(r.cost_price) || 0;
+    if (unitCost > 0) {
+      measuredRev -= amt;
+      cogsAmount  -= unitCost * (Number(r.quantity) || 0);
+    } else {
+      unmeasuredRefunds += amt;
+    }
+  }
+
   // ── Invoice COGS (catalog-linked items) ──────────────────────────────────
   // Each invoice payment is split by the fraction of the invoice's line-item
   // value that comes from fully-costed catalog products (product_id present,
@@ -288,13 +313,13 @@ export function compute(ledger, range) {
   const cogs       = { amount: cogsAmount, txIds: cogsTxIds };
   const unmeasured = {
     count:   unmeasItems.length,
-    revenue: unmeasItems.reduce((s, x) => s + x.amount, 0),
+    revenue: Math.max(0, unmeasItems.reduce((s, x) => s + x.amount, 0) - unmeasuredRefunds),
     txIds:   unmeasItems.map(x => x.id),
   };
   const grossProfit = { amount: measuredRev - cogsAmount, txIds: [] };
 
   // ── Expenses (R5) ─────────────────────────────────────────────────────────
-  const expTxs  = txsOut.filter(t => !STOCK_CATS.has(t.category) && !isBillPayment(t));
+  const expTxs  = txsOut.filter(t => !STOCK_CATS.has(t.category) && !REFUND_CATS.has(t.category) && !isBillPayment(t));
   const expenses = pool(expTxs.map(t => ({ id: t.id, amount: t.amount })));
 
   // ── Interest earned (R7) ──────────────────────────────────────────────────
@@ -361,6 +386,7 @@ export function compute(ledger, range) {
   // ── Revenue total (R1 + R2 + R7) ─────────────────────────────────────────
   const revItems = [
     ...revTxs.map(t => ({ id: t.id, amount: t.amount })),
+    ...refundTxs.map(t => ({ id: t.id, amount: -(Number(t.amount) || 0) })),
     ...invPmtItems,
     ...interestItems,
     ...ajoIncomeItems,
@@ -393,6 +419,7 @@ export function compute(ledger, range) {
     ]),
     interestEarned,
     expenses:         pool(expTxs.map(t => ({ id: t.id, amount: t.amount }))),
+    refunds:          pool(refundTxs.map(t => ({ id: t.id, amount: t.amount }))),
     stockInvestment:  pool(txsOut.filter(t => STOCK_CATS.has(t.category)).map(t => ({ id: t.id, amount: t.amount }))),
     billPayments:     pool(txsOut.filter(t => isBillPayment(t) && !isFailedBill(t)).map(t => ({ id: t.id, amount: t.amount }))),
     failedBills:      pool(txsOut.filter(t => isFailedBill(t)).map(t => ({ id: t.id, amount: t.amount }))),

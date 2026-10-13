@@ -717,6 +717,9 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
       client_txn_id:    localId,
       line_items:       t.line_items        != null ? t.line_items : null,
       bill_details:     t.bill_details      != null ? t.bill_details : null,
+      // discounts / refunds (profit rules R8/R9) — only sent when used, so older databases keep accepting sales
+      ...(Number(t.discount_amount) > 0 ? { discount_amount: Number(t.discount_amount) } : {}),
+      ...(t.refund_of ? { refund_of: t.refund_of } : {}),
     };
 
     setTransactions(p => [{ ...payload, id: tempId, _pending: true }, ...p]);

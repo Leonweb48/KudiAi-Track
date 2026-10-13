@@ -16,6 +16,7 @@ import { walletLedgerToTxShape, isStandaloneWalletRow } from "../utils/walletTxA
 import PeriodFilter from "../components/shared/PeriodFilter";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
 import { TxRow } from "../components/shared/TxRow";
+import RefundSheet from "../components/shared/RefundSheet";
 import { canDo, planLimits } from "../utils/plans";
 import { createReportPdf, fmtCurrency, fmtDate } from "../utils/generateReportPdf";
 import { spanDays } from "../utils/statementPeriod";
@@ -182,6 +183,7 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
   const [receipt,         setReceipt]         = useState(null);
   const [ajoContribs,     setAjoContribs]     = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [refundSale,      setRefundSale]      = useState(null);   // a sale being refunded (RefundSheet)
   const [displayCount,    setDisplayCount]    = useState(50);
   const [isRefreshing,    setIsRefreshing]    = useState(false);
   const [period,          setPeriod]          = useState("all");
@@ -190,6 +192,35 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
   const searchRef = useRef(null);
 
   const { transactions, addTransaction, deleteTransaction, profile, staffMap = {}, asoClients = [] } = store;
+  // how much of each sale has been refunded already (refund rows point back at their sale)
+  const refundedBySale = useMemo(() => {
+    const m = {};
+    for (const t of transactions || []) if (t.category === "refund" && t.refund_of) m[t.refund_of] = (m[t.refund_of] || 0) + (Number(t.amount) || 0);
+    return m;
+  }, [transactions]);
+  const canRefund = (tx) => !readOnly && tx?.type === "in" && ["sale", "credit sale"].includes(tx.category) && !isBillPayment(tx)
+    && !String(tx.id || "").startsWith("tmp-") && (Number(tx.amount) || 0) - (refundedBySale[tx.id] || 0) > 0;
+  const recordRefund = async (sale, { amount, reason, payment_type, returnedQty, product }) => {
+    // The refund copies the sale's costing so profit treats it like the sale (R8): the unit cost for a single-item sale;
+    // for a cart, its total cost only marks it as costed (quantity 0 — cart refunds don't restock).
+    const cartCost = Array.isArray(sale.line_items)
+      ? sale.line_items.reduce((s, li) => s + (Number(li.costPrice ?? li.enteredCostPrice) || 0) * (Number(li.qty) || 1), 0) : 0;
+    const unitCost = sale.line_items?.length ? cartCost : (Number(sale.cost_price) || Number(product?.cost_price) || 0);
+    const saved = await addTransaction({
+      type: "out", category: "refund", amount,
+      item_name: sale.item_name || "Refund", quantity: returnedQty || 0,
+      cost_price: unitCost > 0 ? unitCost : null,
+      customer_name: sale.customer_name || "", payment_type,
+      note: `Refund${sale.receipt_ref ? ` of ${sale.receipt_ref}` : ""}: ${reason}`,
+      refund_of: sale.id,
+    });
+    if (saved?.error) throw new Error(saved.error);
+    if (returnedQty > 0 && product && inventory?.recordMovement) {
+      await inventory.recordMovement({ product_id: product.id, type: "adjustment", quantity: returnedQty,
+        unit_price: Number(sale.unit_price) || 0, notes: `Returned — refund${sale.customer_name ? ` to ${sale.customer_name}` : ""}` });
+    }
+    toast({ type: "success", title: `Refund of ${fmt(amount)} recorded` });
+  };
 
   // Wallet activity findable via search here too — kept OUT of filterBase/
   // groupedSections/monthTotals (only merged into search results below), so
@@ -768,6 +799,7 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
                   onClick={openReceipt}
                   onSwipeReceipt={openReceipt}
                   onSwipeDelete={isWalletTx ? undefined : setConfirmDeleteId}
+                  onSwipeRefund={!isWalletTx && canRefund(item.tx) ? setRefundSale : undefined}
                 />
               );
             })}
@@ -785,6 +817,10 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
       </div>
 
       {/* ── Modals ────────────────────────────────────────────────── */}
+      {refundSale && (
+        <RefundSheet sale={refundSale} refundedSoFar={refundedBySale[refundSale.id] || 0} products={inventory?.products || []}
+          onRefund={(r) => recordRefund(refundSale, r)} onClose={() => setRefundSale(null)} />
+      )}
       {showAdd && (
         <AddTxnModal defaultType={initType} defaultCategory={initCategory} onAdd={addTransaction} onClose={() => setShowAdd(false)} inventory={inventory} />
       )}

@@ -603,3 +603,75 @@ test("countUnnamedSales counts only blank item_name revenue transactions", () =>
   ];
   expect(countUnnamedSales(txs, RANGE.from, RANGE.to)).toBe(2); // a + b only
 });
+
+// ── R8: refunds ──────────────────────────────────────────────────────────────
+test("a full refund with the goods back in stock cancels the sale's revenue and cost", () => {
+  const ledger = {
+    transactions: [
+      { id: "s1", type: "in",  category: "sale",   amount: 11000, item_name: "Oil 5L", quantity: 1, cost_price: 9500, transaction_date: "2026-07-10" },
+      { id: "r1", type: "out", category: "refund", amount: 11000, item_name: "Oil 5L", quantity: 1, cost_price: 9500, refund_of: "s1", transaction_date: "2026-07-12" },
+    ],
+  };
+  const r = compute(ledger, RANGE);
+  expect(r.profit.revenue.amount).toBe(0);
+  expect(r.profit.cogs.amount).toBe(0);
+  expect(r.profit.grossProfit.amount).toBe(0);
+  expect(r.profit.expenses.amount).toBe(0);            // a refund is never an expense
+  expect(r.cash.out.amount).toBe(11000);               // but it is money out
+  expect(r.cash.byStream.refunds.amount).toBe(11000);
+});
+
+test("a refund without the goods coming back loses the whole refund from profit", () => {
+  const ledger = {
+    transactions: [
+      { id: "s1", type: "in",  category: "sale",   amount: 11000, item_name: "Oil 5L", quantity: 1, cost_price: 9500, transaction_date: "2026-07-10" },
+      { id: "r1", type: "out", category: "refund", amount: 2000,  item_name: "Oil 5L", quantity: 0, cost_price: 9500, refund_of: "s1", transaction_date: "2026-07-12" },
+    ],
+  };
+  const r = compute(ledger, RANGE);
+  expect(r.profit.revenue.amount).toBe(9000);
+  expect(r.profit.cogs.amount).toBe(9500);
+  expect(r.profit.grossProfit.amount).toBe(-500);      // 1,500 margin − 2,000 refunded
+  expect(r.profit.netProfit.amount).toBe(-500);
+});
+
+test("a refund of an uncosted sale reduces unmeasured revenue", () => {
+  const ledger = {
+    transactions: [
+      { id: "s1", type: "in",  category: "sale",   amount: 5000, item_name: "Mystery", transaction_date: "2026-07-10" },
+      { id: "r1", type: "out", category: "refund", amount: 1000, item_name: "Mystery", quantity: 0, refund_of: "s1", transaction_date: "2026-07-11" },
+    ],
+  };
+  const r = compute(ledger, RANGE);
+  expect(r.profit.revenue.amount).toBe(4000);
+  expect(r.profit.unmeasured.revenue).toBe(4000);
+  expect(r.profit.grossProfit.amount).toBe(0);
+});
+
+// ── R9: discounts ────────────────────────────────────────────────────────────
+test("a discounted cart sale counts its net amount as revenue", () => {
+  const ledger = {
+    transactions: [{
+      id: "s1", type: "in", category: "sale", amount: 20000, discount_amount: 2000, transaction_date: "2026-07-10",
+      line_items: [
+        { name: "Rice", qty: 1, unitPrice: 12000, lineTotal: 12000, costPrice: 10000 },
+        { name: "Oil",  qty: 1, unitPrice: 10000, lineTotal: 10000, costPrice: 8000 },
+      ],
+    }],
+  };
+  const r = compute(ledger, RANGE);
+  expect(r.profit.revenue.amount).toBe(20000);
+  expect(r.profit.cogs.amount).toBe(18000);
+  expect(r.profit.grossProfit.amount).toBeCloseTo(2000); // 22,000 − 18,000 margin, less the 2,000 discount
+});
+
+test("a cart sale without a discount is unchanged", () => {
+  const ledger = {
+    transactions: [{
+      id: "s1", type: "in", category: "sale", amount: 22000, transaction_date: "2026-07-10",
+      line_items: [{ name: "Rice", qty: 1, unitPrice: 12000, lineTotal: 12000, costPrice: 10000 },
+                   { name: "Oil",  qty: 1, unitPrice: 10000, lineTotal: 10000, costPrice: 8000 }],
+    }],
+  };
+  expect(compute(ledger, RANGE).profit.grossProfit.amount).toBe(4000);
+});

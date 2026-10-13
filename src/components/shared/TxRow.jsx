@@ -89,6 +89,7 @@ export function getTxStyle(tx) {
 
 const RECEIPT_ICON = "M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z|M14 2v6h6|M16 13H8|M16 17H8";
 const TRASH_ICON   = "M3 6h18|M8 6V4h8v2|M19 6l-1 14H6L5 6";
+const REFUND_ICON  = "M9 14L4 9l5-5|M4 9h10a6 6 0 010 12h-3";
 
 /* ═══════════════════════════════════════════════════════════════════════
    Home variant — compact, no swipe
@@ -125,12 +126,12 @@ function TxRowHome({ tx, hidden, onClick }) {
 /* ═══════════════════════════════════════════════════════════════════════
    Transactions variant — richer subtitle, swipe-to-reveal Receipt+Delete
    ═══════════════════════════════════════════════════════════════════════ */
-function TxRowTransactions({ tx, hidden, onClick, staffName, onSwipeReceipt, onSwipeDelete }) {
+function TxRowTransactions({ tx, hidden, onClick, staffName, onSwipeReceipt, onSwipeDelete, onSwipeRefund }) {
   const isIn     = tx.type === "in";
   const entry    = txEntry(tx);
   const isFailed = entry.status.key === "failed";
   const style    = getTxStyle(tx);
-  const ACTION = 88; // 2 × 44 px buttons
+  const ACTION = onSwipeRefund ? 132 : 88; // 44 px per button: Receipt, (Refund,) Delete
 
   const [offset,  setOffset]  = useState(0);
   const offsetRef             = useRef(0);
@@ -182,7 +183,7 @@ function TxRowTransactions({ tx, hidden, onClick, staffName, onSwipeReceipt, onS
       el.removeEventListener("touchmove",  onMove);
       el.removeEventListener("touchend",   onEnd);
     };
-  }, []);
+  }, [ACTION]);
 
   const close = () => setOffset(0);
   const isSnapped = offset === 0 || offset === -ACTION;
@@ -209,6 +210,14 @@ function TxRowTransactions({ tx, hidden, onClick, staffName, onSwipeReceipt, onS
           <Svg d={RECEIPT_ICON} size={16} color="white" sw={2} />
           <span className="text-[9px] font-bold text-white">Receipt</span>
         </button>
+        {onSwipeRefund && (
+          <button
+            onClick={() => { close(); onSwipeRefund(tx); }}
+            className="flex-1 flex flex-col items-center justify-center gap-0.5 bg-amber-500 active:opacity-70 min-h-[44px]">
+            <Svg d={REFUND_ICON} size={16} color="white" sw={2} />
+            <span className="text-[9px] font-bold text-white">Refund</span>
+          </button>
+        )}
         <button
           onClick={() => { onSwipeDelete?.(tx.id); close(); }}
           className="flex-1 flex flex-col items-center justify-center gap-0.5 bg-red-500 active:opacity-70 min-h-[44px]">
@@ -325,7 +334,7 @@ function TxRowStock({ tx }) {
 /* ═══════════════════════════════════════════════════════════════════════
    Public export — variant prop routes to the correct implementation
    ═══════════════════════════════════════════════════════════════════════ */
-export function TxRow({ tx, hidden = false, onClick, variant = "home", staffName, onSwipeReceipt, onSwipeDelete }) {
+export function TxRow({ tx, hidden = false, onClick, variant = "home", staffName, onSwipeReceipt, onSwipeDelete, onSwipeRefund }) {
   if (variant === "stock") return <TxRowStock tx={tx} />;
   if (variant === "transactions") {
     return (
@@ -334,6 +343,7 @@ export function TxRow({ tx, hidden = false, onClick, variant = "home", staffName
         staffName={staffName}
         onSwipeReceipt={onSwipeReceipt}
         onSwipeDelete={onSwipeDelete}
+        onSwipeRefund={onSwipeRefund}
       />
     );
   }
