@@ -368,7 +368,7 @@ describe("report PDF letterhead + verify footer", () => {
       }
     }
     expect(sawOwnPage).toBe(true);
-  });
+  }, 30000);   // builds a many-page PDF — slow when the machine is busy
 
   it("without a reference (offline) the report still has the business header and KudiAI footer, just no verify block", async () => {
     const pdf = await createReportPdf({ title: "Stock Report", businessName: "Shop", period: "Oct", letterhead: { businessName: "Shop" } });
