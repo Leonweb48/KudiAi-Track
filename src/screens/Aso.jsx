@@ -262,6 +262,11 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
               Reverse ₦{Number(reverseFor.amount || 0).toLocaleString("en-NG")} contribution
               from {new Date(reverseFor.created_at).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })}
             </p>
+            {reverseFor.payment_method === "wallet" && (
+              <div className="-mt-2 mb-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 px-3 py-2.5 text-xs text-amber-800 dark:text-amber-200 leading-relaxed">
+                This was paid from {client.full_name || "the client"}'s KudiAI wallet, so reversing it sends <b>₦{Number(reverseFor.amount || 0).toLocaleString("en-NG")}</b> back from your wallet to theirs. Your wallet needs enough balance.
+              </div>
+            )}
             <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1.5">Reason (required)</label>
             <textarea
               value={reverseReason}
@@ -309,7 +314,11 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
               setReverseReason("");
               setReverseStep("reason");
               setReverseError("");
-              setHistoryResult({ type: "success", title: "Contribution Reversed", amount: amt, counterparty: name });
+              const refundKobo = Number(result?.data?.wallet_refund_kobo || 0);
+              setHistoryResult({
+                type: "success", title: "Contribution Reversed", amount: amt, counterparty: name,
+                note: refundKobo > 0 ? `₦${(refundKobo / 100).toLocaleString("en-NG")} was returned to ${name}'s wallet.` : undefined,
+              });
             }
           }}
         />
@@ -608,6 +617,7 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
           title={historyResult.title}
           amount={historyResult.amount}
           counterparty={historyResult.counterparty}
+          note={historyResult.note}
           reason={historyResult.reason}
           onPrimary={() => setHistoryResult(null)}
         />

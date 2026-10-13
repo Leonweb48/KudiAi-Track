@@ -15,6 +15,8 @@ export const WALLET_SOURCE = {
   ajo_contribution:    { label: "Savings contribution", icon: "send",       credit: false },
   ajo_collection:      { label: "Contribution received", icon: "arrow-down", credit: true },
   ajo_payout:          { label: "Savings withdrawal",   icon: "send",       credit: false },
+  // a contribution paid from the client's wallet, reversed by the business: business wallet -> client wallet
+  ajo_reversal:        { label: "Contribution reversed", icon: "wallet",     credit: true },
   // Client-started esusu circles: members pay into the creator's wallet, payouts come out of it
   peer_esusu_contribution: { label: "Circle contribution",          icon: "send",       credit: false },
   peer_esusu_collection:   { label: "Circle contribution received", icon: "arrow-down", credit: true },

@@ -1369,7 +1369,7 @@ serve(async (req: Request) => {
       notifyUser(sb, rrcl?.client_user_id, {
         type:     "contribution_reversed",
         title:    "Contribution Reversed",
-        body:     `₦${Number(originalAmount).toLocaleString("en-NG")} contribution was reversed${reason ? ` — ${reason}` : ""}`,
+        body:     `₦${Number(originalAmount).toLocaleString("en-NG")} contribution was reversed${reason ? ` — ${reason}` : ""}${Number(rpcRev?.wallet_refund_kobo || 0) > 0 ? `. ₦${(Number(rpcRev.wallet_refund_kobo) / 100).toLocaleString("en-NG")} was returned to your wallet.` : ""}`,
         priority: "high",
         deepLink: { tab: "contributions" },
         category: "savings",
