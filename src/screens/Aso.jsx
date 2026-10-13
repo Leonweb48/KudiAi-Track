@@ -4195,7 +4195,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                             <div className="flex flex-wrap gap-1.5 mt-1">
                               <span className="text-[10px] text-slate-400">{clientCount} client{clientCount !== 1 ? "s" : ""}</span>
                               {grp.contribution_frequency && <span className="text-[10px] text-slate-400">· {grp.contribution_frequency}</span>}
-                              {grp.contribution_amount   && <span className="text-[10px] text-slate-400">· ₦{fmt(grp.contribution_amount)}</span>}
+                              {grp.contribution_amount   && <span className="text-[10px] text-slate-400">· {fmt(grp.contribution_amount)}</span>}
                               {isRotating && <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-brand-100 dark:bg-brand-900/40 text-brand-700 dark:text-brand-300">Rotating</span>}
                             </div>
                           </div>
@@ -4579,7 +4579,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                                         {archiveSafety[grp.id].unsettledMembers.map(m => (
                                           <li key={m.id} className="text-[10px] text-red-600 dark:text-red-400 flex justify-between">
                                             <span>{m.full_name}</span>
-                                            <span className="font-mono font-bold">₦{fmt(m.current_balance)}</span>
+                                            <span className="font-mono font-bold">{fmt(m.current_balance)}</span>
                                           </li>
                                         ))}
                                       </ul>

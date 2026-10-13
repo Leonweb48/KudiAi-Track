@@ -938,6 +938,10 @@ function MoneySummaryRow({ label1, val1, label2, val2, loading, highlightVal2 = 
 
 function MoneyCycleCard({ cycle, saved, net, availableNow, withdrawn, locked, lockReason, selected, onSelect, mode, children }) {
   const t = useT();
+  // Paying in: the badge is the card's own status (the pay sheet passes locked={false} for every card, which used to
+  // label a brand-new active card "Complete"). Withdrawing: locked = still running.
+  const paying = mode === "pay" || mode === "deposit";
+  const showActive = paying ? cycle.status !== "completed" : locked;
   return (
     <div className={`mb-2 rounded-xl border-2 transition overflow-hidden ${
       selected
@@ -948,11 +952,11 @@ function MoneyCycleCard({ cycle, saved, net, availableNow, withdrawn, locked, lo
         <div className="flex items-start justify-between gap-2 mb-1">
           <p className="text-sm font-extrabold text-slate-700 dark:text-slate-200 leading-tight">{cycle.label || "Savings"}</p>
           <span className={`flex-shrink-0 text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wide mt-0.5 ${
-            locked
+            showActive
               ? "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400"
               : "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400"
           }`}>
-            {locked ? "Active" : "Complete"}
+            {showActive ? "Active" : "Complete"}
           </span>
         </div>
         <div className="flex items-center justify-between gap-2 flex-wrap">

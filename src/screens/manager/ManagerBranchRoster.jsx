@@ -213,7 +213,7 @@ export default function ManagerBranchRoster({ staff, store, onBack }) {
                     <div className="text-right flex-shrink-0">
                       <p className="text-sm font-extrabold text-blue-600 tabular">{fmt(c.current_balance || 0)}</p>
                       {(c.outstanding || 0) > 0 && (
-                        <p className="text-[10px] font-bold text-amber-500 tabular">₦{fmt(c.outstanding)} credit</p>
+                        <p className="text-[10px] font-bold text-amber-500 tabular">{fmt(c.outstanding)} credit</p>
                       )}
                     </div>
                   </div>

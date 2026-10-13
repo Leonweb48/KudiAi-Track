@@ -808,13 +808,13 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                   <div className="mt-3 bg-red-50 dark:bg-red-900/20 rounded-xl p-3 space-y-2.5 border border-red-200 dark:border-red-800">
                     <p className="text-xs font-bold text-red-700 dark:text-red-300 uppercase tracking-wider">Request Credit Void</p>
                     <p className="text-[10px] text-red-600 dark:text-red-400 leading-relaxed">
-                      Voiding <strong className="inline-block max-w-[140px] truncate align-text-bottom">{c.customer_name}</strong>'s credit record (₦{fmt(c.total_amount)}) requires admin approval. All payment history will be preserved. The record will be removed from your active list once approved.
+                      Voiding <strong className="inline-block max-w-[140px] truncate align-text-bottom">{c.customer_name}</strong>'s credit record ({fmt(c.total_amount)}) requires admin approval. All payment history will be preserved. The record will be removed from your active list once approved.
                     </p>
                     {c.amount_paid > 0 && (
                       <div className="bg-amber-50 dark:bg-amber-900/20 rounded-xl px-3 py-2 border border-amber-200 dark:border-amber-700/40">
                         <p className="text-[10px] font-bold text-amber-700 dark:text-amber-300">Partial repayments already recorded</p>
                         <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5 leading-relaxed">
-                          ₦{fmt(c.amount_paid)} has been repaid against this credit. Voiding is permanent — those repayments stay in your transaction history but will no longer count toward outstanding totals.
+                          {fmt(c.amount_paid)} has been repaid against this credit. Voiding is permanent — those repayments stay in your transaction history but will no longer count toward outstanding totals.
                         </p>
                       </div>
                     )}
