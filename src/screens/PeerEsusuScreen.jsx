@@ -310,7 +310,7 @@ function CircleActiveView({ detail, groupId, myUserId, reload, onChanged }) {
       {/* Where the money goes: the circle's collection account is the creator's own wallet */}
       <p className="text-[11px] text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/60 rounded-xl px-3 py-2.5 leading-relaxed">
         {isCreator
-          ? "Members pay into your KudiAI Wallet, and each payout is taken from it. Keep the pot in your wallet until you pay out — spending it will block the payout."
+          ? "Members pay into your KudiAI Wallet, and each payout is taken from it. The pot is kept safe in your wallet until you pay out — it can't be spent on anything else."
           : `Your ${fmt(due)} is paid into ${creatorName}'s KudiAI Wallet, and each payout is paid out of it.`}
         {circleFeeLabel(group) && ` ${circleFeeLabel(group)}${isCreator ? " — taken from each collector's payout and kept in your wallet (never on your own turn)." : `, kept by ${isCreator ? "you" : creatorName}.`}`}
       </p>
