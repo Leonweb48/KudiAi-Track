@@ -4,12 +4,9 @@ name: Transfer recheck
 # happened to each (by its Flutterwave id, or by our reference when the send call returned no id). Read-only by default.
 # apply=true settles the ones Flutterwave reports as final (successful / failed → refunded). refund_missing=true also
 # refunds ones Flutterwave has NO record of, if older than 2 hours. Prints ages and statuses only — no names or numbers.
-# Every 30 minutes it also runs with apply=true (never refund_missing): a transfer Flutterwave has finished is settled
-# even if its webhook never arrives — exactly what the webhook would have done.
+# The every-30-minutes run lives in pg_cron (migration 20270316 — GitHub's schedule never fired); this workflow is manual.
 
 on:
-  schedule:
-    - cron: "7,37 * * * *"
   workflow_dispatch:
     inputs:
       apply:

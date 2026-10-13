@@ -701,8 +701,12 @@ serve(async (req) => {
     //    refunds the amount and its charges, once). A transfer Flutterwave has no record of is only refunded with
     //    `refund_missing` AND older than 2 hours. Output: per transfer, age/status only — no names, numbers or ids. ═══
     if (action === "recheck-open-transfers") {
-      if (!(await isServiceCall(req, token))) return json({ error: "Unauthorized" }, 401);
-      const apply = body.apply === true, refundMissing = body.refund_missing === true, forcePending = body.force_refund_pending === true;
+      // Scheduled by pg_cron every 30 min (Vault cron_secret) — a scheduled run only SETTLES what Flutterwave reports as
+      // final; it never refunds a transfer Flutterwave has no record of or still has open (those stay manual decisions).
+      const byCron = await cronAuthorized(req, sb);
+      if (!byCron && !(await isServiceCall(req, token))) return json({ error: "Unauthorized" }, 401);
+      const apply = byCron || body.apply === true;
+      const refundMissing = !byCron && body.refund_missing === true, forcePending = !byCron && body.force_refund_pending === true;
       const { data: open } = await sb.from("wallet_withdrawals").select("id, status, flw_transfer_id, created_at, user_id, amount_kobo, account_name")
         .in("status", ["pending", "processing"]).lt("created_at", new Date(Date.now() - 10 * 60e3).toISOString())
         .order("created_at", { ascending: true }).limit(20);
