@@ -1,0 +1,38 @@
+name: Transfer recheck
+
+# Manual (2026-10-13): bank transfers still pending/processing on our side after 10 minutes — asks Flutterwave what
+# happened to each (by its Flutterwave id, or by our reference when the send call returned no id). Read-only by default.
+# apply=true settles the ones Flutterwave reports as final (successful / failed → refunded). refund_missing=true also
+# refunds ones Flutterwave has NO record of, if older than 2 hours. Prints ages and statuses only — no names or numbers.
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Settle what Flutterwave reports as final"
+        type: boolean
+        default: false
+      refund_missing:
+        description: "Also refund transfers Flutterwave has no record of (older than 2 h)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  recheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Recheck
+        env:
+          URL: ${{ secrets.REACT_APP_SUPABASE_URL }}
+          KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          APPLY: ${{ inputs.apply }}
+          REFUND_MISSING: ${{ inputs.refund_missing }}
+        run: |
+          BODY=$(jq -nc --argjson a "$APPLY" --argjson m "$REFUND_MISSING" '{action:"recheck-open-transfers", apply:$a, refund_missing:$m}')
+          curl -s -m 120 -o out.json -w "HTTP %{http_code}\n" -X POST "$URL/functions/v1/flutterwave" \
+            -H "Authorization: Bearer $KEY" -H "apikey: $KEY" -H "Content-Type: application/json" -d "$BODY"
+          jq . out.json || head -c 300 out.json
+          rm -f out.json

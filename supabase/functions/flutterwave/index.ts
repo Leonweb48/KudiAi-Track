@@ -680,6 +680,69 @@ serve(async (req) => {
       return json({ ok: true, transfer_id: r.transfer_id, status: r.status, fee_kobo: r.fee_kobo });
     }
 
+    // ═══ recheck-open-transfers — service only (transfer-recheck.yml). Transfers still pending/processing on our side
+    //    after 10 minutes: asks Flutterwave what happened. With a Flutterwave id it reads that transfer; WITHOUT one
+    //    (2026-10-13: two transfers came back "OK" from the send call but with no transfer id and never got a webhook) it
+    //    searches Flutterwave's transfer list for our reference (= the withdrawal id). Read-only unless `apply`: then a
+    //    final Flutterwave status is settled through wallet_mark_withdrawal (successful completes; failed/reversed
+    //    refunds the amount and its charges, once). A transfer Flutterwave has no record of is only refunded with
+    //    `refund_missing` AND older than 2 hours. Output: per transfer, age/status only — no names, numbers or ids. ═══
+    if (action === "recheck-open-transfers") {
+      if (!(await isServiceCall(req, token))) return json({ error: "Unauthorized" }, 401);
+      const apply = body.apply === true, refundMissing = body.refund_missing === true;
+      const { data: open } = await sb.from("wallet_withdrawals").select("id, status, flw_transfer_id, created_at")
+        .in("status", ["pending", "processing"]).lt("created_at", new Date(Date.now() - 10 * 60e3).toISOString())
+        .order("created_at", { ascending: true }).limit(20);
+      const accts = [ACTIVE, ...(Object.values(ACCOUNTS) as FlwAccount[]).filter((a) => a.key !== ACTIVE.key)].filter(isConfigured);
+      const listCache: Record<string, Record<string, unknown>[]> = {};
+      const recent = async (acct: FlwAccount) => {
+        if (!listCache[acct.key]) {
+          const r = await flwFetch(`/transfers?page=1&size=50`, { account: acct });
+          const d = (r.data ?? {}) as Record<string, unknown>;
+          const inner = (d.data ?? {}) as Record<string, unknown>;
+          listCache[acct.key] = (Array.isArray(inner) ? inner : Array.isArray(inner.transfers) ? inner.transfers : Array.isArray(d.transfers) ? d.transfers : []) as Record<string, unknown>[];
+        }
+        return listCache[acct.key];
+      };
+      const refOf = (t: Record<string, unknown>) => String(t.reference ?? (t.meta as Record<string, unknown> | undefined)?.reference ?? "");
+      const out: Record<string, unknown>[] = [];
+      let sampleKeys: string[] = [];
+      for (const wd of open ?? []) {
+        let t: Record<string, unknown> | null = null, where = "";
+        if (wd.flw_transfer_id) {
+          for (const acct of accts) {
+            const r = await flwFetch(`/transfers/${encodeURIComponent(String(wd.flw_transfer_id))}`, { account: acct });
+            const d = (r.data ?? {}) as Record<string, unknown>;
+            if (r.ok && (d.data || d.id)) { t = (d.data ?? d) as Record<string, unknown>; where = "by id"; break; }
+          }
+        } else {
+          for (const acct of accts) {
+            const list = await recent(acct);
+            if (!sampleKeys.length && list[0]) sampleKeys = Object.keys(list[0]).slice(0, 20);
+            const hit = list.find((x) => refOf(x) === wd.id);
+            if (hit) { t = hit; where = `by reference (${acct.key})`; break; }
+          }
+        }
+        const flwStatus = t ? String(t.status || "").toUpperCase() : "";
+        const final = ["SUCCESSFUL", "SUCCEEDED", "COMPLETED"].includes(flwStatus) ? "successful"
+          : flwStatus === "FAILED" ? "failed" : flwStatus === "REVERSED" ? "reversed" : null;
+        const ageMin = Math.round((Date.now() - new Date(String(wd.created_at)).getTime()) / 60e3);
+        let applied: string | null = null, note = "";
+        if (apply && t && final) {
+          const tid = String(t.id || wd.flw_transfer_id || "");
+          const { error } = await sb.rpc("wallet_mark_withdrawal", { p_flw_transfer_id: tid, p_status: final, p_reference: wd.id });
+          if (error) note = `settle failed: ${error.message}`; else applied = final;
+        } else if (apply && !t && refundMissing && ageMin > 120) {
+          const { error } = await sb.rpc("wallet_mark_withdrawal", { p_flw_transfer_id: "", p_status: "failed", p_reference: wd.id });
+          if (error) note = `refund failed: ${error.message}`; else applied = "refunded (no Flutterwave record)";
+        }
+        out.push({ age_min: ageMin, our_status: wd.status, had_flw_id: !!wd.flw_transfer_id, found: !!t, found_how: where || null,
+          flw_status: flwStatus || null, applied, note: note || null });
+      }
+      return json({ ok: true, apply, refund_missing: refundMissing, open: out.length, transfers: out,
+        list_sizes: Object.fromEntries(Object.entries(listCache).map(([k, v]) => [k, v.length])), list_item_keys: sampleKeys });
+    }
+
     // ═══ admin-recheck-transfer — service only (admin portal). Asks Flutterwave what really happened to a
     //    withdrawal that is still pending/processing on our side and settles it through wallet_mark_withdrawal —
     //    the same function the transfer webhook uses (successful → completes it; failed/reversed → refunds the
