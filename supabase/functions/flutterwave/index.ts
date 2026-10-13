@@ -705,6 +705,14 @@ serve(async (req) => {
         return listCache[acct.key];
       };
       const refOf = (t: Record<string, unknown>) => String(t.reference ?? (t.meta as Record<string, unknown> | undefined)?.reference ?? "");
+      // Flutterwave's / the bank's own words about a transfer — short provider text, digits masked (logs are public)
+      const providerSays = (t: Record<string, unknown>) => {
+        const p = (t.provider_response ?? {}) as Record<string, unknown>;
+        const pick = (o: Record<string, unknown>, k: string[]) => k.map((x) => o?.[x]).find((v) => v != null && v !== "");
+        const mask = (v: unknown) => v == null ? null : String(typeof v === "object" ? JSON.stringify(v) : v).replace(/[0-9]{4,}/g, "#").slice(0, 140);
+        return { code: mask(pick(p, ["code", "response_code", "status_code"])), message: mask(pick(p, ["message", "response_message", "description", "status"])),
+                 keys: Object.keys(p).slice(0, 10) };
+      };
       const out: Record<string, unknown>[] = [];
       let sampleKeys: string[] = [];
       for (const wd of open ?? []) {
@@ -736,10 +744,33 @@ serve(async (req) => {
           const { error } = await sb.rpc("wallet_mark_withdrawal", { p_flw_transfer_id: "", p_status: "failed", p_reference: wd.id });
           if (error) note = `refund failed: ${error.message}`; else applied = "refunded (no Flutterwave record)";
         }
+        // a transfer found by reference: remember its Flutterwave id so the webhook / admin recheck can use it
+        if (apply && t && !wd.flw_transfer_id && t.id) {
+          await sb.from("wallet_withdrawals").update({ flw_transfer_id: String(t.id) }).eq("id", wd.id).is("flw_transfer_id", null);
+        }
         out.push({ age_min: ageMin, our_status: wd.status, had_flw_id: !!wd.flw_transfer_id, found: !!t, found_how: where || null,
-          flw_status: flwStatus || null, applied, note: note || null });
+          flw_status: flwStatus || null, provider: t ? providerSays(t) : null, applied, note: note || null });
       }
-      return json({ ok: true, apply, refund_missing: refundMissing, open: out.length, transfers: out,
+      // why recent ones failed, in Flutterwave's own words (provider text only, digits masked)
+      const failedDays = Math.min(Math.max(Number(body.failed_days) || 0, 0), 14);
+      const failed: Record<string, unknown>[] = [];
+      if (failedDays) {
+        const { data: fl } = await sb.from("wallet_withdrawals").select("flw_transfer_id, created_at, amount_kobo")
+          .in("status", ["failed", "reversed"]).gt("created_at", new Date(Date.now() - failedDays * 864e5).toISOString())
+          .not("flw_transfer_id", "is", null).order("created_at", { ascending: true }).limit(10);
+        for (const f of fl ?? []) {
+          let t: Record<string, unknown> | null = null;
+          for (const acct of accts) {
+            const r = await flwFetch(`/transfers/${encodeURIComponent(String(f.flw_transfer_id))}`, { account: acct });
+            const d = (r.data ?? {}) as Record<string, unknown>;
+            if (r.ok && (d.data || d.id)) { t = (d.data ?? d) as Record<string, unknown>; break; }
+          }
+          failed.push({ when: new Date(String(f.created_at)).toLocaleString("en-GB", { timeZone: "Africa/Lagos", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }),
+            band: Number(f.amount_kobo) < 500000 ? "<=5k" : Number(f.amount_kobo) < 1000000 ? "5k-10k" : ">=10k",
+            flw_status: t ? String(t.status || "") : "not found", provider: t ? providerSays(t) : null });
+        }
+      }
+      return json({ ok: true, apply, refund_missing: refundMissing, open: out.length, transfers: out, failed_recent: failed,
         list_sizes: Object.fromEntries(Object.entries(listCache).map(([k, v]) => [k, v.length])), list_item_keys: sampleKeys });
     }
 

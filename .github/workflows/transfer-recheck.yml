@@ -31,7 +31,7 @@ jobs:
           APPLY: ${{ inputs.apply }}
           REFUND_MISSING: ${{ inputs.refund_missing }}
         run: |
-          BODY=$(jq -nc --argjson a "$APPLY" --argjson m "$REFUND_MISSING" '{action:"recheck-open-transfers", apply:$a, refund_missing:$m}')
+          BODY=$(jq -nc --argjson a "$APPLY" --argjson m "$REFUND_MISSING" '{action:"recheck-open-transfers", apply:$a, refund_missing:$m, failed_days:4}')
           curl -s -m 120 -o out.json -w "HTTP %{http_code}\n" -X POST "$URL/functions/v1/flutterwave" \
             -H "Authorization: Bearer $KEY" -H "apikey: $KEY" -H "Content-Type: application/json" -d "$BODY"
           jq . out.json || head -c 300 out.json
