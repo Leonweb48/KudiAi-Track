@@ -909,7 +909,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
                       {m.id === "bills" && perms["bills"]?.can_view && (
                         <div className="mt-2 ml-1 pl-3 border-l-2 border-slate-200 dark:border-slate-700 space-y-2">
                           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Print Features</p>
-                          {plan === "enterprise" ? (
+                          {canDo(plan, "printWholesale") ? (
                             <>
                               <PermToggle
                                 checked={perms["print-airtime"]?.can_view || false}
@@ -1145,7 +1145,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
                       {m.id === "bills" && perms["bills"]?.can_view && (
                         <div className="mt-2 ml-1 pl-3 border-l-2 border-slate-200 dark:border-slate-700 space-y-2">
                           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Print Features</p>
-                          {plan === "enterprise" ? (
+                          {canDo(plan, "printWholesale") ? (
                             <>
                               <PermToggle
                                 checked={perms["print-airtime"]?.can_view || false}
