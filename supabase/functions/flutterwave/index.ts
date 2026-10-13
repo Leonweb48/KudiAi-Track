@@ -414,6 +414,19 @@ async function flwDisburse(o: {
   const t = d?.data ?? d;                 // FLW wraps the transfer in `data`
   const vErrs = (d?.error?.validation_errors || []).map((e: any) => `${e.field_name || e.field || "?"}: ${e.message}`).join("; ");
   console.log("FLW disburse resp:", r.status, JSON.stringify(d).slice(0, 400));
+  // Accepted but no transfer id in the reply (seen 2026-10-13: two transfers sat in "processing" with nothing to
+  // re-check them by) — find it in Flutterwave's newest transfers by our reference, so it can be tracked.
+  let tid = String(t?.id || ""), tstatus = String(t?.status || "");
+  if (r.ok && !tid) {
+    try {
+      const lr = await flwFetch(`/transfers?page=1&size=50`, {});
+      const ld = (lr.data ?? {}) as any;
+      const list = (Array.isArray(ld?.data) ? ld.data : Array.isArray(ld?.data?.transfers) ? ld.data.transfers : []) as any[];
+      const hit = list.find((x) => String(x?.reference ?? x?.meta?.reference ?? "") === o.reference);
+      if (hit?.id) { tid = String(hit.id); tstatus = tstatus || String(hit.status || ""); }
+      console.log("FLW disburse: no id in reply; lookup by reference", hit?.id ? "found" : "not found");
+    } catch { /* tracked later by the transfer recheck */ }
+  }
   return {
     ok: r.ok,
     error: (d?.error?.message || "Transfer failed") + (vErrs ? ` (${vErrs})` : ""),
@@ -421,8 +434,8 @@ async function flwDisburse(o: {
     http: r.status,
     flw_type: String(d?.error?.type || ""),
     flw_code: String(d?.error?.code ?? ""),
-    transfer_id: t?.id || "",
-    status: t?.status || "NEW",
+    transfer_id: tid,
+    status: tstatus || "NEW",
     fee_kobo: Math.round(Number(t?.fee?.value ?? t?.fee_charged ?? 0) * 100),
   };
 }

@@ -4,8 +4,12 @@ name: Transfer recheck
 # happened to each (by its Flutterwave id, or by our reference when the send call returned no id). Read-only by default.
 # apply=true settles the ones Flutterwave reports as final (successful / failed → refunded). refund_missing=true also
 # refunds ones Flutterwave has NO record of, if older than 2 hours. Prints ages and statuses only — no names or numbers.
+# Every 30 minutes it also runs with apply=true (never refund_missing): a transfer Flutterwave has finished is settled
+# even if its webhook never arrives — exactly what the webhook would have done.
 
 on:
+  schedule:
+    - cron: "7,37 * * * *"
   workflow_dispatch:
     inputs:
       apply:
@@ -28,10 +32,11 @@ jobs:
         env:
           URL: ${{ secrets.REACT_APP_SUPABASE_URL }}
           KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          APPLY: ${{ inputs.apply }}
-          REFUND_MISSING: ${{ inputs.refund_missing }}
+          APPLY: ${{ github.event_name == 'schedule' && 'true' || (inputs.apply && 'true' || 'false') }}
+          REFUND_MISSING: ${{ github.event_name != 'schedule' && inputs.refund_missing && 'true' || 'false' }}
+          FAILED_DAYS: ${{ github.event_name == 'schedule' && '0' || '4' }}
         run: |
-          BODY=$(jq -nc --argjson a "$APPLY" --argjson m "$REFUND_MISSING" '{action:"recheck-open-transfers", apply:$a, refund_missing:$m, failed_days:4}')
+          BODY=$(jq -nc --argjson a "$APPLY" --argjson m "$REFUND_MISSING" --argjson f "$FAILED_DAYS" '{action:"recheck-open-transfers", apply:$a, refund_missing:$m, failed_days:$f}')
           curl -s -m 120 -o out.json -w "HTTP %{http_code}\n" -X POST "$URL/functions/v1/flutterwave" \
             -H "Authorization: Bearer $KEY" -H "apikey: $KEY" -H "Content-Type: application/json" -d "$BODY"
           jq . out.json || head -c 300 out.json
