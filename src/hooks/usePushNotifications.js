@@ -155,6 +155,15 @@ async function createAndroidChannels(Push) {
   } catch (_e) {}
   try {
     await Push.createChannel({
+      id:          "promotions",
+      name:        "Offers & updates",
+      description: "News, offers and tips from KudiAI Track — turn off in Settings → Notifications",
+      importance:  3,
+      visibility:  1,
+    });
+  } catch (_e) {}
+  try {
+    await Push.createChannel({
       id:          "updates",
       name:        "Updates",
       description: "General app updates and information",

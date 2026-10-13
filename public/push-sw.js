@@ -18,10 +18,16 @@ self.addEventListener("push", (event) => {
     const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
     if (windows.some((c) => c.visibilityState === "visible")) return;
 
+    const image = n.image || data.image;
     await self.registration.showNotification(title, {
       body:  n.body || "",
       icon:  n.icon || "/icon.png",
-      badge: "/icon.png",
+      // the KudiAI Track logo cut-out (monochrome) Chrome shows in the status bar
+      badge: "/notification-badge.png",
+      // a picture for promotions/offers, shown when the notification is expanded
+      ...(image ? { image } : {}),
+      // a button that does what tapping does — opens the screen the notification is about
+      actions: [{ action: "open", title: data.deepLink ? "View" : "Open KudiAI Track" }],
       data,
     });
   })());

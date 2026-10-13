@@ -149,9 +149,14 @@ function NotifRow({ notif, onTap, onDismiss, onMarkRead }) {
             {notif.title}
           </p>
           {notif.body && (
-            <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug line-clamp-2">
+            <p className={`text-[12px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug ${notif.image_url ? "" : "line-clamp-2"}`}>
               {notif.body}
             </p>
+          )}
+          {notif.image_url && (
+            <img src={notif.image_url} alt="" loading="lazy"
+              className="mt-2 w-full max-h-48 object-cover rounded-xl border border-slate-100 dark:border-slate-800"
+              onError={(e) => { e.currentTarget.style.display = "none"; }} />
           )}
           <div className="flex items-center gap-2 mt-1.5">
             <p className="text-[11px] text-slate-400 dark:text-slate-500">{relTime(notif.created_at)} · {absTime(notif.created_at)}</p>

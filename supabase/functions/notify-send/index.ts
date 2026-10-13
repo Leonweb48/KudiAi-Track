@@ -41,6 +41,7 @@ const CAT_PREF: Record<string, string> = {
   alert:       "pref_alert",
   bills:       "pref_bills",
   milestone:   "pref_milestone",
+  promotions:  "pref_promotions",
 };
 
 // ── Category → visual/channel metadata (hex + Android channel id) ──────────
@@ -58,6 +59,7 @@ const CATEGORY_META: Record<string, { color: string; channelId: string }> = {
   stock:       { color: "#8B5CF6", channelId: "stock_alerts" },
   bills:       { color: "#14B8A6", channelId: "bills_alerts" },
   milestone:   { color: "#CA8A04", channelId: "milestones" },
+  promotions:  { color: "#E11D48", channelId: "promotions" },
   permissions: { color: "#64748B", channelId: "account_updates" },
   approvals:   { color: "#64748B", channelId: "account_updates" },
 };
@@ -169,6 +171,7 @@ async function sendFCMv1(
   unreadCount:   number,
   type:          string,
   category:      string,
+  image:         string | null = null,
 ): Promise<{ status: number; body: string; errCode?: string; errMsg?: string }> {
   const saRaw = Deno.env.get("FIREBASE_SERVICE_ACCOUNT");
   if (!saRaw) return { status: 0, body: "FIREBASE_SERVICE_ACCOUNT not set", errCode: "NO_SERVICE_ACCOUNT", errMsg: "FIREBASE_SERVICE_ACCOUNT not set" };
@@ -183,6 +186,7 @@ async function sendFCMv1(
   // v1 requires ALL data values to be strings
   const data: Record<string, string> = { group: "kuditrack" };
   if (deepLink) data["deepLink"] = JSON.stringify(deepLink);
+  if (image) data["image"] = image;
   if (unreadCount > 1) {
     // summary tap → open notification center
     data["groupSummary"] = "true";
@@ -217,6 +221,8 @@ async function sendFCMv1(
               icon:               "ic_notification",
               color,
               channel_id:         channelId,
+              // a picture shown when the notification is expanded (promotions, offers) — big-picture style
+              ...(image ? { image } : {}),
               // Badge / shade count — shows total unread when > 1
               notification_count: unreadCount > 1 ? unreadCount : undefined,
             },
@@ -226,7 +232,12 @@ async function sendFCMv1(
           // fcm_options.link here (it would race that handler).
           webpush: {
             headers: { Urgency: priority === "high" ? "high" : "normal" },
-            notification: { icon: "https://kudiai.app/icon.png" },
+            notification: {
+              icon:  "https://kudiai.app/icon.png",
+              // the KudiAI Track logo cut-out Chrome shows in the Android status bar
+              badge: "https://kudiai.app/notification-badge.png",
+              ...(image ? { image } : {}),
+            },
           },
         },
       }),
@@ -266,6 +277,12 @@ async function sendFCMv1(
   return { status: resp.status, body: respText, errCode, errMsg };
 }
 
+function safeImage(v: unknown): string | null {
+  const u = String(v ?? "").trim();
+  if (!u || u.length > 1000 || !u.startsWith("https://")) return null;
+  try { new URL(u); return u; } catch { return null; }
+}
+
 // ── Per-device fan-out ───────────────────────────────────────────────────────
 // One result per registered device so a browser failure is never hidden behind
 // an Android success (the old code kept only the first token's outcome).
@@ -275,7 +292,7 @@ async function pushToUser(
   // deno-lint-ignore no-explicit-any
   sb:      any,
   userId:  string,
-  msg:     { title: string; body: string; deepLink: Record<string, unknown> | null; priority: string; type: string; category: string },
+  msg:     { title: string; body: string; deepLink: Record<string, unknown> | null; priority: string; type: string; category: string; image?: string | null },
 ): Promise<DeviceResult[]> {
   const [tokensResult, unreadResult] = await Promise.all([
     sb.from("push_tokens")
@@ -293,7 +310,7 @@ async function pushToUser(
   if (!tokens.length) return [];
 
   return await Promise.all(tokens.map(async (t: { token: string; platform: string }) => {
-    const r = await sendFCMv1(sb, t.token, msg.title, msg.body, msg.deepLink, msg.priority, unreadCount, msg.type, msg.category);
+    const r = await sendFCMv1(sb, t.token, msg.title, msg.body, msg.deepLink, msg.priority, unreadCount, msg.type, msg.category, msg.image ?? null);
     return {
       platform: String(t.platform ?? "?"),
       status:   r.status,
@@ -396,13 +413,13 @@ Deno.serve(async (req) => {
     if (!notificationId) return json({ error: "notification_id required" }, 400);
 
     const { data: n } = await sb.from("notifications")
-      .select("id, user_id, type, category, title, body, deep_link, priority, last_push_at, read_at")
+      .select("id, user_id, type, category, title, body, deep_link, priority, last_push_at, read_at, image_url")
       .eq("id", notificationId).maybeSingle();
     if (!n) return json({ ok: false, error: "notification not found" }, 404);
     if (n.last_push_at || n.read_at || n.priority !== "high") return json({ ok: true, skipped: "not eligible" });
 
     const { data: prefs } = await sb.from("notification_preferences")
-      .select("push_enabled, pref_money, pref_savings, pref_stock, pref_permissions, pref_approvals, pref_credit, pref_alert, pref_bills, pref_milestone")
+      .select("*")
       .eq("user_id", n.user_id).maybeSingle();
     const prefField = CAT_PREF[String(n.category ?? "")];
     if (prefs && ((prefs as Record<string, boolean>).push_enabled === false
@@ -426,11 +443,80 @@ Deno.serve(async (req) => {
       priority: "high",
       type:     String(n.type ?? ""),
       category: String(n.category ?? "money"),
+      image:    safeImage((n as Record<string, unknown>).image_url),
     });
     if (devices.some((d) => d.ok)) {
       await sb.from("notifications").update({ last_push_at: new Date().toISOString() }).eq("id", n.id);
     }
     return json({ ok: true, devices: devices.map(({ platform, status, ok, errCode }) => ({ platform, status, ok, errCode })) });
+  }
+
+  // ── broadcast — one message to many people (admin portal → Communications) ───────────────────────────────────────
+  // Service role only. Writes a bell row for each person and, when push=true, sends it to their phone / browser with
+  // the optional picture. Category "promotions" respects the person's "Offers & updates" switch (pref_promotions) —
+  // someone who turned it off gets nothing at all; "announcement" (important service news) only respects push_enabled.
+  // At most 500 people per call; the admin portal sends larger audiences in batches.
+  if (action === "broadcast") {
+    if (!isServiceRole) return json({ error: "Unauthorized" }, 401);
+    const b = body as Record<string, unknown>;
+    const ids = Array.from(new Set((Array.isArray(b.user_ids) ? b.user_ids : []).map(String)))
+      .filter((x) => /^[0-9a-f-]{36}$/i.test(x)).slice(0, 500);
+    const title = String(b.title ?? "").trim().slice(0, 120);
+    const text  = String(b.body ?? "").trim().slice(0, 500);
+    if (!ids.length || !title) return json({ error: "user_ids and title required" }, 400);
+    const cat     = b.category === "announcement" ? "announcement" : "promotions";
+    const image   = safeImage(b.image);
+    const doPush  = b.push !== false;
+    const link    = (b.deep_link && typeof b.deep_link === "object") ? b.deep_link as Record<string, unknown> : null;
+    const ref     = String(b.broadcast_id ?? "").slice(0, 64) || null;
+
+    const { data: prefRows } = await sb.from("notification_preferences").select("*").in("user_id", ids);
+    const prefOf = new Map((prefRows ?? []).map((p: Record<string, unknown>) => [String(p.user_id), p]));
+    const optedOut = new Set(ids.filter((id) => cat === "promotions" && (prefOf.get(id) as Record<string, unknown> | undefined)?.pref_promotions === false));
+    const targets = ids.filter((id) => !optedOut.has(id));
+
+    const rows = targets.map((id) => ({
+      user_id: id, type: cat === "promotions" ? "promotion" : "announcement", category: cat === "promotions" ? "promotions" : "permissions",
+      title, body: text || null, deep_link: link, priority: doPush ? "high" : "normal",
+      dedupe_key: ref ? `broadcast_${ref}` : null, notif_count: 1, notif_total: 0, origin: "edge", image_url: image,
+    }));
+    let inserted = 0, skipped = 0;
+    for (let i = 0; i < rows.length; i += 200) {
+      const chunk = rows.slice(i, i + 200);
+      const { error, count } = await sb.from("notifications").insert(chunk, { count: "exact" });
+      if (!error) { inserted += count ?? chunk.length; continue; }
+      // one bad row (e.g. a login that no longer exists) must not sink everyone else's — retry one by one
+      for (const row of chunk) {
+        const { error: e1 } = await sb.from("notifications").insert(row);
+        if (e1) skipped++; else inserted++;
+      }
+    }
+
+    let pushedUsers = 0, noDevice = 0, failedUsers = 0;
+    const reached: string[] = [];
+    if (doPush) {
+      const pushTargets = targets.filter((id) => (prefOf.get(id) as Record<string, unknown> | undefined)?.push_enabled !== false);
+      for (let i = 0; i < pushTargets.length; i += 8) {
+        const batch = pushTargets.slice(i, i + 8);
+        const results = await Promise.all(batch.map((id) => pushToUser(sb, id, {
+          title, body: text, deepLink: link, priority: "high", type: "promotion",
+          category: cat === "promotions" ? "promotions" : "permissions", image,
+        })));
+        results.forEach((devs, k) => {
+          if (!devs.length) noDevice++;
+          else if (devs.some((d) => d.ok)) { pushedUsers++; reached.push(batch[k]); }
+          else failedUsers++;
+        });
+      }
+      // mark as pushed only for the people a device actually accepted it for (delivery stats stay honest)
+      if (ref && reached.length) {
+        for (let i = 0; i < reached.length; i += 200) {
+          await sb.from("notifications").update({ last_push_at: new Date().toISOString() })
+            .eq("dedupe_key", `broadcast_${ref}`).in("user_id", reached.slice(i, i + 200));
+        }
+      }
+    }
+    return json({ ok: true, requested: ids.length, opted_out: optedOut.size, inserted, skipped, pushed_users: pushedUsers, no_device: noDevice, failed_users: failedUsers });
   }
 
   // ── deregister-token ────────────────────────────────────────────────────────
@@ -454,14 +540,16 @@ Deno.serve(async (req) => {
       dedupeKey  = null,
       category   = "money",
       rollupAmount,
+      image: imageIn,
     } = body as {
       userId: string; type: string; title: string; body: string;
       deepLink?: Record<string, unknown> | null; priority?: string;
       dedupeKey?: string | null; category?: string;
-      rollupAmount?: number;
+      rollupAmount?: number; image?: string;
     };
 
     if (!userId || !type || !titleIn) return json({ error: "userId, type, title required" }, 400);
+    const image = isServiceRole ? safeImage(imageIn) : null;
 
     let title    = titleIn;
     let bodyText = bodyTextIn;
@@ -478,7 +566,7 @@ Deno.serve(async (req) => {
 
     // Preference check
     const { data: prefs } = await sb.from("notification_preferences")
-      .select("push_enabled, pref_money, pref_savings, pref_stock, pref_permissions, pref_approvals, pref_credit, pref_alert, pref_bills, pref_milestone")
+      .select("*")
       .eq("user_id", userId).maybeSingle();
 
     const prefField = CAT_PREF[category];
@@ -547,6 +635,7 @@ Deno.serve(async (req) => {
       dedupe_key:  dedupeKey,
       notif_count: 1,
       notif_total: rollupAmount ?? 0,
+      ...(image ? { image_url: image } : {}),
     };
     let ins = await sb.from("notifications").insert({ ...notifRow, origin: "edge" }).select("id").single();
     if (ins.error && /origin/i.test(ins.error.message)) {
@@ -559,7 +648,7 @@ Deno.serve(async (req) => {
     // FCM v1 push for high-priority (unless suppressed by flood window)
     let devices: DeviceResult[] = [];
     if (priority === "high" && !suppressFCM && (prefs?.push_enabled ?? true)) {
-      devices = await pushToUser(sb, userId, { title, body: bodyText ?? "", deepLink, priority, type, category });
+      devices = await pushToUser(sb, userId, { title, body: bodyText ?? "", deepLink, priority, type, category, image });
 
       // Record when FCM was fired so the flood window check works across reads.
       // Any device accepting the push counts — not just whichever token was first.

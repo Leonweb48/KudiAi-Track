@@ -69,7 +69,7 @@ export function useNotifications(userId, onNewNotification = null) {
     const from = reset ? 0 : page * PAGE_SIZE;
     const { data, error } = await supabase
       .from("notifications")
-      .select("id,user_id,type,category,title,body,deep_link,priority,read_at,dismissed_at,created_at")
+      .select("id,user_id,type,category,title,body,deep_link,priority,read_at,dismissed_at,created_at,image_url")
       .eq("user_id", userId)
       .is("dismissed_at", null)
       .order("created_at", { ascending: false })

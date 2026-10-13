@@ -55,6 +55,11 @@ export const NOTIFICATION_CATEGORIES = {
     icon: "M8 21h8 M12 17v4 M17 5V3H7v2 M17 5a5 5 0 01-5 5 5 5 0 01-5-5 M17 5h2a2 2 0 010 4h-2M7 5H5a2 2 0 000 4h2",
     sparkle: true,
   },
+  promotions: {
+    label: "Offers & Updates",
+    hex: "#E11D48",
+    icon: "M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z M7 7h.01",
+  },
 };
 
 // Every raw value notifications.category can hold today, and which visual
@@ -69,6 +74,7 @@ export const RAW_CATEGORY_TO_BUCKET = {
   milestone: "milestone",
   permissions: "account",
   approvals: "account",
+  promotions: "promotions",
 };
 
 export function categoryMeta(rawCategory) {

@@ -177,11 +177,12 @@ const DEFAULT_PREFS = {
   pref_alert:                  true,
   pref_bills:                  true,
   pref_milestone:              true,
+  pref_promotions:             true,
   email_enabled:               true,
   large_txn_threshold:         null,
 };
 
-const PREF_COLUMNS = "push_enabled, pref_money, pref_savings, pref_stock, pref_permissions, pref_approvals, pref_credit, pref_alert, pref_bills, pref_milestone, email_enabled, large_txn_threshold";
+const PREF_COLUMNS = "push_enabled, pref_money, pref_savings, pref_stock, pref_permissions, pref_approvals, pref_credit, pref_alert, pref_bills, pref_milestone, pref_promotions, email_enabled, large_txn_threshold";
 
 // Category rows shown per portal
 const PORTAL_CATEGORIES = {
@@ -215,6 +216,9 @@ const PORTAL_CATEGORIES = {
     { field: "pref_money",   label: "Money Transactions",  sub: "Withdrawals and disbursements" },
   ],
 };
+
+// Offers & updates — on every portal; turning it off stops promotional messages (push and bell) from KudiAI Track.
+const PROMO_ROW = { field: "pref_promotions", label: "Offers & updates", sub: "News, offers and tips from KudiAI Track" };
 
 // eslint-disable-next-line no-unused-vars
 export default function NotificationPreferences({ userId, onClose, portal = "owner" }) {
@@ -285,6 +289,7 @@ export default function NotificationPreferences({ userId, onClose, portal = "own
       pref_alert:                  prefs.pref_alert,
       pref_bills:                  prefs.pref_bills,
       pref_milestone:              prefs.pref_milestone,
+      pref_promotions:             prefs.pref_promotions,
       email_enabled:               prefs.email_enabled,
       large_txn_threshold:         prefs.large_txn_threshold || null,
       updated_at:                  new Date().toISOString(),
@@ -476,7 +481,7 @@ export default function NotificationPreferences({ userId, onClose, portal = "own
           {/* ── Categories ── */}
           <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider pt-5 pb-1">Categories</p>
           <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-700 px-4">
-            {(PORTAL_CATEGORIES[portal] ?? PORTAL_CATEGORIES.owner).map(cat => (
+            {[...(PORTAL_CATEGORIES[portal] ?? PORTAL_CATEGORIES.owner), PROMO_ROW].map(cat => (
               <PrefRow
                 key={cat.field}
                 label={cat.label}
