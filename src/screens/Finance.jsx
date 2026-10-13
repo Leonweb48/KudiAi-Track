@@ -964,7 +964,7 @@ export default function Finance({
 }) {
   const [section,   setSection]   = useState(autoOpenTab || null);
   const [showLoan,  setShowLoan]  = useState(false);
-  const { loansEnabled } = usePlatformConfig();          // business loans: off ("coming soon", no tile, no application) until the lender is live
+  const { loansEnabled, coopEnabled } = usePlatformConfig();   // co-operatives: hidden until coop_module_enabled (was reachable here, incl. its Paystack registration fee)          // business loans: off ("coming soon", no tile, no application) until the lender is live
   const [period,    setPeriod]    = useState("month");
   const [lens,      setLens]      = useState("profit");
   const [drillDown, setDrillDown] = useState(null);
@@ -1133,7 +1133,7 @@ export default function Finance({
           <LoanTab isEnterprise={isEnterprise} accountCreatedAt={session?.user?.created_at}
             onUpgrade={onUpgrade} onApply={() => setShowLoan(true)} store={store} />
         )}
-        {section === "org"      && <CoopList userId={userId} onOpen={onSelectCoopOrg} onClose={null} embedded />}
+        {section === "org" && coopEnabled && <CoopList userId={userId} onOpen={onSelectCoopOrg} onClose={null} embedded />}
         {section === "invoices" && (
           <Invoices invoiceHook={invoiceHook} plan={plan} onUpgrade={onUpgrade}
             profile={store.profile} inventory={inventory}
@@ -1380,8 +1380,8 @@ export default function Finance({
         </div>
 
         {/* Bottom row: Loan / Org / Invoices — smaller icon tiles */}
-        <div className={`grid gap-2 ${loansEnabled ? "grid-cols-3" : "grid-cols-2"}`}>
-          {FINANCE_TILES.slice(2).filter(tile => tile.id !== "loan" || loansEnabled).map(tile => (
+        <div className={`grid gap-2 ${[loansEnabled, coopEnabled, true].filter(Boolean).length === 3 ? "grid-cols-3" : [loansEnabled, coopEnabled, true].filter(Boolean).length === 2 ? "grid-cols-2" : "grid-cols-1"}`}>
+          {FINANCE_TILES.slice(2).filter(tile => (tile.id !== "loan" || loansEnabled) && (tile.id !== "org" || coopEnabled)).map(tile => (
             <button key={tile.id} onClick={() => openSection(tile.id)}
               className="flex flex-col items-center gap-1.5 py-3 rounded-2xl bg-slate-50 dark:bg-slate-700/50 active:scale-95 transition border border-slate-100 dark:border-slate-700/30 min-h-[44px]">
               <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${tile.bg}`}>

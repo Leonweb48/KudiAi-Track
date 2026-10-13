@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { friendlyError, moneyError } from "../utils/errorMessages";
 import { supabase } from "../utils/supabase";
+import { bankLookup } from "../utils/bankLookup";
 import BillPayments from "./BillPayments";
 import CashbackCard from "../components/CashbackCard";
 import Badge from "../components/shared/Badge";
@@ -460,7 +461,7 @@ function AjoPinPad({ title, subtitle, length = 6, minLength, onComplete, onCance
 // ── FAQ ────────────────────────────────────────────────────────────────────
 const FAQS = [
   { q: "How do I pay my contribution?",
-    a: "On the Home tab, tap the green 'Pay Contribution' button. Choose Paystack (card/bank) or Manual Transfer. For manual, send to the account shown and upload your receipt." },
+    a: "On the Home tab, tap 'Make a Deposit' (or 'Pay Contribution'), choose your savings card or group, and pay from your KudiAI Wallet with your PIN. Fund your wallet first by bank transfer to your wallet account number." },
   { q: "How do I check my savings balance?",
     a: "Your balance is shown on the Home tab in the hero card. Tap the eye icon to hide or reveal it." },
   { q: "How do I request a withdrawal?",
@@ -4013,7 +4014,7 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
   useEffect(() => {
     if (view !== "edit") return;
     if (banks.length > 0) return;
-    supabase.functions.invoke("paystack", { body: { action: "list-banks" } })
+    bankLookup("list-banks")
       .then(({ data }) => setBanks(data?.data || []))
       .catch(() => {});
   }, [view]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -4024,9 +4025,7 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
     }
     setBankVerifying(true); setBankError(""); setBankVerified(false);
     try {
-      const { data } = await supabase.functions.invoke("paystack", {
-        body: { action: "resolve-account", account_number: editForm.account_number, bank_code: editForm.bank_code },
-      });
+      const { data } = await bankLookup("resolve-account", { account_number: editForm.account_number, bank_code: editForm.bank_code });
       if (!data?.status || !data?.data?.account_name) {
         setBankError(data?.message || "Could not verify account. Check the details and retry."); return;
       }

@@ -97,8 +97,6 @@ function genOtp(): string {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
 
-const PAYSTACK_SECRET = Deno.env.get("PAYSTACK_SECRET_KEY") ?? "";
-const PAYSTACK_PUBLIC = Deno.env.get("PAYSTACK_PUBLIC_KEY") ?? "";
 
 function genRef(prefix = "AJO") {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
@@ -184,7 +182,7 @@ serve(async (req) => {
       "get-entity-stats",
       "request-withdrawal","get-withdrawal-requests","submit-manual-claim",
       "pay-contribution-wallet",
-      "initialize-payment","confirm-payment","submit-dispute",
+      "submit-dispute",
       "client-open-cycle",
       "get-goal","set-goal","delete-goal","get-txn-pin-status","set-txn-pin","verify-txn-pin",
       "upload-avatar","update-profile","log-profile-update",
@@ -1640,35 +1638,7 @@ serve(async (req) => {
       return json({ ok: true });
     }
 
-    // ── Verify & save client's withdrawal (payout) account ────────────────
-    if (action === "verify-withdrawal-account") {
-      const { client_id, account_number, bank_code, bank_name } =
-        body as { client_id: string; account_number: string; bank_code: string; bank_name?: string };
-      if (!client_id || !account_number || !bank_code)
-        return json({ error: "client_id, account_number, and bank_code required" }, 400);
-      if (!/^\d{10}$/.test(account_number))
-        return json({ error: "Account number must be exactly 10 digits" }, 400);
-      if (!PAYSTACK_SECRET) return json({ error: "Paystack not configured" }, 500);
-
-      const psRes  = await fetch(
-        `https://api.paystack.co/bank/resolve?account_number=${account_number}&bank_code=${bank_code}`,
-        { headers: { Authorization: `Bearer ${PAYSTACK_SECRET}` } },
-      );
-      const psData = await psRes.json();
-      if (!psData.status || !psData.data?.account_name)
-        return json({ error: psData.message || "Could not verify account" }, 422);
-
-      const accountName = psData.data.account_name as string;
-      const { error: upErr } = await sb.from("aso_clients").update({
-        withdrawal_bank_code:      bank_code,
-        withdrawal_account_number: account_number,
-        withdrawal_account_name:   accountName,
-        withdrawal_bank_name:      bank_name || null,
-      }).eq("id", client_id);
-      if (upErr) return json({ error: upErr.message }, 500);
-
-      return json({ ok: true, account_name: accountName });
-    }
+    // (verify-withdrawal-account removed 2026-10-13: payouts go to the client's KudiAI Wallet; it was the last Paystack call here)
 
     // ── Profile audit log ──────────────────────────────────────────────────
     if (action === "log-profile-update") {

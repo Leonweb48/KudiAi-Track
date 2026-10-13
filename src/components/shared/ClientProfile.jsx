@@ -5,6 +5,7 @@
  */
 import { useState, useEffect } from "react";
 import { supabase } from "../../utils/supabase";
+import { bankLookup } from "../../utils/bankLookup";
 import { STATES, getLGAs, getWards } from "../../utils/nigeriaData";
 import { AmountDisplay } from "./AmountDisplay";
 import { sendEmailTrigger } from "../../utils/emailTrigger";
@@ -121,7 +122,7 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
   // Load bank list when entering edit mode for any Aso client
   useEffect(() => {
     if (!editing || isCredit || banks.length > 0) return;
-    supabase.functions.invoke("paystack", { body: { action: "list-banks" } })
+    bankLookup("list-banks")
       .then(({ data }) => { if (data?.data) setBanks(data.data); })
       .catch(() => {});
   }, [editing, isCredit, banks.length]);
@@ -168,9 +169,7 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
     if (!form.withdrawal_bank_code || acctNo.length < 10) return;
     setWithdrawalBankResolving(true); setWithdrawalBankErr(""); setWithdrawalBankResolvedName("");
     try {
-      const { data, error } = await supabase.functions.invoke("paystack", {
-        body: { action: "resolve-account", account_number: acctNo, bank_code: form.withdrawal_bank_code },
-      });
+      const { data, error } = await bankLookup("resolve-account", { account_number: acctNo, bank_code: form.withdrawal_bank_code });
       if (error || !data?.status) throw new Error(data?.message || "Could not verify account");
       const name = data.data?.account_name || "";
       setWithdrawalBankResolvedName(name);
@@ -188,9 +187,7 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
     if (!form.bank_code || !form.account_number || String(form.account_number).length < 10) return;
     setBankResolving(true); setBankErr(""); setBankResolvedName("");
     try {
-      const { data, error } = await supabase.functions.invoke("paystack", {
-        body: { action: "resolve-account", account_number: form.account_number, bank_code: form.bank_code },
-      });
+      const { data, error } = await bankLookup("resolve-account", { account_number: form.account_number, bank_code: form.bank_code });
       if (error || !data?.status) throw new Error(data?.message || "Could not verify account");
       const name = data.data?.account_name || "";
       setBankResolvedName(name);

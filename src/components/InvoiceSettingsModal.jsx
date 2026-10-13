@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../utils/supabase";
 
+import { bankLookup } from "../utils/bankLookup";
 const FIELDS = [
   { key: "reg_number",     label: "Business Reg. Number",  placeholder: "e.g. RC-1234567",              type: "text"     },
   { key: "contact_email",  label: "Invoice Contact Email", placeholder: "billing@yourbusiness.com",      type: "email"    },
@@ -27,7 +28,7 @@ export default function InvoiceSettingsModal({ settings, onSave, onClose, userId
   const fileRef = useRef(null);
 
   useEffect(() => {
-    supabase.functions.invoke("paystack", { body: { action: "list-banks" } })
+    bankLookup("list-banks")
       .then(({ data }) => {
         if (!data?.data) return;
         setBanks(data.data);
@@ -57,9 +58,7 @@ export default function InvoiceSettingsModal({ settings, onSave, onClose, userId
     }
     setVerifying(true); setVerifyErr(""); setVerifiedName("");
     try {
-      const { data, error: err } = await supabase.functions.invoke("paystack", {
-        body: { action: "resolve-account", account_number: acct, bank_code: code },
-      });
+      const { data, error: err } = await bankLookup("resolve-account", { account_number: acct, bank_code: code });
       if (err || !data?.status) throw new Error(data?.message || "Could not verify account");
       const name = data.data?.account_name || "";
       setVerifiedName(name);
