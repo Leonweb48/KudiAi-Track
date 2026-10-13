@@ -270,6 +270,29 @@ export function BankPickerSheet({ open, onClose, banks, onPick }) {
 }
 
 // ── Fund wallet ────────────────────────────────────────────────────────────
+// The business deposit fee (Terms 4.10(a), from 1 Nov 2026): shown where a business shares its account number. Nothing for
+// Ajo clients, personal wallets or Premium businesses (their deposits are free) — the server decides (wallet_deposit_fee_quote).
+const longDate = (d) => { try { return new Date(`${d}T12:00:00`).toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" }); } catch { return d; } };
+export function DepositFeeNote({ open }) {
+  const [rule, setRule] = useState(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    let live = true;
+    supabase.rpc("wallet_deposit_fee_quote").then(({ data, error }) => { if (live && !error && data) setRule(data); });
+    return () => { live = false; };
+  }, [open]);
+  const pct = Number(rule?.pct || 0), cap = Number(rule?.cap_kobo || 0);
+  if (!rule || rule.tier === "personal" || pct <= 0 || cap <= 0) return null;
+  const fee = `${pct}% of each deposit (max ₦${(cap / 100).toLocaleString("en-NG")})`;
+  return (
+    <p className="mt-3 text-[11.5px] leading-relaxed text-slate-500 dark:text-slate-400 rounded-xl bg-slate-50 dark:bg-slate-800/60 px-3 py-2.5">
+      {rule.active
+        ? <>Business deposit fee: <b>{fee}</b> on your plan. Premium plan deposits are free.</>
+        : <>From <b>{longDate(rule.starts)}</b>, money received into your business wallet carries a fee of <b>{fee}</b> on your plan. Premium plan deposits are free.</>}
+    </p>
+  );
+}
+
 export function FundWalletSheet({ open, onClose, wallet, testMode, api, businessName, ownerName }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
@@ -287,6 +310,7 @@ export function FundWalletSheet({ open, onClose, wallet, testMode, api, business
         </p>
       )}
       <AccountCard wallet={wallet} displayName={businessName || ownerName} />
+      {wallet?.account_state !== "retired" && <DepositFeeNote open={open} />}
       {testMode && wallet?.account_state !== "retired" && (
         <button onClick={simulate} disabled={busy}
           className="w-full mt-4 rounded-2xl border border-dashed border-brand-300 dark:border-brand-700 text-brand-600 dark:text-brand-400 text-[13px] font-bold py-3.5 disabled:opacity-40">
@@ -524,7 +548,7 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
   const freeNote = quote
     ? (quote.free
         ? `Free — ${Math.max(Number(quote.free_left) - 1, 0)} of your ${quote.allowance} free transfers left ${quote.period === "day" ? "today" : "this month"} after this one`
-        : `${quote.allowance > 0 ? `Your ${quote.allowance} free transfers ${quote.period === "day" ? "today" : "this month"} are used · ` : ""}₦20 up to ₦5,000 · ₦35 up to ₦50,000 · ₦60 above`)
+        : `${quote.allowance > 0 ? `Your ${quote.allowance} free transfers ${quote.period === "day" ? "today" : "this month"} are used · ` : ""}₦10 below ₦5,000 · ₦25 below ₦10,000 · ₦35 up to ₦50,000 · ₦60 above`)
     : "";
 
   const doTransfer = async (pin) => {
@@ -1008,6 +1032,7 @@ export function ReceivePaymentSheet({ open, onClose, wallet, payRequest, testMod
           </button>
         </div>
       )}
+      {!paid && wallet?.account_state !== "retired" && <DepositFeeNote open={open} />}
     </BottomSheet>
     {receipt && <TransactionDetailModal data={receipt} onClose={() => setReceipt(null)} />}
     </>

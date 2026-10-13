@@ -652,6 +652,8 @@ export const WALLET_TITLES = {
   adjustment:          'Wallet Adjustment',
   transfer_fee:        'Transfer Fee',
   cbn_levy:            'Stamp Duty',
+  deposit_fee:         'Deposit Fee',
+  ajo_reversal:        'Contribution Reversed',
 };
 
 // A two-line "Name / Bank • Account" value, OPay-receipt style. ReceiptCard

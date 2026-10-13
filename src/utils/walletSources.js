@@ -25,7 +25,8 @@ export const WALLET_SOURCE = {
   transfer_fee:        { label: "Transfer fee",         icon: "wallet",     credit: false },
   cbn_levy:            { label: "Stamp duty",           icon: "wallet",     credit: false },
   wallet_fee:          { label: "Wallet transfer fee",  icon: "wallet",     credit: false },
+  deposit_fee:         { label: "Deposit fee",          icon: "wallet",     credit: false },
 };
 
 // Sources that are charges on a transfer — shown with the "%" icon
-export const WALLET_FEE_SOURCES = new Set(["transfer_fee", "cbn_levy", "wallet_fee"]);
+export const WALLET_FEE_SOURCES = new Set(["transfer_fee", "cbn_levy", "wallet_fee", "deposit_fee"]);

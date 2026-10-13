@@ -56,6 +56,20 @@ async function ledgerFacts(sb: any, ledgerId?: string | null): Promise<LedgerFac
   } catch { return null; }
 }
 
+// Business deposit fee (2026-10-13, SQL wallet_take_deposit_fee): taken right after a deposit / sale payment is credited.
+// 0 for Ajo clients and personal wallets, for Premium businesses and before wallet_deposit_fee_start. Idempotent (a retried
+// webhook returns the fee already taken) and never blocks the deposit — a failure here just means no fee was taken.
+async function takeDepositFee(sb: any, ledgerId?: string | null): Promise<{ feeKobo: number; balanceAfterKobo: number | null }> {
+  if (!ledgerId) return { feeKobo: 0, balanceAfterKobo: null };
+  try {
+    const { data, error } = await sb.rpc("wallet_take_deposit_fee", { p_ledger_id: ledgerId });
+    if (error) { console.warn("[flw-webhook] deposit fee:", error.message); return { feeKobo: 0, balanceAfterKobo: null }; }
+    const d = (data ?? {}) as Record<string, unknown>;
+    const fee = Number(d.fee_kobo ?? 0);
+    return { feeKobo: Number.isFinite(fee) && fee > 0 ? fee : 0, balanceAfterKobo: d.balance_after_kobo != null ? Number(d.balance_after_kobo) : null };
+  } catch (e) { console.warn("[flw-webhook] deposit fee:", (e as Error).message); return { feeKobo: 0, balanceAfterKobo: null }; }
+}
+
 async function sendSms(phone: string | null | undefined, message: string, opts: {
   category?: string; user_id?: string | null; related_type?: string; related_id?: string;
 } = {}): Promise<void> {
@@ -305,6 +319,8 @@ serve(async (req) => {
           } catch (e) { console.warn("[flw-webhook] sale meta stamp:", (e as Error).message); }
         }
         const saleFacts = await ledgerFacts(sb, saleLedgerId);
+        const saleFee = await takeDepositFee(sb, saleLedgerId);
+        const saleFeeNote = saleFee.feeKobo > 0 ? ` · ${fmtNgn(saleFee.feeKobo)} deposit fee` : "";
         // Awaited — same reason as the topup path below: the function returns
         // (and the Deno isolate can be torn down) right after sendWalletEmail
         // resolves, which was silently dropping this un-awaited fetch before
@@ -315,7 +331,7 @@ serve(async (req) => {
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}` },
           body: JSON.stringify({
             action: "notify", userId: wallet.user_id, type: "wallet_sale",
-            title: "Payment received", body: `₦${amountNaira.toLocaleString()} received — recorded as a sale`,
+            title: "Payment received", body: `₦${amountNaira.toLocaleString()} received — recorded as a sale${saleFeeNote}`,
             category: "money", priority: "high", deepLink: { tab: "wallet", openWallet: true },
           }),
         }).catch(() => {});
@@ -332,9 +348,11 @@ serve(async (req) => {
               ["From", esc(originator)],
               ["Into", `${esc(vaNo || wallet.flw_account_number)} · KudiAI Wallet`],
               ["Recorded as", "A sale in your books"],
+              ...(saleFee.feeKobo > 0 ? [["Deposit fee", nairaFromKobo(saleFee.feeKobo)] as [string, string]] : []),
               ["Transaction No.", esc(chargeId), { mono: true }],
               ["Business", owner.name ? esc(owner.name) : ""],
-              ["Balance After", saleFacts?.balance_after_kobo != null ? nairaFromKobo(saleFacts.balance_after_kobo) : ""],
+              ["Balance After", saleFee.balanceAfterKobo != null ? nairaFromKobo(saleFee.balanceAfterKobo)
+                : saleFacts?.balance_after_kobo != null ? nairaFromKobo(saleFacts.balance_after_kobo) : ""],
             ],
             button: { label: "View Transaction →", url: appLink({ tab: "wallet" }) },
           }));
@@ -395,6 +413,10 @@ serve(async (req) => {
       const creditedKobo = Number((creditRow as Record<string, unknown> | null)?.amount_kobo ?? netAmountKobo);
       const creditedMeta = ((creditRow as Record<string, unknown> | null)?.meta ?? {}) as Record<string, unknown>;
       const actualFeeKobo = Number(creditedMeta.fee_kobo ?? 0);
+      // business deposit fee (by plan) — what actually stays in the wallet is creditedKobo − depFee
+      const depFee = await takeDepositFee(sb, (creditRow as Record<string, unknown> | null)?.id as string | undefined);
+      const netKobo = creditedKobo - depFee.feeKobo;
+      const feeText = depFee.feeKobo > 0 ? ` (${fmtNgn(depFee.feeKobo)} deposit fee)` : "";
 
       // notify the owner — awaited so the function doesn't return (and the
       // isolate get torn down) before these fire-and-forget requests actually
@@ -404,22 +426,22 @@ serve(async (req) => {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}` },
         body: JSON.stringify({
           action: "notify", userId: wallet.user_id, type: "wallet_topup",
-          title: "Wallet funded", body: `₦${(creditedKobo / 100).toLocaleString()} added to your KudiAI wallet`,
+          title: "Wallet funded", body: `₦${(netKobo / 100).toLocaleString()} added to your KudiAI wallet${feeText}`,
           category: "money", priority: "high", deepLink: { tab: "wallet", openWallet: true },
         }),
       }).catch(() => {});
-      await sendSms(owner.phone, `₦${(creditedKobo / 100).toLocaleString("en-NG")} credited to your KudiAI wallet. — KudiAI`, {
+      await sendSms(owner.phone, `₦${(netKobo / 100).toLocaleString("en-NG")} credited to your KudiAI wallet${feeText}. — KudiAI`, {
         category: "money", user_id: wallet.user_id as string, related_type: "wallet_ledger", related_id: chargeId,
       });
       // wallet_credit returns the ledger row it wrote — its stored reference, running
       // balance and server timestamp are what the receipt in the app shows too.
       const fundedRow = (creditRow ?? {}) as Record<string, unknown>;
-      await sendWalletEmail(sb, owner.email, `Wallet funded — ${fmtNgn(creditedKobo)}`, () =>
+      await sendWalletEmail(sb, owner.email, `Wallet funded — ${fmtNgn(netKobo)}`, () =>
         bankEmail({
           title: "Wallet Funded", tone: "success",
           timestamp: (fundedRow.created_at as string | undefined) ?? undefined,
-          amount: nairaFromKobo(creditedKobo), amountLabel: "Credited to Your Wallet",
-          preheader: `${nairaFromKobo(creditedKobo)} added to your KudiAI wallet`,
+          amount: nairaFromKobo(netKobo), amountLabel: "Credited to Your Wallet",
+          preheader: `${nairaFromKobo(netKobo)} added to your KudiAI wallet`,
           intro: "Your KudiAI wallet is ready to use for bills and transfers.",
           rows: [
             ["Transaction Reference", fundedRow.receipt_ref ? esc(fundedRow.receipt_ref) : "", { mono: true }],
@@ -429,9 +451,14 @@ serve(async (req) => {
               ["Amount Received", nairaFromKobo(amountKobo)] as [string, string],
               ["CBN electronic transfer levy", nairaFromKobo(actualFeeKobo)] as [string, string],
             ] : []),
+            ...(depFee.feeKobo > 0 ? [
+              ...(actualFeeKobo > 0 ? [] : [["Amount Received", nairaFromKobo(creditedKobo)] as [string, string]]),
+              ["Deposit fee", nairaFromKobo(depFee.feeKobo)] as [string, string],
+            ] : []),
             ["Transaction No.", esc(chargeId), { mono: true }],
             ["Business", owner.name ? esc(owner.name) : ""],
-            ["Balance After", nairaFromKobo(fundedRow.balance_after_kobo != null ? fundedRow.balance_after_kobo : Number(wallet.balance_kobo || 0) + creditedKobo)],
+            ["Balance After", nairaFromKobo(depFee.balanceAfterKobo != null ? depFee.balanceAfterKobo
+              : fundedRow.balance_after_kobo != null ? fundedRow.balance_after_kobo : Number(wallet.balance_kobo || 0) + creditedKobo)],
           ],
           button: { label: "View Transaction →", url: appLink({ tab: "wallet" }) },
         }));
