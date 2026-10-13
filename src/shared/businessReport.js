@@ -7,6 +7,7 @@
 // service role on the server for the monthly business report email.
 
 import { fmtCurrency } from "./reportPdfCore.js";
+import { ASO_CLIENT_COLUMNS } from "./safeColumns.js";
 import { addDays } from "./reportData.js";
 
 /** The business's own letterhead for owner report PDFs: logo / address / contacts from the invoice settings when set,
@@ -178,7 +179,7 @@ export async function businessReportSource(sb, ownerId, { from, to }) {
     pages(() => sb.from("transactions").select("*").eq("user_id", ownerId).gte("transaction_date", from).lte("transaction_date", to).order("created_at", { ascending: false })),
     pages(() => sb.from("credits").select("*").eq("user_id", ownerId).order("created_at", { ascending: false })),
     pages(() => sb.from("debt_payments").select("*").eq("owner_id", ownerId).order("created_at", { ascending: true })),
-    pages(() => sb.from("aso_clients").select("*").eq("user_id", ownerId).eq("portal_active", true).order("created_at", { ascending: false })),
+    pages(() => sb.from("aso_clients").select(ASO_CLIENT_COLUMNS).eq("user_id", ownerId).eq("portal_active", true).order("created_at", { ascending: false })),
     pages(() => sb.from("products").select("id, product_name, cost_price, needs_costing, quantity, low_stock_threshold").eq("user_id", ownerId).order("product_name")),
     pages(() => sb.from("invoices").select("*, invoice_items(*), invoice_payments(*)").eq("user_id", ownerId).order("created_at", { ascending: false })),
     pages(() => sb.from("staff").select("id, full_name").eq("owner_id", ownerId).order("full_name")),

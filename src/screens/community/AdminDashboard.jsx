@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../../utils/supabase";
+import { ORG_MEMBER_COLUMNS } from "../../shared/safeColumns";
 import { useToast } from "../../components/Toast";
 const fmtDate = ts => new Date(ts).toLocaleDateString([],{day:"numeric",month:"short",year:"numeric"});
 
@@ -67,7 +68,7 @@ export default function AdminDashboard({ orgId, orgName, org, members:initMember
       setReports(data||[]);
     } else if (t === "Members") {
       const {data} = await supabase.from("org_members")
-        .select("*").eq("org_id",orgId).order("reputation_points",{ascending:false});
+        .select(ORG_MEMBER_COLUMNS).eq("org_id",orgId).order("reputation_points",{ascending:false});
       setMembers(data||[]);
     }
     setLoading(false);

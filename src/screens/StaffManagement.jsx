@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { canSellPlans } from "../utils/platform";
+import { STAFF_COLUMNS } from "../shared/safeColumns";
 import { supabase } from "../utils/supabase";
 import { isBillPayment } from "../utils/helpers";
 import { canDo, featureLimit, upgradeLabel, planRequiredLabel, planAvailableText } from "../utils/plans";
@@ -127,7 +128,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
     setLoading(true);
     const { data } = await supabase
       .from("staff")
-      .select("*, staff_permissions(*)")
+      .select(`${STAFF_COLUMNS}, staff_permissions(*)`)
       .eq("owner_id", userId)
       .neq("status", "removed")
       .order("created_at", { ascending: false });
@@ -386,7 +387,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
       const { data: createdStaff, error: staffErr } = await supabase
         .from("staff")
         .insert({ owner_id: userId, ...form, branch_id: form.branch_id || null, profile_image_url: null })
-        .select().single();
+        .select(STAFF_COLUMNS).single();
 
       if (staffErr) throw staffErr;
       staffRow = createdStaff;
@@ -522,7 +523,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
       await loadStaff();
       const { data: refreshed } = await supabase
         .from("staff")
-        .select("*, staff_permissions(*)")
+        .select(`${STAFF_COLUMNS}, staff_permissions(*)`)
         .eq("id", selected.id)
         .single();
       if (refreshed) setSelected(refreshed);

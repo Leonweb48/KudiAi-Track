@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../../utils/supabase";
+import { ORG_MEMBER_COLUMNS } from "../../shared/safeColumns";
 import { calcLevel } from "../../utils/communityTypes";
 import AdminDashboard  from "./AdminDashboard";
 import MediaHub        from "./MediaHub";
@@ -100,7 +101,7 @@ export default function GroupInfoPage({ orgId, orgName, org, settings: initSetti
 
   useEffect(() => {
     if (!myId || !orgId) return;
-    supabase.from("org_members").select("*").eq("org_id",orgId).eq("user_id",myId).maybeSingle()
+    supabase.from("org_members").select(ORG_MEMBER_COLUMNS).eq("org_id",orgId).eq("user_id",myId).maybeSingle()
       .then(({data}) => setMyMember(data));
   }, [myId, orgId]);
 

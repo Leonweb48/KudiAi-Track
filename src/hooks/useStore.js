@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Capacitor } from "@capacitor/core";
+import { ASO_CLIENT_COLUMNS } from "../shared/safeColumns";
 import { App as CapApp } from "@capacitor/app";
 import { supabase } from "../utils/supabase";
 import { uid, today } from "../utils/helpers";
@@ -121,7 +122,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     };
     const txQ  = () => scope(supabase.from("transactions").select("*").eq("user_id", userId), "tx");
     const crQ  = () => scope(supabase.from("credits").select("*").eq("user_id", userId), "cr");
-    const asoQ = () => scope(supabase.from("aso_clients").select("*").eq("user_id", userId).eq("portal_active", true), "aso");
+    const asoQ = () => scope(supabase.from("aso_clients").select(ASO_CLIENT_COLUMNS).eq("user_id", userId).eq("portal_active", true), "aso");
     const dpQ  = () => scope(supabase.from("debt_payments").select("*").eq("owner_id", userId), "dp");
 
     try {
@@ -1034,7 +1035,6 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     const d = new Date();
     const ym = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}`;
     const membershipNumber = `AJO-${ym}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
-    const portalPin = String(Math.floor(1000 + Math.random() * 9000));
     const payload = {
       user_id:                userId,
       staff_id:               staffId  || null,
@@ -1066,7 +1066,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
       notes:                  cl.notes   || "",
       status:                 "active",
       membership_number:      membershipNumber,
-      portal_pin:             portalPin,
+      // no portal_pin: the client sets their own transaction PIN (a PIN made here was stored in plain text and shown to the owner)
       portal_active:          true,
       ajo_group_id:           cl.ajo_group_id || null,
       bank_code:              cl.bank_code       || null,
@@ -1079,7 +1079,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     setDbError(null);
 
     const { data, error } = await supabase
-      .from("aso_clients").insert(payload).select().single();
+      .from("aso_clients").insert(payload).select(ASO_CLIENT_COLUMNS).single();
 
     if (error) {
       setAsoClients(p => p.filter(c => c.id !== tempId));

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase, supabaseConfigured } from "../utils/supabase";
+import { STAFF_COLUMNS } from "../shared/safeColumns";
 import { Capacitor } from "@capacitor/core";
 import { App } from "@capacitor/app";
 import { Browser } from "@capacitor/browser";
@@ -358,7 +359,7 @@ export function useAuth() {
     if (accountType === "staff") {
       let { data: staffRow, error: staffErr } = await supabase
         .from("staff")
-        .select("*, staff_permissions(*)")
+        .select(`${STAFF_COLUMNS}, staff_permissions(*)`)
         .eq("user_id", uid)
         .maybeSingle();
 
@@ -382,7 +383,7 @@ export function useAuth() {
       if (!staffRow) {
         const { data: legacyStaff } = await supabase
           .from("staff")
-          .select("*, staff_permissions(*)")
+          .select(`${STAFF_COLUMNS}, staff_permissions(*)`)
           .eq("email", email)
           .maybeSingle();
         staffRow = legacyStaff;
@@ -611,14 +612,14 @@ export function useAuth() {
       // No owner profile — check if they are a staff member
       let { data: staffRow } = await supabase
         .from("staff")
-        .select("*, staff_permissions(*)")
+        .select(`${STAFF_COLUMNS}, staff_permissions(*)`)
         .eq("user_id", uid)
         .maybeSingle();
 
       if (!staffRow) {
         const { data: legacyStaff } = await supabase
           .from("staff")
-          .select("*, staff_permissions(*)")
+          .select(`${STAFF_COLUMNS}, staff_permissions(*)`)
           .eq("email", email)
           .maybeSingle();
         staffRow = legacyStaff;
