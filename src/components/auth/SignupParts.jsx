@@ -48,8 +48,8 @@ export function SavingBusinessPicker({ businesses, loading, value, onChange }) {
         {businesses.map(b => <option key={b.id} value={b.id}>{b.business_name}</option>)}
       </select>
       <p className="text-[11px] text-gray-400 dark:text-slate-500 mt-1.5 leading-relaxed">
-        Your registration goes to this business for review — they'll set your contribution terms and
-        approve before you can start saving.
+        Your wallet opens straight away — no waiting for approval. This business keeps your savings
+        records and can see your contributions.
       </p>
       {n && (
         <div className={`mt-2.5 rounded-xl px-3.5 py-3 border ${n.hasFee

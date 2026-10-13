@@ -9,7 +9,7 @@ import { Browser } from "@capacitor/browser";
 import { useT } from "../contexts/LanguageContext";
 import LegalScreen from "./LegalScreen";
 import { saveGoogleWalletChoice, saveGoogleBusinessChoice, clearGoogleSignupChoices } from "../utils/googleWalletSignup";
-import { useSavingBusinesses, SavingBusinessPicker, TermsAgreement, GoogleMark, AccountTypeOptions, WalletDetailsFields } from "../components/auth/SignupParts";
+import { useSavingBusinesses, SavingBusinessPicker, TermsAgreement, GoogleMark, WalletDetailsFields } from "../components/auth/SignupParts";
 
 const isNative = Capacitor.isNativePlatform();
 const SITE_HOME = "https://kudiai.app/home";
@@ -369,9 +369,11 @@ const PENDING_AJO_REG_KEY = "kuditrack_pending_ajo_reg";
 
 export default function Auth() {
   const t = useT();
-  // "login" | "register" | "forgot" | "otp" | "reset_otp" — the public website's "Get started" links open on register (?signup=1)
+  // "login" | "register" | "forgot" | "otp" | "reset_otp" — the public website's "Get started" links open on register (?signup=..., business sign-up when =business)
   const [mode,          setMode]         = useState(() => (new URLSearchParams(window.location.search).get("signup") ? "register" : "login"));
-  const [regType,       setRegType]      = useState("business"); // "business" | "client" — register mode only
+  // "client" (a KudiAI Wallet — the default) | "business". Business sign-up is its own page behind the "Create a business
+  // account" button, so someone who just wants an account is never asked to choose; ?signup=business opens it directly.
+  const [regType,       setRegType]      = useState(() => (new URLSearchParams(window.location.search).get("signup") === "business" ? "business" : "client"));
   const [email,         setEmail]        = useState("");
   const [password,      setPass]         = useState("");
   const [confirmPass,   setConfirmPass]  = useState("");
@@ -381,7 +383,7 @@ export default function Auth() {
   const [showConfirmPw, setShowConfirmPw] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [legalView,     setLegalView]    = useState(null); // "terms" | "privacy" | null
-  // Google on the "Create account" tab first asks what the Google account is for: null | "choose" | "wallet"
+  // Google on the "Create account" tab (wallet sign-up) first asks for the wallet details: null | "wallet"
   const [googleSheet,   setGoogleSheet]  = useState(null);
   const [googleSheetErr, setGoogleSheetErr] = useState("");
   const [loading,       setLoading]      = useState(false);
@@ -695,7 +697,10 @@ export default function Auth() {
 
   const handleGoogle = () => {
     clearMessages();
-    if (mode === "register") { setGoogleSheetErr(""); setGoogleSheet("choose"); return; }
+    if (mode === "register") {
+      if (regType === "business") { googleAsBusiness(); return; }
+      setGoogleSheetErr(""); setGoogleSheet("wallet"); return;
+    }
     // Signing in: an existing Google account goes where it already belongs; a brand-new one is asked what it's for
     // once Google has signed it in (GoogleAccountChoice), so no earlier choice may linger.
     clearGoogleSignupChoices();
@@ -846,32 +851,26 @@ export default function Auth() {
         </div>
       )}
 
-      {/* Registering as a business (owner/collector) or a savings client? */}
+      {/* What this sign-up opens: a KudiAI Wallet by default; business sign-up only via its own button below */}
       {!isForgot && mode === "register" && (
-        <div className="flex bg-gray-100 dark:bg-slate-800 rounded-xl p-1 mb-5">
-          <button
-            type="button"
-            onClick={() => { setRegType("business"); clearMessages(); }}
-            className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${
-              regType === "business"
-                ? "bg-white dark:bg-slate-700 text-gray-800 dark:text-white shadow-sm"
-                : "text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200"
-            }`}
-          >
-            Business
-          </button>
-          <button
-            type="button"
-            onClick={() => { setRegType("client"); clearMessages(); }}
-            className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${
-              regType === "client"
-                ? "bg-white dark:bg-slate-700 text-gray-800 dark:text-white shadow-sm"
-                : "text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200"
-            }`}
-          >
-            KudiAI Wallet
-          </button>
-        </div>
+        regType === "business" ? (
+          <div className="mb-5">
+            <button type="button" onClick={() => { setRegType("client"); clearMessages(); }}
+              className="text-sm text-emerald-600 font-medium flex items-center gap-1 hover:underline">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+              Open a KudiAI Wallet instead
+            </button>
+            <h2 className="text-lg font-bold text-gray-800 dark:text-white mt-2">Create a business account</h2>
+            <p className="text-xs text-gray-500 dark:text-slate-400">For shop owners and savings collectors: sales, stock, staff, Ajo clients and a business wallet.</p>
+          </div>
+        ) : (
+          <div className="mb-5">
+            <h2 className="text-lg font-bold text-gray-800 dark:text-white">Open your KudiAI Wallet</h2>
+            <p className="text-xs text-gray-500 dark:text-slate-400">Send and receive money, pay bills and save — free to open.</p>
+          </div>
+        )
       )}
 
       {isForgot && (
@@ -1116,31 +1115,8 @@ export default function Auth() {
             <div className="px-6 pt-5">
               <div className="w-10 h-1 rounded-full bg-gray-200 dark:bg-slate-700 mx-auto mb-4 sm:hidden" />
 
-              {googleSheet === "choose" ? (
-                <>
-                  <h2 id="google-sheet-title" className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                    <GoogleMark /> Continue with Google as…
-                  </h2>
-                  <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">Choose what this Google account is for.</p>
-                  <div className="mt-4">
-                    <AccountTypeOptions onBusiness={googleAsBusiness}
-                      onWallet={() => { setRegType("client"); setGoogleSheetErr(""); setGoogleSheet("wallet"); }} />
-                  </div>
-                  <button type="button" onClick={() => setGoogleSheet(null)}
-                    className="w-full mt-4 py-2.5 text-sm font-semibold text-gray-500 dark:text-slate-400">
-                    Cancel
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button type="button" onClick={() => { setGoogleSheetErr(""); setGoogleSheet("choose"); }}
-                    className="text-sm text-emerald-600 font-medium flex items-center gap-1 hover:underline">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                    </svg>
-                    Back
-                  </button>
-                  <h2 id="google-sheet-title" className="text-lg font-bold text-gray-900 dark:text-white mt-2">Open a KudiAI Wallet</h2>
+              <>
+                  <h2 id="google-sheet-title" className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2"><GoogleMark /> Open a KudiAI Wallet</h2>
                   <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">
                     Your name and email come from Google. Tell us who you're saving with.
                   </p>
@@ -1159,9 +1135,12 @@ export default function Auth() {
                       <span className="bg-white rounded-md p-0.5 flex"><GoogleMark className="w-4 h-4" /></span>
                       Continue with Google
                     </button>
+                    <button type="button" onClick={() => setGoogleSheet(null)}
+                      className="w-full py-2.5 text-sm font-semibold text-gray-500 dark:text-slate-400">
+                      Cancel
+                    </button>
                   </div>
                 </>
-              )}
             </div>
           </div>
         </div>
@@ -1186,6 +1165,24 @@ export default function Auth() {
             {t("auth.googleNote")}
           </p>
         </>
+      )}
+
+      {mode === "register" && regType === "client" && (
+        <button type="button" onClick={() => { setRegType("business"); clearMessages(); window.scrollTo?.(0, 0); }}
+          className="w-full mt-5 flex items-center gap-3 rounded-2xl border border-gray-200 dark:border-slate-700 px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors">
+          <span className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 flex items-center justify-center flex-shrink-0" aria-hidden="true">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9l1-5h16l1 5M4 9v11h16V9M9 20v-6h6v6M3 9h18" />
+            </svg>
+          </span>
+          <span className="flex-1 min-w-0">
+            <span className="block text-sm font-bold text-gray-800 dark:text-white">Own a business? Create a business account</span>
+            <span className="block text-[11px] text-gray-500 dark:text-slate-400">Track sales, stock, staff and Ajo savings clients</span>
+          </span>
+          <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
       )}
 
     </BgLayout>

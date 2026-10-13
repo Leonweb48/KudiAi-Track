@@ -655,20 +655,20 @@ export default async function handler(req, res) {
 
   // ── Ajo client self-registration: owner needs to review + approve ────────────
   else if (event === "ajo_registration_pending") {
-    q(d.owner_email, `New client registration — ${str(d.client_name)} is awaiting your approval`,
-      emailHtml("New Client Registration", `
+    q(d.owner_email, `New savings client — ${str(d.client_name)} joined your business`,
+      emailHtml("New Savings Client", `
         <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 20px;">
           Hi <strong>${str(d.owner_name || d.business_name)}</strong>, <strong>${str(d.client_name)}</strong> just registered
           themselves as a savings client under your business${str(d.client_phone) ? ` (${str(d.client_phone)})` : ""}.
         </p>
         <div style="background:#eff6ff;border-left:4px solid #3b82f6;padding:14px 18px;border-radius:0 12px 12px 0;margin:0 0 20px;">
           <p style="margin:0;font-size:13px;color:#1e40af;">
-            Open your Ajo dashboard to set their contribution terms and approve — they can't start saving until you do.
+            They can start saving right away. Open your Ajo dashboard to see them or change their terms.
           </p>
         </div>
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
           <tr><td align="center">
-            <a href="https://kudiai.app" style="display:inline-block;background:linear-gradient(135deg,#2563eb,#3b82f6);color:#fff;font-size:14px;font-weight:700;text-decoration:none;padding:13px 36px;border-radius:10px;">Review Registration →</a>
+            <a href="https://kudiai.app" style="display:inline-block;background:linear-gradient(135deg,#2563eb,#3b82f6);color:#fff;font-size:14px;font-weight:700;text-decoration:none;padding:13px 36px;border-radius:10px;">Open Ajo Clients →</a>
           </td></tr>
         </table>
       `, "linear-gradient(135deg,#2563eb 0%,#3b82f6 100%)"));

@@ -20,7 +20,7 @@ describe("registrationFeeNotice", () => {
     expect(n.hasFee).toBe(true);
     expect(n.headline).toBe("Registration fee: ₦2,000");
     expect(n.detail).toContain("first deposit");
-    expect(n.detail).toContain("Amaya & Co. confirms your final terms");
+    expect(n.detail).toContain("Amaya & Co. can update your savings terms");
   });
   it("says plainly when there is no fee, rather than staying silent", () => {
     const n = registrationFeeNotice(0, "Amaya & Co.");
@@ -28,6 +28,6 @@ describe("registrationFeeNotice", () => {
     expect(n.headline).toBe("No registration fee");
   });
   it("falls back to a generic subject when the business name is unknown", () => {
-    expect(registrationFeeNotice(500, "  ").detail).toContain("The business confirms your final terms");
+    expect(registrationFeeNotice(500, "  ").detail).toContain("The business can update your savings terms");
   });
 });

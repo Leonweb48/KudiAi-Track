@@ -25,7 +25,7 @@ describe("registration fee on the 'awaiting approval' screen", () => {
     await show({ ...base, registration_charge: 2000 });
     expect(host.textContent).toContain("Registration fee: ₦2,000");
     expect(host.textContent).toContain("first deposit");
-    expect(host.textContent).toContain("Amaya & Co. confirms your final terms");
+    expect(host.textContent).toContain("Amaya & Co. can update your savings terms");
   });
 
   it("says plainly that there is no fee, rather than staying silent", async () => {

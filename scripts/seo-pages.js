@@ -90,7 +90,7 @@ page({
     `<h2>${esc(H.ajo.title)}</h2><p>${esc(H.ajo.text)}</p>` +
     `<h2>${esc(H.security.title)}</h2>${list(H.security.points)}` +
     `<h2>Who it is for</h2>${list(F.audiences.map((a) => [a.title, a.text]))}` +
-    `<p>KudiAI Track is made by Amaya &amp; Co. Technologies. <a href="https://kudiai.app/?signup=1">Get started free</a>.</p>`,
+    `<p>KudiAI Track is made by Amaya &amp; Co. Technologies. <a href="https://kudiai.app/?signup=business">Get started free</a>.</p>`,
 });
 
 // ── /features ─────────────────────────────────────────────────────────────────────────────────────────────────

@@ -4,9 +4,10 @@ import SITE from "../content/site.json";
 /**
  * The public website's shared frame (kudiai.app/home, /features, /about, /faq, /contact, /terms, /privacy):
  * header with mobile menu, footer, design tokens, scroll-reveal, and the 3D / chart building blocks the pages use.
- * The app itself stays at kudiai.app/ — "Sign in" goes there and "Get started" opens it on Create account (?signup=1).
+ * The app itself stays at kudiai.app/ — "Sign in" goes there and "Get started" opens it on business sign-up (?signup=business;
+ * the app's own Create account opens on a KudiAI Wallet, with business sign-up behind its own button).
  */
-export const SIGNUP = "/?signup=1";
+export const SIGNUP = "/?signup=business";
 
 const CSS = `
 .ks{--navy:#0B1437;--navy2:#16255A;--blue:#2a4bb0;--green:#3DA829;--green2:#5ED24A;--gold:#E9B949;

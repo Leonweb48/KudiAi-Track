@@ -32,7 +32,7 @@ export function PendingPayoutNotice({ payouts = [] }) {
   const day = payouts[0]?.scheduled_date ? expectedDay(payouts[0].scheduled_date) : "";
   return (
     <p className="text-[11px] font-semibold text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-900/20 rounded-xl px-3 py-2 mb-1">
-      {fmt(total)} from your approved withdrawal is pending{day ? ` — expected ${day}` : " — arriving on the next business day"}. It will show in your balance once it lands.
+      {fmt(total)} from your approved withdrawal is pending{day ? ` — expected ${day}` : " — being paid into your wallet"}. It will show in your balance once it lands.
     </p>
   );
 }

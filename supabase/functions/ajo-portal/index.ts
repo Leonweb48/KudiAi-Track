@@ -279,8 +279,9 @@ serve(async (req) => {
     // ── self-register — a new client links themselves to a business they picked
     //    at signup. Runs with the caller's own (freshly created) session — no
     //    existing aso_clients row to scope against, so this is deliberately
-    //    outside _clientScoped. Lands "pending_approval": the owner sets
-    //    contribution terms and approves before the client can do anything. ──
+    //    outside _clientScoped. Lands ACTIVE straight away (owner, 2026-10-12: "a client can register without owner
+    //    approval") — the client opens their own wallet and savings card/group; the owner is told and can still edit
+    //    their terms or archive them. Saving only starts counting once a card/group/round is active. ──
     if (action === "self-register") {
       const { business_id, full_name, phone } = body as { business_id: string; full_name: string; phone?: string };
       if (!business_id) return json({ error: "Select a business to register with" }, 400);
@@ -307,11 +308,12 @@ serve(async (req) => {
         full_name:               full_name.trim(),
         phone:                   phone || "",
         email:                   (_caller.email || "").toLowerCase(),
-        status:                  "pending_approval",
+        status:                  "active",
         portal_active:           true,
         client_user_id:          callerId,
         membership_number:       membershipNumber,
         registration_date:       new Date().toISOString().slice(0, 10),
+        next_contribution_date:  new Date().toISOString().slice(0, 10),
         contribution_frequency:  "daily",
         contribution_amount:     0,
         registration_charge:     registrationFee,
@@ -322,9 +324,9 @@ serve(async (req) => {
 
       notifyUser(business_id, {
         type:     "ajo_registration_request",
-        title:    "New client registration",
-        body:     `${full_name.trim()} wants to register as your savings client — review and set their terms.`,
-        priority: "high",
+        title:    "New savings client",
+        body:     `${full_name.trim()} just joined as your savings client. You can view or change their terms in Ajo → Clients.`,
+        priority: "normal",
         deepLink: { tab: "aso", sub: "clients" },
         category: "savings",
       });

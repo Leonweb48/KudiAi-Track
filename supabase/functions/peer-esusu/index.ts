@@ -163,10 +163,19 @@ serve(async (req: Request) => {
     }
     const slots = Math.max(1, parseInt(String(payout_slots_per_round)) || 1);
 
+    // Organiser's fee on each collector's payout (owner, 2026-10-12): a percentage (up to 50%) or a fixed amount (up to
+    // one contribution). Set once here — members see it before they accept the invite, so it can't change later.
+    const { payout_fee_type, payout_fee_value } = body as { payout_fee_type?: string; payout_fee_value?: number };
+    const feeType = ["percent", "fixed"].includes(payout_fee_type || "") ? payout_fee_type as string : "none";
+    const feeValue = feeType === "none" ? 0 : Math.round(Number(payout_fee_value) * 100) / 100;
+    if (feeType === "percent" && !(feeValue > 0 && feeValue <= 50)) return json({ error: "The payout fee must be between 0.01% and 50%" }, 400);
+    if (feeType === "fixed" && !(feeValue > 0 && feeValue <= amt)) return json({ error: "A fixed payout fee can't be more than one contribution" }, 400);
+
     const { data: group, error } = await sb.from("peer_esusu_groups").insert({
       creator_user_id: callerId, name: name.trim(), contribution_amount: amt,
       frequency: freq, custom_interval_days: freq === "custom" ? Number(custom_interval_days) : null,
       payout_slots_per_round: slots,
+      ...(feeType !== "none" ? { payout_fee_type: feeType, payout_fee_value: feeValue } : {}),
     }).select("id").single();
     if (error) return json({ error: error.message }, 500);
 
@@ -376,7 +385,7 @@ serve(async (req: Request) => {
     const memberGroups = ((memberships || []) as unknown as Array<{ peer_esusu_groups: Record<string, unknown> | Record<string, unknown>[] }>)
       .map(m => Array.isArray(m.peer_esusu_groups) ? m.peer_esusu_groups[0] : m.peer_esusu_groups)
       .filter((g): g is Record<string, unknown> => !!g && g.creator_user_id !== callerId);
-    const { data: myInvites } = await sb.from("peer_esusu_invites").select("*, peer_esusu_groups(name)").eq("invitee_user_id", callerId).eq("status", "pending");
+    const { data: myInvites } = await sb.from("peer_esusu_invites").select("*, peer_esusu_groups(name, contribution_amount, frequency, payout_fee_type, payout_fee_value)").eq("invitee_user_id", callerId).eq("status", "pending");
 
     return json({ created: created || [], member_of: memberGroups, invites: myInvites || [] });
   }

@@ -22,7 +22,7 @@ describe("withdrawalStage", () => {
   });
 
   it("without a date it still says when in general terms", () => {
-    expect(withdrawalStage({ status: "approved", payout_status: "pending" }).detail).toMatch(/next business day/);
+    expect(withdrawalStage({ status: "approved", payout_status: "pending" }).detail).toMatch(/Being paid into your wallet/);
   });
 
   it("once the payout has landed it says paid to wallet", () => {

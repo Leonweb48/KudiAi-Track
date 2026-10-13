@@ -47,9 +47,9 @@ describe("PendingPayoutNotice", () => {
     expect(host.textContent).toContain("once it lands");
   });
 
-  it("without a date it says next business day", () => {
+  it("without a date it says it is being paid", () => {
     render(<PendingPayoutNotice payouts={[{ id: "a", amount_kobo: 100000 }]} />);
-    expect(host.textContent).toContain("arriving on the next business day");
+    expect(host.textContent).toContain("being paid into your wallet");
   });
 
   it("nothing pending → nothing shown", () => {

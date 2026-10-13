@@ -12,15 +12,15 @@ export function cleanRegFee(v) {
 
 const naira = (n) => `₦${Number(n).toLocaleString("en-NG", { maximumFractionDigits: 2 })}`;
 
-// The wording a client sees BEFORE they register (and while they wait for approval).
+// The wording a client sees BEFORE they register (no approval since 2026-10-13 — they are active at once).
 export function registrationFeeNotice(fee, businessName) {
   const f = cleanRegFee(fee);
   const who = (businessName || "").trim() || "The business";
   return f > 0
     ? { hasFee: true, amount: f,
         headline: `Registration fee: ${naira(f)}`,
-        detail: `Taken once, from your first deposit. ${who} confirms your final terms when they approve you.` }
+        detail: `Taken once, from your first deposit. ${who} can update your savings terms later.` }
     : { hasFee: false, amount: 0,
         headline: "No registration fee",
-        detail: `${who} confirms your final terms when they approve you.` };
+        detail: `${who} can update your savings terms later.` };
 }

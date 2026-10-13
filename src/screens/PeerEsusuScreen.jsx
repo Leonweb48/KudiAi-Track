@@ -21,6 +21,21 @@ async function peerEsusuFn(action, body = {}) {
   return data;
 }
 
+// The organiser's fee on each collector's payout, in words — null when the circle has none
+export function circleFeeLabel(g) {
+  const v = Number(g?.payout_fee_value || 0);
+  if (!g || !(v > 0)) return null;
+  if (g.payout_fee_type === "percent") return `Organiser fee: ${v}% of each payout`;
+  if (g.payout_fee_type === "fixed") return `Organiser fee: ${fmt(v)} from each payout`;
+  return null;
+}
+
+const FEE_TYPES = [
+  { id: "none",    label: "No fee" },
+  { id: "percent", label: "Percentage" },
+  { id: "fixed",   label: "Fixed amount" },
+];
+
 const FREQUENCIES = [
   { id: "daily",   label: "Daily"   },
   { id: "weekly",  label: "Weekly"  },
@@ -35,6 +50,8 @@ function CreateCircleSheet({ onClose, onCreated }) {
   const [frequency,  setFrequency]  = useState("monthly");
   const [customDays, setCustomDays] = useState("");
   const [slots,      setSlots]      = useState("1");
+  const [feeType,    setFeeType]    = useState("none");
+  const [feeValue,   setFeeValue]   = useState("");
   const [saving,     setSaving]     = useState(false);
   const [err,        setErr]        = useState("");
 
@@ -42,12 +59,15 @@ function CreateCircleSheet({ onClose, onCreated }) {
     if (!name.trim())            { setErr("Give your circle a name"); return; }
     if (!(Number(amount) > 0))   { setErr("Enter a contribution amount"); return; }
     if (frequency === "custom" && !(Number(customDays) > 0)) { setErr("Enter how many days between rotations"); return; }
+    if (feeType === "percent" && !(Number(feeValue) > 0 && Number(feeValue) <= 50)) { setErr("Enter a fee between 0.01% and 50%"); return; }
+    if (feeType === "fixed" && !(Number(feeValue) > 0 && Number(feeValue) <= Number(amount))) { setErr("A fixed fee can't be more than one contribution"); return; }
     setSaving(true); setErr("");
     try {
       const res = await peerEsusuFn("create-group", {
         name: name.trim(), contribution_amount: Number(amount), frequency,
         custom_interval_days: frequency === "custom" ? Number(customDays) : undefined,
         payout_slots_per_round: Number(slots) || 1,
+        payout_fee_type: feeType, payout_fee_value: feeType === "none" ? 0 : Number(feeValue),
       });
       onCreated(res.group_id);
     } catch (e) {
@@ -102,6 +122,35 @@ function CreateCircleSheet({ onClose, onCreated }) {
           </label>
           <input type="number" inputMode="numeric" min="1" value={slots} onChange={e => setSlots(e.target.value)}
             className="w-full mt-1.5 px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/60 text-slate-900 dark:text-slate-50 text-[14px] font-semibold outline-none focus:border-brand-400" />
+        </div>
+        <div>
+          <label className="text-[12px] font-semibold text-slate-500 dark:text-slate-400">
+            Your fee on each payout <span className="text-slate-300 font-normal">taken before the collector is paid, kept in your wallet</span>
+          </label>
+          <div className="flex gap-2 mt-1.5">
+            {FEE_TYPES.map(f => (
+              <button key={f.id} type="button" onClick={() => { setFeeType(f.id); setFeeValue(""); }}
+                className={`flex-1 py-2.5 rounded-xl text-[12px] font-bold transition-transform active:scale-[0.98] ${
+                  feeType === f.id ? "bg-brand-500 text-white" : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300"
+                }`}>
+                {f.label}
+              </button>
+            ))}
+          </div>
+          {feeType !== "none" && (
+            <div className="flex items-center gap-2 mt-2 px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/60">
+              {feeType === "fixed" && <span className="text-[15px] font-black text-brand-600 dark:text-brand-300">₦</span>}
+              <input type="number" inputMode="decimal" min="0" value={feeValue} onChange={e => setFeeValue(e.target.value)}
+                placeholder={feeType === "percent" ? "e.g. 5" : "e.g. 500"}
+                className="flex-1 bg-transparent text-[14px] font-semibold text-slate-900 dark:text-slate-50 outline-none placeholder:font-normal placeholder:text-slate-400 tabular [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+              {feeType === "percent" && <span className="text-[15px] font-black text-brand-600 dark:text-brand-300">%</span>}
+            </div>
+          )}
+          <p className="text-[11px] text-slate-400 mt-1.5 leading-snug">
+            {feeType === "none"
+              ? "Collectors receive the full pot."
+              : "Members see this fee before they accept your invite. It can't be changed once the circle is created, and you never pay it on your own turn."}
+          </p>
         </div>
       </div>
 
@@ -263,6 +312,7 @@ function CircleActiveView({ detail, groupId, myUserId, reload, onChanged }) {
         {isCreator
           ? "Members pay into your KudiAI Wallet, and each payout is taken from it. Keep the pot in your wallet until you pay out — spending it will block the payout."
           : `Your ${fmt(due)} is paid into ${creatorName}'s KudiAI Wallet, and each payout is paid out of it.`}
+        {circleFeeLabel(group) && ` ${circleFeeLabel(group)}${isCreator ? " — taken from each collector's payout and kept in your wallet (never on your own turn)." : `, kept by ${isCreator ? "you" : creatorName}.`}`}
       </p>
       {data.round && (haveIPaid ? (
         <p className="text-[12px] text-green-600 dark:text-green-400 font-semibold">You've paid for this payout ✓</p>
@@ -299,6 +349,7 @@ export function PeerCircleDashboard({ groupId, myUserId, onChanged, onOpen }) {
           {group && (
             <p className="text-[10px] text-slate-400 mt-0.5">
               My circle · {fmt(group.contribution_amount)} / {group.frequency}{detail?.is_creator ? " · You run it" : ""}
+              {circleFeeLabel(group) && <span className="block">{circleFeeLabel(group)}</span>}
             </p>
           )}
         </div>
@@ -432,6 +483,7 @@ function CircleDetail({ groupId, myUserId, onClose, onChanged }) {
           <div>
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Per rotation</p>
             <p className="text-lg font-extrabold text-slate-800 dark:text-white">{fmt(group.contribution_amount)}</p>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">{circleFeeLabel(group) || "No organiser fee"}</p>
           </div>
           <div className="text-right">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Status</p>
@@ -566,7 +618,13 @@ export default function PeerEsusuScreen({ session, openGroupId: deepLinkGroupId,
           {data.invites.map(inv => (
             <div key={inv.id} className="bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-800 rounded-2xl px-4 py-3.5">
               <p className="text-sm font-bold text-slate-800 dark:text-white">"{inv.peer_esusu_groups?.name}"</p>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-2.5">You've been invited to join this Esusu circle</p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-2.5">
+                You've been invited to join this Esusu circle
+                {inv.peer_esusu_groups?.contribution_amount ? ` · ${fmt(inv.peer_esusu_groups.contribution_amount)} / ${inv.peer_esusu_groups.frequency}` : ""}
+                <span className="block font-semibold text-slate-600 dark:text-slate-300">
+                  {circleFeeLabel(inv.peer_esusu_groups) || "No organiser fee — collectors get the full pot"}
+                </span>
+              </p>
               <div className="flex gap-2">
                 <button onClick={() => respondInvite(inv.id, false)} disabled={busyInvite === inv.id}
                   className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold text-xs disabled:opacity-50">
@@ -598,6 +656,7 @@ export default function PeerEsusuScreen({ session, openGroupId: deepLinkGroupId,
             <div className="min-w-0">
               <p className="text-sm font-extrabold text-slate-800 dark:text-white truncate">{g.name}</p>
               <p className="text-[11px] text-slate-400 capitalize">{g.status} · {fmt(g.contribution_amount)} / {g.frequency}</p>
+              {circleFeeLabel(g) && <p className="text-[11px] text-slate-400">{circleFeeLabel(g)}</p>}
             </div>
             <Icon name="chevron-right" size={16} className="text-slate-300 flex-shrink-0" />
           </button>
