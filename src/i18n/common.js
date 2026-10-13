@@ -1,0 +1,35 @@
+// common — words used all over the app, in all five languages. Keys: "common.<name>": { en, pidgin, ha, ig, yo }.
+// Use {var} for values: t("common.x", { var }). Prefer these over adding the same word again in an area file.
+const T = {
+  "common.save":        { en: "Save",        pidgin: "Save",          ha: "Ajiye",          ig: "Chekwaa",        yo: "Fipamọ́" },
+  "common.cancel":      { en: "Cancel",      pidgin: "Cancel",        ha: "Soke",           ig: "Kagbuo",         yo: "Fagilé" },
+  "common.close":       { en: "Close",       pidgin: "Close",         ha: "Rufe",           ig: "Mechie",         yo: "Pa á dé" },
+  "common.done":        { en: "Done",        pidgin: "E don do",      ha: "An gama",        ig: "Emechaala",      yo: "Ó ti parí" },
+  "common.continue":    { en: "Continue",    pidgin: "Continue",      ha: "Ci gaba",        ig: "Gaa n'ihu",      yo: "Tẹ̀síwájú" },
+  "common.back":        { en: "Back",        pidgin: "Back",          ha: "Baya",           ig: "Azụ",            yo: "Padà" },
+  "common.next":        { en: "Next",        pidgin: "Next",          ha: "Na gaba",        ig: "Ọzọ",            yo: "Tókàn" },
+  "common.confirm":     { en: "Confirm",     pidgin: "Confirm",       ha: "Tabbatar",       ig: "Kwado",          yo: "Jẹ́rìísí" },
+  "common.delete":      { en: "Delete",      pidgin: "Delete",        ha: "Share",          ig: "Hichapụ",        yo: "Pa rẹ́" },
+  "common.edit":        { en: "Edit",        pidgin: "Edit",          ha: "Gyara",          ig: "Dezie",          yo: "Ṣàtúnṣe" },
+  "common.retry":       { en: "Try again",   pidgin: "Try again",     ha: "Sake gwadawa",   ig: "Nwaa ọzọ",       yo: "Gbìyànjú lẹ́ẹ̀kan sí i" },
+  "common.loading":     { en: "Loading…",    pidgin: "E dey load…",   ha: "Ana lodawa…",    ig: "Ọ na-ebu…",      yo: "Ó ń gbé e…" },
+  "common.saving":      { en: "Saving…",     pidgin: "E dey save…",   ha: "Ana ajiyewa…",   ig: "Ọ na-echekwa…",  yo: "Ó ń fipamọ́…" },
+  "common.search":      { en: "Search",      pidgin: "Search",        ha: "Bincika",        ig: "Chọọ",           yo: "Wá" },
+  "common.yes":         { en: "Yes",         pidgin: "Yes",           ha: "Ee",             ig: "Ee",             yo: "Bẹ́ẹ̀ni" },
+  "common.no":          { en: "No",          pidgin: "No",            ha: "A'a",            ig: "Mba",            yo: "Bẹ́ẹ̀kọ́" },
+  "common.optional":    { en: "optional",    pidgin: "optional",      ha: "zaɓi ne",        ig: "nhọrọ",          yo: "àṣàyàn" },
+  "common.today":       { en: "Today",       pidgin: "Today",         ha: "Yau",            ig: "Taa",            yo: "Òní" },
+  "common.yesterday":   { en: "Yesterday",   pidgin: "Yesterday",     ha: "Jiya",           ig: "Ụnyaahụ",        yo: "Àná" },
+  "common.amount":      { en: "Amount",      pidgin: "Amount",        ha: "Adadi",          ig: "Ego ole",        yo: "Iye owó" },
+  "common.total":       { en: "Total",       pidgin: "Total",         ha: "Jimilla",        ig: "Ngụkọta",        yo: "Àpapọ̀" },
+  "common.name":        { en: "Name",        pidgin: "Name",          ha: "Suna",           ig: "Aha",            yo: "Orúkọ" },
+  "common.phone":       { en: "Phone number", pidgin: "Phone number", ha: "Lambar waya",    ig: "Nọmba ekwentị",  yo: "Nọ́ńbà fóònù" },
+  "common.date":        { en: "Date",        pidgin: "Date",          ha: "Kwanan wata",    ig: "Ụbọchị",         yo: "Ọjọ́" },
+  "common.note":        { en: "Note",        pidgin: "Note",          ha: "Bayani",         ig: "Ndetu",          yo: "Àkọsílẹ̀" },
+  "common.viewAll":     { en: "View all",    pidgin: "See all",       ha: "Duba duka",      ig: "Lee ha niile",   yo: "Wo gbogbo rẹ̀" },
+  "common.noData":      { en: "Nothing here yet", pidgin: "Nothing dey here yet", ha: "Babu komai tukuna", ig: "Ọ dịghị ihe ebe a ugbu a", yo: "Kò sí nǹkan níbí síbẹ̀" },
+  "common.offline":     { en: "You're offline", pidgin: "You no get network", ha: "Ba ka kan layi", ig: "Ị nọghị n'ịntanetị", yo: "O kò sí lórí ayélujára" },
+  "common.somethingWrong": { en: "Something went wrong. Please try again.", pidgin: "Something no work. Abeg try again.", ha: "Wani abu ya faru ba daidai ba. Da fatan a sake gwadawa.", ig: "Ihe adịghị mma mere. Biko nwaa ọzọ.", yo: "Nǹkan kan ṣẹlẹ̀. Jọ̀wọ́ gbìyànjú lẹ́ẹ̀kan sí i." },
+};
+
+export default T;
