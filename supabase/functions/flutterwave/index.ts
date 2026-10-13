@@ -702,8 +702,8 @@ serve(async (req) => {
     //    `refund_missing` AND older than 2 hours. Output: per transfer, age/status only — no names, numbers or ids. ═══
     if (action === "recheck-open-transfers") {
       if (!(await isServiceCall(req, token))) return json({ error: "Unauthorized" }, 401);
-      const apply = body.apply === true, refundMissing = body.refund_missing === true;
-      const { data: open } = await sb.from("wallet_withdrawals").select("id, status, flw_transfer_id, created_at")
+      const apply = body.apply === true, refundMissing = body.refund_missing === true, forcePending = body.force_refund_pending === true;
+      const { data: open } = await sb.from("wallet_withdrawals").select("id, status, flw_transfer_id, created_at, user_id, amount_kobo, account_name")
         .in("status", ["pending", "processing"]).lt("created_at", new Date(Date.now() - 10 * 60e3).toISOString())
         .order("created_at", { ascending: true }).limit(20);
       const accts = [ACTIVE, ...(Object.values(ACCOUNTS) as FlwAccount[]).filter((a) => a.key !== ACTIVE.key)].filter(isConfigured);
@@ -756,6 +756,33 @@ serve(async (req) => {
         } else if (apply && !t && refundMissing && ageMin > 120) {
           const { error } = await sb.rpc("wallet_mark_withdrawal", { p_flw_transfer_id: "", p_status: "failed", p_reference: wd.id });
           if (error) note = `refund failed: ${error.message}`; else applied = "refunded (no Flutterwave record)";
+        } else if (apply && forcePending && !final && ageMin > 180) {
+          // Owner's call (2026-10-13): reverse a transfer Flutterwave has left unfinished for 3+ hours. If Flutterwave pays
+          // it later anyway, wallet_mark_withdrawal does NOT flip it back — finance admins get a "recover ₦X" alert.
+          const tid = String(t?.id || wd.flw_transfer_id || "");
+          const { error } = await sb.rpc("wallet_mark_withdrawal", { p_flw_transfer_id: tid, p_status: "reversed", p_reference: wd.id });
+          if (error) note = `reverse failed: ${error.message}`;
+          else {
+            applied = "reversed (still unfinished at Flutterwave)";
+            const naira = `₦${(Number(wd.amount_kobo) / 100).toLocaleString("en-NG")}`;
+            await fetch(`${SUPABASE_URL}/functions/v1/notify-send`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}` },
+              body: JSON.stringify({
+                action: "notify", userId: wd.user_id, type: "wallet_transfer_failed",
+                title: "Transfer reversed", category: "money", priority: "high", deepLink: { tab: "wallet", openWallet: true },
+                body: `Your ${naira} transfer to ${wd.account_name || "the recipient"} couldn't be completed by our payment partner, so it was reversed. ${naira} and any charges are back in your wallet.`,
+              }),
+            }).catch(() => {});
+            try {
+              await sb.from("admin_notifications").insert({
+                type: "warning", category: "finance", target_roles: ["finance_admin", "super_admin"],
+                title: "Transfer reversed by hand (unfinished at Flutterwave)",
+                message: `A ${naira} transfer Flutterwave left ${flwStatus || "unfinished"} for ${Math.round(ageMin / 60)} h was reversed to the customer's wallet. If Flutterwave pays it later, you'll get a "recover" alert. Withdrawal ${wd.id}.`,
+                metadata: { withdrawal_id: wd.id, flw_status: flwStatus || null, kind: "manual_reversal" },
+              });
+            } catch { /* non-fatal */ }
+          }
         }
         // a transfer found by reference: remember its Flutterwave id so the webhook / admin recheck can use it
         if (apply && t && !wd.flw_transfer_id && t.id) {
@@ -783,7 +810,7 @@ serve(async (req) => {
             flw_status: t ? String(t.status || "") : "not found", provider: t ? providerSays(t) : null });
         }
       }
-      return json({ ok: true, apply, refund_missing: refundMissing, open: out.length, transfers: out, failed_recent: failed,
+      return json({ ok: true, apply, refund_missing: refundMissing, force_refund_pending: forcePending, open: out.length, transfers: out, failed_recent: failed,
         list_sizes: Object.fromEntries(Object.entries(listCache).map(([k, v]) => [k, v.length])), list_item_keys: sampleKeys });
     }
 

@@ -20,6 +20,10 @@ on:
         description: "Also refund transfers Flutterwave has no record of (older than 2 h)"
         type: boolean
         default: false
+      force_refund_pending:
+        description: "Also REVERSE transfers Flutterwave still shows unfinished after 3 h (owner's decision; finance is alerted if Flutterwave pays later)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -34,9 +38,10 @@ jobs:
           KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           APPLY: ${{ github.event_name == 'schedule' && 'true' || (inputs.apply && 'true' || 'false') }}
           REFUND_MISSING: ${{ github.event_name != 'schedule' && inputs.refund_missing && 'true' || 'false' }}
+          FORCE: ${{ github.event_name != 'schedule' && inputs.force_refund_pending && 'true' || 'false' }}
           FAILED_DAYS: ${{ github.event_name == 'schedule' && '0' || '4' }}
         run: |
-          BODY=$(jq -nc --argjson a "$APPLY" --argjson m "$REFUND_MISSING" --argjson f "$FAILED_DAYS" '{action:"recheck-open-transfers", apply:$a, refund_missing:$m, failed_days:$f}')
+          BODY=$(jq -nc --argjson a "$APPLY" --argjson m "$REFUND_MISSING" --argjson f "$FAILED_DAYS" --argjson x "$FORCE" '{action:"recheck-open-transfers", apply:$a, refund_missing:$m, force_refund_pending:$x, failed_days:$f}')
           curl -s -m 120 -o out.json -w "HTTP %{http_code}\n" -X POST "$URL/functions/v1/flutterwave" \
             -H "Authorization: Bearer $KEY" -H "apikey: $KEY" -H "Content-Type: application/json" -d "$BODY"
           jq . out.json || head -c 300 out.json
