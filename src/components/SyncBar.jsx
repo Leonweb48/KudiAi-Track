@@ -32,7 +32,7 @@ export default function SyncBar({ isOnline, fromCache, dbError, loadError, lastS
         No network — showing your data{lastSyncTime ? ` from ${formatSyncTime(lastSyncTime)}` : ""}.{" "}
         {pendingCount > 0
           ? <><strong>{pendingCount} unsynced</strong> — will upload on reconnect.</>
-          : "Entries recorded now will sync on reconnect."}
+          : "Sales and expenses you record now will sync when you reconnect. Other changes need a connection."}
       </span>
     </div>
   );

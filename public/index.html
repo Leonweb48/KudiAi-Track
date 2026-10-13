@@ -34,9 +34,17 @@
       media="print" onload="this.media='all'" />
     <noscript><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" /></noscript>
     <title>KudiAI Track</title>
+    <style>
+      /* Shown until the app has loaded (React replaces #root's contents) — never a blank white page on slow data. */
+      .kt-boot{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:#f8fafc}
+      .dark .kt-boot{background:#0f172a}
+      .kt-boot img{width:84px;height:84px;border-radius:20px}
+      .kt-boot i{width:26px;height:26px;border-radius:50%;border:3px solid #d1fae5;border-top-color:#2f8a1f;animation:kt-spin .8s linear infinite}
+      @keyframes kt-spin{to{transform:rotate(360deg)}}
+    </style>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
-    <div id="root"></div>
+    <div id="root"><div class="kt-boot"><img src="/icon-192.png" alt="KudiAI Track" /><i></i></div></div>
   </body>
 </html>

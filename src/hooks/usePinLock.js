@@ -100,6 +100,14 @@ export function usePinLock(userId) {
   // ── Fetch status from server ───────────────────────────────────────
   const refetch = useCallback(async (retryCount = 0) => {
     if (!userId) return;
+    // The PIN copy kept on this device (hashed). With it the lock screen can check the PIN without the server, so a
+    // missing / slow connection must not hold everyone on the loading spinner (up to ~39 s before, 2026-10-14).
+    let localHash = null;
+    try { localHash = localStorage.getItem(`kt_pin_h_${userId}`); } catch {}
+    if (retryCount === 0 && localHash && typeof navigator !== "undefined" && navigator.onLine === false) {
+      setLoading(false);            // stay locked; LockScreen verifies offline
+      return;
+    }
     if (retryCount === 0) setLoading(true);
     try {
       const { data } = await invoke("check_status");
@@ -116,6 +124,13 @@ export function usePinLock(userId) {
       }
       setLoading(false);
     } catch {
+      if (localHash) {
+        // A PIN exists on this device: show the lock screen now (it checks the PIN locally) and keep trying the server
+        // quietly in the background — still fail CLOSED (locked stays true).
+        setLoading(false);
+        if (retryCount < 2) setTimeout(() => refetch(retryCount + 1), [2000, 6000][retryCount]);
+        return;
+      }
       // Do NOT set locked=false here — fail CLOSED on every attempt.
       // Only resolve the locked state after all retries are exhausted so we never
       // flash the portal open while a retry is in flight.

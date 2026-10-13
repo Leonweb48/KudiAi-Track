@@ -4,6 +4,13 @@
  *   { notification: { title, body, icon }, data: { deepLink: "<json>" ... } }
  */
 
+// Inside the Android app (Capacitor serves the app from https://localhost) a service worker must never hold an old
+// version of the app back: the app removes its service worker on start (src/index.js), so activate at once and let
+// that code run. On the website a new worker waits and switches over only while the page is in the background.
+self.addEventListener("install", () => {
+  if (self.location.hostname === "localhost") self.skipWaiting();
+});
+
 self.addEventListener("push", (event) => {
   let payload = {};
   try { payload = event.data ? event.data.json() : {}; } catch (_) { /* non-JSON push */ }

@@ -44,6 +44,36 @@ export async function fetchAllRows(make, page = 1000) {
   return { data: out, error: null };
 }
 
+// "Couldn't reach the server" (offline, weak signal, a request that hit its time limit) — as opposed to the server
+// answering with a real refusal. Used to queue a sale instead of losing it.
+export function isNetworkFailure(err) {
+  const m = String(err?.message || err || "");
+  return /Failed to fetch|Load failed|NetworkError|network|abort|timed out|timeout/i.test(m) || err?.name === "AbortError";
+}
+
+// Rows still waiting in the offline queue (IndexedDB) for this account, shaped like the optimistic rows the UI shows.
+// Merged into every list the store sets — before 2026-10-14 a refresh (the 30 s poll, returning to the app, a restart)
+// replaced the list with the saved copy / server rows and the queued sales vanished until they synced, so people
+// entered them again and got duplicates.
+export async function pendingRows(userId) {
+  try {
+    const ops = await getPendingOps(userId);
+    const by = { transactions: [], credits: [] };
+    for (const op of ops) {
+      if (!by[op.table]) continue;
+      by[op.table].push({ ...op.data, id: `tmp-${op.local_id}`, _pending: true });
+    }
+    return by;
+  } catch { return { transactions: [], credits: [] }; }
+}
+export function withPending(list, pending) {
+  if (!pending?.length) return list;
+  const have = new Set((list || []).map((r) => r.client_txn_id).filter(Boolean));
+  const ids = new Set((list || []).map((r) => r.id));
+  const extra = pending.filter((p) => !(p.client_txn_id && have.has(p.client_txn_id)) && !ids.has(p.id));
+  return extra.length ? [...extra, ...(list || [])] : list;
+}
+
 export function useStore(userId, staffId = null, staffName = null, branchId = null, role = null) {
   const [transactions, setTransactions] = useState([]);
   const [credits,      setCredits]      = useState([]);
@@ -80,31 +110,39 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
   const wasOfflineRef   = useRef(!navigator.onLine);
   const loadDataRef     = useRef(null);
 
+  // The saved copy of this account's data (localStorage, newest 300 transactions) plus anything queued offline.
+  const applySavedCopy = useCallback(async () => {
+    const cached = loadCacheLS(`kt_store_${userId}${staffId ? `_${staffId}` : ""}`);
+    const pend = await pendingRows(userId);
+    if (cached) {
+      setTransactions(withPending(cached.transactions || [], pend.transactions));
+      setCredits(withPending(cached.credits || [], pend.credits));
+      if (cached.asoClients)   setAsoClients(cached.asoClients);
+      if (cached.profile) {
+        let dk = cached.profile.dark_mode;
+        if (dk == null) { try { dk = localStorage.getItem("kuditrack_dark") === "1"; } catch { dk = false; } }
+        setProfileState(prev => ({
+          ...prev,
+          business_name: cached.profile.business_name || prev.business_name,
+          dark_mode: dk,
+        }));
+      }
+      setFromCache(true);
+    } else {
+      if (pend.transactions.length) setTransactions((p) => withPending(p, pend.transactions));
+      if (pend.credits.length) setCredits((p) => withPending(p, pend.credits));
+      setLoadError("Couldn't load your data — check your connection");
+    }
+  }, [userId, staffId]);
+
   // ── Load all data ──────────────────────────────────────────────
   const loadData = useCallback(async (silent = false, keepPendingIds = null) => {
     if (!userId) return;
     if (!silent) { setLoading(true); setLoadError(null); setFromCache(false); }
 
-    // ── Offline: serve from local cache ───────────────────────
+    // ── Offline: serve from local cache (+ anything still waiting to sync) ───────────────────────
     if (!navigator.onLine) {
-      const cached = loadCacheLS(`kt_store_${userId}${staffId ? `_${staffId}` : ""}`);
-      if (cached) {
-        if (cached.transactions) setTransactions(cached.transactions);
-        if (cached.credits)      setCredits(cached.credits);
-        if (cached.asoClients)   setAsoClients(cached.asoClients);
-        if (cached.profile) {
-          const dk = cached.profile.dark_mode ?? (localStorage.getItem("kuditrack_dark") === "1");
-          setProfileState(prev => ({
-            ...prev,
-            business_name: cached.profile.business_name || prev.business_name,
-            dark_mode: dk,
-          }));
-        }
-        setFromCache(true);
-      } else {
-        // Offline and no cache — nothing to show; surface the error banner
-        setLoadError("Couldn't load your data — check your connection");
-      }
+      await applySavedCopy();
       setLoading(false);
       return;
     }
@@ -145,6 +183,9 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
         : Promise.resolve({ data: [] }),
     ]);
     authEmailRef.current = sessRes?.data?.session?.user?.email || "";
+    // A failed read comes back as { data: null, error } — it doesn't throw. Treat it as a failed load (saved copy + the
+    // retry banner) instead of carrying on with empty lists, which also overwrote the saved copy with nothing.
+    if ((txRes.error && !txRes.data) || (crRes.error && !crRes.data)) throw (txRes.error || crRes.error);
 
     // Stamp each Ajo client with whether they have anything ACTIVE to be overdue on (active card / group / esusu
     // round). Done on the fetched rows so the state, the offline cache and the digest below all see the same answer.
@@ -169,7 +210,10 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
           return surviving.length ? [...surviving, ...serverData] : serverData;
         });
       } else {
-        setTransactions(txRes.data);
+        // anything still in the offline queue stays visible until it has synced
+        const pend = await pendingRows(userId);
+        setTransactions(withPending(txRes.data, pend.transactions));
+        if (crRes.data) crRes.data = withPending(crRes.data, pend.credits);
       }
     }
     if (crRes.data)  setCredits(crRes.data);
@@ -441,7 +485,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     // Cache up to 300 transactions for offline access
     saveCacheLS(`kt_store_${userId}${staffId ? `_${staffId}` : ""}`, {
       transactions: (txRes.data || []).slice(0, 300),
-      credits:    crRes.data  || [],
+      credits:    (crRes.data || []).filter((c) => !c._pending),
       asoClients: asoRes.data || [],
       profile: profRes.data
         ? { business_name: profRes.data.business_name, dark_mode: profRes.data.dark_mode }
@@ -453,27 +497,11 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     setFromCache(false);
 
     } catch {
-      const cached = loadCacheLS(`kt_store_${userId}${staffId ? `_${staffId}` : ""}`);
-      if (cached) {
-        if (cached.transactions) setTransactions(cached.transactions);
-        if (cached.credits)      setCredits(cached.credits);
-        if (cached.asoClients)   setAsoClients(cached.asoClients);
-        if (cached.profile) {
-          const dk = cached.profile.dark_mode ?? (localStorage.getItem("kuditrack_dark") === "1");
-          setProfileState(prev => ({
-            ...prev,
-            business_name: cached.profile.business_name || prev.business_name,
-            dark_mode: dk,
-          }));
-        }
-        setFromCache(true);
-      } else {
-        setLoadError("Couldn't load your data — check your connection");
-      }
+      await applySavedCopy();
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [userId, staffId, branchId, role]);
+  }, [userId, staffId, branchId, role, applySavedCopy]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -693,7 +721,18 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
       if (count > 0 && navigator.onLine) setTimeout(doSync, 1000);
     }).catch(() => {});
 
-    return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
+    // Keep trying while something is waiting. A sale queued on a weak signal (the phone still says "online", so no
+    // "online" event ever comes) used to wait until the next restart.
+    let busy = false;
+    const retry = setInterval(async () => {
+      if (busy || !navigator.onLine) return;
+      const n = await getPendingCount(userId).catch(() => 0);
+      if (!n) return;
+      busy = true;
+      try { await doSync(); } finally { busy = false; }
+    }, 60_000);
+
+    return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); clearInterval(retry); };
   }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Transactions ───────────────────────────────────────────────
@@ -727,7 +766,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     setDbError(null);
 
     // ── Offline: queue the transaction in IndexedDB ───────────────
-    if (!navigator.onLine) {
+    const queueIt = async () => {
       try {
         await savePendingOp({ local_id: localId, table: "transactions", data: payload, user_id: userId });
         setPendingCount(p => p + 1);
@@ -748,10 +787,15 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
         setDbError("Couldn't queue — offline storage unavailable.");
         return;
       }
-    }
+    };
+    if (!navigator.onLine) return queueIt();
 
     let { data, error } = await supabase
       .from("transactions").insert(payload).select().single();
+
+    // Weak signal: the phone says "online" but the request never got through. Queue it (it carries its own
+    // client_txn_id, so if it DID reach the server the sync can't save it twice) instead of losing the sale.
+    if (error && isNetworkFailure(error)) return queueIt();
 
     // A duplicate client_txn_id means THIS transaction is already saved: the request reached the server twice (a
     // connection that drops before the reply can make the phone send it again) and the unique key refused the copy.

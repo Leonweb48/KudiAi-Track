@@ -18,10 +18,28 @@ class DirectRealtimeWs extends WebSocket {
   }
 }
 
+// Every request gets a time limit (2026-10-14). Without one, a stalled connection (weak signal, a request stuck in the
+// proxy) never errors, so the app sat on its loading spinner forever and only a refresh / reopen got past it. Data and
+// sign-in calls: 20 s. Uploads and edge functions (transfers, AI, reports): 90 s. A caller's own abort signal still works.
+const LONG_MS = 90000, SHORT_MS = 20000;
+export function fetchWithTimeout(input, init = {}) {
+  const url = typeof input === "string" ? input : input?.url || "";
+  const ms = /\/(functions|storage)\/v1\//.test(url) ? LONG_MS : SHORT_MS;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  const outer = init.signal;
+  if (outer) {
+    if (outer.aborted) ctrl.abort();
+    else outer.addEventListener("abort", () => ctrl.abort(), { once: true });
+  }
+  return fetch(input, { ...init, signal: ctrl.signal }).finally(() => clearTimeout(timer));
+}
+
 export const supabase =
   SUPABASE_URL && SUPABASE_ANON
     ? createClient(SUPABASE_URL, SUPABASE_ANON, {
         realtime: { transport: DirectRealtimeWs },
+        global: { fetch: (...args) => fetchWithTimeout(...args) },
       })
     : null;
 

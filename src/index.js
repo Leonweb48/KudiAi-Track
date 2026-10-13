@@ -9,6 +9,7 @@ import { Capacitor } from "@capacitor/core";
 import { consumeAdminAccessLink, AdminAccessBannerHost } from "./utils/adminAccess";
 import NewDeviceSelfiePrompt from "./components/NewDeviceSelfiePrompt";
 import IosInstallPrompt from "./components/IosInstallPrompt";
+import AppErrorBoundary from "./components/AppErrorBoundary";
 
 // Key used to carry a downloaded bundle ID across the WebView reload boundary.
 // localStorage persists across webView.loadUrl() calls (same https://localhost origin).
@@ -21,9 +22,6 @@ async function boot() {
   console.log("[KT/boot]", new Date().toISOString());
 
   if (Capacitor.isNativePlatform()) {
-    // Tell Capgo this bundle loaded successfully — prevents auto-rollback.
-    CapacitorUpdater.notifyAppReady().catch(() => {});
-
     // --- Apply any bundle downloaded in a previous session ---
     // We do this BEFORE rendering React so the WebView reload triggered by set()
     // happens inside the splash-screen window and is invisible to the user.
@@ -37,10 +35,15 @@ async function boot() {
         const { bundles } = await CapacitorUpdater.list();
         const bundle = bundles.find(b => b.id === pendingId && b.status === "pending");
         if (bundle) {
-          // set() reloads the WebView immediately.  Execution after this call will
-          // not continue in the current JS context; React never renders this pass.
-          CapacitorUpdater.set(bundle).catch(() => {});
-          return;
+          // set() reloads the WebView into the new version, so normally nothing after it runs. If it fails or never
+          // reloads (2026-10-14: this used to return regardless, leaving a blank screen until the app was reopened),
+          // carry on and open the current version instead — the update is tried again on the next launch.
+          const switched = await Promise.race([
+            CapacitorUpdater.set(bundle).then(() => true, () => false),
+            new Promise((r) => setTimeout(() => r(false), 4000)),
+          ]);
+          if (switched) return;
+          try { localStorage.setItem(PENDING_BUNDLE_KEY, pendingId); } catch {}
         }
       } catch {}
       // If list() failed or bundle not found, fall through and render normally.
@@ -62,38 +65,78 @@ async function boot() {
 
   const root = ReactDOM.createRoot(document.getElementById("root"));
   root.render(
-    <BrowserRouter>
-      <LanguageProvider>
-        <ToastProvider>
-          <App />
-          <AdminAccessBannerHost />
-          <NewDeviceSelfiePrompt />
-          <IosInstallPrompt />
-        </ToastProvider>
-      </LanguageProvider>
-    </BrowserRouter>
+    <AppErrorBoundary>
+      <BrowserRouter>
+        <LanguageProvider>
+          <ToastProvider>
+            <App />
+            <AdminAccessBannerHost />
+            <NewDeviceSelfiePrompt />
+            <IosInstallPrompt />
+          </ToastProvider>
+        </LanguageProvider>
+      </BrowserRouter>
+    </AppErrorBoundary>
   );
 
-  if ("serviceWorker" in navigator) {
-    // The generated SW uses skipWaiting + clientsClaim (scripts/build-sw.js), so
-    // a newly-deployed SW activates and claims every open page immediately —
-    // without this listener, a page whose JS is already running keeps fetching
-    // against the OLD cached asset set while the browser's network layer is now
-    // controlled by the NEW SW, which can 404/mismatch on chunks the old code
-    // still references. That's the "works after refresh, not on first open"
-    // pattern: refreshing just happens to land after the swap settles. Reload
-    // once, automatically, the moment control actually changes.
-    let refreshedOnce = false;
-    navigator.serviceWorker.addEventListener("controllerchange", () => {
-      if (refreshedOnce) return;
-      refreshedOnce = true;
-      window.location.reload();
-    });
-
-    window.addEventListener("load", () => {
-      navigator.serviceWorker.register("/service-worker.js").catch(() => {});
-    });
+  // Tell Capgo this version started fine. Called after the first render (it used to be called before anything ran), so
+  // a version that can't even render is rolled back automatically instead of staying broken.
+  if (Capacitor.isNativePlatform()) {
+    setTimeout(() => { CapacitorUpdater.notifyAppReady().catch(() => {}); }, 0);
   }
+
+  setupServiceWorker();
+}
+
+// Service worker (2026-10-14 rework). The old setup took over every open page the moment a new version was deployed and
+// reloaded it — including on someone's very first visit (a page with no worker yet was "taken over" too) and mid-use
+// after each of our many daily deploys, sometimes leaving half-loaded screens until a manual refresh. Now:
+//  • Android app: no service worker at all — the app's files are already on the phone (and Capgo updates them); a
+//    worker only added stale copies and extra reloads there. Any old one is removed.
+//  • Website: a new version installs quietly and switches over only while the page is in the BACKGROUND (tab hidden /
+//    app switched away), with one reload then. The first visit never reloads. Updates are checked when the page returns.
+function setupServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+  if (Capacitor.isNativePlatform()) {
+    navigator.serviceWorker.getRegistrations().then((rs) => rs.forEach((r) => r.unregister())).catch(() => {});
+    if ("caches" in window) caches.keys().then((ks) => ks.forEach((k) => caches.delete(k))).catch(() => {});
+    return;
+  }
+
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (!hadController || reloaded) return;      // first install: nothing old to replace
+    reloaded = true;
+    window.location.reload();
+  });
+
+  const switchWhenHidden = (reg) => {
+    const waiting = reg.waiting;
+    if (!waiting || !navigator.serviceWorker.controller) return;
+    const go = () => waiting.postMessage({ type: "SKIP_WAITING" });
+    if (document.visibilityState === "hidden") { go(); return; }
+    const onHide = () => {
+      if (document.visibilityState !== "hidden") return;
+      document.removeEventListener("visibilitychange", onHide);
+      go();
+    };
+    document.addEventListener("visibilitychange", onHide);
+  };
+
+  const register = () => navigator.serviceWorker.register("/service-worker.js").then((reg) => {
+    switchWhenHidden(reg);
+    reg.addEventListener("updatefound", () => {
+      const sw = reg.installing;
+      sw?.addEventListener("statechange", () => { if (sw.state === "installed") switchWhenHidden(reg); });
+    });
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") reg.update().catch(() => {});
+    });
+  }).catch(() => {});
+
+  if (document.readyState === "complete") register();
+  else window.addEventListener("load", register, { once: true });
 }
 
 boot();

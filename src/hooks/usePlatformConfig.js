@@ -2,35 +2,59 @@ import { useEffect, useState } from "react";
 import { supabase } from "../utils/supabase";
 import { bettingVisible } from "../utils/platform";
 
-// Module-level cache: fetched once per browser session, reused across all hook calls.
+// Module-level cache: fetched once per session, reused across all hook calls.
+// 2026-10-14: a failed fetch (offline start, weak signal) used to be cached as {} for the WHOLE session — the wallet
+// disappeared and co-op users got "coming soon" until a full reload. Now the last good settings are kept on the device
+// and used meanwhile, and a failed fetch is retried (when the connection returns, and every 20 s) until it succeeds.
+const SAVED_KEY = "kt_platform_config";
 let _cache = null;
+let _fresh = false;
 let _pending = null;
+const _listeners = new Set();
+
+function readSaved() {
+  try { const v = JSON.parse(localStorage.getItem(SAVED_KEY) || "null"); return v && typeof v === "object" ? v : null; } catch { return null; }
+}
 
 function fetchConfig() {
   if (_pending) return _pending;
-  _pending = supabase
-    .from("platform_config")
-    .select("key, value")
-    .then(({ data }) => {
+  _pending = Promise.resolve(supabase.from("platform_config").select("key, value"))
+    .then(({ data, error }) => {
+      if (error || !Array.isArray(data)) throw error || new Error("no config");
       const cfg = {};
-      (data || []).forEach(r => { cfg[r.key] = r.value; });
-      _cache = cfg;
+      data.forEach(r => { cfg[r.key] = r.value; });
+      _cache = cfg; _fresh = true;
+      try { localStorage.setItem(SAVED_KEY, JSON.stringify(cfg)); } catch { /* storage full — still fine for this session */ }
+      _listeners.forEach((fn) => fn(cfg));
       return cfg;
     })
     .catch(() => {
-      _cache = {};
-      return {};
+      _pending = null;                       // allow a retry
+      if (!_cache) _cache = readSaved() || {};
+      scheduleRetry();
+      return _cache;
     });
   return _pending;
 }
 
+let _retryTimer = null;
+function scheduleRetry() {
+  if (_retryTimer || _fresh) return;
+  const again = () => { _retryTimer = null; if (!_fresh) fetchConfig(); };
+  _retryTimer = setTimeout(again, 20000);
+  if (typeof window !== "undefined") window.addEventListener("online", () => { clearTimeout(_retryTimer); again(); }, { once: true });
+}
+
 export function usePlatformConfig() {
-  const [config, setConfig] = useState(_cache);
-  const [loading, setLoading] = useState(!_cache);
+  const [config, setConfig] = useState(() => _cache || readSaved());
+  const [loading, setLoading] = useState(() => !(_cache || readSaved()));
 
   useEffect(() => {
-    if (_cache) { setConfig(_cache); setLoading(false); return; }
-    fetchConfig().then(cfg => { setConfig(cfg); setLoading(false); });
+    const onFresh = (cfg) => { setConfig(cfg); setLoading(false); };
+    _listeners.add(onFresh);
+    if (_fresh) { setConfig(_cache); setLoading(false); }
+    else fetchConfig().then(cfg => { setConfig(cfg); setLoading(false); });
+    return () => { _listeners.delete(onFresh); };
   }, []);
 
   let ckDiscounts = null;

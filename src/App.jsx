@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, useCallback, lazy, Suspense } from "react";
+import { useState, useEffect, useRef, useCallback, Suspense } from "react";
+import { lazyWithRetry } from "./utils/lazyWithRetry";
 import { useNavigate, useLocation, Routes, Route } from "react-router-dom";
 import { useStore }          from "./hooks/useStore";
 import { useAuth }           from "./hooks/useAuth";
@@ -57,62 +58,62 @@ import DeleteAccountPage      from "./screens/DeleteAccountPage";
 import { canSellPlans }       from "./utils/platform";
 // ── Lazy imports — split into separate chunks, loaded on first use ────────────
 // Heavy screen chunks (jsPDF + html2canvas live in Reports; AI SDK in AIAssistant)
-const Reports        = lazy(() => import("./screens/Reports"));
-const AIAssistant    = lazy(() => import("./screens/AIAssistant"));
+const Reports        = lazyWithRetry(() => import("./screens/Reports"));
+const AIAssistant    = lazyWithRetry(() => import("./screens/AIAssistant"));
 // Route-based screens not needed on startup
-const Transactions   = lazy(() => import("./screens/Transactions"));
-const Finance        = lazy(() => import("./screens/Finance"));
-const BillPayments   = lazy(() => import("./screens/BillPayments"));
-const Wallet         = lazy(() => import("./screens/Wallet"));
-const WalletStatement = lazy(() => import("./screens/WalletStatement"));
-const Inventory      = lazy(() => import("./screens/Inventory"));
-const Insights       = lazy(() => import("./screens/Insights"));
-const Settings       = lazy(() => import("./screens/Settings"));
-const Help           = lazy(() => import("./screens/Help"));
-const Verification   = lazy(() => import("./screens/Verification"));
-const Profile        = lazy(() => import("./screens/Profile"));
-const Loyalty        = lazy(() => import("./screens/Loyalty"));
-const Branches       = lazy(() => import("./screens/Branches"));
-const FounderPage    = lazy(() => import("./screens/FounderPage"));
+const Transactions   = lazyWithRetry(() => import("./screens/Transactions"));
+const Finance        = lazyWithRetry(() => import("./screens/Finance"));
+const BillPayments   = lazyWithRetry(() => import("./screens/BillPayments"));
+const Wallet         = lazyWithRetry(() => import("./screens/Wallet"));
+const WalletStatement = lazyWithRetry(() => import("./screens/WalletStatement"));
+const Inventory      = lazyWithRetry(() => import("./screens/Inventory"));
+const Insights       = lazyWithRetry(() => import("./screens/Insights"));
+const Settings       = lazyWithRetry(() => import("./screens/Settings"));
+const Help           = lazyWithRetry(() => import("./screens/Help"));
+const Verification   = lazyWithRetry(() => import("./screens/Verification"));
+const Profile        = lazyWithRetry(() => import("./screens/Profile"));
+const Loyalty        = lazyWithRetry(() => import("./screens/Loyalty"));
+const Branches       = lazyWithRetry(() => import("./screens/Branches"));
+const FounderPage    = lazyWithRetry(() => import("./screens/FounderPage"));
 // The public website (src/site) — one lazy chunk per page, rendered before the auth gate
-const LegalSitePage  = lazy(() => import("./site/LegalPage"));
-const BlogPostPage   = lazy(() => import("./site/BlogPostPage"));
+const LegalSitePage  = lazyWithRetry(() => import("./site/LegalPage"));
+const BlogPostPage   = lazyWithRetry(() => import("./site/BlogPostPage"));
 const SITE_PAGES = {
-  "/home":     lazy(() => import("./site/HomePage")),
-  "/features": lazy(() => import("./site/FeaturesPage")),
-  "/about":    lazy(() => import("./site/AboutPage")),
-  "/faq":      lazy(() => import("./site/FaqPage")),
-  "/contact":  lazy(() => import("./site/ContactPage")),
-  "/blog":     lazy(() => import("./site/BlogPage")),
+  "/home": lazyWithRetry(() => import("./site/HomePage")),
+  "/features": lazyWithRetry(() => import("./site/FeaturesPage")),
+  "/about": lazyWithRetry(() => import("./site/AboutPage")),
+  "/faq": lazyWithRetry(() => import("./site/FaqPage")),
+  "/contact": lazyWithRetry(() => import("./site/ContactPage")),
+  "/blog": lazyWithRetry(() => import("./site/BlogPage")),
   "/terms":    () => <LegalSitePage type="terms" />,
   "/privacy":  () => <LegalSitePage type="privacy" />,
 };
 // Portal screens (only rendered for specific account types)
-const StaffDashboard        = lazy(() => import("./screens/StaffDashboard"));
-const ManagerDashboard      = lazy(() => import("./screens/ManagerDashboard"));
-const MarketerDashboard     = lazy(() => import("./screens/MarketerDashboard"));
-const MarketerFirstLogin    = lazy(() => import("./screens/MarketerFirstLogin"));
-const AdminDashboard        = lazy(() => import("./screens/AdminDashboard"));
-const OrgPortal             = lazy(() => import("./screens/OrgPortal"));
-const OrgFirstLogin         = lazy(() => import("./screens/OrgFirstLogin"));
-const OrgOtpVerify          = lazy(() => import("./screens/OrgOtpVerify"));
-const OrgMemberOtpVerify    = lazy(() => import("./screens/OrgMemberOtpVerify"));
-const StaffOtpVerify        = lazy(() => import("./screens/StaffOtpVerify"));
-const StaffFirstLogin       = lazy(() => import("./screens/StaffFirstLogin"));
-const AjoClientOtpVerify    = lazy(() => import("./screens/AjoClientOtpVerify"));
-const AjoClientArchivedScreen = lazy(() => import("./screens/AjoClientArchivedScreen"));
-const AjoClientPendingScreen  = lazy(() => import("./screens/AjoClientPendingScreen"));
-const GoogleAccountChoice     = lazy(() => import("./screens/GoogleAccountChoice"));
-const AjoMemberPortal       = lazy(() => import("./screens/AjoMemberPortal"));
-const CoopList              = lazy(() => import("./screens/CoopList"));
-const CoopDashboard         = lazy(() => import("./screens/CoopDashboard"));
-const CoopComingSoon        = lazy(() => import("./screens/CoopComingSoon"));
+const StaffDashboard        = lazyWithRetry(() => import("./screens/StaffDashboard"));
+const ManagerDashboard      = lazyWithRetry(() => import("./screens/ManagerDashboard"));
+const MarketerDashboard     = lazyWithRetry(() => import("./screens/MarketerDashboard"));
+const MarketerFirstLogin    = lazyWithRetry(() => import("./screens/MarketerFirstLogin"));
+const AdminDashboard        = lazyWithRetry(() => import("./screens/AdminDashboard"));
+const OrgPortal             = lazyWithRetry(() => import("./screens/OrgPortal"));
+const OrgFirstLogin         = lazyWithRetry(() => import("./screens/OrgFirstLogin"));
+const OrgOtpVerify          = lazyWithRetry(() => import("./screens/OrgOtpVerify"));
+const OrgMemberOtpVerify    = lazyWithRetry(() => import("./screens/OrgMemberOtpVerify"));
+const StaffOtpVerify        = lazyWithRetry(() => import("./screens/StaffOtpVerify"));
+const StaffFirstLogin       = lazyWithRetry(() => import("./screens/StaffFirstLogin"));
+const AjoClientOtpVerify    = lazyWithRetry(() => import("./screens/AjoClientOtpVerify"));
+const AjoClientArchivedScreen = lazyWithRetry(() => import("./screens/AjoClientArchivedScreen"));
+const AjoClientPendingScreen  = lazyWithRetry(() => import("./screens/AjoClientPendingScreen"));
+const GoogleAccountChoice     = lazyWithRetry(() => import("./screens/GoogleAccountChoice"));
+const AjoMemberPortal       = lazyWithRetry(() => import("./screens/AjoMemberPortal"));
+const CoopList              = lazyWithRetry(() => import("./screens/CoopList"));
+const CoopDashboard         = lazyWithRetry(() => import("./screens/CoopDashboard"));
+const CoopComingSoon        = lazyWithRetry(() => import("./screens/CoopComingSoon"));
 // CoopMemberPortal has named exports — resolve each from the same shared chunk
-const CoopMemberPortal      = lazy(() => import("./screens/CoopMemberPortal").then(m => ({ default: m.default })));
-const CoopMemberFirstLogin  = lazy(() => import("./screens/CoopMemberPortal").then(m => ({ default: m.CoopMemberFirstLogin })));
-const OrgMemberArchivedScreen = lazy(() => import("./screens/CoopMemberPortal").then(m => ({ default: m.OrgMemberArchivedScreen })));
-const AIChatWidget          = lazy(() => import("./components/AIChatWidget"));
-const LanguageSelector      = lazy(() => import("./screens/LanguageSelector"));
+const CoopMemberPortal      = lazyWithRetry(() => import("./screens/CoopMemberPortal").then(m => ({ default: m.default })));
+const CoopMemberFirstLogin  = lazyWithRetry(() => import("./screens/CoopMemberPortal").then(m => ({ default: m.CoopMemberFirstLogin })));
+const OrgMemberArchivedScreen = lazyWithRetry(() => import("./screens/CoopMemberPortal").then(m => ({ default: m.OrgMemberArchivedScreen })));
+const AIChatWidget          = lazyWithRetry(() => import("./components/AIChatWidget"));
+const LanguageSelector      = lazyWithRetry(() => import("./screens/LanguageSelector"));
 
 function Spinner() {
   return (

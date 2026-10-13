@@ -34,8 +34,28 @@ const isNetErr = (e) => !!e && (
   (e.message || "").includes("Load failed") ||
   (e.message || "").includes("Failed to fetch") ||
   (e.message || "").includes("NetworkError") ||
-  (e.message || "").includes("network")
+  (e.message || "").includes("network") ||
+  /abort|timed out|timeout/i.test(e.message || "") ||
+  e.name === "AbortError"
 );
+
+// The session Supabase keeps on the device (sb-<project>-auth-token). When the hourly token refresh fails because the
+// phone is offline or on a weak signal, getSession() returns null but this stays — Supabase only removes it when the
+// session is really invalid (signed out / refresh token rejected). So "null session + this present" means "can't reach
+// the server right now", not "signed out": never send that person to the login screen.
+export function readStoredSession() {
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k || !/^sb-.+-auth-token$/.test(k)) continue;
+      const v = JSON.parse(localStorage.getItem(k) || "null");
+      const s = v?.currentSession || v;
+      if (s?.refresh_token && s?.user?.id) return s;
+    }
+  } catch { /* storage unavailable */ }
+  return null;
+}
+const deviceOffline = () => typeof navigator !== "undefined" && navigator.onLine === false;
 
 function fireWelcomeEmail(event, data) {
   const sentKey = `${WELCOME_EMAIL_KEY}_${data.email || data.name}`;
@@ -118,6 +138,28 @@ export function useAuth() {
   // after Google returns), so every run waits on this one registration instead of routing the new account meanwhile.
   const googleWalletRef = useRef(null);
 
+  // Startup / retry: get the session without ever mistaking "can't reach the server" for "signed out".
+  const startSession = useCallback(async () => {
+    const stored = readStoredSession();
+    if (stored && deviceOffline()) { resolve(stored); return; }          // offline: open with the saved data
+    let done = false;
+    const slow = stored ? setTimeout(() => { if (!done) setStatus("offline"); }, 15000) : null;
+    try {
+      const { data } = await supabase.auth.getSession();
+      done = true; if (slow) clearTimeout(slow);
+      if (data?.session) { resolve(data.session); return; }
+      const still = readStoredSession();
+      if (still) { if (deviceOffline()) resolve(still); else setStatus("offline"); return; }
+      resolve(null);
+    } catch {
+      done = true; if (slow) clearTimeout(slow);
+      const still = readStoredSession();
+      if (still && deviceOffline()) resolve(still);
+      else if (still) setStatus("offline");
+      else resolve(null);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const resolve = useCallback(async (sess) => {
     try {
     // Password reset in progress — don't route the new session; keep showing Auth screen.
@@ -157,6 +199,19 @@ export function useAuth() {
     const email       = sess.user.email;
     const accountType = sess.user.user_metadata?.account_type;
     const mustChange  = sess.user.user_metadata?.must_change_password === true;
+
+    if (!accountType && deviceOffline()) {
+      try {
+        const cp = JSON.parse(localStorage.getItem(PROFILE_CACHE_KEY) || "null");
+        const cachedPlan = localStorage.getItem(CACHE_KEY);
+        if (cp?.user_id === uid && cp?.business_name && cachedPlan) {
+          setPlan(normalizeSlug(cachedPlan));
+          subVerified.current = true;
+          setStatus("ready");
+          return;      // back online → a token refresh / SIGNED_IN event runs resolve() again with fresh data
+        }
+      } catch { /* fall through to the normal path */ }
+    }
 
     // ── Super Admin early routing ─────────────────────────────────────
     if (accountType === "super_admin") {
@@ -851,9 +906,16 @@ export function useAuth() {
 
   useEffect(() => {
     if (!supabaseConfigured) { setStatus("unauthenticated"); return; }
-    supabase.auth.getSession().then(({ data }) => resolve(data.session));
+    startSession();
+    // INITIAL_SESSION is the same thing startSession() already handles — running resolve() for both doubled every
+    // startup request, and its null session (a refresh that failed offline) logged people out. A null session only
+    // counts when it comes with SIGNED_OUT, or when nothing is stored on the device any more.
     const { data: { subscription: listener } } =
-      supabase.auth.onAuthStateChange((_e, s) => resolve(s));
+      supabase.auth.onAuthStateChange((event, s) => {
+        if (event === "INITIAL_SESSION") return;
+        if (!s && event !== "SIGNED_OUT" && readStoredSession()) return;
+        resolve(s);
+      });
 
     let appUrlListener;
     if (Capacitor.isNativePlatform()) {
@@ -910,7 +972,7 @@ export function useAuth() {
       listener.unsubscribe();
       appUrlListener?.remove();
     };
-  }, [resolve]);
+  }, [resolve, startSession]);
 
   // Called right after a successful subscription save — skips any DB re-query
   // so RLS issues or token-refresh events cannot send the user back to the plan screen.
@@ -952,8 +1014,8 @@ export function useAuth() {
   // so that a still-offline retry can still serve from the cached row.
   const retryAuth = useCallback(() => {
     setStatus("loading");
-    supabase.auth.getSession().then(({ data }) => resolve(data.session));
-  }, [resolve]);
+    startSession();
+  }, [startSession]);
 
   // Re-read the plan whenever the app comes back to the foreground. Android drops the realtime feed while the app is in the background, and a plan
   // changed somewhere else (for example an upgrade made on the website) must show up when the person returns — without signing out and in.
