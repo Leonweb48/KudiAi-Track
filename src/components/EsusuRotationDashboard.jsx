@@ -409,7 +409,8 @@ export default function EsusuRotationDashboard({
   }
 
   // ── Active round view ──────────────────────────────────────────────────
-  const roundProgress = `${paidCount} of ${turns.filter(t => t.status !== "skipped").length + paidCount} paid`;
+  // `turns` already includes the paid ones (get-rotation / circle detail return the whole round), so they are not added again
+  const roundProgress = `${paidCount} of ${turns.filter(t => t.status !== "skipped").length} paid`;
 
   return (
     <>
