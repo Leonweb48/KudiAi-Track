@@ -186,7 +186,7 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
     amount:    client.contribution_amount ?? "",
     frequency: client.contribution_frequency || "monthly",
     length:    "",
-    model:     client.commission_model || "none",
+    model:     client.commission_model === "first_period" ? "percent" : (client.commission_model || "none"),   // first-period cards are no longer opened
     percent:   client.commission_percent ?? "",
   });
   // Auto-switch to card tab when an active cycle is added
@@ -502,8 +502,8 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
                       className="w-full border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-900 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500">
                       <option value="none">{t("ajo.feeNone")}</option>
                       <option value="percent">{t("ajo.feePercentOnWithdrawals")}</option>
-                      <option value="first_period">{t("ajo.feeFirstDepositDay1")}</option>
                     </select>
+                    {newCycleForm.model === "percent" && <p className="text-[10px] text-slate-400 mt-1">{t("ajo.pctCardsOnly")}</p>}
                   </div>
 
                   {/* Fee % — only when model is percent */}
@@ -657,6 +657,72 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
           reason={historyResult.reason}
           onPrimary={() => setHistoryResult(null)}
         />
+      )}
+    </div>
+  );
+}
+
+// Owner-only: the business's default card fee % (profiles.ajo_default_commission_percent). Savings cards are percentage
+// cards only (2026-10-14): a new card for a client with no % of their own uses this; with none set, the card is refused.
+function DefaultCardFeeSetting({ ownerId }) {
+  const t = useT();
+  const [pct,     setPct]     = useState(null);   // null = loading, or the column isn't there yet
+  const [editing, setEditing] = useState(false);
+  const [draft,   setDraft]   = useState("");
+  const [saving,  setSaving]  = useState(false);
+  const [err,     setErr]     = useState("");
+
+  useEffect(() => {
+    if (!ownerId) return undefined;
+    let live = true;
+    supabase.from("profiles").select("ajo_default_commission_percent").eq("id", ownerId).maybeSingle()
+      .then(({ data, error }) => { if (live && !error) setPct(Number(data?.ajo_default_commission_percent) || 0); });
+    return () => { live = false; };
+  }, [ownerId]);
+
+  if (pct === null) return null;
+
+  const save = async () => {
+    const raw = draft.trim();
+    const n = raw === "" ? 0 : Number(raw);
+    if (!Number.isFinite(n) || n < 0 || n > 100) { setErr(t("ajo.defaultPctRange")); return; }
+    const v = Math.round(n * 100) / 100;
+    setSaving(true); setErr("");
+    const { error } = await supabase.from("profiles").update({ ajo_default_commission_percent: v }).eq("id", ownerId);
+    setSaving(false);
+    if (error) { setErr(t("ajo.defaultPctFailed")); return; }
+    setPct(v); setEditing(false);
+  };
+
+  return (
+    <div className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3 mb-4 shadow-card border border-slate-100 dark:border-slate-700/60">
+      {editing ? (
+        <>
+          <p className="text-xs font-bold text-slate-700 dark:text-slate-200 mb-2">{t("ajo.defaultPctTitle")}</p>
+          <div className="flex gap-2">
+            <input type="number" min="0" max="100" step="0.1" inputMode="decimal" value={draft} onChange={e => setDraft(e.target.value)} placeholder={t("ajo.egValue", { v: "5" })}
+              className="flex-1 min-w-0 px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-800 dark:text-slate-100" />
+            <button onClick={save} disabled={saving}
+              className="px-4 rounded-xl bg-brand-600 text-white text-xs font-bold disabled:opacity-50 active:scale-95 transition-transform">{saving ? "…" : t("common.save")}</button>
+            <button onClick={() => { setEditing(false); setErr(""); }} disabled={saving}
+              className="px-3 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold">{t("common.cancel")}</button>
+          </div>
+          {err && <p className="text-[11px] text-red-500 mt-1.5">{err}</p>}
+          <p className="text-[10px] text-slate-400 mt-1.5 leading-snug">{t("ajo.defaultPctHelp")}</p>
+        </>
+      ) : (
+        <div className="flex items-center gap-3">
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{t("ajo.defaultPctTitle")}</p>
+            <p className={`text-[11px] mt-0.5 ${pct > 0 ? "text-slate-500 dark:text-slate-400" : "text-amber-600 dark:text-amber-400"}`}>
+              {pct > 0 ? t("ajo.defaultPctSet", { pct }) : t("ajo.defaultPctNone")}
+            </p>
+          </div>
+          <button onClick={() => { setDraft(pct > 0 ? String(pct) : ""); setErr(""); setEditing(true); }}
+            className="text-xs font-bold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-900/20 px-3 py-1.5 rounded-lg flex-shrink-0 active:scale-95 transition-transform">
+            {pct > 0 ? t("ajo.change") : t("ajo.setFee")}
+          </button>
+        </div>
       )}
     </div>
   );
@@ -2621,6 +2687,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       )}
 
       {isOwner && <RegistrationFeeSetting ownerId={profile?.id} onChange={setDefaultRegFee} />}
+      {isOwner && <DefaultCardFeeSetting ownerId={profile?.id} />}
 
       {/* Overdue alert */}
       {overdueList.length > 0 && (
@@ -3072,7 +3139,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
               onChange={e => set("commission_model", e.target.value)}
               className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm text-slate-800 dark:text-white">
               <option value="none">{t("ajo.noFee")}</option>
-              {!f.ajo_group_id && <option value="first_period">{t("ajo.firstPeriodOwnerKeeps")}</option>}
+              {f.commission_model === "first_period" && <option value="first_period" disabled>{t("ajo.firstPeriodRetired")}</option>}
               <option value="percent">{t("ajo.percentOfEachWithdrawal")}</option>
             </select>
             {f.commission_model === "percent" && (

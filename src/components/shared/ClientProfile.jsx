@@ -514,7 +514,7 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                       <FormField label={t("ajo.profile.withdrawalFee")}>
                         <select value={form.commission_model || "none"} onChange={e => set("commission_model", e.target.value)} className={inputCls}>
                           <option value="none">{t("ajo.profile.noFee")}</option>
-                          {!form.ajo_group_id && <option value="first_period">{t("ajo.profile.firstPeriod")}</option>}
+                          {form.commission_model === "first_period" && <option value="first_period" disabled>{t("ajo.firstPeriodRetired")}</option>}
                           <option value="percent">{t("ajo.profile.percentage")}</option>
                         </select>
                       </FormField>

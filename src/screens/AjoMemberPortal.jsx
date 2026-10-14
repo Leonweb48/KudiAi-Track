@@ -5165,7 +5165,6 @@ function OpenCycleSheet({ client, cycleCount = 0, onClose, onOpened }) {
   const t = useT();
   const [name,      setName]      = useState("");
   const [amount,    setAmount]    = useState("");
-  const [model,     setModel]     = useState("first_period");
   const [frequency, setFrequency] = useState(CARD_FREQUENCIES.some(f => f.id === client?.contribution_frequency) ? client.contribution_frequency : "monthly");
   const [opening,   setOpening]   = useState(false);
   const [err,       setErr]       = useState("");
@@ -5175,7 +5174,7 @@ function OpenCycleSheet({ client, cycleCount = 0, onClose, onOpened }) {
     setOpening(true); setErr("");
     try {
       const res = await ajoFn("client-open-cycle", {
-        client_id: client.id, commission_model: model, frequency,
+        client_id: client.id, commission_model: "percent", frequency,
         ...(name.trim() ? { label: name.trim() } : {}),
         ...(amount && Number(amount) > 0 ? { amount: Number(amount) } : {}),
       });
@@ -5233,23 +5232,14 @@ function OpenCycleSheet({ client, cycleCount = 0, onClose, onOpened }) {
       </div>
 
       <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">{t("client.collectorsFee")}</p>
-      <div className="space-y-2">
-        <button onClick={() => setModel("first_period")}
-          className={`w-full text-left px-4 py-3.5 rounded-xl border transition-transform active:scale-[0.99] ${model === "first_period" ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20" : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"}`}>
-          <span className="block text-[13px] font-bold text-slate-800 dark:text-white">{t("client.firstPeriodFee")}</span>
-          <span className="block text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
-            {t("client.firstPeriodFeeBody")}
-          </span>
-        </button>
-        <button onClick={() => canPercent && setModel("percent")} disabled={!canPercent}
-          className={`w-full text-left px-4 py-3.5 rounded-xl border disabled:opacity-50 transition-transform active:scale-[0.99] ${model === "percent" ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20" : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"}`}>
-          <span className="block text-[13px] font-bold text-slate-800 dark:text-white">
-            {t("client.percentageFee")}{canPercent ? ` · ${client.commission_percent}%` : ""}
-          </span>
-          <span className="block text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
-            {canPercent ? t("client.percentageFeeBody") : t("client.percentageNotSet")}
-          </span>
-        </button>
+      {/* Percentage cards only (first-period cards are no longer offered). The % is set by the business. */}
+      <div className="w-full text-left px-4 py-3.5 rounded-xl border border-brand-500 bg-brand-50 dark:bg-brand-900/20">
+        <span className="block text-[13px] font-bold text-slate-800 dark:text-white">
+          {t("client.percentageFee")}{canPercent ? ` · ${client.commission_percent}%` : ""}
+        </span>
+        <span className="block text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
+          {canPercent ? t("client.percentageFeeBody") : t("client.percentageFromBusiness")}
+        </span>
       </div>
 
       <button onClick={open} disabled={opening}

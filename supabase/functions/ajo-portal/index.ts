@@ -458,9 +458,10 @@ serve(async (req) => {
     }
 
     // ── client-open-cycle — a client opens their own personal-savings card.
-    //    They choose the fee model (first_period vs percent) — the reg fee /
-    //    commission percent VALUE always comes from their aso_clients row,
-    //    set by the business at onboarding, never client-entered — plus,
+    //    Percentage cards only since 2026-10-14 (first-period is no longer
+    //    offered). The commission percent VALUE always comes from their
+    //    aso_clients row or the business default (profiles.ajo_default_commission_percent),
+    //    never client-entered — plus,
     //    now, their own card name (so they can hold more than one at a time)
     //    and their own target deposit amount per period. ─────────────────────
     if (action === "client-open-cycle") {
@@ -479,9 +480,13 @@ serve(async (req) => {
       if (cl.archived_at) return json({ error: "This account is archived" }, 400);
       if (cl.status !== "active") return json({ error: "Your account isn't active yet — contact your savings collector." }, 400);
 
-      const model = reqModel === "percent" ? "percent" : "first_period";
-      if (model === "percent" && !(Number(cl.commission_percent) > 0)) {
-        return json({ error: "Percentage savings isn't set up for your account yet — contact your savings collector." }, 400);
+      void reqModel;   // old apps may still send "first_period" — every new card is a percentage card now
+      const model = "percent";
+      if (!(Number(cl.commission_percent) > 0)) {
+        const { data: biz } = await sb.from("profiles").select("ajo_default_commission_percent").eq("id", cl.user_id).maybeSingle();
+        if (!(Number(biz?.ajo_default_commission_percent) > 0)) {
+          return json({ error: "Your savings collector hasn't set a fee percentage yet — ask them to set one, then open your card." }, 400);
+        }
       }
 
       const amount = reqAmount != null && Number(reqAmount) > 0 ? Number(reqAmount) : undefined;

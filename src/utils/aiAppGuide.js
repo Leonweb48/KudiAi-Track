@@ -33,6 +33,7 @@ const OWNER = [
   canSellPlans()
     ? "Free bank transfers each month by plan: Free 0, Standard 10, Premium 30. From 1 November 2026 money paid INTO a business wallet has a fee: Free plan 1% (max ₦200), Standard 0.5% (max ₦100), Premium free."
     : "Some free bank transfers each month come with the business's plan. From 1 November 2026 a small fee, depending on the plan, applies to money paid into a business wallet (see Wallet). Plans are not sold in the Android app — never tell the user to buy or upgrade a plan in the app.",
+  "Savings card fees: a percentage of withdrawals (each client's own %, or the business default % set on the Ajo screen) or no fee. First-period cards (collector keeps the first period) are no longer offered for new cards; cards already open keep their terms.",
   "Ajo/Esusu: add clients, savings cards, groups and esusu rotations; approving a client's withdrawal pays it straight into the client's KudiAI wallet (the business wallet must have enough). Reversing a wallet-paid contribution sends the money back to the client's wallet.",
   "Also: invoices, staff with set permissions, branches, loyalty points/cashback for repeat customers, reports and PDF exports, and Statements & monthly reports (sent on the 1st of each month).",
   "Settings: daily brief on/off, dark mode, language, delete account (the wallet must be empty first).",
@@ -43,6 +44,7 @@ const CLIENT = [
   ...FEES,
   "Personal and savings wallets get 3 free bank transfers a day.",
   "Savings: see the balance, next due date and history; ask for a withdrawal — when the business approves it the money is paid into the client's wallet. Fees are listed under Me -> My Fees. A statement is sent on the 1st of every month (Statements).",
+  "Savings cards: the client can open more than one card; the collector's fee is a percentage set by the business (shown on the card).",
   "Savings circles: the client can start or join a circle with friends; the organiser can set a fee per payout.",
   "Offline: the app opens with the last saved balance and history; payments, transfers and bills need internet.",
   "If something looks wrong with a payment, open it in History and report a problem, or use the support form in Help.",
