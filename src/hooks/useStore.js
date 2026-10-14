@@ -1315,7 +1315,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
       document.documentElement.classList.toggle("dark", next.dark_mode);
     }
 
-    const { error } = await supabase.from("profiles").update({
+    const row = {
       full_name:         next.full_name         || null,
       business_name:     next.business_name     || null,
       email:             next.email             || null,
@@ -1352,7 +1352,21 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
       products_services_type:       next.products_services_type       || null,
       target_market:                next.target_market                || null,
       country_of_registration:      next.country_of_registration      || null,
-    }).eq("id", userId);
+    };
+
+    // Offline / weak signal: keep the change on screen and save it when the connection returns (2026-10-14). One queued
+    // profile update per account (same local id) — a later edit replaces an earlier one, so the newest wins.
+    const queueProfile = async () => {
+      try {
+        await savePendingOp({ local_id: `profile-${userId}`, table: "profile_update", data: row, user_id: userId });
+        setPendingCount((p) => p + 1);
+        return { error: null, queued: true };
+      } catch (e) { return null; }
+    };
+    if (!navigator.onLine) { const q = await queueProfile(); if (q) return q; }
+
+    const { error } = await supabase.from("profiles").update(row).eq("id", userId);
+    if (error && isNetworkFailure(error)) { const q = await queueProfile(); if (q) return q; }
 
     if (error) {
       setProfileState(prev);

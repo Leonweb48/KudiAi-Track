@@ -33,6 +33,7 @@ export function clearUserCache(userId) {
       k.startsWith(ocPfx) ||
       k.startsWith(storePfx) ||
       k.startsWith(invPfx) ||
+      k === `kt_wallet_${userId}` ||
       k === lockTs
     )
     .forEach(k => localStorage.removeItem(k));

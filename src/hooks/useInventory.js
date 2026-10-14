@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../utils/supabase";
 import { uid, today } from "../utils/helpers";
 import { notify, notifyBranchManager, notifyBranchStaff } from "../lib/notifyEngine";
+import { savePendingOp } from "../utils/offlineDb";
+import { isNetworkFailure } from "./useStore";
 
 function invCacheKey(userId, staffId) {
   return `kt_inv_${userId}${staffId ? `_${staffId}` : ""}`;
@@ -278,10 +280,39 @@ export function useInventory(userId, staffId = null, branchId = null, staffName 
       ? { quantity: newQty, cost_price: unitPrice, needs_costing: false, updated_at: new Date().toISOString() }
       : { quantity: newQty, updated_at: new Date().toISOString() };
 
-    const [{ error: me }, { error: pe }] = await Promise.all([
-      supabase.from("stock_movements").insert(mov),
-      supabase.from("products").update(costUpdates).eq("id", product_id),
-    ]);
+    // Offline (or a weak signal that never reached the server): keep the stock change in the offline queue and show it
+    // now — an offline sale used to save the sale but silently lose its stock deduction (2026-10-14). syncPending()
+    // applies it to the product's current quantity when the connection returns.
+    const queueStock = async () => {
+      await savePendingOp({ local_id: mov.id, table: "stock_movements", data: mov, user_id: userId });
+      if (type === "restock" && unitPrice > 0) {
+        const cid = uid();
+        await savePendingOp({ local_id: cid, table: "transactions", user_id: userId, data: {
+          user_id: userId, staff_id: staffId || null, branch_id: branchId || null, type: "out", category: "stock",
+          amount: unitPrice * absQty, item_name: product.product_name, quantity: absQty, customer_name: "", payment_type: "cash",
+          note: "Stock restock (auto)", transaction_date: today(), bill_status: null, client_txn_id: cid,
+        } }).catch(() => {});
+      }
+      setMovements(prev => [mov, ...prev]);
+      setProducts(prev => {
+        const next = prev.map(p => p.id === product_id
+          ? { ...p, quantity: newQty, ...(type === "restock" && unitPrice > 0 ? { cost_price: unitPrice, needs_costing: false } : {}) }
+          : p);
+        const cached = loadInvCache(invCacheKey(userId, staffId)) || {};
+        saveInvCache(invCacheKey(userId, staffId), { ...cached, products: next, movements: [mov, ...(cached.movements || [])].slice(0, 500) });
+        return next;
+      });
+      return true;
+    };
+    if (!navigator.onLine) {
+      try { return await queueStock(); } catch { setDbError("Couldn't save the stock change offline."); return false; }
+    }
+
+    const { error: me } = await supabase.from("stock_movements").insert(mov);
+    if (me && isNetworkFailure(me)) {
+      try { return await queueStock(); } catch { setDbError("Couldn't save the stock change offline."); return false; }
+    }
+    const { error: pe } = me ? { error: null } : await supabase.from("products").update(costUpdates).eq("id", product_id);
 
     if (me || pe) { setDbError((me || pe).message); return false; }
 

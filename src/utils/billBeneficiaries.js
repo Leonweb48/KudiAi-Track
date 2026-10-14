@@ -83,7 +83,7 @@ export function saveBeneficiary(cat, form, verifyName = "") {
     id:         idx >= 0 ? list[idx].id : `ben_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
     cat,
     verifyName: verifyName || (idx >= 0 ? list[idx].verifyName : ""),
-    nickname:   idx >= 0 ? (list[idx].nickname || "") : "",
+    nickname:   (form?.nickname || "").trim() || (idx >= 0 ? (list[idx].nickname || "") : ""),
     savedAt:    Date.now(),
     ...fields,
   };
@@ -99,6 +99,13 @@ export function getBeneficiaries(cat) {
 
 export function deleteBeneficiary(id) {
   persist(load().filter(b => b.id !== id));
+}
+
+// Remove the saved entry for these details (the local copy has its own id, different from the server row's).
+export function deleteBeneficiaryMatch(cat, form) {
+  const key = dedupeKey(cat, pickFields(cat, form));
+  if (!key) return;
+  persist(load().filter(b => !(b.cat === cat && dedupeKey(b.cat, b) === key)));
 }
 
 export function getRecentBeneficiaries(limit = 5) {
@@ -135,6 +142,7 @@ function toRow(ownerId, cat, form, verifyName) {
     category:    cat,
     identifier:  dedupeKey(cat, fields),
     verify_name: verifyName || "",
+    ...((form?.nickname || "").trim() ? { nickname: form.nickname.trim().slice(0, 40) } : {}),
     network:     fields.network    || null,
     meter_type:  fields.meterType  || null,
     provider:    fields.provider   || null,

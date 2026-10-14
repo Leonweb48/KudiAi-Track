@@ -20,7 +20,7 @@ import { submitSecuritySelfie } from "../utils/securitySelfie";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
 import {
   getBeneficiaries, saveBeneficiary, upsertRemote, syncLocalToRemote,
-  fetchAllRemote, benDisplayName, benSubLabel,
+  fetchAllRemote, benDisplayName, benSubLabel, deleteBeneficiaryMatch, deleteRemote,
 } from "../utils/billBeneficiaries";
 
 // Locates the just-completed ledger row (by the withdrawal id the transfer
@@ -346,6 +346,12 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
   const [fee, setFee] = useState(0);
   const [wdId, setWdId] = useState("");
   const [savedRecipients, setSavedRecipients] = useState(() => getBeneficiaries("bank_transfer"));
+  // Saving a recipient is the person's choice (2026-10-14) — never automatic. Ticked on the review step (with an
+  // optional nickname) or saved afterwards from the success screen; removable from the list.
+  const [saveBen, setSaveBen] = useState(false);
+  const [benNick, setBenNick] = useState("");
+  const [benSaved, setBenSaved] = useState(false);
+  const [manageBens, setManageBens] = useState(false);
   const [receipt, setReceipt] = useState(null);
   const [receiptLoading, setReceiptLoading] = useState(false);
   const reqRef = useRef(0);       // guards against a stale lookup clobbering a newer one
@@ -362,6 +368,7 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
     setStep("to"); setAcctNo(""); setBank(null); setName(""); setAmount(""); setManual(false); setManualName("");
     setNarration(""); setBookExpense(false); setRepeat(false); setFrequency("monthly"); setErr(""); setFee(0); setResolving(false);
     setWdId(""); setReceipt(null); setReceiptLoading(false);
+    setSaveBen(false); setBenNick(""); setBenSaved(false); setManageBens(false);
     setPendingPin(""); setSelfie(""); setSelfieBusy(false); setSelfieErr("");
     setClip(null); setSuggests(null); setSuggesting(false); suggestReqRef.current++;
     doneKeyRef.current = "";
@@ -376,6 +383,23 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
       setSavedRecipients(all.filter((b) => b.cat === "bank_transfer"));
     });
   }, [open, ownerId]);
+
+  const saveRecipient = () => {
+    const benForm = { accountNo: acctNo.trim(), bankCode: bank.code, bankName: bank.name, nickname: benNick.trim() };
+    saveBeneficiary("bank_transfer", benForm, recipientName);
+    if (ownerId) upsertRemote(supabase, ownerId, "bank_transfer", benForm, recipientName).catch(() => {});
+    setSavedRecipients((list) => [
+      { id: `local-${benForm.bankCode}-${benForm.accountNo}`, cat: "bank_transfer", ...benForm, verifyName: recipientName },
+      ...list.filter((b) => !(b.bankCode === benForm.bankCode && b.accountNo === benForm.accountNo)),
+    ]);
+    setBenSaved(true);
+  };
+
+  const removeRecipient = (ben) => {
+    deleteBeneficiaryMatch("bank_transfer", ben);
+    if (ownerId && ben.id && !String(ben.id).startsWith("local-") && !String(ben.id).startsWith("ben_")) deleteRemote(supabase, ben.id).catch(() => {});
+    setSavedRecipients((list) => list.filter((b) => b !== ben));
+  };
 
   const pickSavedRecipient = (ben) => {
     setAcctNo(ben.accountNo);
@@ -563,9 +587,7 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
       }
       setStep("done");
       hapticSuccess();
-      const benForm = { accountNo: acctNo.trim(), bankCode: bank.code, bankName: bank.name };
-      saveBeneficiary("bank_transfer", benForm, recipientName);
-      if (ownerId) upsertRemote(supabase, ownerId, "bank_transfer", benForm, recipientName);
+      if (saveBen) saveRecipient();
       onDone?.();
     } catch (e) {
       setErr(e.message || (repeat ? "Could not set up the repeat transfer" : "Transfer failed"));
@@ -621,6 +643,14 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
               </>
             )}
             {err && <p className="text-[12px] text-amber-600 dark:text-amber-400 mt-3">{err}</p>}
+            {(benSaved || (isFirstTimeRecipient && !saveBen)) && (
+              benSaved
+                ? <p className="text-[12px] font-semibold text-emerald-600 dark:text-emerald-400 mt-3">✓ Saved as a beneficiary</p>
+                : <button onClick={saveRecipient}
+                    className="w-full mt-4 rounded-2xl border border-brand-200 dark:border-brand-800/60 bg-brand-50 dark:bg-brand-900/20 text-brand-700 dark:text-brand-300 font-bold py-3 text-[13px]">
+                    Save {recipientName ? recipientName.split(" ")[0] : "this account"} as a beneficiary
+                  </button>
+            )}
             {!repeat && (
               <button onClick={viewReceipt} disabled={receiptLoading}
                 className="w-full mt-5 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold py-3.5 text-[14px] disabled:opacity-50">
@@ -658,6 +688,19 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
               ))}
             </div>
             {freeNote && <p className="text-[11px] text-slate-400 mt-2 px-1">{freeNote}</p>}
+            {isFirstTimeRecipient && (
+              <div className="mt-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 p-3.5">
+                <label className="flex items-center gap-2.5 text-[13px] font-semibold text-slate-700 dark:text-slate-200">
+                  <input type="checkbox" checked={saveBen} onChange={(e) => setSaveBen(e.target.checked)} className="w-[18px] h-[18px] rounded-md accent-brand-600" />
+                  Save as beneficiary <span className="font-normal text-slate-400">· optional</span>
+                </label>
+                {saveBen && (
+                  <input value={benNick} onChange={(e) => setBenNick(e.target.value.slice(0, 40))}
+                    placeholder={`Nickname (optional) — e.g. ${(recipientName || "").split(" ")[0] || "Supplier"}`}
+                    className={inputCls + " mt-2.5"} />
+                )}
+              </div>
+            )}
             {shortForFee && (
               <p className="text-[12px] text-red-500 mt-2">
                 Your balance doesn't cover the {fmt(charges / 100)} in charges on top of {fmt(kobo / 100)} — send up to {fmt(Math.max(balanceKobo - charges, 0) / 100)}.
@@ -726,14 +769,27 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
           <div className="space-y-4">
             {savedRecipients.length > 0 && (
               <div>
-                <label className={labelCls}>Recent recipients</label>
+                <div className="flex items-center justify-between">
+                  <label className={labelCls}>Saved beneficiaries</label>
+                  <button type="button" onClick={() => setManageBens((v) => !v)} className="text-[11px] font-bold text-brand-600 dark:text-brand-400">
+                    {manageBens ? "Done" : "Manage"}
+                  </button>
+                </div>
                 <div className="flex gap-2 overflow-x-auto pb-1 mt-1.5 -mx-1 px-1">
-                  {savedRecipients.slice(0, 8).map((b) => (
-                    <button key={b.id} onClick={() => pickSavedRecipient(b)}
-                      className="flex-shrink-0 flex flex-col items-start rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 px-3 py-2 text-left active:scale-[0.97] transition-transform">
-                      <span className="text-[12px] font-bold text-slate-800 dark:text-slate-100 whitespace-nowrap">{benDisplayName(b)}</span>
-                      <span className="text-[10px] text-slate-400 whitespace-nowrap">{benSubLabel(b)}</span>
-                    </button>
+                  {savedRecipients.slice(0, manageBens ? 50 : 12).map((b) => (
+                    <div key={b.id} className="relative flex-shrink-0">
+                      <button onClick={() => (manageBens ? null : pickSavedRecipient(b))}
+                        className={`flex flex-col items-start rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 px-3 py-2 text-left active:scale-[0.97] transition-transform ${manageBens ? "pr-8" : ""}`}>
+                        <span className="text-[12px] font-bold text-slate-800 dark:text-slate-100 whitespace-nowrap">{benDisplayName(b)}</span>
+                        <span className="text-[10px] text-slate-400 whitespace-nowrap">{benSubLabel(b)}</span>
+                      </button>
+                      {manageBens && (
+                        <button type="button" aria-label={`Remove ${benDisplayName(b)}`} onClick={() => removeRecipient(b)}
+                          className="absolute top-1 right-1 w-6 h-6 rounded-full bg-rose-100 dark:bg-rose-900/40 text-rose-600 dark:text-rose-300 flex items-center justify-center">
+                          <Icon name="x" size={12} />
+                        </button>
+                      )}
+                    </div>
                   ))}
                 </div>
               </div>

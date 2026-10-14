@@ -223,3 +223,13 @@ jobs:
           name: KudiAI-Track-${{ env.BUILD_VERSION }}-aab
           path: android/app/build/outputs/bundle/release/app-release.aab
           retention-days: 90
+
+      # R8 mapping (release builds are obfuscated since 2026-10-14). The AAB already carries it for Play's crash reports;
+      # this copy is for decoding a stack trace by hand.
+      - name: Upload R8 mapping
+        uses: actions/upload-artifact@v4
+        with:
+          name: KudiAI-Track-${{ env.BUILD_VERSION }}-mapping
+          path: android/app/build/outputs/mapping/release/mapping.txt
+          if-no-files-found: warn
+          retention-days: 365

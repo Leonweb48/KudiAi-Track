@@ -61,7 +61,7 @@ export function useWallet(userId, enabled = true) {
     // stay in the loading state, don't flash the "activate wallet" screen.
     if (!userId) { setLoading(!loadedOnceRef.current); return; }
     try {
-      const [{ data: w }, { data: l }, { data: wd }, { data: rq }, { data: pf }, { data: cl }, { data: st }, { data: du }, { data: pc }] = await Promise.all([
+      const [{ data: w, error: wErr }, { data: l }, { data: wd }, { data: rq }, { data: pf }, { data: cl }, { data: st }, { data: du }, { data: pc }] = await Promise.all([
         supabase.from("wallets").select("*").eq("user_id", userId).maybeSingle(),
         supabase.from("wallet_ledger").select("*").eq("user_id", userId)
           .order("created_at", { ascending: false }).limit(50),
@@ -75,6 +75,20 @@ export function useWallet(userId, enabled = true) {
         supabase.rpc("wallet_daily_transfer_used", { p_user_id: userId }),
         supabase.from("platform_config").select("key, value").in("key", ["flw_active_account", "flw_legacy_grace_until", ...TIER_CFG_KEYS]),
       ]);
+      // Couldn't reach the server (offline / weak signal): keep what we have — or, on a fresh start, the copy saved on
+      // this device — instead of showing "no wallet / activate" (2026-10-14).
+      if (wErr && !w) {
+        if (!loadedOnceRef.current) {
+          try {
+            const c = JSON.parse(localStorage.getItem(`kt_wallet_${userId}`) || "null");
+            if (c?.wallet) {
+              setWallet(c.wallet); setLedger(c.ledger || []); setWd(c.wd || []); setRequests(c.requests || []);
+              setBvnVerified(!!c.bvnVerified); loadedOnceRef.current = true; setResolved(true);
+            }
+          } catch { /* no saved copy */ }
+        }
+        return;
+      }
       // A failed read (pc === null) keeps what we knew rather than silently flipping everyone to "active".
       if (Array.isArray(pc)) {
         const pcv = (k) => pc.find((r) => r.key === k)?.value || "";
@@ -105,6 +119,10 @@ export function useWallet(userId, enabled = true) {
       setBvnVerified(!!(pfHasName ? pf?.bvn_verified : (cl?.bvn_verified ?? st?.bvn_verified ?? pf?.bvn_verified ?? false)));
       const pr = (rq || []).find((r) => r.status === "pending" && new Date(r.expires_at) > new Date());
       setPayReq(pr || null);
+      try {
+        localStorage.setItem(`kt_wallet_${userId}`, JSON.stringify({ wallet: w || null, ledger: (l || []).slice(0, 50), wd: (wd || []).slice(0, 20),
+          requests: (rq || []).slice(0, 20), bvnVerified: !!(pfHasName ? pf?.bvn_verified : (cl?.bvn_verified ?? st?.bvn_verified ?? pf?.bvn_verified ?? false)), at: Date.now() }));
+      } catch { /* storage full — fine */ }
       loadedOnceRef.current = true;
       setResolved(true);
     } catch {
