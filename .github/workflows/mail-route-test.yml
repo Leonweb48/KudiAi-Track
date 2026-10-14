@@ -1,0 +1,34 @@
+name: Mail route test
+
+# Sends one real test email through the app's own mail pipeline (api/email-send-test) to an address on demand —
+# used to prove mail for @kudiai.app is delivered (MX → ImprovMX forwarding) after DNS changes. Run by hand only.
+# Prints only whether the send was accepted and the error text if any — never the response body.
+
+on:
+  workflow_dispatch:
+    inputs:
+      to:
+        description: "Send the test to"
+        required: true
+        default: "support@kudiai.app"
+
+permissions:
+  contents: read
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send test email
+        env:
+          SECRET: ${{ secrets.EMAIL_TRIGGER_SECRET }}
+          TO: ${{ inputs.to }}
+        run: |
+          set -euo pipefail
+          case "$TO" in *@kudiai.app) ;; *) echo "Only @kudiai.app addresses"; exit 1;; esac
+          code=$(curl -sS -o resp.json -w "%{http_code}" -G "https://kudiai.app/api/email-send-test" \
+            --data-urlencode "to=$TO" -H "x-trigger-secret: $SECRET")
+          echo "HTTP $code"
+          jq -r '"sent ok: \(.smtpSend.ok // false)", "accepted by our mail server: \((.smtpSend.accepted // []) | length) recipient(s)", (if .smtpSend.error then "error: \(.smtpSend.error)" else empty end)' resp.json
+          rm -f resp.json
+          [ "$code" = "200" ]
