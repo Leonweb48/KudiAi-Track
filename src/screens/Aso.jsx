@@ -3463,6 +3463,13 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             </button>
           )}
 
+          {/* Owner-recorded withdrawals are cash (2026-10-14): no wallet money moves — see migration 20270332000000. */}
+          {action === "withdraw" && (
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/60 rounded-xl px-3 py-2 mb-3 leading-snug">
+              {t("ajo.cashWithdrawalNote")}
+            </p>
+          )}
+
           {fundPayErr && (
             <p className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-xl mb-3">{fundPayErr}</p>
           )}
