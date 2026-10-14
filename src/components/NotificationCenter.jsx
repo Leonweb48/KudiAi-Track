@@ -19,6 +19,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { useNotifications } from "../hooks/useNotifications";
 import { categoryMeta } from "../lib/notificationCategories";
 import { useToast } from "./Toast";
@@ -248,6 +249,9 @@ export default function NotificationCenter({ userId, onNavigate, toast: toastPro
     <>
       <BellButton unreadCount={unreadCount} onClick={() => setOpen(v => !v)} />
 
+      {/* The drawer is drawn at the top of the page (portal), not inside the bell's header: a header with its own layer
+          trapped it underneath page headers that sit higher (Sales, Stock) — it showed behind them. */}
+      {createPortal(<>
       {/* Backdrop */}
       {open && (
         <div
@@ -326,6 +330,7 @@ export default function NotificationCenter({ userId, onNavigate, toast: toastPro
           )}
         </div>
       </div>
+      </>, document.body)}
     </>
   );
 }

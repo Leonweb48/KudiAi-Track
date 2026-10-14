@@ -2,13 +2,16 @@ import { createClient } from "@supabase/supabase-js";
 import nodemailer from "nodemailer";
 import { escapeHtml, escapeDeep, decodeEntities, cleanSubject } from "./_lib/escapeHtml.js";
 import { handleMoneyEmail } from "./_lib/moneyEmails.js";
+import { singleEmail, countRecipients, overQuota } from "./_lib/relayLimits.js";
 
 // Stock and credit events are in-app notifications only (owner's rule 2026-10-11) — refused here even if an old app asks.
 const IN_APP_ONLY_EVENTS = new Set([
   "stock_entry", "low_stock_alert",
   "credit_added", "credit_repayment", "credit_fully_paid", "credit_extended",
 ]);
-import { singleEmail, countRecipients, overQuota } from "./_lib/relayLimits.js";
+// Daily business emails a business owner gets about their own business — never sent to clients or members.
+const OWNER_ONLY_EVENTS = new Set(["daily_summary", "ajo_overdue_digest", "weekly_unnamed_sales_nudge", "capital_status_change"]);
+const NON_OWNER_ACCOUNT_TYPES = new Set(["ajo_client", "org_member", "marketer", "organisation", "super_admin"]);
 
 const SUPABASE_URL = process.env.REACT_APP_SUPABASE_URL || process.env.SUPABASE_URL;
 const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -312,6 +315,17 @@ export default async function handler(req, res) {
   // asks for these; this also stops app builds that haven't updated yet.
   if (IN_APP_ONLY_EVENTS.has(event)) {
     return res.status(200).json({ ok: true, event, queued: 0, note: "in-app only — not emailed" });
+  }
+
+  // Business-owner emails go only to a business owner's own login. An Ajo/Esusu client used to get the owner's
+  // "daily business summary" (the app ran the owner's daily checks for every login) — refused here even for old apps.
+  if (OWNER_ONLY_EVENTS.has(event)) {
+    let notOwner = NON_OWNER_ACCOUNT_TYPES.has(user.user_metadata?.account_type);
+    if (!notOwner) {
+      const { data: cl } = await sb.from("aso_clients").select("id").eq("client_user_id", user.id).limit(1);
+      notOwner = !!(cl && cl.length);
+    }
+    if (notOwner) return res.status(200).json({ ok: true, event, queued: 0, note: "business-owner email — not for this account" });
   }
 
   // Enrich with authenticated user email, then HTML-escape EVERY string in the

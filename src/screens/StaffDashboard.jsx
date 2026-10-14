@@ -316,6 +316,7 @@ If asked about business-wide figures (total business revenue, all staff performa
         {/* D11: Staff-aware AI assistant — staff-scoped context, no business-wide data */}
         <AIChatWidget
           portalContext={staffPortalContext}
+          portal="staff"
           quickChips={staffQuickChips}
           greeting={`Hi ${(staff?.full_name || "").split(" ")[0] || "there"}! I'm **KudiAI**, your personal assistant.\n\nI can see your own sales, credits, and ajo clients. Ask me anything about your performance!`}
           inputPlaceholder="Ask about your sales, credits, or ajo…"

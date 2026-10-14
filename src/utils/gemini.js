@@ -25,6 +25,7 @@ export async function askGemini({
   onChunk,
   timeout     = 90000,
   maxAttempts = 3,
+  portal      = "owner",   // who is asking: owner | ajo_member | staff | manager | coop_org | coop_member
 }) {
   // Use the authenticated user's JWT — works on web and APK, no client secret needed
   let userJwt = "";
@@ -41,7 +42,7 @@ export async function askGemini({
   // Native Android: CapacitorHttp bypasses WebView CORS; request no_stream so
   // the server returns JSON { text } instead of a ReadableStream.
   if (Capacitor.isNativePlatform()) {
-    const payload = { message, lang, businessContext: context, history, no_stream: true };
+    const payload = { message, lang, businessContext: context, history, portal, no_stream: true };
     let lastErr = null;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       if (attempt > 0) await new Promise(r => setTimeout(r, attempt === 1 ? 1000 : 2000));
@@ -76,7 +77,7 @@ export async function askGemini({
     const timer = setTimeout(() => controller.abort(), timeout);
 
     try {
-      const payload = { message, lang, businessContext: context, history };
+      const payload = { message, lang, businessContext: context, history, portal };
       const res = await fetch(CHAT_URL, {
         method:  "POST",
         signal:  controller.signal,

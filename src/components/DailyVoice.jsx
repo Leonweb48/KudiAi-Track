@@ -191,7 +191,7 @@ export default function DailyVoice({ userId, context, fallback, dataLoading, use
 
       try {
         const lang = getLang();
-        const raw   = await askGemini({ message: buildBriefPrompt(lang, userType), lang, context, timeout: 20000, maxAttempts: 1 });
+        const raw   = await askGemini({ message: buildBriefPrompt(lang, userType), lang, context, portal: userType, timeout: 20000, maxAttempts: 1 });
         const clean = stripMarkdown(raw?.trim() || fallback);
         setBrief(clean);
         spokenRef.current = clean;

@@ -3753,6 +3753,7 @@ export default function CoopDashboard({ org: initialOrg, onBack, isOrgPortal = f
           {/* ── KudiAI Gemini Assistant ── */}
           <AIChatWidget
             portalContext={buildCoopOrgContext(org, members, wallet, programs, loans, announcements)}
+            portal="coop_org"
             greeting={`${t("greet.morning").split(" ")[0]}${org.owner_name ? ` ${org.owner_name.split(" ")[0]}` : ""}! I'm **KudiAI**, your cooperative assistant powered by Gemini.\n\nI know your members, savings, loans, programs, and wallet — ask me anything!`}
             quickChips={[
               { label: t("aiChip.memberSummary")   || "Member Summary",   q: "Give me a summary of all members and their savings balances" },

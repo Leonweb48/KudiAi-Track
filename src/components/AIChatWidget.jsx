@@ -29,7 +29,7 @@ function FormattedText({ text }) {
  */
 export default function AIChatWidget({
   store, inventory, branches = [],
-  portalContext, quickChips, greeting: greetingProp, inputPlaceholder,
+  portalContext, quickChips, greeting: greetingProp, inputPlaceholder, portal = "owner",
 }) {
   const t = useT();
   const { lang } = useLanguage();
@@ -172,7 +172,7 @@ export default function AIChatWidget({
     let firstChunk = true;
     try {
       await askGemini({
-        message: userMsg, context, history, lang,
+        message: userMsg, context, history, lang, portal,
         onChunk: (chunk) => {
           if (firstChunk) {
             firstChunk = false;

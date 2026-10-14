@@ -74,6 +74,21 @@ export function withPending(list, pending) {
   return extra.length ? [...extra, ...(list || [])] : list;
 }
 
+// Accounts that are not a business owner. This hook runs at app level for every signed-in account, so the owner's
+// daily emails (business summary, overdue digest, weekly nudge, capital alerts) must check who is signed in first —
+// an Ajo/Esusu client used to get the owner's "daily business summary" email whenever they had a row yesterday.
+const NON_OWNER_ACCOUNT_TYPES = ["ajo_client", "org_member", "marketer", "organisation", "super_admin"];
+
+export async function isBusinessOwnerAccount(user) {
+  if (!user?.id) return false;
+  const type = user.user_metadata?.account_type;
+  if (type && NON_OWNER_ACCOUNT_TYPES.includes(type)) return false;
+  // older savings clients may have no account_type: a client record for this login means it's a client
+  const { data, error } = await supabase.from("aso_clients").select("id").eq("client_user_id", user.id).limit(1);
+  if (error) return false;            // can't tell: send nothing rather than a business email to a client
+  return !(data && data.length);
+}
+
 export function useStore(userId, staffId = null, staffName = null, branchId = null, role = null) {
   const [transactions, setTransactions] = useState([]);
   const [credits,      setCredits]      = useState([]);
@@ -106,6 +121,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
   });
 
   const authEmailRef    = useRef("");
+  const ownerCheckRef   = useRef({ uid: null, ok: false });   // is this login a business owner? (once per user)
   const pendingRepayRef = useRef(new Set()); // credit IDs with an in-flight repayment call
   const wasOfflineRef   = useRef(!navigator.onLine);
   const loadDataRef     = useRef(null);
@@ -183,6 +199,12 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
         : Promise.resolve({ data: [] }),
     ]);
     authEmailRef.current = sessRes?.data?.session?.user?.email || "";
+    // owner-only emails below run only for a business owner's own login (never staff, clients or members)
+    if (!staffId && ownerCheckRef.current.uid !== userId) {
+      const ok = await isBusinessOwnerAccount(sessRes?.data?.session?.user).catch(() => false);
+      ownerCheckRef.current = { uid: userId, ok };
+    }
+    const ownerEmails = !staffId && ownerCheckRef.current.uid === userId && ownerCheckRef.current.ok;
     // A failed read comes back as { data: null, error } — it doesn't throw. Treat it as a failed load (saved copy + the
     // retry banner) instead of carrying on with empty lists, which also overwrote the saved copy with nothing.
     if ((txRes.error && !txRes.data) || (crRes.error && !crRes.data)) throw (txRes.error || crRes.error);
@@ -221,7 +243,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     if (dpRes.data)  setDebtPayments(dpRes.data);
 
     // One daily overdue digest to the owner listing ALL overdue clients (owner session only)
-    if (!staffId && asoRes.data?.length) {
+    if (ownerEmails && asoRes.data?.length) {
       const todayStr  = today();
       const digestKey = `kt_ajo_overdue_digest_${userId}_${todayStr}`;
       if (!localStorage.getItem(digestKey)) {
@@ -262,7 +284,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     // Weekly unnamed-sales nudge — owner only, fires at most once per calendar week.
     // Counts "in" sales with no item_name in the last 7 days; if ≥5, sends a prompt
     // email so the owner knows profit tracking is incomplete for those records.
-    if (!staffId && txRes.data) {
+    if (ownerEmails && txRes.data) {
       const sevenAgo = new Date();
       sevenAgo.setDate(sevenAgo.getDate() - 6);
       sevenAgo.setHours(0, 0, 0, 0);
@@ -304,7 +326,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
     // could report a "profit" that never subtracted cost of goods, and silently dropped Ajo
     // service-fee income entirely. Also includes capital status line if the feature is set
     // on the owner's profile.
-    if (!staffId && txRes.data) {
+    if (ownerEmails && txRes.data) {
       const todayStr = new Date().toISOString().slice(0, 10);
       const summaryKey = `kt_daily_summary_${userId}_${todayStr}`;
       if (!localStorage.getItem(summaryKey)) {
@@ -382,7 +404,7 @@ export function useStore(userId, staffId = null, staffName = null, branchId = nu
       // Capital state-transition notification — fires once per status transition.
       // Deduped by storing last-seen status in localStorage; never fires more than
       // once per transition even if multiple loads occur on the same day.
-      if (!staffId && profRes.data?.working_capital_amount) {
+      if (ownerEmails && profRes.data?.working_capital_amount) {
         const capitalSettings = {
           amount_kobo: profRes.data.working_capital_amount,
           as_of_date:  profRes.data.working_capital_as_of || null,

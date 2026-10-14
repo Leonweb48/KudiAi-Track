@@ -6191,7 +6191,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
       {client && (
         <DailyVoice
           userId={session?.user?.id}
-          context={loadingData ? "" : buildAjoMemberContext(client, contributions, ownerInfo)}
+          context={loadingData ? "" : buildAjoMemberContext(client, contributions, ownerInfo, walletEnabled && wallet.resolved ? wallet : null)}
           fallback={t("client.dailyFallback", { name: client?.full_name ? ", " + client.full_name.split(" ")[0] : "" })}
           dataLoading={loadingData}
           userType="ajo_member"
@@ -6200,7 +6200,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
 
       {client && (
         <AIChatWidget
-          portalContext={buildAjoMemberContext(client, contributions, ownerInfo)}
+          portalContext={buildAjoMemberContext(client, contributions, ownerInfo, walletEnabled && wallet.resolved ? wallet : null)}
           greeting={`${greetingText(t)}${client.full_name ? `, ${client.full_name.split(" ")[0]}` : ""}! ${t("client.aiGreet1")}\n\n${t("client.aiGreet2")}`}
           quickChips={[
             { label: t("aiChip.mySavings")         || "My Balance",           q: "What is my current savings balance?" },
@@ -6210,6 +6210,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
             { label: t("client.chipTips", { base: t("aiChip.mySavings") }) || "Savings Tips", q: "Give me tips to save more consistently" },
           ]}
           inputPlaceholder={t("aiChip.ajoPlaceholder") || "Ask about your savings…"}
+          portal="ajo_member"
         />
       )}
     </div>

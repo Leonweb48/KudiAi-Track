@@ -299,7 +299,7 @@ export default function Insights({ store, inventory, plan = "starter", onUpgrade
       const fullContext = buildContext(store, products, []);
       const context = `${fullContext}
 
-ANALYSIS PERIOD: ${period} | Period Sales: ₦${fmt(totalIn)} | Period Expenses: ₦${fmt(totalOut)} | Period Profit: ₦${fmt(totalIn - totalOut)} | Period Transactions: ${tx.length}
+ANALYSIS PERIOD: ${period} | Period Sales: ${fmt(totalIn)} | Period Expenses: ${fmt(totalOut)} | Period Profit: ${fmt(totalIn - totalOut)} | Period Transactions: ${tx.length}
 Top items this period: ${topItems.join(", ") || "None recorded"}`;
 
       const text = await askGemini({

@@ -1,4 +1,5 @@
 import { today, fmt, isBillPayment } from "./helpers";
+import { appGuide } from "./aiAppGuide";
 import { effectiveNextDue } from "./asoOverdue";
 
 export function buildCoopOrgContext(org = {}, members = [], wallet = null, programs = [], loans = [], announcements = []) {
@@ -16,19 +17,19 @@ export function buildCoopOrgContext(org = {}, members = [], wallet = null, progr
 
   const recentTxns = (wallet?.transactions || []).slice(0, 10);
   const txnLines   = recentTxns.map(t =>
-    `  • ${t.type?.replace(/_/g," ")} — ₦${fmt(t.amount || 0)} (${t.created_at ? new Date(t.created_at).toLocaleDateString("en-NG",{day:"numeric",month:"short"}) : "—"})`
+    `  • ${t.type?.replace(/_/g," ")} — ${fmt(t.amount || 0)} (${t.created_at ? new Date(t.created_at).toLocaleDateString("en-NG",{day:"numeric",month:"short"}) : "—"})`
   );
 
   const memberLines = members.slice(0, 30).map(m =>
-    `  • ${m.full_name} (${m.role || "member"}) — Savings: ₦${fmt(m.savings_balance || 0)} | Status: ${m.status || "active"}`
+    `  • ${m.full_name} (${m.role || "member"}) — Savings: ${fmt(m.savings_balance || 0)} | Status: ${m.status || "active"}`
   );
 
   const loanLines = loans.slice(0, 15).map(l =>
-    `  • ${l.full_name || "Unknown"}: ₦${fmt(l.amount || 0)} — ${l.status} | Outstanding: ₦${fmt(l.outstanding_balance || 0)} | Monthly: ₦${fmt(l.monthly_payment || 0)}`
+    `  • ${l.full_name || "Unknown"}: ${fmt(l.amount || 0)} — ${l.status} | Outstanding: ${fmt(l.outstanding_balance || 0)} | Monthly: ${fmt(l.monthly_payment || 0)}`
   );
 
   const programLines = programs.map(p =>
-    `  • ${p.name} (${p.type || "savings"}) — ${p.status} | Target: ₦${fmt(p.target_amount || 0)} | Freq: ${p.frequency || "monthly"}`
+    `  • ${p.name} (${p.type || "savings"}) — ${p.status} | Target: ${fmt(p.target_amount || 0)} | Freq: ${p.frequency || "monthly"}`
   );
 
   const pinnedAnns = announcements.filter(a => a.is_pinned);
@@ -39,14 +40,14 @@ export function buildCoopOrgContext(org = {}, members = [], wallet = null, progr
     `CONTACT: ${org.email || "N/A"} | ${org.phone || "N/A"} | ${org.address || "N/A"}`,
     ``,
     `FINANCIALS:`,
-    `  Wallet Balance: ₦${fmt(org.wallet_balance)}`,
-    `  Total Member Savings: ₦${fmt(org.total_savings)}`,
-    `  Total Loans Disbursed: ₦${fmt(org.total_loans_out)}`,
+    `  Wallet Balance: ${fmt(org.wallet_balance)}`,
+    `  Total Member Savings: ${fmt(org.total_savings)}`,
+    `  Total Loans Disbursed: ${fmt(org.total_loans_out)}`,
     ``,
     `MEMBERS: ${members.length} total | ${activeMembers.length} active | ${suspended.length} suspended`,
     members.length > 0 ? `MEMBER DETAILS:\n${memberLines.join("\n")}` : "MEMBERS: None yet",
     ``,
-    `LOANS: ${loans.length} total | ${activeLoans.length} active | ${pendingLoans.length} pending | Total Outstanding: ₦${fmt(totalDebt)}`,
+    `LOANS: ${loans.length} total | ${activeLoans.length} active | ${pendingLoans.length} pending | Total Outstanding: ${fmt(totalDebt)}`,
     loans.length > 0 ? `LOAN DETAILS:\n${loanLines.join("\n")}` : "LOANS: None on record",
     ``,
     `SAVINGS PROGRAMS: ${programs.length} total | ${activePrograms.length} active`,
@@ -60,7 +61,7 @@ export function buildCoopOrgContext(org = {}, members = [], wallet = null, progr
   ].filter(Boolean).join("\n");
 }
 
-export function buildAjoMemberContext(client = {}, contributions = [], ownerInfo = {}) {
+export function buildAjoMemberContext(client = {}, contributions = [], ownerInfo = {}, wallet = null) {
   if (!client || !client.full_name) return "Ajo Member Portal | Member data is still loading.";
 
   const now  = new Date();
@@ -77,21 +78,26 @@ export function buildAjoMemberContext(client = {}, contributions = [], ownerInfo
   const isOverdue = !!nextDue && nextDue < today();
 
   const recentLines = contributions.slice(0, 10).map(c =>
-    `  • ₦${fmt(c.amount || 0)} on ${c.transaction_date || c.date || "unknown"} — ${c.transaction_type || c.type || "contribution"}`
+    `  • ${fmt(c.amount || 0)} on ${c.transaction_date || c.date || "unknown"} — ${c.transaction_type || c.type || "contribution"}`
   );
 
   return [
     `AJO SAVINGS MEMBER PORTAL | Member: ${client.full_name} | Today: ${today()}`,
-    `SAVINGS BALANCE: ₦${fmt(client.current_balance || 0)} | Total Deposited: ₦${fmt(client.total_saved || 0)} | Total Withdrawn: ₦${fmt(client.total_withdrawn || 0)}`,
-    `CONTRIBUTION PLAN: ₦${fmt(client.contribution_amount || 0)} ${client.contribution_frequency || ""} | Next Due: ${nextDue || "N/A (no active savings card or group)"}${isOverdue ? " [OVERDUE]" : ""}`,
+    `SAVINGS BALANCE: ${fmt(client.current_balance || 0)} | Total Deposited: ${fmt(client.total_saved || 0)} | Total Withdrawn: ${fmt(client.total_withdrawn || 0)}`,
+    `CONTRIBUTION PLAN: ${fmt(client.contribution_amount || 0)} ${client.contribution_frequency || ""} | Next Due: ${nextDue || "N/A (no active savings card or group)"}${isOverdue ? " [OVERDUE]" : ""}`,
     `STATUS: ${client.status || "active"} | Group: ${client.group_name || client.ajo_group || "No group"}`,
-    `THIS MONTH: ₦${fmt(monthlyTotal)} contributed across ${mContribs.length} transaction(s)`,
+    `THIS MONTH: ${fmt(monthlyTotal)} contributed across ${mContribs.length} transaction(s)`,
     `TOTAL CONTRIBUTION RECORDS: ${contributions.length}`,
     contributions.length > 0 ? `RECENT TRANSACTIONS:\n${recentLines.join("\n")}` : "RECENT TRANSACTIONS: None yet",
     ownerInfo?.business_name ? `MANAGED BY: ${ownerInfo.business_name} | Contact: ${ownerInfo.phone || ownerInfo.owner_phone || "N/A"}` : "",
+    wallet ? (wallet.hasAccount
+      ? `KUDIAI WALLET: Balance ${fmt(wallet.balanceNaira || 0)} | Tier ${wallet.tier || 1} (the client's own spending wallet, separate from the savings balance above)`
+      : "KUDIAI WALLET: not opened yet (the client can open it from the Wallet card)") : "",
     ``,
     `AI ROLE: You are KudiAI, a personal savings companion for this Ajo member. This person is a saver, not a business owner — address them accordingly.`,
-    `AI SCOPE: Only discuss this member's savings balance, contributions, withdrawal history, next due dates, and general personal savings advice. Do not discuss business operations, inventory, staff, other members, or platform internals. Politely redirect out-of-scope questions back to their savings goals.`,
+    `AI SCOPE: Only discuss this member's savings, their own KudiAI wallet, bills and transfers, contributions, withdrawal history, next due dates, how to use the app, and general personal savings advice. Do not discuss business operations, inventory, staff, other members, or platform internals. Politely redirect out-of-scope questions back to their savings goals.`,
+    ``,
+    appGuide("ajo_member"),
   ].filter(Boolean).join("\n");
 }
 
@@ -106,15 +112,15 @@ export function buildCoopMemberContext(member = {}, loans = [], org = {}) {
   const totalDebt    = activeLoans.reduce((s, l) => s + Number(l.remaining_balance || l.amount || 0), 0);
 
   const loanLines = loans.slice(0, 5).map(l =>
-    `  • ₦${fmt(l.amount || 0)} — ${l.status} | Monthly: ₦${fmt(l.monthly_payment || 0)} | Remaining: ₦${fmt(l.remaining_balance || 0)}`
+    `  • ${fmt(l.amount || 0)} — ${l.status} | Monthly: ${fmt(l.monthly_payment || 0)} | Remaining: ${fmt(l.remaining_balance || 0)}`
   );
 
   return [
     `COOPERATIVE MEMBER PORTAL | Member: ${member.full_name} | Today: ${today()}`,
     `ORGANIZATION: ${orgName}${orgType ? ` (${orgType})` : ""}`,
     `MEMBER CODE: ${member.member_code || "N/A"} | Status: ${member.status || "active"}`,
-    `SAVINGS BALANCE: ₦${fmt(member.savings_balance || member.balance || 0)}`,
-    `LOANS: ${activeLoans.length} active | ${pendingLoans.length} pending | Total Debt: ₦${fmt(totalDebt)}`,
+    `SAVINGS BALANCE: ${fmt(member.savings_balance || member.balance || 0)}`,
+    `LOANS: ${activeLoans.length} active | ${pendingLoans.length} pending | Total Debt: ${fmt(totalDebt)}`,
     loans.length > 0 ? `LOAN DETAILS:\n${loanLines.join("\n")}` : "LOANS: No loans on record",
     `CONTACT: ${member.email || "N/A"} | ${member.phone || "N/A"}`,
     ``,
@@ -132,11 +138,11 @@ function buildInvoiceContext(invoices) {
   const paid      = invoices.filter(i => i.status === "paid");
   const draft     = invoices.filter(i => i.status === "draft");
   const recentLines = invoices.slice(0, 10).map(i =>
-    `  • ${i.invoice_number} | ${i.customer_name} | ₦${fmt(k2n(i.total_kobo))} | ${i.status.toUpperCase()}${i.due_date ? ` | Due: ${i.due_date}` : ""}`
+    `  • ${i.invoice_number} | ${i.customer_name} | ${fmt(k2n(i.total_kobo))} | ${i.status.toUpperCase()}${i.due_date ? ` | Due: ${i.due_date}` : ""}`
   );
   return [
     `INVOICES: ${invoices.length} total | ${overdue.length} overdue | ${paid.length} paid | ${draft.length} draft`,
-    `INVOICE OUTSTANDING: ₦${fmt(total_outstanding)} across ${invoices.filter(i => ["sent","overdue","partially_paid"].includes(i.status)).length} invoice(s)`,
+    `INVOICE OUTSTANDING: ${fmt(total_outstanding)} across ${invoices.filter(i => ["sent","overdue","partially_paid"].includes(i.status)).length} invoice(s)`,
     invoices.length > 0 ? `RECENT INVOICES:\n${recentLines.join("\n")}` : "",
   ].filter(Boolean).join("\n");
 }
@@ -167,7 +173,7 @@ export function buildContext(store, products, branches = [], invoices = []) {
 
   const custMap = {};
   txIn.forEach(t => { if (t.customer_name) custMap[t.customer_name] = (custMap[t.customer_name] || 0) + t.amount; });
-  const topCusts = Object.entries(custMap).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, v]) => `${k} (₦${fmt(v)})`);
+  const topCusts = Object.entries(custMap).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, v]) => `${k} (${fmt(v)})`);
 
   const unpaid     = credits.filter(c => c.status !== "paid");
   const overdue    = credits.filter(c => c.status === "overdue");
@@ -187,7 +193,7 @@ export function buildContext(store, products, branches = [], invoices = []) {
 
   const ajoClientLines = asoClients.slice(0, 30).map(c => {
     const isOverdue = isAsoOverdue(c);
-    return `  • ${c.full_name || "Unknown"}: Balance ₦${fmt(c.current_balance || 0)}, Deposited ₦${fmt(c.total_saved || 0)}, Withdrawn ₦${fmt(c.total_withdrawn || 0)}, Freq: ${c.contribution_frequency || "N/A"}, NextDue: ${c.next_contribution_date || "N/A"}${isOverdue ? " [OVERDUE]" : ""}`;
+    return `  • ${c.full_name || "Unknown"}: Balance ${fmt(c.current_balance || 0)}, Deposited ${fmt(c.total_saved || 0)}, Withdrawn ${fmt(c.total_withdrawn || 0)}, Freq: ${c.contribution_frequency || "N/A"}, NextDue: ${c.next_contribution_date || "N/A"}${isOverdue ? " [OVERDUE]" : ""}`;
   });
 
   const staffNames = Object.values(staffMap || {});
@@ -196,21 +202,24 @@ export function buildContext(store, products, branches = [], invoices = []) {
     : "None";
 
   return [
-    `Business: ${profile.business_name || "Unknown"} | Owner: ${profile.owner_name || profile.full_name || "Unknown"} | Today: ${todayStr}`,
-    `ALL-TIME FINANCES: Sales ₦${fmt(allIn)} | Expenses ₦${fmt(allOut)} | Net Profit ₦${fmt(allIn - allOut)}`,
-    `THIS MONTH: Sales ₦${fmt(mIn)} | Expenses ₦${fmt(mOut)} | Profit ₦${fmt(mIn - mOut)}`,
-    `TODAY: Sales ₦${fmt(tdIn)} | Expenses ₦${fmt(tdOut)} | Transactions: ${tdCnt}`,
+    `BUSINESS OWNER PORTAL | Business: ${profile.business_name || "Unknown"} | Owner: ${profile.owner_name || profile.full_name || "Unknown"} | Today: ${todayStr}`,
+    `ALL-TIME FINANCES: Sales ${fmt(allIn)} | Expenses ${fmt(allOut)} | Net Profit ${fmt(allIn - allOut)}`,
+    `THIS MONTH: Sales ${fmt(mIn)} | Expenses ${fmt(mOut)} | Profit ${fmt(mIn - mOut)}`,
+    `TODAY: Sales ${fmt(tdIn)} | Expenses ${fmt(tdOut)} | Transactions: ${tdCnt}`,
     `TOTAL TRANSACTIONS: ${transactions.length}`,
     `TOP ITEMS: ${topItems.join(", ") || "None recorded"}`,
     `TOP CUSTOMERS: ${topCusts.join(", ") || "None recorded"}`,
-    `CREDIT: ₦${fmt(creditOwed)} outstanding from ${unpaid.length} customers | ${overdue.length} overdue`,
-    `INVENTORY: ${products.length} products | ${outOfStock} out of stock | ${lowStock} low stock | Stock value ₦${fmt(stockVal)}`,
-    `AJO/SAVINGS: ${asoClients.length} clients (${ajoActive} active) | Balance ₦${fmt(ajoBal)} | Total Saved ₦${fmt(ajoSaved)} | Total Withdrawn ₦${fmt(ajoWithdr)} | ${ajoOver.length} overdue`,
+    `CREDIT: ${fmt(creditOwed)} outstanding from ${unpaid.length} customers | ${overdue.length} overdue`,
+    `INVENTORY: ${products.length} products | ${outOfStock} out of stock | ${lowStock} low stock | Stock value ${fmt(stockVal)}`,
+    `AJO/SAVINGS: ${asoClients.length} clients (${ajoActive} active) | Balance ${fmt(ajoBal)} | Total Saved ${fmt(ajoSaved)} | Total Withdrawn ${fmt(ajoWithdr)} | ${ajoOver.length} overdue`,
     asoClients.length > 0 ? `AJO CLIENTS:\n${ajoClientLines.join("\n")}` : "AJO CLIENTS: None yet",
     `STAFF: ${staffNames.length > 0 ? `${staffNames.length} member(s) — ${staffNames.join(", ")}` : "None"}`,
     `BRANCHES: ${branches.length > 0 ? `${branches.length} branch(es) — ${branchLines}` : "None"}`,
     invoices.length > 0 ? buildInvoiceContext(invoices) : "INVOICES: None yet",
     ``,
+    `AI ROLE: You are KudiAI, the business companion of this business owner.`,
     `AI SCOPE: Focus on this owner's business data, KudiAI Track features, and practical business advice. For questions about platform infrastructure, internal security implementation, or how the system works under the hood, acknowledge briefly and redirect to their actual business goals.`,
+    ``,
+    appGuide("owner"),
   ].join("\n");
 }

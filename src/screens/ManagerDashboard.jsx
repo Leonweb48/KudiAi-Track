@@ -353,7 +353,7 @@ IMPORTANT: Net profit, cost prices, and business-wide figures are owner-private 
         />
 
         {/* Floating KudiAI Chat Widget */}
-        <AIChatWidget store={store} inventory={inventory} branches={[]} portalContext={managerPortalContext} />
+        <AIChatWidget store={store} inventory={inventory} branches={[]} portalContext={managerPortalContext} portal="manager" />
 
         {/* Voice Modal */}
         {voiceOpen && (
