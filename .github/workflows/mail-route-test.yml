@@ -21,7 +21,7 @@ jobs:
     steps:
       - name: Send test email
         env:
-          SECRET: ${{ secrets.EMAIL_TRIGGER_SECRET }}
+          SECRET: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}   # the site has no EMAIL_TRIGGER_SECRET; it also accepts this
           TO: ${{ inputs.to }}
         run: |
           set -euo pipefail
