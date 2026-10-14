@@ -1,3 +1,5 @@
+import { useT } from "../contexts/LanguageContext";
+
 const slideUpCSS = `@keyframes ro-slide-up { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }`;
 const popCSS     = `@keyframes ro-pop { 0% { transform: scale(0.4); opacity: 0; } 65% { transform: scale(1.08); } 100% { transform: scale(1); opacity: 1; } }`;
 
@@ -42,8 +44,9 @@ export default function ResultOverlay({
   onPrimary,
   onRetry,
 }) {
+  const t     = useT();
   const ok    = type === "success";
-  const label = primaryLabel ?? "Done";
+  const label = primaryLabel ?? t("common.done");
 
   return (
     <>
@@ -138,7 +141,7 @@ export default function ResultOverlay({
               onClick={onRetry}
               className="w-full py-3.5 rounded-2xl text-white font-black text-sm active:scale-[0.98] transition-transform bg-red-500"
             >
-              Try Again
+              {t("settings.notif.result.tryAgain")}
             </button>
           )}
           <button

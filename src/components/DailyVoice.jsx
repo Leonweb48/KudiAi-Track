@@ -4,6 +4,7 @@ import { speakText, cancelTTS, isTtsEnabled } from "../utils/tts";
 import { askGemini } from "../utils/gemini";
 import { supabase } from "../utils/supabase";
 import { getLang, getLangName } from "../utils/i18n";
+import { useT } from "../contexts/LanguageContext";
 
 const BRIEF_ENABLED_KEY = (uid) => `kt_brief_enabled_${uid}`;
 const BRIEF_DATE_KEY    = (uid) => `kt_brief_date_${uid}`;
@@ -72,6 +73,7 @@ function WaveBars() {
  *   dataLoading — true while the portal's data is still being fetched; brief is delayed until false
  */
 export default function DailyVoice({ userId, context, fallback, dataLoading, userType = "owner" }) {
+  const t = useT();
   const [visible,    setVisible]    = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [needsTap,   setNeedsTap]   = useState(false);
@@ -197,7 +199,7 @@ export default function DailyVoice({ userId, context, fallback, dataLoading, use
         doSpeak(spokenRef.current);
         setTimeout(() => { if (!isSpeakingRef.current) setNeedsTap(isTtsEnabled()); }, 1500);
       } catch {
-        const fb = stripMarkdown(fallback || "Your numbers look good — keep the momentum going today!");
+        const fb = stripMarkdown(fallback || t("home.briefFallback"));
         setBrief(fb);
         spokenRef.current = fb;
         setNeedsTap(isTtsEnabled());
@@ -219,17 +221,17 @@ export default function DailyVoice({ userId, context, fallback, dataLoading, use
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide leading-none mb-0.5">
-              KudiAI Daily Brief
+              {t("home.briefTitle")}
             </p>
             <p className="text-[11px] text-slate-400 leading-none">
-              {isSpeaking ? "Speaking…" : brief === null ? "Generating…" : "Your daily summary"}
+              {isSpeaking ? t("home.briefSpeaking") : brief === null ? t("home.briefGenerating") : t("home.briefSummary")}
             </p>
           </div>
           <div className="flex items-center gap-1 flex-shrink-0">
             {brief !== null && spokenRef.current && isTtsEnabled() && (
               <button onClick={() => doSpeak(spokenRef.current)}
                 className="text-emerald-500 dark:text-emerald-400 p-1.5 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-900/30 transition-colors"
-                title="Listen again">
+                title={t("home.briefListenAgain")}>
                 <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>
                 </svg>
@@ -237,7 +239,7 @@ export default function DailyVoice({ userId, context, fallback, dataLoading, use
             )}
             <button onClick={dismiss}
               className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-lg transition-colors"
-              title="Dismiss">
+              title={t("home.dismiss")}>
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/>
               </svg>
@@ -252,7 +254,7 @@ export default function DailyVoice({ userId, context, fallback, dataLoading, use
           {brief === null ? (
             <div className="flex items-center gap-2 py-2">
               <span className="w-3.5 h-3.5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin flex-shrink-0" />
-              <p className="text-[11px] text-slate-400 dark:text-slate-500">Generating your brief…</p>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">{t("home.briefGeneratingLong")}</p>
             </div>
           ) : (
             <p className="text-[13px] text-slate-700 dark:text-slate-200 leading-relaxed">{brief}</p>
@@ -264,7 +266,7 @@ export default function DailyVoice({ userId, context, fallback, dataLoading, use
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>
               </svg>
-              Tap to hear
+              {t("home.briefTapToHear")}
             </button>
           )}
         </div>

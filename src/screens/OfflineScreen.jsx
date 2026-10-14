@@ -1,6 +1,8 @@
 import AppLogo from "../components/AppLogo";
+import { useT } from "../contexts/LanguageContext";
 
 export default function OfflineScreen({ onRetry }) {
+  const t = useT();
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900 px-6 text-center">
       <div className="mb-6">
@@ -19,16 +21,16 @@ export default function OfflineScreen({ onRetry }) {
       </div>
 
       <h1 className="text-xl font-extrabold text-slate-800 dark:text-white mb-2">
-        Can&#39;t connect
+        {t("settings.notif.offline.title")}
       </h1>
       <p className="text-sm text-slate-500 dark:text-slate-400 max-w-xs mb-8 leading-relaxed">
-        Check your internet connection and tap Retry. Your account is safe — you&#39;ll be taken straight to your portal once you&#39;re back online.
+        {t("settings.notif.offline.body")}
       </p>
 
       <button
         onClick={onRetry}
         className="px-8 py-3 bg-green-600 text-white rounded-2xl font-bold text-sm active:scale-95 transition-transform shadow-sm">
-        Retry
+        {t("settings.notif.offline.retry")}
       </button>
     </div>
   );

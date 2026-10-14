@@ -5,18 +5,19 @@ import KycConsent from "../components/KycConsent";
 import SelfieCapture from "../components/SelfieCapture";
 import { kycConsentGiven } from "../utils/kycConsent";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
+import { useT } from "../contexts/LanguageContext";
 
 // ── Status config ─────────────────────────────────────────────────────────────
 
 const STATUS = {
-  unverified:    { label: "Not verified",              color: "#9ca3af", bg: "#f9fafb",  icon: "○"  },
-  tier1_failed:  { label: "Verification failed",       color: "#ef4444", bg: "#fef2f2",  icon: "✕"  },
-  tier1_pending: { label: "NIN under review",          color: "#2563eb", bg: "#eff6ff",  icon: "⏳" },
-  tier1_verified:{ label: "Identity verified",         color: "#16a34a", bg: "#f0fdf4",  icon: "✓"  },
-  tier2_required:{ label: "Enhanced verification required", color: "#d97706", bg: "#fffbeb", icon: "⚠" },
-  tier2_pending: { label: "Under admin review",        color: "#2563eb", bg: "#eff6ff",  icon: "⏳" },
-  tier2_verified:{ label: "Fully verified",            color: "#16a34a", bg: "#f0fdf4",  icon: "✓✓" },
-  tier2_rejected:{ label: "Documents rejected",        color: "#ef4444", bg: "#fef2f2",  icon: "✕"  },
+  unverified:    { labelKey: "account.verify.statusUnverified", color: "#9ca3af", bg: "#f9fafb",  icon: "○"  },
+  tier1_failed:  { labelKey: "account.verify.statusTier1Failed", color: "#ef4444", bg: "#fef2f2",  icon: "✕"  },
+  tier1_pending: { labelKey: "account.verify.statusTier1Pending", color: "#2563eb", bg: "#eff6ff",  icon: "⏳" },
+  tier1_verified:{ labelKey: "account.verify.statusTier1Verified", color: "#16a34a", bg: "#f0fdf4",  icon: "✓"  },
+  tier2_required:{ labelKey: "account.verify.statusTier2Required", color: "#d97706", bg: "#fffbeb", icon: "⚠" },
+  tier2_pending: { labelKey: "account.verify.statusTier2Pending", color: "#2563eb", bg: "#eff6ff",  icon: "⏳" },
+  tier2_verified:{ labelKey: "account.verify.statusTier2Verified", color: "#16a34a", bg: "#f0fdf4",  icon: "✓✓" },
+  tier2_rejected:{ labelKey: "account.verify.statusTier2Rejected", color: "#ef4444", bg: "#fef2f2",  icon: "✕"  },
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -32,9 +33,10 @@ function inp(dark) {
 }
 
 function Label({ children, dark, optional }) {
+  const t = useT();
   return (
     <div style={{ fontSize: 12, fontWeight: 600, color: dark ? "#9ca3af" : "#6b7280", marginBottom: 4 }}>
-      {children}{optional && <span style={{ fontWeight: 400, marginLeft: 4, opacity: 0.7 }}>(optional)</span>}
+      {children}{optional && <span style={{ fontWeight: 400, marginLeft: 4, opacity: 0.7 }}>({t("common.optional")})</span>}
     </div>
   );
 }
@@ -53,6 +55,7 @@ function Card({ children, dark, style }) {
 }
 
 function PrimaryBtn({ children, onClick, disabled, loading, dark }) {
+  const t = useT();
   return (
     <button
       onClick={onClick}
@@ -64,7 +67,7 @@ function PrimaryBtn({ children, onClick, disabled, loading, dark }) {
         fontWeight: 700, fontSize: 14, cursor: disabled || loading ? "not-allowed" : "pointer",
       }}
     >
-      {loading ? "Please wait…" : children}
+      {loading ? t("account.verify.pleaseWait") : children}
     </button>
   );
 }
@@ -72,6 +75,7 @@ function PrimaryBtn({ children, onClick, disabled, loading, dark }) {
 // ── Guarantor fields ──────────────────────────────────────────────────────────
 
 function GuarantorGroup({ num, value, onChange, dark }) {
+  const t = useT();
   const f = (k) => (
     <input
       value={value[k] || ""}
@@ -82,17 +86,17 @@ function GuarantorGroup({ num, value, onChange, dark }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ fontWeight: 700, fontSize: 13, color: dark ? "#d1d5db" : "#374151" }}>
-        Guarantor {num}
+        {t("account.verify.guarantorN", { n: num })}
       </div>
-      <div><Label dark={dark}>Full legal name</Label>{f("name")}</div>
+      <div><Label dark={dark}>{t("account.verify.fullLegalName")}</Label>{f("name")}</div>
       <div>
-        <Label dark={dark}>Phone number</Label>
+        <Label dark={dark}>{t("account.verify.phoneNumber")}</Label>
         <input value={value.phone || ""} onChange={e => onChange({ ...value, phone: e.target.value })}
           placeholder="08012345678" inputMode="tel" style={inp(dark)} />
       </div>
-      <div><Label dark={dark} optional>Email address</Label>{f("email")}</div>
-      <div><Label dark={dark}>Home / business address</Label>{f("address")}</div>
-      <div><Label dark={dark} optional>NIN (11 digits)</Label>
+      <div><Label dark={dark} optional>{t("account.verify.emailAddress")}</Label>{f("email")}</div>
+      <div><Label dark={dark}>{t("account.verify.homeBusinessAddress")}</Label>{f("address")}</div>
+      <div><Label dark={dark} optional>{t("account.verify.nin11")}</Label>
         <input value={value.nin || ""} onChange={e => onChange({ ...value, nin: e.target.value.replace(/\D/g, "") })}
           maxLength={11} inputMode="numeric" placeholder="12345678901" style={inp(dark)} />
       </div>
@@ -103,6 +107,7 @@ function GuarantorGroup({ num, value, onChange, dark }) {
 // ── Tier 1 form ───────────────────────────────────────────────────────────────
 
 function Tier1Form({ dark, status, profile, onSuccess }) {
+  const t = useT();
   const [nin,     setNin]     = useState("");
   const [selfie,  setSelfie]  = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -111,7 +116,7 @@ function Tier1Form({ dark, status, profile, onSuccess }) {
   const instant = kycEnabled;   // identity checks are switched on: the NIN is checked at once, a person only steps in if it cannot be matched
 
   async function handleSubmit() {
-    if (nin.length !== 11) { setError("NIN must be exactly 11 digits."); return; }
+    if (nin.length !== 11) { setError(t("account.verify.ninMust11")); return; }
     setSubmitting(true);
     setError("");
     try {
@@ -122,7 +127,7 @@ function Tier1Form({ dark, status, profile, onSuccess }) {
       if (!data.success && data.error) { setError(data.error); return; }
       onSuccess(data);
     } catch (e) {
-      setError(e.message || "Verification failed. Please try again.");
+      setError(e.message || t("account.verify.verificationFailedRetry"));
     } finally {
       setSubmitting(false);
     }
@@ -133,12 +138,12 @@ function Tier1Form({ dark, status, profile, onSuccess }) {
   return (
     <Card dark={dark}>
       <div style={{ fontWeight: 700, fontSize: 15, color: dark ? "#f3f4f6" : "#111827", marginBottom: 4 }}>
-        Step 1 — Verify your identity
+        {t("account.verify.step1Title")}
       </div>
       <div style={{ fontSize: 12, color: dark ? "#9ca3af" : "#6b7280", marginBottom: 16, lineHeight: 1.6 }}>
         {instant
-          ? "Your NIN is checked straight away against the national identity records and compared with your name. If it can't be matched automatically, our verification team reviews it."
-          : "Your NIN is reviewed by our verification team — usually within 1–2 business days."}
+          ? t("account.verify.step1Instant")
+          : t("account.verify.step1Manual")}
       </div>
 
       {canRetry && status === "tier1_failed" && (
@@ -147,12 +152,12 @@ function Tier1Form({ dark, status, profile, onSuccess }) {
           padding: "10px 12px", marginBottom: 14, fontSize: 12,
           color: dark ? "#fca5a5" : "#b91c1c", lineHeight: 1.5,
         }}>
-          <strong>Previous attempt failed:</strong> {profile.verification_rejected_reason}
+          <strong>{t("account.verify.previousFailed")}</strong> {profile.verification_rejected_reason}
         </div>
       )}
 
       <div style={{ marginBottom: 14 }}>
-        <Label dark={dark}>National Identification Number (NIN)</Label>
+        <Label dark={dark}>{t("account.verify.ninLabel")}</Label>
         <input
           value={nin}
           onChange={e => setNin(e.target.value.replace(/\D/g, ""))}
@@ -162,7 +167,7 @@ function Tier1Form({ dark, status, profile, onSuccess }) {
           style={inp(dark)}
         />
         <div style={{ fontSize: 11, color: dark ? "#6b7280" : "#9ca3af", marginTop: 4 }}>
-          11 digits · as printed on your National ID card
+          {t("account.verify.ninHint")}
         </div>
       </div>
 
@@ -176,11 +181,11 @@ function Tier1Form({ dark, status, profile, onSuccess }) {
       )}
 
       <PrimaryBtn onClick={handleSubmit} loading={submitting} dark={dark}>
-        Verify Identity
+        {t("account.verify.verifyIdentity")}
       </PrimaryBtn>
 
       <div style={{ marginTop: 10, fontSize: 11, color: dark ? "#4b5563" : "#9ca3af", textAlign: "center", lineHeight: 1.5 }}>
-        🔒 Your NIN is sent securely. {instant ? "Once it is matched we keep only its last 4 digits." : "Only our verification team can see it."}
+        🔒 {t("account.verify.sentSecurely")} {instant ? t("account.verify.keepLast4") : t("account.verify.onlyTeamSees")}
       </div>
     </Card>
   );
@@ -189,6 +194,7 @@ function Tier1Form({ dark, status, profile, onSuccess }) {
 // ── Tier 1 result ─────────────────────────────────────────────────────────────
 
 function Tier1Result({ dark, status, profile }) {
+  const t = useT();
   const ok = status === "tier1_verified" || status === "tier2_required" || status === "tier2_pending" || status === "tier2_verified";
   return (
     <Card dark={dark} style={{ background: ok ? (dark ? "#0f2a0f" : "#f0fdf4") : (dark ? "#2a1111" : "#fef2f2") }}>
@@ -196,11 +202,11 @@ function Tier1Result({ dark, status, profile }) {
         <span style={{ fontSize: 24 }}>{ok ? "✅" : "❌"}</span>
         <div>
           <div style={{ fontWeight: 700, fontSize: 14, color: ok ? "#16a34a" : "#ef4444" }}>
-            {ok ? "NIN verified" : "NIN verification failed"}
+            {ok ? t("account.verify.ninVerified") : t("account.verify.ninFailed")}
           </div>
           {profile.verified_name && (
             <div style={{ fontSize: 12, color: dark ? "#9ca3af" : "#6b7280", marginTop: 2 }}>
-              Verified as: <strong>{profile.verified_name}</strong>
+              {t("account.verify.verifiedAs")} <strong>{profile.verified_name}</strong>
             </div>
           )}
         </div>
@@ -212,8 +218,9 @@ function Tier1Result({ dark, status, profile }) {
 // ── Tier 2 form ───────────────────────────────────────────────────────────────
 
 function Tier2Form({ dark, userId, profile, onSuccess }) {
+  const t = useT();
   const [docFile,    setDocFile]    = useState(null);
-  const [docName,    setDocName]    = useState(profile.reg_doc_url ? "Previously uploaded" : "");
+  const [docName,    setDocName]    = useState("");   // empty: shows "Previously uploaded" (translated) when a document is already on file
   const [docUrl,     setDocUrl]     = useState(profile.reg_doc_url || "");
   const [g1,         setG1]         = useState({ name: "", phone: "", email: "", address: "", nin: "" });
   const [g2,         setG2]         = useState({ name: "", phone: "", email: "", address: "", nin: "" });
@@ -238,9 +245,9 @@ function Tier2Form({ dark, userId, profile, onSuccess }) {
 
   async function handleSubmit() {
     setError("");
-    if (!docUrl && !docFile) { setError("Please upload your business document."); return; }
-    if (!g1.name || !g1.phone) { setError("Guarantor 1 requires at least a name and phone number."); return; }
-    if (!g2.name || !g2.phone) { setError("Guarantor 2 requires at least a name and phone number."); return; }
+    if (!docUrl && !docFile) { setError(t("account.verify.uploadDocRequired")); return; }
+    if (!g1.name || !g1.phone) { setError(t("account.verify.guarantorRequires", { n: 1 })); return; }
+    if (!g2.name || !g2.phone) { setError(t("account.verify.guarantorRequires", { n: 2 })); return; }
 
     setSubmitting(true);
     try {
@@ -263,7 +270,7 @@ function Tier2Form({ dark, userId, profile, onSuccess }) {
       if (data?.error) throw new Error(data.error);
       onSuccess({ status: "tier2_pending" });
     } catch (e) {
-      setError(e.message || "Failed to submit. Please try again.");
+      setError(e.message || t("account.verify.submitFailed"));
     } finally {
       setSubmitting(false);
     }
@@ -272,10 +279,10 @@ function Tier2Form({ dark, userId, profile, onSuccess }) {
   return (
     <Card dark={dark}>
       <div style={{ fontWeight: 700, fontSize: 15, color: dark ? "#f3f4f6" : "#111827", marginBottom: 4 }}>
-        Step 2 — Enhanced verification
+        {t("account.verify.step2Title")}
       </div>
       <div style={{ fontSize: 12, color: dark ? "#9ca3af" : "#6b7280", marginBottom: 6, lineHeight: 1.6 }}>
-        Required because {profile.tier2_trigger_detail || "your account requires additional due diligence."} A KudiAI Track admin will review your documents within 2–3 business days.
+        {t("account.verify.requiredBecause", { reason: profile.tier2_trigger_detail || t("account.verify.defaultReason") })}
       </div>
 
       {/* Why required — context-sensitive */}
@@ -285,15 +292,15 @@ function Tier2Form({ dark, userId, profile, onSuccess }) {
         fontSize: 12, color: dark ? "#fde68a" : "#92400e", lineHeight: 1.5,
       }}>
         ⚠ {profile.tier2_trigger === "savings_threshold"
-          ? "Your Ajo account holds over ₦500,000 in client savings. This threshold requires a guarantor review."
-          : "Your account has been flagged for additional review."}
+          ? t("account.verify.savingsThreshold")
+          : t("account.verify.flagged")}
       </div>
 
       {/* Document upload */}
       <div style={{ marginBottom: 16 }}>
-        <Label dark={dark}>Business document</Label>
+        <Label dark={dark}>{t("account.verify.businessDocument")}</Label>
         <div style={{ fontSize: 11, color: dark ? "#6b7280" : "#9ca3af", marginBottom: 6, lineHeight: 1.5 }}>
-          CAC certificate, business name certificate, or government-issued registration document. PDF or image.
+          {t("account.verify.docHint")}
         </div>
         <label style={{
           display: "flex", alignItems: "center", gap: 10,
@@ -303,7 +310,7 @@ function Tier2Form({ dark, userId, profile, onSuccess }) {
           background: dark ? "#111" : "#f9fafb",
         }}>
           <span style={{ fontSize: 20 }}>📎</span>
-          <span style={{ flex: 1 }}>{uploading ? "Uploading…" : (docName || "Choose file…")}</span>
+          <span style={{ flex: 1 }}>{uploading ? t("account.verify.uploading") : (docName || (profile.reg_doc_url ? t("account.verify.previouslyUploaded") : t("account.verify.chooseFile")))}</span>
           <input type="file" accept="image/*,.pdf,.doc,.docx" style={{ display: "none" }}
             onChange={e => {
               const f = e.target.files?.[0];
@@ -318,10 +325,10 @@ function Tier2Form({ dark, userId, profile, onSuccess }) {
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         <div style={{ height: 1, background: dark ? "#252525" : "#f0f0f0" }} />
         <div style={{ fontSize: 13, fontWeight: 700, color: dark ? "#9ca3af" : "#6b7280" }}>
-          Two guarantors — each independently verified
+          {t("account.verify.twoGuarantors")}
         </div>
         <div style={{ fontSize: 11, color: dark ? "#6b7280" : "#9ca3af", lineHeight: 1.5, marginTop: -8 }}>
-          Guarantors must be individuals (not companies) who can vouch for your business identity. They do not need to have a KudiAI Track account.
+          {t("account.verify.guarantorsHint")}
         </div>
         <GuarantorGroup num={1} value={g1} onChange={setG1} dark={dark} />
         <div style={{ height: 1, background: dark ? "#252525" : "#f0f0f0" }} />
@@ -336,12 +343,12 @@ function Tier2Form({ dark, userId, profile, onSuccess }) {
 
       <div style={{ marginTop: 16 }}>
         <PrimaryBtn onClick={handleSubmit} loading={submitting || uploading} dark={dark}>
-          Submit for Review
+          {t("account.verify.submitForReview")}
         </PrimaryBtn>
       </div>
 
       <div style={{ marginTop: 10, fontSize: 11, color: dark ? "#4b5563" : "#9ca3af", textAlign: "center", lineHeight: 1.5 }}>
-        After submission you continue using KudiAI Track fully. No features are locked while under review.
+        {t("account.verify.afterSubmission")}
       </div>
     </Card>
   );
@@ -350,6 +357,7 @@ function Tier2Form({ dark, userId, profile, onSuccess }) {
 // ── Pending / approved / rejected statuses ────────────────────────────────────
 
 function StatusCard({ dark, status, profile, submission }) {
+  const t = useT();
   const cfg = STATUS[status] || STATUS.unverified;
   const dark_bg = dark ? "#111" : cfg.bg;
 
@@ -366,34 +374,34 @@ function StatusCard({ dark, status, profile, submission }) {
         </div>
         <div style={{ flex: 1 }}>
           <div style={{ fontWeight: 700, fontSize: 14, color: cfg.color }}>
-            {cfg.label}
+            {t(cfg.labelKey)}
           </div>
           {status === "tier1_pending" && (
             <div style={{ fontSize: 12, color: dark ? "#93c5fd" : "#1d4ed8", marginTop: 4, lineHeight: 1.5 }}>
-              Your NIN has been received and is being reviewed. Expect a decision within 1–2 business days. You will be notified when approved.
+              {t("account.verify.tier1PendingBody")}
             </div>
           )}
           {status === "tier2_pending" && (
             <div style={{ fontSize: 12, color: dark ? "#9ca3af" : "#6b7280", marginTop: 4, lineHeight: 1.5 }}>
-              Your documents are being reviewed. Expect a decision within 2–3 business days. You will be notified when done.
+              {t("account.verify.tier2PendingBody")}
             </div>
           )}
           {status === "tier2_verified" && (
             <div style={{ fontSize: 12, color: "#16a34a", marginTop: 4, lineHeight: 1.5 }}>
-              Your business is fully verified. A verified badge is now shown to your clients.
+              {t("account.verify.tier2VerifiedBody")}
             </div>
           )}
           {status === "tier2_rejected" && submission?.rejection_reason && (
             <div style={{ fontSize: 12, color: dark ? "#fca5a5" : "#b91c1c", marginTop: 4, lineHeight: 1.5 }}>
-              <strong>Reason:</strong> {submission.rejection_reason}
+              <strong>{t("account.verify.reason")}</strong> {submission.rejection_reason}
               <div style={{ marginTop: 6, color: dark ? "#9ca3af" : "#6b7280" }}>
-                Please address the issue above and resubmit.
+                {t("account.verify.addressIssue")}
               </div>
             </div>
           )}
           {profile.verified_name && (status === "tier1_verified" || status === "tier2_verified") && (
             <div style={{ fontSize: 12, color: dark ? "#9ca3af" : "#6b7280", marginTop: 4 }}>
-              Verified name: <strong>{profile.verified_name}</strong>
+              {t("account.verify.verifiedName")} <strong>{profile.verified_name}</strong>
             </div>
           )}
         </div>
@@ -405,6 +413,7 @@ function StatusCard({ dark, status, profile, submission }) {
 // ── Main screen ───────────────────────────────────────────────────────────────
 
 export default function Verification({ store }) {
+  const t = useT();
   const navigate = useNavigate();
   const profile  = store.profile || {};
   const dark     = profile.dark_mode ?? false;
@@ -469,10 +478,10 @@ export default function Verification({ store }) {
         </button>
         <div>
           <div style={{ fontWeight: 800, fontSize: 17, color: dark ? "#f3f4f6" : "#111827" }}>
-            Business Verification
+            {t("account.verify.title")}
           </div>
           <div style={{ fontSize: 11, color: dark ? "#6b7280" : "#9ca3af", marginTop: 1 }}>
-            Required for paid plan upgrades and withdrawal approval
+            {t("account.verify.subtitle")}
           </div>
         </div>
       </div>
@@ -490,9 +499,8 @@ export default function Verification({ store }) {
           {/* What verification enables */}
           <Card dark={dark} style={{ padding: "12px 16px" }}>
             <div style={{ fontSize: 12, color: dark ? "#9ca3af" : "#6b7280", lineHeight: 1.6 }}>
-              <strong style={{ color: dark ? "#d1d5db" : "#374151" }}>Why verify?</strong>{" "}
-              Verification is required to upgrade to a paid plan and to enable withdrawal to your settlement account.
-              It also unlocks a Verified badge visible to your clients. Verification never blocks current features.
+              <strong style={{ color: dark ? "#d1d5db" : "#374151" }}>{t("account.verify.whyVerify")}</strong>{" "}
+              {t("account.verify.whyBody")}
             </div>
           </Card>
 
@@ -503,10 +511,10 @@ export default function Verification({ store }) {
           {showTier1Pending && (
             <Card dark={dark} style={{ background: dark ? "#0f1a2a" : "#eff6ff", border: `1.5px solid ${dark ? "#1a2a3a" : "#bfdbfe"}` }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: dark ? "#93c5fd" : "#1d4ed8", marginBottom: 6 }}>
-                ⏳ NIN submitted — under review
+                ⏳ {t("account.verify.ninSubmittedTitle")}
               </div>
               <div style={{ fontSize: 12, color: dark ? "#93c5fd" : "#3b82f6", lineHeight: 1.6 }}>
-                Your NIN has been securely received. A KudiAI Track admin will review and approve your identity within 1–2 business days. You will be notified by app notification when the decision is made.
+                {t("account.verify.ninSubmittedBody")}
               </div>
             </Card>
           )}
@@ -523,9 +531,9 @@ export default function Verification({ store }) {
           {showTier2Status && (
             <Card dark={dark} style={{ background: dark ? "#0f1a2a" : "#eff6ff", border: `1.5px solid ${dark ? "#1a2a3a" : "#bfdbfe"}` }}>
               <div style={{ fontSize: 12, color: dark ? "#93c5fd" : "#1d4ed8", lineHeight: 1.6 }}>
-                {status === "tier2_pending" && "⏳ Your documents are under review. You will receive a notification when a decision is made (typically 2–3 business days)."}
-                {status === "tier2_verified" && "✅ Your account is fully verified. A verified badge is shown on your business profile."}
-                {status === "tier2_rejected" && "↩ Please fix the issue described above and resubmit your documents."}
+                {status === "tier2_pending" && `⏳ ${t("account.verify.tier2PendingBanner")}`}
+                {status === "tier2_verified" && `✅ ${t("account.verify.tier2VerifiedBanner")}`}
+                {status === "tier2_rejected" && `↩ ${t("account.verify.tier2RejectedBanner")}`}
               </div>
             </Card>
           )}
@@ -533,10 +541,8 @@ export default function Verification({ store }) {
           {/* Admin workload note — visible to business owner */}
           <Card dark={dark} style={{ background: dark ? "#0a0a0a" : "#f8fafc", padding: "12px 16px" }}>
             <div style={{ fontSize: 11, color: dark ? "#4b5563" : "#9ca3af", lineHeight: 1.7 }}>
-              <strong style={{ color: dark ? "#6b7280" : "#6b7280" }}>About review times:</strong>{" "}
-              Step 1 (NIN) is reviewed manually within 1–2 business days.
-              Step 2 (documents + guarantors) also requires admin review — typically 2–3 business days.
-              Reviews happen Monday–Friday during business hours.
+              <strong style={{ color: dark ? "#6b7280" : "#6b7280" }}>{t("account.verify.aboutReviewTimes")}</strong>{" "}
+              {t("account.verify.aboutReviewBody")}
             </div>
           </Card>
         </div>

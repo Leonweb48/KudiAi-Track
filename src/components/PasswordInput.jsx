@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useT } from "../contexts/LanguageContext";
 
 const EyeOpen = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
@@ -26,12 +27,13 @@ const EyeOff = () => (
 export default function PasswordInput({
   value,
   onChange,
-  placeholder = "Password",
+  placeholder,
   accentClass = "focus:ring-indigo-400/40",
   borderClass = "border-slate-200 dark:border-slate-700",
   className = "",
   ...rest
 }) {
+  const t = useT();
   const [show, setShow] = useState(false);
 
   return (
@@ -40,7 +42,7 @@ export default function PasswordInput({
         type={show ? "text" : "password"}
         value={value}
         onChange={onChange}
-        placeholder={placeholder}
+        placeholder={placeholder ?? t("auth.password")}
         className={`w-full border rounded-xl pl-4 pr-14 py-3 text-sm bg-white dark:bg-slate-900 text-slate-800 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 transition ${borderClass} ${accentClass} ${className}`}
         {...rest}
       />
@@ -48,7 +50,7 @@ export default function PasswordInput({
       <button
         type="button"
         onClick={() => setShow(v => !v)}
-        aria-label={show ? "Hide password" : "Show password"}
+        aria-label={show ? t("auth2.hidePw") : t("auth2.showPw")}
         className="absolute right-0 top-0 h-full w-11 flex items-center justify-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
       >
         {show ? <EyeOff /> : <EyeOpen />}

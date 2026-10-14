@@ -9,6 +9,7 @@ import { bankLookup } from "../../utils/bankLookup";
 import { STATES, getLGAs, getWards } from "../../utils/nigeriaData";
 import { AmountDisplay } from "./AmountDisplay";
 import { sendEmailTrigger } from "../../utils/emailTrigger";
+import { useT } from "../../contexts/LanguageContext";
 
 const fmt = (n) => `₦${Number(n || 0).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
 
@@ -59,7 +60,20 @@ function InfoRow({ label, value }) {
 }
 
 /* ── Status badge ────────────────────────────────────────────────── */
+// On-screen status labels (the stored status never changes).
+const STATUS_KEY = {
+  active:           "ajo.profile.st_active",
+  paid:             "ajo.profile.st_paid",
+  partially_paid:   "ajo.profile.st_partially_paid",
+  overdue:          "ajo.profile.st_overdue",
+  pending_approval: "ajo.profile.st_pending_approval",
+  rejected:         "ajo.profile.st_rejected",
+  archived:         "ajo.profile.st_archived",
+  inactive:         "ajo.profile.st_inactive",
+};
+
 function StatusBadge({ status }) {
+  const t = useT();
   const map = {
     active:          "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300",
     paid:            "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300",
@@ -69,13 +83,16 @@ function StatusBadge({ status }) {
   const cls = map[status] || map.active;
   return (
     <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wide ${cls}`}>
-      {(status || "active").replace("_", " ")}
+      {STATUS_KEY[status || "active"] ? t(STATUS_KEY[status || "active"]) : (status || "active").replace("_", " ")}
     </span>
   );
 }
 
 /* ── Main component ───────────────────────────────────────────────── */
 export function ClientProfile({ record, type, onSave, onClose, staffList = [], groups = [], onResetPwd, onDelete, onRequestArchive, canEditBank = false, businessName = "" }) {
+  const t = useT();
+  // Frequency is stored in English; only the label on screen is translated.
+  const freqLabel = (f) => ({ daily: t("ajo.today.freq_daily"), weekly: t("ajo.today.freq_weekly"), monthly: t("ajo.today.freq_monthly"), custom: t("ajo.today.freq_custom") }[f] || f);
   // A self-registered client, awaiting the owner's terms + approval — open
   // straight into edit mode with the savings-terms fields ready to fill in.
   const isPendingReg = type === "aso" && record?.status === "pending_approval";
@@ -144,7 +161,7 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
     const { error } = await supabase.functions.invoke("ajo-portal", {
       body: { action: "join-group", client_id: record.id, group_id: addGroupId, owner_id: record.user_id },
     });
-    if (error) { setGroupOpErr("Couldn't add to group — try again."); }
+    if (error) { setGroupOpErr(t("ajo.profile.addGroupFailed")); }
     else {
       const grp = groups.find(g => g.id === addGroupId);
       if (grp) setGroupMemberships(prev => [...prev, { group_id: grp.id, status: "active", ajo_groups: grp }]);
@@ -159,7 +176,7 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
     const { error } = await supabase.functions.invoke("ajo-portal", {
       body: { action: "leave-group", client_id: record.id, group_id: groupId, owner_id: record.user_id },
     });
-    if (error) { setGroupOpErr("Couldn't remove from group — try again."); }
+    if (error) { setGroupOpErr(t("ajo.profile.removeGroupFailed")); }
     else setGroupMemberships(prev => prev.filter(m => m.group_id !== groupId));
     setGroupOpBusy(false);
   };
@@ -170,14 +187,14 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
     setWithdrawalBankResolving(true); setWithdrawalBankErr(""); setWithdrawalBankResolvedName("");
     try {
       const { data, error } = await bankLookup("resolve-account", { account_number: acctNo, bank_code: form.withdrawal_bank_code });
-      if (error || !data?.status) throw new Error(data?.message || "Could not verify account");
+      if (error || !data?.status) throw new Error(data?.message || t("ajo.profile.couldNotVerifyAccount"));
       const name = data.data?.account_name || "";
       setWithdrawalBankResolvedName(name);
       set("withdrawal_account_name", name);
       const b = banks.find(bk => bk.code === form.withdrawal_bank_code);
       if (b) set("withdrawal_bank_name", b.name);
     } catch (e) {
-      setWithdrawalBankErr(e.message || "Could not verify account number");
+      setWithdrawalBankErr(e.message || t("ajo.profile.couldNotVerifyAccountNumber"));
     } finally {
       setWithdrawalBankResolving(false);
     }
@@ -188,19 +205,19 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
     setBankResolving(true); setBankErr(""); setBankResolvedName("");
     try {
       const { data, error } = await bankLookup("resolve-account", { account_number: form.account_number, bank_code: form.bank_code });
-      if (error || !data?.status) throw new Error(data?.message || "Could not verify account");
+      if (error || !data?.status) throw new Error(data?.message || t("ajo.profile.couldNotVerifyAccount"));
       const name = data.data?.account_name || "";
       setBankResolvedName(name);
       set("account_name", name);
       const b = banks.find(bk => bk.code === form.bank_code);
       if (b) set("bank_name", b.name);
     } catch (e) {
-      setBankErr(e.message || "Could not verify account number");
+      setBankErr(e.message || t("ajo.profile.couldNotVerifyAccountNumber"));
     } finally {
       setBankResolving(false);
     }
   };
-  const name     = isCredit ? (record.customer_name || "Client") : (record.full_name || "Client");
+  const name     = isCredit ? (record.customer_name || t("ajo.profile.client")) : (record.full_name || t("ajo.profile.client"));
   const initials = name[0]?.toUpperCase() || "C";
   const avatarSrc = photoPreview || form.profile_image_url;
 
@@ -227,7 +244,7 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
 
   const doDelete = async () => {
     if (!archivePin || archivePin.length < 4) {
-      setPinErr("Enter your 4-digit transaction PIN to confirm.");
+      setPinErr(t("ajo.profile.enterPin"));
       return;
     }
     setPinErr("");
@@ -239,7 +256,7 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
     });
     if (!pinData?.success) {
       setDeleting(false);
-      setPinErr(pinData?.locked ? "PIN locked — try again later." : "Incorrect PIN. Try again.");
+      setPinErr(pinData?.locked ? t("ajo.profile.pinLocked") : t("ajo.profile.pinIncorrect"));
       setArchivePin("");
       return;
     }
@@ -251,11 +268,11 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
 
   const doRequestArchive = async () => {
     if (!archivePin || archivePin.length < 4) {
-      setPinErr("Enter your 4-digit transaction PIN to confirm.");
+      setPinErr(t("ajo.profile.enterPin"));
       return;
     }
     if (!archiveReason.trim()) {
-      setDelErr("A reason is required.");
+      setDelErr(t("ajo.profile.reasonRequiredErr"));
       return;
     }
     setPinErr(""); setDelErr(""); setDeleting(true);
@@ -264,7 +281,7 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
     });
     if (!pinData?.success) {
       setDeleting(false);
-      setPinErr(pinData?.locked ? "PIN locked — try again later." : "Incorrect PIN. Try again.");
+      setPinErr(pinData?.locked ? t("ajo.profile.pinLocked") : t("ajo.profile.pinIncorrect"));
       setArchivePin("");
       return;
     }
@@ -284,7 +301,7 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
       try {
         imageUrl = await uploadClientPhoto(photoFile, record.id, isCredit ? "credit" : "aso");
       } catch (err) {
-        setSaveErr(`Photo upload failed: ${err.message}`);
+        setSaveErr(t("ajo.profile.photoUploadFailed", { msg: err.message }));
         setSaving(false);
         return;
       }
@@ -294,7 +311,7 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
     const { error } = await onSave(record.id, updates);
     if (error) {
       setSaving(false);
-      setSaveErr(error.message || "Failed to save profile.");
+      setSaveErr(error.message || t("ajo.profile.saveFailed"));
       return;
     }
 
@@ -311,7 +328,7 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
     const updates = { ...form, status: "active", next_contribution_date: new Date().toISOString().slice(0, 10) };
     const { error } = await onSave(record.id, updates);
     setSaving(false);
-    if (error) { setSaveErr(error.message || "Failed to approve registration."); return; }
+    if (error) { setSaveErr(error.message || t("ajo.profile.approveFailed")); return; }
     if (record.email) {
       sendEmailTrigger("ajo_registration_approved", {
         client_email: record.email,
@@ -326,7 +343,7 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
     setSaving(true); setSaveErr("");
     const { error } = await onSave(record.id, { status: "rejected" });
     setSaving(false);
-    if (error) { setSaveErr(error.message || "Failed to decline registration."); return; }
+    if (error) { setSaveErr(error.message || t("ajo.profile.declineFailed")); return; }
     onClose();
   };
 
@@ -354,12 +371,12 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
         </button>
         <div className="flex-1 min-w-0">
           <p className="font-bold text-slate-900 dark:text-white text-base truncate">{name}</p>
-          <p className="text-xs text-slate-400 dark:text-slate-500">{isCredit ? "Credit Profile" : "Aso Client Profile"}</p>
+          <p className="text-xs text-slate-400 dark:text-slate-500">{isCredit ? t("ajo.profile.creditProfile") : t("ajo.profile.asoClientProfile")}</p>
         </div>
         {!editing && (
           <button onClick={() => setEditing(true)}
             className="px-4 py-2 bg-brand-600 text-white rounded-xl font-bold text-xs hover:bg-brand-700 transition active:scale-95">
-            Edit
+            {t("common.edit")}
           </button>
         )}
       </div>
@@ -406,9 +423,9 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
           {isCredit ? (
             <div className="grid grid-cols-3 divide-x divide-slate-100 dark:divide-slate-700 border-t border-slate-100 dark:border-slate-700">
               {[
-                { label: "Total",       amount: record.total_amount, color: '#334155' },
-                { label: "Paid",        amount: record.amount_paid,  color: '#16a34a' },
-                { label: "Outstanding", amount: record.outstanding,  color: '#ef4444' },
+                { label: t("common.total"),            amount: record.total_amount, color: '#334155' },
+                { label: t("ajo.profile.paid"),        amount: record.amount_paid,  color: '#16a34a' },
+                { label: t("ajo.profile.outstanding"), amount: record.outstanding,  color: '#ef4444' },
               ].map(({ label, amount, color }) => (
                 <div key={label} className="px-2 py-3 text-center min-w-0">
                   <p className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold uppercase tracking-wide">{label}</p>
@@ -419,9 +436,9 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
           ) : (
             <div className="grid grid-cols-3 divide-x divide-slate-100 dark:divide-slate-700 border-t border-slate-100 dark:border-slate-700">
               {[
-                { label: "Balance",   amount: record.current_balance, color: '#7c3aed' },
-                { label: "Deposited", amount: record.total_saved,     color: '#16a34a' },
-                { label: "Withdrawn", amount: record.total_withdrawn,  color: '#475569' },
+                { label: t("ajo.profile.balance"),   amount: record.current_balance, color: '#7c3aed' },
+                { label: t("ajo.profile.deposited"), amount: record.total_saved,     color: '#16a34a' },
+                { label: t("ajo.profile.withdrawn"), amount: record.total_withdrawn,  color: '#475569' },
               ].map(({ label, amount, color }) => (
                 <div key={label} className="px-2 py-3 text-center min-w-0">
                   <p className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold uppercase tracking-wide">{label}</p>
@@ -440,40 +457,39 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
             <>
               {isPendingReg && (
                 <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-2xl px-4 py-3.5">
-                  <p className="text-sm font-bold text-amber-800 dark:text-amber-300 mb-1">New client registration</p>
+                  <p className="text-sm font-bold text-amber-800 dark:text-amber-300 mb-1">{t("ajo.profile.newRegistration")}</p>
                   <p className="text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
-                    {form.full_name} registered themselves under your business. Set their savings terms (including the registration fee) below, then
-                    Approve to activate their account — or Decline if you don't recognise them.
+                    {t("ajo.profile.newRegistrationBody", { name: form.full_name })}
                   </p>
                 </div>
               )}
               {/* Personal info */}
               <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-100 dark:border-slate-700 shadow-card">
-                <div className="px-4 pt-4 pb-2"><SectionHead title="Personal Information" icon="👤" /></div>
+                <div className="px-4 pt-4 pb-2"><SectionHead title={t("ajo.profile.personalInfo")} icon="👤" /></div>
                 <div className="px-4 pb-4 space-y-3.5">
-                  <FormField label={isCredit ? "Customer Name" : "Full Name"} required>
+                  <FormField label={isCredit ? t("ajo.profile.customerName") : t("ajo.profile.fullName")} required>
                     <input
                       value={isCredit ? (form.customer_name || "") : (form.full_name || "")}
                       onChange={e => set(isCredit ? "customer_name" : "full_name", e.target.value)}
-                      placeholder={isCredit ? "Customer full name" : "Client full name"}
+                      placeholder={isCredit ? t("ajo.profile.customerFullNamePh") : t("ajo.profile.clientFullNamePh")}
                       className={inputCls}
                     />
                   </FormField>
                   <div className="grid grid-cols-2 gap-3">
-                    <FormField label="Phone">
+                    <FormField label={t("ajo.profile.phone")}>
                       <input type="tel" value={form.phone || ""} onChange={e => set("phone", e.target.value)}
                         placeholder="08012345678" className={inputCls} />
                     </FormField>
-                    <FormField label="Email">
+                    <FormField label={t("ajo.profile.email")}>
                       <input type="email" value={form.email || ""} onChange={e => set("email", e.target.value)}
                         placeholder="email@example.com" className={inputCls} />
                     </FormField>
                   </div>
                   {!isAso && (
-                    <FormField label="NIN">
+                    <FormField label={t("ajo.profile.nin")}>
                       <input type="text" inputMode="numeric" value={form.nin || ""}
                         onChange={e => set("nin", e.target.value.replace(/\D/g, "").slice(0, 11))}
-                        placeholder="11-digit NIN" className={inputCls} />
+                        placeholder={t("ajo.profile.ninPh")} className={inputCls} />
                     </FormField>
                   )}
                 </div>
@@ -482,43 +498,43 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
               {/* Savings settings — Aso only */}
               {!isCredit && (
                 <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-100 dark:border-slate-700 shadow-card">
-                  <div className="px-4 pt-4 pb-2"><SectionHead title="Savings Settings" icon="💰" /></div>
+                  <div className="px-4 pt-4 pb-2"><SectionHead title={t("ajo.profile.savingsSettings")} icon="💰" /></div>
                   <div className="px-4 pb-4 space-y-3.5">
                     <div className="grid grid-cols-2 gap-3">
-                      <FormField label="Frequency">
+                      <FormField label={t("ajo.profile.frequency")}>
                         <select value={form.contribution_frequency || "monthly"} onChange={e => set("contribution_frequency", e.target.value)} className={inputCls}>
-                          {["daily","weekly","monthly"].map(fr => <option key={fr} value={fr}>{fr.charAt(0).toUpperCase()+fr.slice(1)}</option>)}
+                          {["daily","weekly","monthly"].map(fr => <option key={fr} value={fr}>{t(`ajo.profile.freqOpt_${fr}`)}</option>)}
                         </select>
                       </FormField>
-                      <FormField label="Contribution (₦)">
+                      <FormField label={t("ajo.profile.contributionNaira")}>
                         <input type="number" value={form.contribution_amount || ""} onChange={e => set("contribution_amount", parseFloat(e.target.value)||0)} className={inputCls} placeholder="0.00" />
                       </FormField>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
-                      <FormField label="Withdrawal Fee">
+                      <FormField label={t("ajo.profile.withdrawalFee")}>
                         <select value={form.commission_model || "none"} onChange={e => set("commission_model", e.target.value)} className={inputCls}>
-                          <option value="none">No fee</option>
-                          {!form.ajo_group_id && <option value="first_period">First period</option>}
-                          <option value="percent">Percentage</option>
+                          <option value="none">{t("ajo.profile.noFee")}</option>
+                          {!form.ajo_group_id && <option value="first_period">{t("ajo.profile.firstPeriod")}</option>}
+                          <option value="percent">{t("ajo.profile.percentage")}</option>
                         </select>
                       </FormField>
                       {form.commission_model === "percent" && (
-                        <FormField label="Fee %">
-                          <input type="number" value={form.commission_percent || ""} onChange={e => set("commission_percent", parseFloat(e.target.value) || null)} className={inputCls} placeholder="e.g. 5" min="0.01" max="100" step="0.01" />
+                        <FormField label={t("ajo.profile.feePct")}>
+                          <input type="number" value={form.commission_percent || ""} onChange={e => set("commission_percent", parseFloat(e.target.value) || null)} className={inputCls} placeholder={t("ajo.profile.eg5")} min="0.01" max="100" step="0.01" />
                         </FormField>
                       )}
                     </div>
-                    <FormField label="Registration Fee (₦)">
+                    <FormField label={t("ajo.profile.registrationFeeNaira")}>
                       <input type="number" min="0" value={form.registration_charge || ""} onChange={e => set("registration_charge", parseFloat(e.target.value) || 0)} className={inputCls} placeholder="0.00" />
-                      <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 leading-snug">Taken once, from the client's first deposit. It has no effect on a client who has already deposited.</p>
+                      <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 leading-snug">{t("ajo.profile.regFeeNote")}</p>
                     </FormField>
-                    <FormField label="Next Due Date">
+                    <FormField label={t("ajo.profile.nextDueDate")}>
                       <input type="date" value={form.next_contribution_date || ""} onChange={e => set("next_contribution_date", e.target.value)} className={inputCls} />
                     </FormField>
                     {staffList.length > 0 && (
-                      <FormField label="Assigned Staff">
+                      <FormField label={t("ajo.profile.assignedStaff")}>
                         <select value={form.staff_id || ""} onChange={e => set("staff_id", e.target.value)} className={inputCls}>
-                          <option value="">No staff assigned</option>
+                          <option value="">{t("ajo.profile.noStaff")}</option>
                           {staffList.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                         </select>
                       </FormField>
@@ -526,16 +542,16 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                     {/* Group Memberships — multi-group support */}
                     {!isCredit && (
                       <div>
-                        <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-2">Group Memberships</p>
+                        <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-2">{t("ajo.profile.groupMemberships")}</p>
                         {groupMemberships.length === 0 && (
-                          <p className="text-[11px] text-slate-400 dark:text-slate-500 italic mb-2">Not enrolled in any group.</p>
+                          <p className="text-[11px] text-slate-400 dark:text-slate-500 italic mb-2">{t("ajo.profile.notInGroup")}</p>
                         )}
                         <div className="space-y-1.5 mb-2">
                           {groupMemberships.map(m => (
                             <div key={m.group_id} className="flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-slate-700/60 rounded-xl border border-slate-200 dark:border-slate-600">
                               <div className="min-w-0 flex-1">
-                                <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate">{m.ajo_groups?.name || "Unknown group"}</p>
-                                <p className="text-[10px] text-slate-400">{m.ajo_groups?.group_mode === "rotating" ? "Esusu (rotating)" : "Savings group"}</p>
+                                <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate">{m.ajo_groups?.name || t("ajo.profile.unknownGroup")}</p>
+                                <p className="text-[10px] text-slate-400">{m.ajo_groups?.group_mode === "rotating" ? t("ajo.profile.esusuRotating") : t("ajo.profile.savingsGroup")}</p>
                               </div>
                               <button
                                 type="button"
@@ -543,7 +559,7 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                                 disabled={groupOpBusy}
                                 className="ml-2 text-[10px] font-bold text-red-500 dark:text-red-400 disabled:opacity-40 flex-shrink-0 active:opacity-60"
                               >
-                                Remove
+                                {t("ajo.profile.remove")}
                               </button>
                             </div>
                           ))}
@@ -555,7 +571,7 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                               onChange={e => setAddGroupId(e.target.value)}
                               className={inputCls + " text-xs py-2"}
                             >
-                              <option value="">Add to a group…</option>
+                              <option value="">{t("ajo.profile.addToGroup")}</option>
                               {groups.filter(g => !groupMemberships.some(m => m.group_id === g.id)).map(g => (
                                 <option key={g.id} value={g.id}>{g.name}{g.group_mode === "rotating" ? " (Esusu)" : ""}</option>
                               ))}
@@ -566,16 +582,16 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                               disabled={!addGroupId || groupOpBusy}
                               className="px-3 py-2 bg-brand-500 text-white rounded-xl text-xs font-bold disabled:opacity-40 whitespace-nowrap active:scale-95 transition-transform"
                             >
-                              {groupOpBusy ? "…" : "Add"}
+                              {groupOpBusy ? "…" : t("ajo.profile.add")}
                             </button>
                           </div>
                         )}
                         {groupOpErr && <p className="text-[11px] text-red-500 mt-1">{groupOpErr}</p>}
                       </div>
                     )}
-                    <FormField label="Notes">
+                    <FormField label={t("ajo.profile.notes")}>
                       <textarea value={form.notes || ""} onChange={e => set("notes", e.target.value)} rows={2}
-                        placeholder="Optional notes…" className={inputCls + " resize-none"} />
+                        placeholder={t("ajo.profile.optionalNotesPh")} className={inputCls + " resize-none"} />
                     </FormField>
                   </div>
                 </div>
@@ -584,12 +600,12 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
               {/* Payout Account — where money is sent TO this client on withdrawal */}
               {!isCredit && canEditBank && (
                 <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-100 dark:border-slate-700 shadow-card">
-                  <div className="px-4 pt-4 pb-2"><SectionHead title="Payout Account" icon="🏦" /></div>
+                  <div className="px-4 pt-4 pb-2"><SectionHead title={t("ajo.profile.payoutAccount")} icon="🏦" /></div>
                   <div className="px-4 pb-4 space-y-3.5">
                     <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed -mt-1">
-                      Where money is sent when this client withdraws. Optional — required only when processing a withdrawal.
+                      {t("ajo.profile.payoutAccountNoteOwner")}
                     </p>
-                    <FormField label="Bank">
+                    <FormField label={t("ajo.profile.bank")}>
                       <select
                         value={form.bank_code || ""}
                         onChange={e => {
@@ -601,13 +617,13 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                         }}
                         className={inputCls}
                         disabled={banks.length === 0}>
-                        <option value="">{banks.length === 0 ? "Loading banks…" : "Select bank…"}</option>
+                        <option value="">{banks.length === 0 ? t("ajo.profile.loadingBanks") : t("ajo.profile.selectBank")}</option>
                         {banks.map(b => <option key={b.code} value={b.code}>{b.name}</option>)}
                       </select>
                     </FormField>
                     <div className="flex gap-2 items-end">
                       <div className="flex-1">
-                        <FormField label="Account Number">
+                        <FormField label={t("ajo.profile.accountNumber")}>
                           <input
                             type="text" inputMode="numeric"
                             value={form.account_number || ""}
@@ -616,7 +632,7 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                               set("account_name", "");
                               setBankResolvedName(""); setBankErr("");
                             }}
-                            placeholder="10-digit NUBAN"
+                            placeholder={t("ajo.profile.nubanPh")}
                             className={inputCls}
                           />
                         </FormField>
@@ -624,7 +640,7 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                       <button type="button" onClick={resolveBank}
                         disabled={bankResolving || !form.bank_code || String(form.account_number || "").length < 10}
                         className="mb-0.5 px-3 py-[11px] rounded-xl bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 text-xs font-bold disabled:opacity-40 transition whitespace-nowrap active:scale-95">
-                        {bankResolving ? "Checking…" : "Verify"}
+                        {bankResolving ? t("ajo.profile.checking") : t("ajo.profile.verify")}
                       </button>
                     </div>
                     {(bankResolvedName || form.account_name) && (
@@ -644,9 +660,9 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                 <div className="bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800/40 rounded-2xl px-4 py-3.5 flex items-start gap-2.5">
                   <span className="text-lg leading-none">💸</span>
                   <div>
-                    <p className="text-[13px] font-bold text-slate-800 dark:text-white">Payout Account</p>
+                    <p className="text-[13px] font-bold text-slate-800 dark:text-white">{t("ajo.profile.payoutAccount")}</p>
                     <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
-                      Withdrawal payouts go straight to this client's KudiAI Wallet, next business working day — no bank account to set up.
+                      {t("ajo.profile.payoutToWalletNote")}
                     </p>
                   </div>
                 </div>
@@ -655,12 +671,12 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
               {/* Payout (Withdrawal) Account — client-set, optional, verifiable (Coop) */}
               {!isCredit && !isAso && (
                 <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-100 dark:border-slate-700 shadow-card">
-                  <div className="px-4 pt-4 pb-2"><SectionHead title="Payout Account" icon="💸" /></div>
+                  <div className="px-4 pt-4 pb-2"><SectionHead title={t("ajo.profile.payoutAccount")} icon="💸" /></div>
                   <div className="px-4 pb-4 space-y-3.5">
                     <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed -mt-1">
-                      The account where withdrawal payouts are sent. Optional — client can also set or update this from their portal or at the point of withdrawal.
+                      {t("ajo.profile.payoutAccountNoteCoop")}
                     </p>
-                    <FormField label="Bank">
+                    <FormField label={t("ajo.profile.bank")}>
                       <select
                         value={form.withdrawal_bank_code || ""}
                         onChange={e => {
@@ -671,13 +687,13 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                           setWithdrawalBankResolvedName(""); setWithdrawalBankErr("");
                         }}
                         className={inputCls}>
-                        <option value="">{banks.length === 0 ? "Loading banks…" : "Select bank…"}</option>
+                        <option value="">{banks.length === 0 ? t("ajo.profile.loadingBanks") : t("ajo.profile.selectBank")}</option>
                         {banks.map(b => <option key={b.code} value={b.code}>{b.name}</option>)}
                       </select>
                     </FormField>
                     <div className="flex gap-2 items-end">
                       <div className="flex-1">
-                        <FormField label="Account Number">
+                        <FormField label={t("ajo.profile.accountNumber")}>
                           <input
                             type="text" inputMode="numeric"
                             value={form.withdrawal_account_number || ""}
@@ -686,7 +702,7 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                               set("withdrawal_account_name", "");
                               setWithdrawalBankResolvedName(""); setWithdrawalBankErr("");
                             }}
-                            placeholder="10-digit NUBAN"
+                            placeholder={t("ajo.profile.nubanPh")}
                             className={inputCls}
                           />
                         </FormField>
@@ -694,7 +710,7 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                       <button type="button" onClick={resolveWithdrawalBank}
                         disabled={withdrawalBankResolving || !form.withdrawal_bank_code || String(form.withdrawal_account_number || "").length < 10}
                         className="mb-0.5 px-3 py-[11px] rounded-xl bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-xs font-bold disabled:opacity-40 transition whitespace-nowrap active:scale-95">
-                        {withdrawalBankResolving ? "Checking…" : "Verify"}
+                        {withdrawalBankResolving ? t("ajo.profile.checking") : t("ajo.profile.verify")}
                       </button>
                     </div>
                     {(withdrawalBankResolvedName || form.withdrawal_account_name) && (
@@ -711,30 +727,30 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
               {/* Address — Ajo clients set this themselves on first login */}
               {!isAso && (
                 <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-100 dark:border-slate-700 shadow-card">
-                  <div className="px-4 pt-4 pb-2"><SectionHead title="Address" icon="📍" /></div>
+                  <div className="px-4 pt-4 pb-2"><SectionHead title={t("ajo.profile.address")} icon="📍" /></div>
                   <div className="px-4 pb-4 space-y-3.5">
-                    <FormField label="Street Address">
+                    <FormField label={t("ajo.profile.streetAddress")}>
                       <input value={form.address || ""} onChange={e => set("address", e.target.value)}
                         placeholder="12 Market Road, Onitsha" className={inputCls} />
                     </FormField>
-                    <FormField label="State">
+                    <FormField label={t("ajo.profile.state")}>
                       <select value={form.state || ""} onChange={e => handleStateChange(e.target.value)} className={inputCls}>
-                        <option value="">Select State…</option>
+                        <option value="">{t("ajo.profile.selectState")}</option>
                         {STATES.map(s => <option key={s} value={s}>{s}</option>)}
                       </select>
                     </FormField>
                     <div className="grid grid-cols-2 gap-3">
-                      <FormField label="LGA">
+                      <FormField label={t("ajo.profile.lga")}>
                         <select value={form.lga || ""} onChange={e => handleLgaChange(e.target.value)}
                           disabled={!form.state} className={inputCls}>
-                          <option value="">{form.state ? "Select LGA…" : "Select state first"}</option>
+                          <option value="">{form.state ? t("ajo.profile.selectLga") : t("ajo.profile.selectStateFirst")}</option>
                           {lgas.map(l => <option key={l} value={l}>{l}</option>)}
                         </select>
                       </FormField>
-                      <FormField label="Ward">
+                      <FormField label={t("ajo.profile.ward")}>
                         <select value={form.ward || ""} onChange={e => set("ward", e.target.value)}
                           disabled={!form.lga} className={inputCls}>
-                          <option value="">{form.lga ? "Select Ward…" : "Select LGA first"}</option>
+                          <option value="">{form.lga ? t("ajo.profile.selectWard") : t("ajo.profile.selectLgaFirst")}</option>
                           {wards.map(w => <option key={w} value={w}>{w}</option>)}
                         </select>
                       </FormField>
@@ -746,25 +762,25 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
               {/* Next of Kin — Ajo clients set this themselves on first login */}
               {!isAso && (
                 <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-100 dark:border-slate-700 shadow-card">
-                  <div className="px-4 pt-4 pb-2"><SectionHead title="Next of Kin" icon="👨‍👩‍👦" /></div>
+                  <div className="px-4 pt-4 pb-2"><SectionHead title={t("ajo.profile.nextOfKin")} icon="👨‍👩‍👦" /></div>
                   <div className="px-4 pb-4 space-y-3.5">
-                    <FormField label="Full Name">
+                    <FormField label={t("ajo.profile.fullName")}>
                       <input value={form.next_of_kin || ""} onChange={e => set("next_of_kin", e.target.value)}
-                        placeholder="Next of kin full name" className={inputCls} />
+                        placeholder={t("ajo.profile.nokNamePh")} className={inputCls} />
                     </FormField>
                     <div className="grid grid-cols-2 gap-3">
-                      <FormField label="Phone">
+                      <FormField label={t("ajo.profile.phone")}>
                         <input type="tel" value={form.next_of_kin_phone || ""} onChange={e => set("next_of_kin_phone", e.target.value)}
                           placeholder="08012345678" className={inputCls} />
                       </FormField>
-                      <FormField label="Email">
+                      <FormField label={t("ajo.profile.email")}>
                         <input type="email" value={form.next_of_kin_email || ""} onChange={e => set("next_of_kin_email", e.target.value)}
                           placeholder="email@example.com" className={inputCls} />
                       </FormField>
                     </div>
-                    <FormField label="Address">
+                    <FormField label={t("ajo.profile.address")}>
                       <input value={form.next_of_kin_address || ""} onChange={e => set("next_of_kin_address", e.target.value)}
-                        placeholder="Next of kin address" className={inputCls} />
+                        placeholder={t("ajo.profile.nokAddressPh")} className={inputCls} />
                     </FormField>
                   </div>
                 </div>
@@ -782,22 +798,22 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                 <div className="grid grid-cols-2 gap-3 pb-6">
                   <button onClick={decline} disabled={saving}
                     className="py-3.5 rounded-xl font-bold text-sm bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-950/50 transition active:scale-[0.99] disabled:opacity-60">
-                    Decline
+                    {t("ajo.profile.decline")}
                   </button>
                   <button onClick={approve} disabled={saving}
                     className="py-3.5 rounded-xl font-bold text-sm bg-brand-600 hover:bg-brand-700 text-white transition active:scale-[0.99] disabled:opacity-60 shadow-sm">
-                    {saving ? "Approving…" : "Approve & Activate"}
+                    {saving ? t("ajo.profile.approving") : t("ajo.profile.approveActivate")}
                   </button>
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-3 pb-6">
                   <button onClick={cancelEdit}
                     className="py-3.5 rounded-xl font-bold text-sm bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition active:scale-[0.99]">
-                    Cancel
+                    {t("common.cancel")}
                   </button>
                   <button onClick={handleSave} disabled={saving}
                     className="py-3.5 rounded-xl font-bold text-sm bg-brand-600 hover:bg-brand-700 text-white transition active:scale-[0.99] disabled:opacity-60 shadow-sm">
-                    {saving ? "Saving…" : "Save Profile"}
+                    {saving ? t("common.saving") : t("ajo.profile.saveProfile")}
                   </button>
                 </div>
               )}
@@ -808,13 +824,13 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
               {/* Personal info */}
               {(record.phone || record.email || record.nin || record.address) && (
                 <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-100 dark:border-slate-700 shadow-card">
-                  <div className="px-4 pt-4 pb-2"><SectionHead title="Personal Information" icon="👤" /></div>
+                  <div className="px-4 pt-4 pb-2"><SectionHead title={t("ajo.profile.personalInfo")} icon="👤" /></div>
                   <div className="px-4 pb-3">
-                    <InfoRow label="Phone"   value={record.phone} />
-                    <InfoRow label="Email"   value={record.email} />
-                    <InfoRow label="NIN"     value={record.nin} />
-                    <InfoRow label="Address" value={record.address} />
-                    <InfoRow label="State"   value={[record.state, record.lga, record.ward].filter(Boolean).join(" · ") || null} />
+                    <InfoRow label={t("ajo.profile.phone")}   value={record.phone} />
+                    <InfoRow label={t("ajo.profile.email")}   value={record.email} />
+                    <InfoRow label={t("ajo.profile.nin")}     value={record.nin} />
+                    <InfoRow label={t("ajo.profile.address")} value={record.address} />
+                    <InfoRow label={t("ajo.profile.state")}   value={[record.state, record.lga, record.ward].filter(Boolean).join(" · ") || null} />
                   </div>
                 </div>
               )}
@@ -822,12 +838,12 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
               {/* Next of Kin */}
               {(record.next_of_kin || record.next_of_kin_phone) && (
                 <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-100 dark:border-slate-700 shadow-card">
-                  <div className="px-4 pt-4 pb-2"><SectionHead title="Next of Kin" icon="👨‍👩‍👦" /></div>
+                  <div className="px-4 pt-4 pb-2"><SectionHead title={t("ajo.profile.nextOfKin")} icon="👨‍👩‍👦" /></div>
                   <div className="px-4 pb-3">
-                    <InfoRow label="Name"    value={record.next_of_kin} />
-                    <InfoRow label="Phone"   value={record.next_of_kin_phone} />
-                    <InfoRow label="Email"   value={record.next_of_kin_email} />
-                    <InfoRow label="Address" value={record.next_of_kin_address} />
+                    <InfoRow label={t("common.name")}    value={record.next_of_kin} />
+                    <InfoRow label={t("ajo.profile.phone")}   value={record.next_of_kin_phone} />
+                    <InfoRow label={t("ajo.profile.email")}   value={record.next_of_kin_email} />
+                    <InfoRow label={t("ajo.profile.address")} value={record.next_of_kin_address} />
                   </div>
                 </div>
               )}
@@ -835,41 +851,41 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
               {/* Credit / Aso specific info */}
               {isCredit ? (
                 <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-100 dark:border-slate-700 shadow-card">
-                  <div className="px-4 pt-4 pb-2"><SectionHead title="Credit Details" icon="💳" /></div>
+                  <div className="px-4 pt-4 pb-2"><SectionHead title={t("ajo.profile.creditDetails")} icon="💳" /></div>
                   <div className="px-4 pb-3">
-                    <InfoRow label="Due Date"   value={record.due_date} />
-                    <InfoRow label="Date Given" value={record.date_given} />
-                    <InfoRow label="Notes"      value={record.notes} />
+                    <InfoRow label={t("ajo.profile.dueDate")}   value={record.due_date} />
+                    <InfoRow label={t("ajo.profile.dateGiven")} value={record.date_given} />
+                    <InfoRow label={t("ajo.profile.notes")}      value={record.notes} />
                   </div>
                 </div>
               ) : (
                 <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden border border-slate-100 dark:border-slate-700 shadow-card">
-                  <div className="px-4 pt-4 pb-2"><SectionHead title="Savings Details" icon="🏦" /></div>
+                  <div className="px-4 pt-4 pb-2"><SectionHead title={t("ajo.profile.savingsDetails")} icon="🏦" /></div>
                   <div className="px-4 pb-3">
-                    <InfoRow label="Frequency"    value={record.contribution_frequency} />
-                    <InfoRow label="Contribution" value={fmt(record.contribution_amount)} />
-                    {Number(record.registration_charge) > 0 && <InfoRow label="Registration fee" value={fmt(record.registration_charge)} />}
-                    <InfoRow label="Next Due"     value={record.next_contribution_date} />
-                    <InfoRow label="Registered"   value={record.registration_date} />
-                    <InfoRow label="Notes"        value={record.notes} />
+                    <InfoRow label={t("ajo.profile.frequency")}    value={freqLabel(record.contribution_frequency)} />
+                    <InfoRow label={t("ajo.profile.contribution")} value={fmt(record.contribution_amount)} />
+                    {Number(record.registration_charge) > 0 && <InfoRow label={t("ajo.profile.registrationFee")} value={fmt(record.registration_charge)} />}
+                    <InfoRow label={t("ajo.profile.nextDue")}     value={record.next_contribution_date} />
+                    <InfoRow label={t("ajo.profile.registered")}   value={record.registration_date} />
+                    <InfoRow label={t("ajo.profile.notes")}        value={record.notes} />
                     {record.account_number && (
                       <>
                         <div className="pt-1 pb-0.5">
-                          <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Payout Account</p>
+                          <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">{t("ajo.profile.payoutAccount")}</p>
                         </div>
-                        <InfoRow label="Bank"         value={record.bank_name} />
-                        <InfoRow label="Account No."  value={record.account_number} />
-                        <InfoRow label="Account Name" value={record.account_name} />
+                        <InfoRow label={t("ajo.profile.bank")}         value={record.bank_name} />
+                        <InfoRow label={t("ajo.profile.accountNo")}  value={record.account_number} />
+                        <InfoRow label={t("ajo.profile.accountName")} value={record.account_name} />
                       </>
                     )}
                     {record.withdrawal_account_number && (
                       <>
                         <div className="pt-2 pb-0.5">
-                          <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Payout Account</p>
+                          <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">{t("ajo.profile.payoutAccount")}</p>
                         </div>
-                        <InfoRow label="Bank"         value={record.withdrawal_bank_name} />
-                        <InfoRow label="Account No."  value={record.withdrawal_account_number} />
-                        <InfoRow label="Account Name" value={record.withdrawal_account_name} />
+                        <InfoRow label={t("ajo.profile.bank")}         value={record.withdrawal_bank_name} />
+                        <InfoRow label={t("ajo.profile.accountNo")}  value={record.withdrawal_account_number} />
+                        <InfoRow label={t("ajo.profile.accountName")} value={record.withdrawal_account_name} />
                       </>
                     )}
                   </div>
@@ -886,7 +902,7 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                   )}
                   <button onClick={doReset} disabled={resetting}
                     className="w-full py-3 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 rounded-2xl font-bold text-sm border border-amber-200 dark:border-amber-800 active:scale-[0.99] transition disabled:opacity-60">
-                    {resetting ? "Resetting password…" : "Reset Portal Password"}
+                    {resetting ? t("ajo.profile.resettingPassword") : t("ajo.profile.resetPortalPassword")}
                   </button>
                 </div>
               )}
@@ -896,8 +912,8 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                 <div className="space-y-2">
                   {archiveReqSent ? (
                     <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-2xl px-4 py-4 text-center">
-                      <p className="text-sm font-extrabold text-green-700 dark:text-green-400">Request submitted</p>
-                      <p className="text-xs text-green-600 dark:text-green-400 mt-1 leading-relaxed">The admin team will review and action this shortly. The client card will show a pending badge until resolved.</p>
+                      <p className="text-sm font-extrabold text-green-700 dark:text-green-400">{t("ajo.profile.requestSubmitted")}</p>
+                      <p className="text-xs text-green-600 dark:text-green-400 mt-1 leading-relaxed">{t("ajo.profile.requestSubmittedBody")}</p>
                     </div>
                   ) : (
                     <>
@@ -910,7 +926,7 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                         <button
                           onClick={() => {
                             if ((record.current_balance || 0) !== 0) {
-                              setDelErr(`Balance must be ₦0.00 before requesting archive. Current balance: ${fmt(record.current_balance)}. Record a settling withdrawal first.`);
+                              setDelErr(t("ajo.profile.balanceMustBeZeroRequest", { balance: fmt(record.current_balance) }));
                               return;
                             }
                             setDelErr(""); setArchivePin(""); setPinErr(""); setArchiveReason("");
@@ -920,36 +936,36 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                           <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                             <path d="M21 8v13H3V8M1 3h22v5H1zM10 12h4" />
                           </svg>
-                          Request Client Archive
+                          {t("ajo.profile.requestClientArchive")}
                         </button>
                       ) : (
                         <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-4 space-y-3">
-                          <p className="text-sm font-extrabold text-amber-700 dark:text-amber-400">Request archive for {record.full_name}?</p>
+                          <p className="text-sm font-extrabold text-amber-700 dark:text-amber-400">{t("ajo.profile.requestArchiveFor", { name: record.full_name })}</p>
 
                           {/* Client snapshot */}
                           <div className="bg-white dark:bg-slate-800 rounded-xl px-3 py-2.5 space-y-1 border border-amber-100 dark:border-amber-900/40">
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Client summary</p>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">{t("ajo.profile.clientSummary")}</p>
                             {record.membership_number && <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">{record.membership_number}</p>}
-                            <p className="text-[11px] text-slate-600 dark:text-slate-300">Total deposited: <span className="font-bold text-green-600 dark:text-green-400">{fmt(record.total_saved)}</span></p>
-                            <p className="text-[11px] text-slate-600 dark:text-slate-300">Total withdrawn: <span className="font-bold">{fmt(record.total_withdrawn)}</span></p>
+                            <p className="text-[11px] text-slate-600 dark:text-slate-300">{t("ajo.profile.totalDeposited")} <span className="font-bold text-green-600 dark:text-green-400">{fmt(record.total_saved)}</span></p>
+                            <p className="text-[11px] text-slate-600 dark:text-slate-300">{t("ajo.profile.totalWithdrawn")} <span className="font-bold">{fmt(record.total_withdrawn)}</span></p>
                             <p className="text-[11px] font-bold text-green-700 dark:text-green-400 flex items-center gap-1">
                               <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                              Balance confirmed ₦0.00
+                              {t("ajo.profile.balanceConfirmedZero")}
                             </p>
                           </div>
 
                           <p className="text-xs text-amber-600 dark:text-amber-400 leading-relaxed">
-                            The request will be reviewed by an admin. The client card will show "Archive pending admin approval" until a decision is made. All contribution history is preserved.
+                            {t("ajo.profile.archiveRequestNote")}
                           </p>
 
                           {/* Reason */}
                           <div>
-                            <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wide mb-1">Reason <span className="text-red-500">*</span></p>
+                            <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wide mb-1">{t("ajo.profile.reason")} <span className="text-red-500">*</span></p>
                             <textarea
                               rows={2}
                               value={archiveReason}
                               onChange={e => { setArchiveReason(e.target.value); setDelErr(""); }}
-                              placeholder="Why is this client being archived?"
+                              placeholder={t("ajo.profile.whyArchivePh")}
                               className="w-full px-3 py-2 rounded-xl border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-xs resize-none placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-400"
                             />
                           </div>
@@ -959,7 +975,7 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                             type="password"
                             inputMode="numeric"
                             maxLength={4}
-                            placeholder="4-digit transaction PIN"
+                            placeholder={t("ajo.profile.pinPh")}
                             value={archivePin}
                             onChange={e => { setArchivePin(e.target.value.replace(/\D/g, "").slice(0, 4)); setPinErr(""); }}
                             className="w-full px-3 py-2.5 rounded-xl border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-sm font-mono text-center tracking-[0.4em] placeholder:tracking-normal placeholder:font-sans placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-400"
@@ -969,11 +985,11 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                           <div className="grid grid-cols-2 gap-2">
                             <button onClick={() => { setConfirmDel(false); setArchivePin(""); setPinErr(""); setArchiveReason(""); setDelErr(""); }} disabled={deleting}
                               className="py-2.5 rounded-xl font-bold text-sm bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 transition">
-                              Cancel
+                              {t("common.cancel")}
                             </button>
                             <button onClick={doRequestArchive} disabled={deleting || archivePin.length < 4 || !archiveReason.trim()}
                               className="py-2.5 rounded-xl font-bold text-sm bg-amber-600 hover:bg-amber-700 text-white transition disabled:opacity-60">
-                              {deleting ? "Submitting…" : "Submit Request"}
+                              {deleting ? t("ajo.profile.submitting") : t("ajo.profile.submitRequest")}
                             </button>
                           </div>
                         </div>
@@ -995,7 +1011,7 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                     <button
                       onClick={() => {
                         if ((record.current_balance || 0) !== 0) {
-                          setDelErr(`Balance must be ₦0.00 before archiving. Current balance: ${fmt(record.current_balance)}. Record a settling withdrawal first.`);
+                          setDelErr(t("ajo.profile.balanceMustBeZeroArchive", { balance: fmt(record.current_balance) }));
                           return;
                         }
                         setDelErr(""); setArchivePin(""); setPinErr(""); setConfirmDel(true);
@@ -1004,15 +1020,15 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                       <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                         <path d="M21 8v13H3V8M1 3h22v5H1zM10 12h4" />
                       </svg>
-                      Archive Client
+                      {t("ajo.profile.archiveClient")}
                     </button>
                   ) : (
                     <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-4 space-y-3">
-                      <p className="text-sm font-extrabold text-amber-700 dark:text-amber-400">Archive {record.full_name}?</p>
+                      <p className="text-sm font-extrabold text-amber-700 dark:text-amber-400">{t("ajo.profile.archiveName", { name: record.full_name })}</p>
                       <p className="text-xs text-amber-600 dark:text-amber-400 leading-relaxed">
-                        The client and all their contribution history will be preserved but moved to the archived list. Their portal login will be deactivated. Enter your transaction PIN to confirm.
+                        {t("ajo.profile.archiveNote")}
                       </p>
-                      <input type="password" inputMode="numeric" maxLength={4} placeholder="4-digit transaction PIN"
+                      <input type="password" inputMode="numeric" maxLength={4} placeholder={t("ajo.profile.pinPh")}
                         value={archivePin} onChange={e => { setArchivePin(e.target.value.replace(/\D/g, "").slice(0, 4)); setPinErr(""); }}
                         className="w-full px-3 py-2.5 rounded-xl border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-sm font-mono text-center tracking-[0.4em] placeholder:tracking-normal placeholder:font-sans placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-400"
                       />
@@ -1020,11 +1036,11 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                       <div className="grid grid-cols-2 gap-2">
                         <button onClick={() => { setConfirmDel(false); setArchivePin(""); setPinErr(""); }} disabled={deleting}
                           className="py-2.5 rounded-xl font-bold text-sm bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 transition">
-                          Cancel
+                          {t("common.cancel")}
                         </button>
                         <button onClick={doDelete} disabled={deleting || archivePin.length < 4}
                           className="py-2.5 rounded-xl font-bold text-sm bg-amber-600 hover:bg-amber-700 text-white transition disabled:opacity-60">
-                          {deleting ? "Archiving…" : "Archive"}
+                          {deleting ? t("ajo.profile.archiving") : t("ajo.profile.archive")}
                         </button>
                       </div>
                     </div>
@@ -1035,11 +1051,11 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
               {/* Empty state prompt */}
               {!record.phone && !record.email && !record.nin && !record.next_of_kin && (
                 <div className="text-center py-8 bg-white dark:bg-slate-800 rounded-2xl border border-dashed border-slate-200 dark:border-slate-600">
-                  <p className="text-slate-400 dark:text-slate-500 text-sm font-semibold">Profile incomplete</p>
-                  <p className="text-slate-300 dark:text-slate-600 text-xs mt-1 mb-3">Add contact and KYC details</p>
+                  <p className="text-slate-400 dark:text-slate-500 text-sm font-semibold">{t("ajo.profile.profileIncomplete")}</p>
+                  <p className="text-slate-300 dark:text-slate-600 text-xs mt-1 mb-3">{t("ajo.profile.addContactKyc")}</p>
                   <button onClick={() => setEditing(true)}
                     className="px-4 py-2 bg-brand-600 text-white rounded-xl font-bold text-xs hover:bg-brand-700 transition">
-                    Complete Profile
+                    {t("ajo.profile.completeProfile")}
                   </button>
                 </div>
               )}

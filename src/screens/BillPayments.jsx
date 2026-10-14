@@ -27,7 +27,7 @@ import { saveReceiptPdf } from "../utils/generateReceiptPdf";
 import { createReportPdf, fmtCurrency as pdfFmtN } from "../utils/generateReportPdf";
 import { spanDays } from "../utils/statementPeriod";
 import { captureReceiptCanvas } from "../utils/captureReceipt";
-import { detectNetwork, networkMismatch, networkMismatchMessage } from "../shared/phoneNetwork";
+import { detectNetwork, networkMismatch } from "../shared/phoneNetwork";
 import { getProviderLogo, getProviderBadge } from "../utils/logoMap";
 import { billVisual } from "../utils/historyEntries";
 import { HistoryAvatar } from "../components/shared/HistoryRow";
@@ -52,6 +52,14 @@ const CATS = [
   { id: "airtime-bundle", label: "Bundle Set",     tileCls: "from-violet-600 to-violet-900",    iconCls: "bg-violet-700", enterprise: true },
   { id: "business-loan",  label: "Business Loan",  tileCls: "from-emerald-600 to-emerald-900",  iconCls: "bg-emerald-700",loan: true },
 ];
+
+// Display names for the services in the chosen language. CATS[].label stays English: it goes into receipts, emails and stored rows.
+const CAT_LABEL_KEYS = {
+  airtime: "bill.airtime", data: "bill.dataBundle", cable: "bill.cableTV", electricity: "bill.electricity",
+  betting: "bill.bettingWallet", waec: "bill.waecEPin", jamb: "bill.jambEPin", spectranet: "bill.spectranet",
+  smile: "bill.smile4g", "print-airtime": "bill.printAirtime", "print-data": "bill.printData",
+  "airtime-bundle": "bill.bundleSet", "business-loan": "bill.businessLoan",
+};
 
 const NETWORKS = ["MTN", "Airtel", "Glo", "9mobile"];
 const NET_CONFIG = {
@@ -105,6 +113,12 @@ const JAMB_TYPES = [
   { code: "utme-mock",    name: "UTME with Mock" },
   { code: "de",           name: "Direct Entry (DE)" },
 ];
+
+// Display names for the exam choices (the English names above go into the stored item name).
+const EXAM_TYPE_KEYS = {
+  waecdirect: "bills.waecDirect", "waec-registration": "bills.waecRegistration",
+  "utme-no-mock": "bills.utmeNoMock", "utme-mock": "bills.utmeMock", de: "bills.directEntry",
+};
 
 const PRINT_VALUES = ["100", "200", "300", "500", "1000"];
 
@@ -204,12 +218,13 @@ function NetworkSelector({ value, onChange, detected }) {
   );
 }
 
-function PhoneInput({ value, onChange, label = "Phone Number *", placeholder = "08012345678" }) {
+function PhoneInput({ value, onChange, label, placeholder = "08012345678" }) {
+  const t = useT();
   const detected = value.length >= 4 ? detectNetwork(value) : null;
   const cfg = detected ? NET_CONFIG[detected] : null;
   return (
     <div>
-      <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">{label}</label>
+      <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">{label ?? t("bills.phoneLabel")}</label>
       <div className="relative">
         <input type="tel" value={value} onChange={onChange} placeholder={placeholder}
           className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500 pr-20" />
@@ -224,28 +239,37 @@ function PhoneInput({ value, onChange, label = "Phone Number *", placeholder = "
   );
 }
 
+// networkMismatchMessage (shared/phoneNetwork) in the chosen language; the English text is the same.
+const NET_DISPLAY = { mtn: "MTN", airtel: "Airtel", glo: "Glo", "9mobile": "9mobile", t2mobile: "9mobile" };
+function wrongNetMessage(t, own, selected) {
+  const sel = NET_DISPLAY[String(selected ?? "").trim().toLowerCase()] ?? String(selected ?? "").trim();
+  return t("bills.wrongNetworkMsg", { article: own === "MTN" || own === "Airtel" ? "an" : "a", own, selected: sel });
+}
+
 // Shown under the phone number while the selected network isn't the number's own; Pay stays off until it is.
 function WrongNetworkNotice({ own, selected, onSwitch }) {
+  const t = useT();
   const cfg = NET_CONFIG[own];
   return (
     <div role="alert" className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
-      <p className="flex-1 text-xs font-semibold text-red-700 dark:text-red-300">{networkMismatchMessage(own, selected)}</p>
+      <p className="flex-1 text-xs font-semibold text-red-700 dark:text-red-300">{wrongNetMessage(t, own, selected)}</p>
       <button type="button" onClick={onSwitch}
         className="flex-shrink-0 text-xs font-bold rounded-lg px-3 py-1.5 shadow-sm"
         style={{ background: cfg?.bg ?? "#16a34a", color: cfg?.fg ?? "#fff" }}>
-        Switch to {own}
+        {t("bills.switchTo", { net: own })}
       </button>
     </div>
   );
 }
 
-function SelectInput({ label, value, onChange, options, placeholder = "Select…" }) {
+function SelectInput({ label, value, onChange, options, placeholder }) {
+  const t = useT();
   return (
     <div>
       <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">{label}</label>
       <select value={value} onChange={e => onChange(e.target.value)}
         className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500">
-        <option value="">{placeholder}</option>
+        <option value="">{placeholder ?? t("bills.select")}</option>
         {options.map(o => <option key={o.code} value={o.code}>{o.name}</option>)}
       </select>
     </div>
@@ -254,12 +278,13 @@ function SelectInput({ label, value, onChange, options, placeholder = "Select…
 
 // The price of a WAEC / JAMB PIN, from the provider that would sell it (the clubkonnect "exam-price" action).
 function ExamPriceNote({ state }) {
+  const t = useT();
   if (state.status === "idle") return null;
-  if (state.status === "loading") return <p className="text-xs text-slate-500 dark:text-slate-400">Checking the price…</p>;
+  if (state.status === "loading") return <p className="text-xs text-slate-500 dark:text-slate-400">{t("bills.checkingPrice")}</p>;
   if (state.status === "error") return <p className="text-xs font-semibold text-red-600 dark:text-red-400">{state.message}</p>;
   return (
     <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3">
-      <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Price</span>
+      <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{t("bills.price")}</span>
       <span className="text-sm font-black text-slate-800 dark:text-white">₦{Number(state.amount).toLocaleString("en-NG")}</span>
     </div>
   );
@@ -445,7 +470,7 @@ function parseDataPlan(planName) {
   const size  = sizeMatch ? parseFloat(sizeMatch[1]) : null;
   const unit  = sizeMatch ? sizeMatch[2].toUpperCase() : "GB";
 
-  let duration = null, durationDays = 0;
+  let duration = null, durationDays = 0, durKey = null, durN = 0;
   const dayM = name.match(/(\d+)\s*[Dd]ay/);
   const wkM  = name.match(/(\d+)\s*[Ww]eek/i);
   const moM  = name.match(/(\d+)\s*[Mm]onth/i) || (/[Mm]onthly/i.test(name) ? [null, "1"] : null);
@@ -453,23 +478,26 @@ function parseDataPlan(planName) {
   if (dayM) {
     const d = parseInt(dayM[1]);
     duration = `${d} Day${d > 1 ? "s" : ""}`;
+    durKey = d > 1 ? "bills.durDays" : "bills.durDay"; durN = d;
     durationDays = d;
   } else if (wkM) {
     const w = parseInt(wkM[1]);
     duration = `${w} Week${w > 1 ? "s" : ""}`;
+    durKey = w > 1 ? "bills.durWeeks" : "bills.durWeek"; durN = w;
     durationDays = w * 7;
   } else if (/weekly/i.test(name)) {
-    duration = "Weekly";
+    duration = "Weekly"; durKey = "bills.durWeekly";
     durationDays = 7;
   } else if (moM) {
     const m = parseInt(moM[1]) || 1;
     duration = `${m} Month${m > 1 ? "s" : ""}`;
+    durKey = m > 1 ? "bills.durMonths" : "bills.durMonth"; durN = m;
     durationDays = m * 30;
   } else if (/night/i.test(name)) {
-    duration = "Night Plan";
+    duration = "Night Plan"; durKey = "bills.durNight";
     durationDays = 14;
   } else if (/weekend/i.test(name)) {
-    duration = "Weekend";
+    duration = "Weekend"; durKey = "bills.durWeekend";
     durationDays = 2;
   }
 
@@ -483,10 +511,11 @@ function parseDataPlan(planName) {
       : (durationDays > 0 && durationDays <= 7) ? "weekly" : "monthly";
   }
 
-  return { size, unit, duration, category };
+  return { size, unit, duration, durKey, durN, category };
 }
 
 const DATA_TABS = ["Awoof", "Top Deals", "Daily", "Weekly", "Monthly", "All"];
+const DATA_TAB_KEYS = { Awoof: "bills.tabAwoof", "Top Deals": "bills.tabTopDeals", Daily: "bills.tabDaily", Weekly: "bills.tabWeekly", Monthly: "bills.tabMonthly", All: "bills.tabAll" };
 
 // Open on the first tab (in the order above) that has plans for this network, so nobody lands on an empty tab.
 function firstDataTab(plans) {
@@ -495,6 +524,7 @@ function firstDataTab(plans) {
 }
 
 function DataPlanGrid({ plans, selectedId, onSelect, loading, error, cashback = 0, pointsEnabled = false, netCfg = null }) {
+  const t = useT();
   const [activeTab, setActiveTab] = useState(() => firstDataTab(plans));
   useEffect(() => { setActiveTab(firstDataTab(plans)); }, [plans]);
 
@@ -506,7 +536,7 @@ function DataPlanGrid({ plans, selectedId, onSelect, loading, error, cashback = 
   if (loading) return (
     <div className="space-y-3">
       <div className="flex gap-2">
-        {DATA_TABS.map(t => <div key={t} className="h-7 w-16 bg-slate-100 dark:bg-slate-700 rounded-full animate-pulse" />)}
+        {DATA_TABS.map(tab => <div key={tab} className="h-7 w-16 bg-slate-100 dark:bg-slate-700 rounded-full animate-pulse" />)}
       </div>
       <div className="grid grid-cols-3 gap-2.5">
         {[1,2,3,4,5,6].map(i => <div key={i} className="h-24 bg-slate-100 dark:bg-slate-700 rounded-2xl animate-pulse" />)}
@@ -529,14 +559,14 @@ function DataPlanGrid({ plans, selectedId, onSelect, loading, error, cashback = 
             <button key={tab} type="button" onClick={() => setActiveTab(tab)}
               className={`flex-shrink-0 px-3.5 py-1.5 rounded-full text-[11px] font-bold transition-all duration-200 ${isActive ? "text-white" : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400"}`}
               style={isActive ? { background: netCfg ? netCfg.bg : "#3b82f6" } : {}}>
-              {tab}
+              {t(DATA_TAB_KEYS[tab])}
             </button>
           );
         })}
       </div>
       <div className="grid grid-cols-3 gap-2.5">
         {filtered.map(pl => {
-          const { size, unit, duration } = parseDataPlan(pl.plan_name);
+          const { size, unit, duration, durKey, durN } = parseDataPlan(pl.plan_name);
           const price = Number(pl.plan_amount);
           const earnedCashback = parseFloat((price * 0.01).toFixed(2));
           const earnedPts = pointsEnabled && !cashback ? Math.floor(price / 50) : 0;
@@ -555,22 +585,22 @@ function DataPlanGrid({ plans, selectedId, onSelect, loading, error, cashback = 
                 <p className={`text-[11px] font-bold leading-tight ${!sel ? "text-slate-800 dark:text-white" : ""}`}
                   style={sel ? { color: netCfg ? netCfg.bg : "#1d4ed8" } : {}}>{pl.plan_name}</p>
               )}
-              {duration && <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">{duration}</p>}
+              {duration && <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">{durKey ? t(durKey, { n: durN }) : duration}</p>}
               <p className={`text-xs font-black mt-1.5 ${!sel ? "text-slate-700 dark:text-slate-300" : ""}`}
                 style={sel ? { color: netCfg ? netCfg.bg : "#1d4ed8" } : {}}>
                 ₦{price.toLocaleString()}
               </p>
               {earnedCashback > 0 ? (
-                <p className="text-[9px] font-bold text-green-600 dark:text-green-400 mt-0.5">+₦{earnedCashback < 1 ? earnedCashback.toFixed(2) : earnedCashback} Cashback</p>
+                <p className="text-[9px] font-bold text-green-600 dark:text-green-400 mt-0.5">{t("bills.plusCashback", { amt: earnedCashback < 1 ? earnedCashback.toFixed(2) : earnedCashback })}</p>
               ) : earnedPts > 0 ? (
-                <p className="text-[9px] font-bold text-amber-600 dark:text-amber-400 mt-0.5">+{earnedPts} pts</p>
+                <p className="text-[9px] font-bold text-amber-600 dark:text-amber-400 mt-0.5">{t("bills.plusPts", { n: earnedPts })}</p>
               ) : null}
             </button>
           );
         })}
       </div>
       {filtered.length === 0 && (
-        <p className="text-center text-xs text-slate-400 dark:text-slate-500 py-4">No {activeTab.toLowerCase()} plans</p>
+        <p className="text-center text-xs text-slate-400 dark:text-slate-500 py-4">{t("bills.noTabPlans", { tab: t(DATA_TAB_KEYS[activeTab]).toLowerCase() })}</p>
       )}
     </div>
   );
@@ -579,6 +609,7 @@ function DataPlanGrid({ plans, selectedId, onSelect, loading, error, cashback = 
 /* ─── Overview / history ───────────────────────────────────────────────────── */
 
 function BillRow({ bill, onOpen }) {
+  const t = useT();
   const cat     = CATS.find(c => c.id === bill.category) || CATS[0];
   const failed  = bill.bill_status === "failed";
   const pending = bill.bill_status === "pending";
@@ -598,8 +629,8 @@ function BillRow({ bill, onOpen }) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
             <p className="text-sm font-bold text-slate-800 dark:text-white truncate">{bill.item_name}</p>
-            {failed && <span className="text-[9px] font-black bg-red-500 text-white px-1.5 py-0.5 rounded-full flex-shrink-0">FAILED</span>}
-            {pending && <span className="text-[9px] font-black bg-amber-500 text-white px-1.5 py-0.5 rounded-full flex-shrink-0">PENDING</span>}
+            {failed && <span className="text-[9px] font-black bg-red-500 text-white px-1.5 py-0.5 rounded-full flex-shrink-0">{t("bills.badgeFailed")}</span>}
+            {pending && <span className="text-[9px] font-black bg-amber-500 text-white px-1.5 py-0.5 rounded-full flex-shrink-0">{t("bills.badgePending")}</span>}
           </div>
           <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">
             {bill.customer_name && `${bill.customer_name} · `}{fmtDT(bill.created_at)}
@@ -631,7 +662,7 @@ function PinModal({ pins, title, onClose }) {
         <div className="px-5 py-4 space-y-3 max-h-80 overflow-y-auto">
           {pins.map((pin, i) => (
             <div key={i} className="bg-slate-50 dark:bg-slate-800 rounded-xl px-4 py-3 border border-slate-200 dark:border-slate-700">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Pin {i + 1}</p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">{t("bills.pinN", { n: i + 1 })}</p>
               <p className="font-mono text-sm font-bold text-slate-800 dark:text-white break-all">{String(pin.pin ?? pin)}</p>
               {pin.sno && <p className="text-[10px] text-slate-400 mt-0.5">S/N: {pin.sno}</p>}
             </div>
@@ -662,7 +693,7 @@ function BeneficiaryManagerSheet({ bens, onClose, onDelete, onNicknameSave }) {
     return acc;
   }, {});
   const catOrder = ["airtime", "data", "electricity", "cable", "betting", "spectranet", "smile"];
-  const catLabels = { airtime: "Airtime", data: "Data", electricity: "Electricity", cable: "Cable TV", betting: "Betting", spectranet: "Spectranet", smile: "Smile 4G" };
+  const catLabels = { airtime: t("bill.airtime"), data: t("bill.data"), electricity: t("bill.electricity"), cable: t("bill.cableTV"), betting: t("bill.betting"), spectranet: t("bill.spectranet"), smile: t("bill.smile4g") };
 
   return (
     <div className="fixed inset-0 z-sub-sheet flex flex-col" style={{ background: "rgba(0,0,0,0.45)" }}>
@@ -692,7 +723,7 @@ function BeneficiaryManagerSheet({ bens, onClose, onDelete, onNicknameSave }) {
               <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">{catLabels[cat]}</p>
               <div className="space-y-2">
                 {grouped[cat].map(ben => {
-                  const primary = ben.nickname || ben.verifyName || ben.phone || ben.meterNo || ben.smartcard || ben.customerId || ben.accountNo || "Saved";
+                  const primary = ben.nickname || ben.verifyName || ben.phone || ben.meterNo || ben.smartcard || ben.customerId || ben.accountNo || t("bills.saved");
                   const secondary = ben.nickname ? (ben.verifyName || ben.phone || ben.meterNo || ben.smartcard || ben.customerId || ben.accountNo) : null;
                   const isEditing  = editingId === ben.id;
                   const isDeleting = deletingId === ben.id;
@@ -727,7 +758,7 @@ function BeneficiaryManagerSheet({ bens, onClose, onDelete, onNicknameSave }) {
                             value={nickDraft}
                             onChange={e => setNickDraft(e.target.value)}
                             onKeyDown={e => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") setEditingId(null); }}
-                            placeholder="Add a nickname…"
+                            placeholder={t("bills.addNickname")}
                             className="flex-1 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-1.5 text-sm bg-white dark:bg-slate-700 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500"
                           />
                           <button onClick={commitEdit}
@@ -739,9 +770,9 @@ function BeneficiaryManagerSheet({ bens, onClose, onDelete, onNicknameSave }) {
 
                       {isDeleting && (
                         <div className="mt-2.5 flex items-center gap-2">
-                          <p className="flex-1 text-xs text-red-500 dark:text-red-400 font-medium">Remove this recipient?</p>
+                          <p className="flex-1 text-xs text-red-500 dark:text-red-400 font-medium">{t("bills.removeRecipientQ")}</p>
                           <button onClick={() => { onDelete(ben.id); setDeletingId(null); }}
-                            className="px-3 py-1.5 rounded-xl bg-red-500 text-white text-xs font-bold active:opacity-80">Remove</button>
+                            className="px-3 py-1.5 rounded-xl bg-red-500 text-white text-xs font-bold active:opacity-80">{t("bills.remove")}</button>
                           <button onClick={() => setDeletingId(null)}
                             className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold active:opacity-80">{t("common.cancel")}</button>
                         </div>
@@ -961,7 +992,7 @@ function BillStatementModal({ bills, profile, onClose }) {
               {[{ id: "all", label: t("bp.allServices") }, ...usedCats].map(c => (
                 <button key={c.id} onClick={() => setCatFilter(c.id)}
                   className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors ${catFilter === c.id ? "bg-slate-800 border-slate-800 text-white dark:bg-white dark:border-white dark:text-slate-900" : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"}`}>
-                  {c.label}
+                  {CAT_LABEL_KEYS[c.id] ? t(CAT_LABEL_KEYS[c.id]) : c.label}
                 </button>
               ))}
             </div>
@@ -1003,6 +1034,8 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
   const catLabel = fulfillResult?.cat
     ? (CATS.find(c => c.id === fulfillResult.cat)?.label || "Bill Payment")
     : "Bill Payment";
+  // the same service name in the chosen language, for the screen (catLabel stays English for the shared WhatsApp text)
+  const catLabelShown = CAT_LABEL_KEYS[fulfillResult?.cat] ? t(CAT_LABEL_KEYS[fulfillResult.cat]) : t("bills.billPayment");
 
   const isSuccess = !!(fulfillResult?.ok && !fulfillResult?.txnHistoryPending);
 
@@ -1085,13 +1118,13 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
           </div>
           <div>
             <p className="text-[11px] font-black tracking-widest uppercase text-green-500">KudiAI Track</p>
-            <p className="text-[9px] font-medium text-white/45">Bill Payment Services</p>
+            <p className="text-[9px] font-medium text-white/45">{t("bills.billPaymentServices")}</p>
           </div>
         </div>
         {/* Service label right */}
         <div className="text-right">
-          <p className="text-[9px] font-semibold uppercase tracking-wider text-white/40">Service</p>
-          <p className="text-[13px] font-black text-white leading-tight">{catLabel}</p>
+          <p className="text-[9px] font-semibold uppercase tracking-wider text-white/40">{t("bp.serviceField")}</p>
+          <p className="text-[13px] font-black text-white leading-tight">{catLabelShown}</p>
         </div>
       </div>
       {/* Green accent stripe */}
@@ -1099,7 +1132,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
       {/* Ref bar — only when a payment ref exists */}
       {fulfillResult?.psRef ? (
         <div className="px-5 py-1.5 flex items-center justify-between bg-green-50 dark:bg-green-900/20">
-          <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Payment Ref</span>
+          <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">{t("bills.paymentRef")}</span>
           <span className="text-[10px] font-mono font-black text-green-600 dark:text-green-400">{fulfillResult.psRef.slice(0, 22)}</span>
         </div>
       ) : null}
@@ -1111,7 +1144,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
     <div className="flex-shrink-0 px-5 py-3 flex items-center justify-between bg-gradient-to-br from-slate-950 to-blue-950">
       <div>
         <p className="text-[10px] font-black text-green-500">AMAYA &amp; Co. Technologies</p>
-        <p className="text-[8.5px] text-white/35">All rights reserved · Copyright © 2026</p>
+        <p className="text-[8.5px] text-white/35">{t("bills.allRights")}</p>
       </div>
       {/* Decorative barcode */}
       <div className="flex gap-[2px] items-end" style={{ opacity: 0.18 }}>
@@ -1199,7 +1232,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
         <>
           {/* Slim title bar */}
           <div className="flex-shrink-0 flex items-center justify-between px-5 py-3 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800">
-            <p className="text-sm font-bold text-slate-800 dark:text-white truncate">{catLabel} Receipt</p>
+            <p className="text-sm font-bold text-slate-800 dark:text-white truncate">{t("bills.receiptTitle", { service: catLabelShown })}</p>
             <button onClick={onDone} className="text-sm font-semibold px-4 py-2.5 min-h-[44px] inline-flex items-center rounded-lg active:scale-95 transition-transform text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800">{t("bp.done")}</button>
           </div>
 
@@ -1225,7 +1258,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
                     {fulfillResult.elecUnits && (
                       <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" strokeLinecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-                        <span className="text-xs font-black text-green-700 dark:text-green-400">{fulfillResult.elecUnits} loaded</span>
+                        <span className="text-xs font-black text-green-700 dark:text-green-400">{t("bills.unitsLoaded", { units: fulfillResult.elecUnits })}</span>
                       </div>
                     )}
                     <button
@@ -1269,7 +1302,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
                       onClick={() => shareVoucherPDF(fulfillResult.pinsArr, businessName || profile?.business_name, fulfillResult.cat, { receiptRef: fulfillResult.receiptRef || "" })}
                       className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 active:opacity-60 flex items-center gap-1"
                     >
-                      📤 Share Cards
+                      📤 {t("bills.shareCards")}
                     </button>
                   </div>
                 </div>
@@ -1288,8 +1321,8 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
                         <div className="px-3 py-2 flex items-center justify-between bg-green-50 dark:bg-green-900/30 border-b border-green-200 dark:border-green-800">
                           <div className="flex items-center gap-1.5 flex-wrap">
                             {(() => {
-                              const tl  = (fulfillResult.cat || '').toLowerCase().includes('data') ? 'Data' : 'Airtime';
-                              const lbl = pin.network ? `${pin.network} ${tl} PIN` : `${tl} PIN ${i + 1}`;
+                              const tl  = (fulfillResult.cat || '').toLowerCase().includes('data') ? t("bills.typeData") : t("bills.typeAirtime");
+                              const lbl = pin.network ? t("bills.pinLabelNet", { network: pin.network, type: tl }) : t("bills.pinLabelN", { type: tl, n: i + 1 });
                               return netCfg
                                 ? <span className="text-[8px] font-black px-1.5 py-0.5 rounded-full leading-none" style={{ background: netCfg.bg, color: netCfg.fg }}>{lbl}</span>
                                 : <span className="text-[9px] font-bold text-green-700 dark:text-green-400 uppercase tracking-wider">{lbl}</span>;
@@ -1300,7 +1333,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
                             onClick={() => { try { navigator.clipboard.writeText(bare); } catch (_) {} }}
                             className="text-[9px] font-bold text-green-600 dark:text-green-400 active:opacity-60"
                           >
-                            Copy
+                            {t("bills.copy")}
                           </button>
                         </div>
                         <div className="px-4 py-3 bg-white dark:bg-green-900/10">
@@ -1311,7 +1344,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
                           {(serial || bare) && (
                             <div className="flex items-center gap-4 flex-wrap mt-1.5">
                               {serial && <span className="text-[9px] text-slate-400 dark:text-slate-500 font-mono">SN: {serial}</span>}
-                              {bare   && <span className="text-[9px] text-slate-400 dark:text-slate-500 font-mono">Dial: *311*{bare}#</span>}
+                              {bare   && <span className="text-[9px] text-slate-400 dark:text-slate-500 font-mono">{t("bills.dial")}: *311*{bare}#</span>}
                             </div>
                           )}
                         </div>
@@ -1336,7 +1369,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
                     }}
                     className="text-[9px] font-bold text-green-600 dark:text-green-400 active:opacity-60"
                   >
-                    Copy All PINs
+                    {t("bills.copyAllPins")}
                   </button>
                 </div>
               </div>
@@ -1363,7 +1396,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
             {fulfillResult.earnedPts > 0 && (
               <div className="flex justify-center pb-4">
                 <div className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-black bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 border-[1.5px] border-amber-200 dark:border-amber-700">
-                  ⭐ +{fulfillResult.earnedPts} pts earned
+                  ⭐ {t("bills.ptsEarned", { n: fulfillResult.earnedPts })}
                 </div>
               </div>
             )}
@@ -1408,7 +1441,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M18 8h1a4 4 0 010 8h-1M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8zM6 1v3M10 1v3M14 1v3"/>
                   </svg>
-                  Share Cards
+                  {t("bills.shareCards")}
                 </button>
               )}
             </div>
@@ -1474,21 +1507,21 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
               </div>
             </div>
             <div className="text-center">
-              <p className="text-xl font-black text-slate-800">{fulfillResult.pendingConfirm ? "Confirming Your Purchase" : t("bp.sortingOut")}</p>
-              <p className="text-xs text-slate-400 mt-1 leading-relaxed">{fulfillResult.pendingConfirm ? "Payment received — this won't take long" : t("bp.alertedTeam")}</p>
+              <p className="text-xl font-black text-slate-800">{fulfillResult.pendingConfirm ? t("bills.confirmingPurchase") : t("bp.sortingOut")}</p>
+              <p className="text-xs text-slate-400 mt-1 leading-relaxed">{fulfillResult.pendingConfirm ? t("bills.receivedWontTakeLong") : t("bp.alertedTeam")}</p>
             </div>
           </div>
 
           {/* Friendly explanation */}
           <div className="rounded-2xl overflow-hidden shadow-sm border border-amber-200 dark:border-amber-700">
             <div className="px-4 py-2.5 bg-amber-50 dark:bg-amber-900/20">
-              <p className="text-[9px] font-black uppercase tracking-widest text-amber-800 dark:text-amber-200">What&apos;s Happening</p>
+              <p className="text-[9px] font-black uppercase tracking-widest text-amber-800 dark:text-amber-200">{t("bills.whatsHappening")}</p>
             </div>
             <div className="bg-white px-4 py-3">
               <p className="text-sm text-slate-700 leading-relaxed">
                 {fulfillResult.pendingConfirm
-                  ? <>Your payment went through, but a network fault interrupted the confirmation from the provider. We&apos;re verifying whether it was delivered and will <strong>email you the outcome shortly</strong>. <strong>Please don&apos;t pay again</strong> — if it wasn&apos;t delivered you&apos;ll be refunded automatically.</>
-                  : <>Your payment was received but the service couldn&apos;t be delivered right now. A <strong>refund has been automatically initiated</strong> — expect it within 24 hours. Our team has also been notified and will follow up if needed.</>}
+                  ? <>{t("bills.pendingA")}<strong>{t("bills.pendingB")}</strong>{t("bills.pendingC")}<strong>{t("bills.pendingD")}</strong>{t("bills.pendingE")}</>
+                  : <>{t("bills.failedA")}<strong>{t("bills.failedB")}</strong>{t("bills.failedC")}</>}
               </p>
             </div>
           </div>
@@ -1499,7 +1532,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" strokeLinecap="round">
                 <polyline points="20 6 9 17 4 12"/>
               </svg>
-              <p className="text-[9px] font-black uppercase tracking-widest text-green-700 dark:text-green-400">Payment Confirmed · Save This Reference</p>
+              <p className="text-[9px] font-black uppercase tracking-widest text-green-700 dark:text-green-400">{t("bills.confirmedSaveRef")}</p>
             </div>
             <div className="bg-white px-4 py-3">
               <p className="font-mono text-sm font-black break-all text-green-700 dark:text-green-400">{fulfillResult.psRef}</p>
@@ -1554,8 +1587,8 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
                 </svg>
               </div>
               <div className="text-left">
-                <p className="text-sm font-bold text-slate-800">Share as Image</p>
-                <p className="text-xs text-slate-400">High-res PNG · WhatsApp, Instagram…</p>
+                <p className="text-sm font-bold text-slate-800">{t("bills.shareAsImage")}</p>
+                <p className="text-xs text-slate-400">{t("bills.shareAsImageDesc")}</p>
               </div>
             </button>
 
@@ -1571,8 +1604,8 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
                 </svg>
               </div>
               <div className="text-left">
-                <p className="text-sm font-bold text-slate-800">Save as PDF</p>
-                <p className="text-xs text-slate-400">Email, print, or save to files</p>
+                <p className="text-sm font-bold text-slate-800">{t("bills.saveAsPdf")}</p>
+                <p className="text-xs text-slate-400">{t("bills.saveAsPdfDesc")}</p>
               </div>
             </button>
           </div>
@@ -1585,7 +1618,7 @@ function BillResultOverlay({ saving, fulfillResult, profile, businessName, staff
           <div className="bg-white rounded-2xl px-8 py-6 flex flex-col items-center gap-3 shadow-xl">
             <div className="w-8 h-8 border-2 border-slate-200 border-t-green-500 rounded-full animate-spin" />
             <p className="text-sm font-semibold text-slate-600">
-              {shareLoading === 'image' ? 'Preparing image…' : 'Preparing PDF…'}
+              {shareLoading === 'image' ? t("bills.preparingImage") : t("bills.preparingPdf")}
             </p>
           </div>
         </div>
@@ -2120,12 +2153,12 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       const r = await clubkonnect("exam-price", { exam, examType });
       if (seq !== examPriceSeq.current) return;
       const amt = Number(r?.amount) || 0;
-      if (amt <= 0) throw new Error("We couldn't get the price right now. Please try again shortly.");
+      if (amt <= 0) throw new Error(t("bills.errPriceUnavailable"));
       setForm(f => ({ ...f, amount: String(amt) }));
       setExamPrice({ status: "ok", amount: amt, message: "" });
     } catch (e) {
       if (seq !== examPriceSeq.current) return;
-      setExamPrice({ status: "error", amount: 0, message: e?.message || "We couldn't get the price right now. Please try again shortly." });
+      setExamPrice({ status: "error", amount: 0, message: e?.message || t("bills.errPriceUnavailable") });
     }
   };
 
@@ -2146,8 +2179,8 @@ export default function BillPayments({ store, plan, session = null, staffName = 
           return markup > 1 ? { ...p, plan_amount: Math.ceil(p.plan_amount * markup) } : p;
         });
         setPlans(priced);
-      } else { setPlansError(r?.error || "No plans returned from provider"); }
-    } catch (e) { if (seq === plansSeq.current) setPlansError(e.message || "Failed to load plans"); }
+      } else { setPlansError(r?.error || t("bills.errNoPlans")); }
+    } catch (e) { if (seq === plansSeq.current) setPlansError(e.message || t("bills.errLoadPlans")); }
     finally { if (seq === plansSeq.current) setPlansLoading(false); }
   };
 
@@ -2156,8 +2189,8 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     try {
       const r = await clubkonnect(action, extra);
       if (r?.packages?.length) { setPkgs(r.packages); }
-      else { setPkgsError(r?.error || "No packages returned from provider"); }
-    } catch (e) { setPkgsError(e.message || "Failed to load packages"); }
+      else { setPkgsError(r?.error || t("bills.errNoPackages")); }
+    } catch (e) { setPkgsError(e.message || t("bills.errLoadPackages")); }
     finally { setPkgsLoading(false); }
   };
 
@@ -2188,59 +2221,59 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
   // Verify handlers
   const verifyMeter = async () => {
-    if (!form.company || !form.meterNo || !form.meterType) { setError("Select company, meter type and enter meter number"); return; }
+    if (!form.company || !form.meterNo || !form.meterType) { setError(t("bills.errSelectMeter")); return; }
     setVerifyStatus("loading"); setError("");
     try {
       const r = await clubkonnect("electricity-verify", { company: form.company, meterNo: form.meterNo, meterType: form.meterType });
       setVerifyStatus("ok"); setVerifyName(r.customer_name);
       setMeterAddress(r.customer_address || r.meter_address || r.address || r.service_address || "");
     } catch (e) {
-      setVerifyStatus("error"); setVerifyName(e.message || "Verification failed");
+      setVerifyStatus("error"); setVerifyName(e.message || t("bills.errVerifyFailed"));
       setMeterAddress("");
     }
   };
 
   const verifySmartcard = async () => {
-    if (!form.provider || !form.smartcard) { setError("Select provider and enter smartcard number"); return; }
+    if (!form.provider || !form.smartcard) { setError(t("bills.errSelectSmartcard")); return; }
     setVerifyStatus("loading"); setError("");
     try {
       const r = await clubkonnect("cable-verify", { provider: form.provider, smartcard: form.smartcard });
       setVerifyStatus("ok"); setVerifyName(r.customer_name);
     } catch (e) {
-      setVerifyStatus("error"); setVerifyName(e.message || "Verification failed");
+      setVerifyStatus("error"); setVerifyName(e.message || t("bills.errVerifyFailed"));
     }
   };
 
   const verifyBetting = async () => {
-    if (!form.company || !form.customerId) { setError("Select platform and enter customer ID"); return; }
+    if (!form.company || !form.customerId) { setError(t("bills.errSelectBetting")); return; }
     setVerifyStatus("loading"); setError("");
     try {
       const r = await clubkonnect("betting-verify", { company: form.company, customerId: form.customerId });
       setVerifyStatus("ok"); setVerifyName(r.customer_name);
     } catch (e) {
-      setVerifyStatus("error"); setVerifyName(e.message || "Verification failed");
+      setVerifyStatus("error"); setVerifyName(e.message || t("bills.errVerifyFailed"));
     }
   };
 
   const verifyJamb = async () => {
-    if (!form.examType || !form.profileId) { setError("Select exam type and enter profile ID"); return; }
+    if (!form.examType || !form.profileId) { setError(t("bills.errSelectJamb")); return; }
     setVerifyStatus("loading"); setError("");
     try {
       const r = await clubkonnect("jamb-verify", { examType: form.examType, profileId: form.profileId });
       setVerifyStatus("ok"); setVerifyName(r.customer_name);
     } catch (e) {
-      setVerifyStatus("error"); setVerifyName(e.message || "Verification failed");
+      setVerifyStatus("error"); setVerifyName(e.message || t("bills.errVerifyFailed"));
     }
   };
 
   const verifySmile = async () => {
-    if (!form.accountNo) { setError("Enter account number"); return; }
+    if (!form.accountNo) { setError(t("bills.errEnterAccount")); return; }
     setVerifyStatus("loading"); setError("");
     try {
       const r = await clubkonnect("smile-verify", { accountNo: form.accountNo });
       setVerifyStatus("ok"); setVerifyName(r.customer_name);
     } catch (e) {
-      setVerifyStatus("error"); setVerifyName(e.message || "Verification failed");
+      setVerifyStatus("error"); setVerifyName(e.message || t("bills.errVerifyFailed"));
     }
   };
 
@@ -2253,12 +2286,12 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       const { data, error: rpcErr } = await supabase.rpc("check_coupon", { p_code: code });
       if (rpcErr) throw rpcErr;
       if (!data?.valid) {
-        setBillCouponMsg({ text: data?.message || "Invalid coupon", ok: false });
+        setBillCouponMsg({ text: data?.message || t("bills.invalidCoupon"), ok: false });
         setBillAppliedCoupon(null); billAppliedCouponRef.current = null;
       } else {
         const appliesTo = data.applies_to || [];
         if (appliesTo.length > 0 && !appliesTo.includes("bills")) {
-          setBillCouponMsg({ text: "This coupon is not valid for bill payments", ok: false });
+          setBillCouponMsg({ text: t("bills.couponNotForBills"), ok: false });
           setBillAppliedCoupon(null); billAppliedCouponRef.current = null;
         } else {
           const coupon = {
@@ -2267,11 +2300,11 @@ export default function BillPayments({ store, plan, session = null, staffName = 
             applies_to: appliesTo, min_amount: data.min_amount || 0,
           };
           setBillAppliedCoupon(coupon); billAppliedCouponRef.current = coupon;
-          setBillCouponMsg({ text: data.message || "Coupon applied!", ok: true });
+          setBillCouponMsg({ text: data.message || t("bills.couponApplied"), ok: true });
         }
       }
     } catch (e) {
-      setBillCouponMsg({ text: e.message || "Failed to apply coupon", ok: false });
+      setBillCouponMsg({ text: e.message || t("bills.couponFailed"), ok: false });
       setBillAppliedCoupon(null); billAppliedCouponRef.current = null;
     } finally {
       setBillCouponLoading(false);
@@ -2285,29 +2318,29 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       const amount = parseFloat(form.amount) || 0;
 
       // Validate per service
-      if (selectedCat === "airtime"     && (!form.phone || !form.network || !amount)) throw new Error("Phone, network and amount required");
-      if (selectedCat === "data"        && (!form.phone || !form.planId))              throw new Error("Phone and data plan required");
+      if (selectedCat === "airtime"     && (!form.phone || !form.network || !amount)) throw new Error(t("bills.errAirtimeReq"));
+      if (selectedCat === "data"        && (!form.phone || !form.planId))              throw new Error(t("bills.errDataReq"));
       if (selectedCat === "airtime" || selectedCat === "data") {
         const own = networkMismatch(form.phone, form.network);
-        if (own) throw new Error(networkMismatchMessage(own, form.network));
+        if (own) throw new Error(wrongNetMessage(t, own, form.network));
       }
-      if (selectedCat === "cable"       && (!form.provider || !form.packageId || !form.smartcard || !form.phone)) throw new Error("All cable TV fields required");
-      if (selectedCat === "cable"       && verifyStatus !== "ok")                      throw new Error("Please verify smartcard number first");
-      if (selectedCat === "electricity" && (!form.company || !form.meterType || !form.meterNo || !amount || !form.phone)) throw new Error("All electricity fields required");
-      if (selectedCat === "electricity" && verifyStatus !== "ok")                      throw new Error("Please verify meter number first");
-      if (selectedCat === "betting"     && (!form.company || !form.customerId || !amount)) throw new Error("Platform, customer ID and amount required");
-      if (selectedCat === "betting"     && verifyStatus !== "ok")                      throw new Error("Please verify customer ID first");
-      if (selectedCat === "waec"        && (!form.examType || !form.phone))            throw new Error("Exam type and phone required");
-      if (selectedCat === "jamb"        && (!form.examType || !form.phone))            throw new Error("Exam type and phone required");
-      if (selectedCat === "jamb"        && form.profileId && verifyStatus !== "ok")    throw new Error("Please verify JAMB profile ID first");
+      if (selectedCat === "cable"       && (!form.provider || !form.packageId || !form.smartcard || !form.phone)) throw new Error(t("bills.errCableReq"));
+      if (selectedCat === "cable"       && verifyStatus !== "ok")                      throw new Error(t("bills.errVerifySmartcardFirst"));
+      if (selectedCat === "electricity" && (!form.company || !form.meterType || !form.meterNo || !amount || !form.phone)) throw new Error(t("bills.errElecReq"));
+      if (selectedCat === "electricity" && verifyStatus !== "ok")                      throw new Error(t("bills.errVerifyMeterFirst"));
+      if (selectedCat === "betting"     && (!form.company || !form.customerId || !amount)) throw new Error(t("bills.errBettingReq"));
+      if (selectedCat === "betting"     && verifyStatus !== "ok")                      throw new Error(t("bills.errVerifyCustomerFirst"));
+      if (selectedCat === "waec"        && (!form.examType || !form.phone))            throw new Error(t("bills.errExamReq"));
+      if (selectedCat === "jamb"        && (!form.examType || !form.phone))            throw new Error(t("bills.errExamReq"));
+      if (selectedCat === "jamb"        && form.profileId && verifyStatus !== "ok")    throw new Error(t("bills.errVerifyJambFirst"));
       if ((selectedCat === "waec" || selectedCat === "jamb") && !(parseFloat(form.amount) > 0))
-        throw new Error(examPrice.status === "error" && examPrice.message ? examPrice.message : "The price isn't available yet — please choose the exam type again.");
-      if (selectedCat === "spectranet"  && (!form.accountNo || !form.planId))          throw new Error("Account number and plan required");
-      if (selectedCat === "smile"       && (!form.accountNo || !form.planId))          throw new Error("Account number and plan required");
-      if (selectedCat === "smile"       && verifyStatus !== "ok")                      throw new Error("Please verify Smile account first");
-      if (selectedCat === "print-airtime"   && (!form.network || !form.value || !form.quantity)) throw new Error("Network, value and quantity required");
-      if (selectedCat === "print-data"      && (!form.network || !form.planId || !form.quantity))  throw new Error("Network, plan and quantity required");
-      if (selectedCat === "airtime-bundle"  && (!form.sets || parseInt(form.sets, 10) < 1))    throw new Error("Select number of sets");
+        throw new Error(examPrice.status === "error" && examPrice.message ? examPrice.message : t("bills.errExamPriceMissing"));
+      if (selectedCat === "spectranet"  && (!form.accountNo || !form.planId))          throw new Error(t("bills.errAccountPlanReq"));
+      if (selectedCat === "smile"       && (!form.accountNo || !form.planId))          throw new Error(t("bills.errAccountPlanReq"));
+      if (selectedCat === "smile"       && verifyStatus !== "ok")                      throw new Error(t("bills.errVerifySmileFirst"));
+      if (selectedCat === "print-airtime"   && (!form.network || !form.value || !form.quantity)) throw new Error(t("bills.errPrintAirtimeReq"));
+      if (selectedCat === "print-data"      && (!form.network || !form.planId || !form.quantity))  throw new Error(t("bills.errPrintDataReq"));
+      if (selectedCat === "airtime-bundle"  && (!form.sets || parseInt(form.sets, 10) < 1))    throw new Error(t("bills.selectSets"));
 
       // Calculate charge amount
       const chargeAmount = selectedCat === "print-airtime"
@@ -2320,12 +2353,12 @@ export default function BillPayments({ store, plan, session = null, staffName = 
               ? priceFor("airtime", form)
               : amount;
 
-      if (!chargeAmount || chargeAmount <= 0) throw new Error("Invalid amount");
+      if (!chargeAmount || chargeAmount <= 0) throw new Error(t("bills.errInvalidAmount"));
 
       // walletOnly (Ajo client portal): no Paystack fallback — the wallet must
       // be ready and funded before we even reach the preflight/coupon logic.
       if (walletOnly && !(walletEnabled && wallet.hasAccount)) {
-        throw new Error("Your KudiAI Wallet isn't ready yet — bills here are paid from your wallet.");
+        throw new Error(t("bills.errWalletNotReady"));
       }
 
       // ── Pre-flight: never charge if the service can't be delivered ──────────
@@ -2342,12 +2375,14 @@ export default function BillPayments({ store, plan, session = null, staffName = 
           },
         });
         if (pf && pf.ok === false) {
-          throw new Error(pf.message || "This service is temporarily unavailable. Please try again later — you have not been charged.");
+          const pfBlock = new Error(pf.message || t("bills.errServiceUnavailable"));
+          pfBlock.ownFallback = !pf.message;   // our own "unavailable" text always blocks, whatever the language
+          throw pfBlock;
         }
       } catch (pfErr) {
         // A thrown pf.ok===false message must surface; a network failure of the
         // check itself should not block (rare, and fulfilment still has guards).
-        if (pfErr?.message && /try again later|not been charged|unavailable/i.test(pfErr.message)) throw pfErr;
+        if (pfErr?.message && (pfErr.ownFallback || /try again later|not been charged|unavailable/i.test(pfErr.message))) throw pfErr;
         console.warn("[preflight] check failed, proceeding:", pfErr?.message);
       }
 
@@ -2388,20 +2423,20 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         const koboNeeded = Math.round(finalAmount * 100);
         if (wallet.balanceKobo < koboNeeded) {
           localStorage.removeItem(BILL_PENDING_PREFIX + ref);
-          throw new Error("Your wallet balance is too low for this payment.");
+          throw new Error(t("bills.errWalletLow"));
         }
         let ledgerId;
         try {
           const { data, error: dErr } = await supabase.rpc("wallet_debit_for_bill", {
             p_amount_kobo: koboNeeded,
             p_reference:   ref,
-            p_narration:   `${CAT_LABELS[selectedCat] || selectedCat}`,
+            p_narration:   CATS.find((c) => c.id === selectedCat)?.label || selectedCat,   // stored in the ledger — always English
           });
           if (dErr) throw dErr;
           ledgerId = data;
         } catch (dErr) {
           localStorage.removeItem(BILL_PENDING_PREFIX + ref);
-          throw new Error(/insufficient/i.test(dErr.message || "") ? "Insufficient wallet balance." : (dErr.message || "Wallet payment failed."));
+          throw new Error(/insufficient/i.test(dErr.message || "") ? t("bills.errInsufficientWallet") : (dErr.message || t("bills.errWalletPayFailed")));
         }
         pending.walletPaid = true;
         pending.walletLedgerId = ledgerId;
@@ -2437,7 +2472,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       });
       if (ps?.error || !ps?.data?.authorization_url) {
         localStorage.removeItem(BILL_PENDING_PREFIX + ref);
-        throw new Error(ps?.error || ps?.data?.message || "Could not initialize payment");
+        throw new Error(ps?.error || ps?.data?.message || t("bills.errInitPayment"));
       }
 
       // Clear init state and sheets before navigating away — overlay never showed.
@@ -2458,7 +2493,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       }
     } catch (err) {
       setInitPaying(false);
-      setError(err.message || "Payment failed. Please try again.");
+      setError(err.message || t("bill.failed"));
     }
   };
 
@@ -3198,7 +3233,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
             </div>
             <div className="text-right">
               <p className="text-xl font-black text-amber-700 dark:text-amber-300">{pointsBalance.toLocaleString()}</p>
-              <p className="text-[10px] text-amber-600 dark:text-amber-400">pts · ≈ ₦{pointsBalance.toLocaleString()}</p>
+              <p className="text-[10px] text-amber-600 dark:text-amber-400">{t("bills.ptsApprox", { n: pointsBalance.toLocaleString() })}</p>
             </div>
           </div>
         )}
@@ -3207,9 +3242,9 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         {recentBens.length > 0 && (
           <div className="mb-4">
             <div className="flex items-center justify-between mb-2.5">
-              <h2 className="text-[13px] font-bold text-slate-700 dark:text-slate-300 tracking-wide">Buy again</h2>
+              <h2 className="text-[13px] font-bold text-slate-700 dark:text-slate-300 tracking-wide">{t("bills.buyAgain")}</h2>
               <button onClick={() => { fetchAllRemote(supabase, ownerId).then(setAllBens); setShowBenMgr(true); }}
-                className="text-[11px] font-semibold text-brand-500 dark:text-brand-400 active:opacity-60">Manage</button>
+                className="text-[11px] font-semibold text-brand-500 dark:text-brand-400 active:opacity-60">{t("bills.manage")}</button>
             </div>
               <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
                 {recentBens.map(ben => {
@@ -3248,7 +3283,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
         {/* Service grid */}
         <div>
-          <h2 className="text-[13px] font-bold text-slate-700 dark:text-slate-300 mb-3 tracking-wide">Select Service</h2>
+          <h2 className="text-[13px] font-bold text-slate-700 dark:text-slate-300 mb-3 tracking-wide">{t("bills.selectService")}</h2>
           <div className="grid grid-cols-3 gap-3">
             {visibleCats.map(c => {
               const lockedEnterprise = c.enterprise && !isEnterprise;
@@ -3258,7 +3293,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
               const locked = lockedEnterprise || lockedWholesale || lockedLoan || pausedBundle;
               const count  = bills.filter(b => b.category === c.id).length;
               const reqPlanLabel = (getLowestPlanWithFeature("apiAccess")?.name ?? "Pro").slice(0, 4).toUpperCase();
-              const badge  = pausedBundle ? "PAUSED" : lockedEnterprise ? reqPlanLabel : lockedWholesale ? reqPlanLabel : c.loan && !loansEnabled ? "SOON" : lockedLoan && !isEnterprise ? reqPlanLabel : lockedLoan ? "4MO" : null;
+              const badge  = pausedBundle ? t("bills.badgePaused") : lockedEnterprise ? reqPlanLabel : lockedWholesale ? reqPlanLabel : c.loan && !loansEnabled ? t("bills.badgeSoon") : lockedLoan && !isEnterprise ? reqPlanLabel : lockedLoan ? t("bills.badge4mo") : null;
               return (
                 <button key={c.id} onClick={() => openSheet(c.id)} disabled={locked}
                   className={`rounded-2xl p-4 flex flex-col items-center gap-2 shadow-sm active:scale-95 transition-all duration-150 text-white relative bg-gradient-to-br ${c.tileCls} ${locked ? "opacity-50 cursor-not-allowed" : ""}`}>
@@ -3274,12 +3309,12 @@ export default function BillPayments({ store, plan, session = null, staffName = 
           </div>
           {!isWholesale && visibleCats.some(c => c.wholesale) && (
             <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center mt-2">
-              Print Airtime & Data wholesale require the {getLowestPlanWithFeature("printWholesale")?.name ?? "a higher tier"} plan
+              {t("bills.wholesaleNeedsPlan", { plan: getLowestPlanWithFeature("printWholesale")?.name ?? t("bills.higherTier") })}
             </p>
           )}
           {loansEnabled && isEnterprise && !isLoanEligible && (
             <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center mt-1">
-              Business Loan unlocks after 4 months on the {getLowestPlanWithFeature("loanAccess")?.name ?? "a higher tier"} plan
+              {t("bills.loanUnlocks", { plan: getLowestPlanWithFeature("loanAccess")?.name ?? t("bills.higherTier") })}
             </p>
           )}
         </div>
@@ -3288,13 +3323,13 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         <div>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-[13px] font-bold text-slate-700 dark:text-slate-300 tracking-wide">
-              History {bills.length > 0 && <span className="text-slate-400 font-normal">({filteredBills.length}{filteredBills.length !== bills.length ? `/${bills.length}` : ""})</span>}
+              {t("bills.history")} {bills.length > 0 && <span className="text-slate-400 font-normal">({filteredBills.length}{filteredBills.length !== bills.length ? `/${bills.length}` : ""})</span>}
             </h2>
             {bills.length > 0 && (
               <button onClick={() => setShowStatement(true)}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 dark:bg-slate-700 text-white text-[11px] font-bold active:scale-95 transition-transform">
                 <Ico d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z|M14 2v6h6|M12 18v-6|M9 15h6" size={12} c="white" />
-                Statement
+                {t("bills.statement")}
               </button>
             )}
           </div>
@@ -3305,7 +3340,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                 <PeriodFilter period={histPeriod} setPeriod={setHistPeriod} dateFrom={histDateFrom} setDateFrom={setHistDateFrom} dateTo={histDateTo} setDateTo={setHistDateTo} />
               </div>
               <div className="flex gap-2 mb-2.5 overflow-x-auto no-scrollbar">
-                {[["all","All"],["ok","Successful"],["failed","Failed"]].map(([v,l]) => (
+                {[["all",t("bills.filterAll")],["ok",t("bills.filterSuccessful")],["failed",t("bills.filterFailed")]].map(([v,l]) => (
                   <button key={v} onClick={() => setHistStatus(v)}
                     className={`flex-shrink-0 px-3 py-1.5 rounded-full text-[11px] font-bold transition-colors ${
                       histStatus === v
@@ -3338,15 +3373,15 @@ export default function BillPayments({ store, plan, session = null, staffName = 
               <div className="w-14 h-14 bg-slate-100 dark:bg-slate-700 rounded-full flex items-center justify-center mx-auto mb-3">
                 <Ico d={CAT_ICONS.airtime} size={22} c="#94a3b8" />
               </div>
-              <p className="text-slate-500 dark:text-slate-400 text-sm font-semibold">No bills paid yet</p>
-              <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Tap a service above to get started</p>
+              <p className="text-slate-500 dark:text-slate-400 text-sm font-semibold">{t("bills.noBillsYet")}</p>
+              <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">{t("bills.tapServiceToStart")}</p>
             </div>
           ) : filteredBills.length === 0 ? (
             <div className="text-center py-10 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700/50">
-              <p className="text-slate-500 dark:text-slate-400 text-sm font-semibold">No matching transactions</p>
+              <p className="text-slate-500 dark:text-slate-400 text-sm font-semibold">{t("bills.noMatching")}</p>
               <button onClick={() => { setHistCat("all"); setHistStatus("all"); setHistPeriod("all"); setHistDateFrom(""); setHistDateTo(""); }}
                 className="text-xs font-bold text-brand-600 dark:text-brand-400 mt-1.5">
-                Clear filters
+                {t("bills.clearFilters")}
               </button>
             </div>
           ) : (
@@ -3394,7 +3429,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                 </h2>
                 <p className="text-[10px] font-semibold"
                   style={netTheme ? { color: `${netTheme.fg}bb` } : { color: "#16a34a" }}>
-                  Service Active
+                  {t("bills.serviceActive")}
                 </p>
               </div>
             </div>
@@ -3405,7 +3440,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
               {/* ── SAVED BENEFICIARIES ── */}
               {savedBens.length > 0 && (
                 <div>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-2">Quick Select</p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-2">{t("bills.quickSelect")}</p>
                   <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
                     {savedBens.map(ben => (
                       <button key={ben.id} type="button"
@@ -3444,7 +3479,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                     })}
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">Amount (₦)</label>
+                    <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">{t("bills.amountNaira")}</label>
                     <div className="flex items-center gap-2 rounded-xl border-2 px-3 py-3 transition-colors"
                       style={netTheme
                         ? { borderColor: `${netTheme.bg}60`, background: `${netTheme.bg}0a` }
@@ -3463,7 +3498,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                       <span className="text-base">🎁</span>
                       <p className="text-xs font-semibold"
                         style={netTheme ? { color: netTheme.bg } : { color: "#15803d" }}>
-                        {(() => { const cb = parseFloat((parseFloat(form.amount) * 0.01).toFixed(2)); return `You'll earn ₦${cb < 1 ? cb.toFixed(2) : cb} cashback`; })()}
+                        {(() => { const cb = parseFloat((parseFloat(form.amount) * 0.01).toFixed(2)); return t("bills.youllEarnCashback", { amt: cb < 1 ? cb.toFixed(2) : cb }); })()}
                       </p>
                     </div>
                   )}
@@ -3481,7 +3516,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                     : { background: "#f0fdf4", border: "1px solid #bbf7d0" }}>
                   <span className="text-base">🎁</span>
                   <p className="text-xs font-semibold"
-                    style={netTheme ? { color: netTheme.bg } : { color: "#15803d" }}>Earn 1% cashback on every purchase!</p>
+                    style={netTheme ? { color: netTheme.bg } : { color: "#15803d" }}>{t("bills.earn1PctEvery")}</p>
                 </div>
                 <DataPlanGrid plans={plans} selectedId={form.planId} loading={plansLoading} error={plansError}
                   cashback={cashback} pointsEnabled={pointsEnabled} netCfg={netTheme}
@@ -3492,16 +3527,16 @@ export default function BillPayments({ store, plan, session = null, staffName = 
               {selectedCat === "cable" && <>
                 <CableSelector value={form.provider} onChange={handleProviderChange} />
                 {form.provider && <>
-                  <TextInput label="Smartcard / IUC Number *" value={form.smartcard} onChange={v => { setF("smartcard", v); resetVerify(); }} placeholder="Enter smartcard number" />
-                  <PhoneInput label="Phone Number *" value={form.phone} onChange={e => setF("phone", e.target.value)} placeholder="08012345678" />
+                  <TextInput label={t("bills.smartcardLabel")} value={form.smartcard} onChange={v => { setF("smartcard", v); resetVerify(); }} placeholder={t("bills.enterSmartcard")} />
+                  <PhoneInput label={t("bills.phoneLabel")} value={form.phone} onChange={e => setF("phone", e.target.value)} placeholder="08012345678" />
                   <button type="button" onClick={verifySmartcard} disabled={verifyStatus === "loading"}
                     className="w-full border-2 border-purple-500 text-purple-600 dark:text-purple-400 font-bold rounded-xl py-2.5 text-sm disabled:opacity-50">
-                    {verifyStatus === "loading" ? "Verifying…" : "Verify Smartcard"}
+                    {verifyStatus === "loading" ? t("bp.verifying") : t("bills.verifySmartcard")}
                   </button>
                   <VerifyBadge status={verifyStatus === "idle" ? null : verifyStatus} name={verifyName} />
                   {verifyStatus === "ok" && <>
                     <div>
-                      <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">Subscription Package *</label>
+                      <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">{t("bills.subscriptionPackage")}</label>
                       <PlanGrid
                         plans={pkgs.map(p => ({ plan_id: p.package_id, plan_name: p.package_name, plan_amount: p.package_amount }))}
                         selectedId={form.packageId} loading={pkgsLoading} error={pkgsError}
@@ -3515,9 +3550,9 @@ export default function BillPayments({ store, plan, session = null, staffName = 
               {selectedCat === "electricity" && <>
                 <ElecCompanySelector value={form.company} onChange={v => { setF("company", v); resetVerify(); }} />
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">Meter Type *</label>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">{t("bills.meterType")}</label>
                   <div className="grid grid-cols-2 gap-2">
-                    {[{ code: "01", name: "Prepaid" }, { code: "02", name: "Postpaid" }].map(mt => (
+                    {[{ code: "01", name: t("bills.prepaid") }, { code: "02", name: t("bills.postpaid") }].map(mt => (
                       <button key={mt.code} type="button" onClick={() => { setF("meterType", mt.code); resetVerify(); }}
                         className={`py-2.5 rounded-xl border-2 text-sm font-bold transition-colors ${form.meterType === mt.code ? "border-amber-500 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300" : "border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400"}`}>
                         {mt.name}
@@ -3525,11 +3560,11 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                     ))}
                   </div>
                 </div>
-                <TextInput label="Meter Number *" value={form.meterNo} onChange={v => { setF("meterNo", v); resetVerify(); }} placeholder="Enter meter number" />
-                <PhoneInput label="Phone Number *" value={form.phone} onChange={e => setF("phone", e.target.value)} placeholder="08012345678" />
+                <TextInput label={t("bills.meterNumber")} value={form.meterNo} onChange={v => { setF("meterNo", v); resetVerify(); }} placeholder={t("bills.enterMeter")} />
+                <PhoneInput label={t("bills.phoneLabel")} value={form.phone} onChange={e => setF("phone", e.target.value)} placeholder="08012345678" />
                 <button type="button" onClick={verifyMeter} disabled={verifyStatus === "loading"}
                   className="w-full border-2 border-amber-500 text-amber-600 dark:text-amber-400 font-bold rounded-xl py-2.5 text-sm disabled:opacity-50">
-                  {verifyStatus === "loading" ? "Verifying…" : "Verify Meter Number"}
+                  {verifyStatus === "loading" ? t("bp.verifying") : t("bills.verifyMeter")}
                 </button>
                 <VerifyBadge status={verifyStatus === "idle" ? null : verifyStatus} name={verifyName} />
                 {verifyStatus === "ok" && (
@@ -3543,7 +3578,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                       ))}
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">Amount (₦) — min ₦1,000</label>
+                      <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">{t("bills.amountMin1000")}</label>
                       <div className="flex items-center gap-2 rounded-xl border-2 border-slate-200 dark:border-slate-700 px-3 py-3 bg-slate-50 dark:bg-slate-800/50">
                         <span className="text-lg font-bold text-slate-400">₦</span>
                         <input type="number" inputMode="decimal" placeholder="0"
@@ -3558,16 +3593,16 @@ export default function BillPayments({ store, plan, session = null, staffName = 
               {/* ── BETTING ── */}
               {selectedCat === "betting" && <>
                 <BettingSelector value={form.company} onChange={v => { setF("company", v); resetVerify(); setF("customerId", ""); }} />
-                <TextInput label="Customer ID *" value={form.customerId} onChange={v => { setF("customerId", v); resetVerify(); }} placeholder="Enter your betting ID" />
+                <TextInput label={t("bills.customerId")} value={form.customerId} onChange={v => { setF("customerId", v); resetVerify(); }} placeholder={t("bills.enterBettingId")} />
                 <button type="button" onClick={verifyBetting} disabled={verifyStatus === "loading"}
                   className="w-full border-2 border-emerald-500 text-emerald-600 dark:text-emerald-400 font-bold rounded-xl py-2.5 text-sm disabled:opacity-50">
-                  {verifyStatus === "loading" ? "Verifying…" : "Verify Account"}
+                  {verifyStatus === "loading" ? t("bp.verifying") : t("bills.verifyAccount")}
                 </button>
                 <VerifyBadge status={verifyStatus === "idle" ? null : verifyStatus} name={verifyName} />
                 {verifyStatus === "ok" && (
                   <>
                     <div>
-                      <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">Amount (₦)</label>
+                      <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">{t("bills.amountNaira")}</label>
                       <div className="flex items-center gap-2 rounded-xl border-2 border-slate-200 dark:border-slate-700 px-3 py-3 bg-slate-50 dark:bg-slate-800/50">
                         <span className="text-lg font-bold text-slate-400">₦</span>
                         <input type="number" inputMode="decimal" placeholder="0"
@@ -3581,26 +3616,26 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
               {/* ── WAEC ── */}
               {selectedCat === "waec" && <>
-                <SelectInput label="Exam Type *" value={form.examType} onChange={v => { setF("examType", v); loadExamPrice("waec", v); }} options={WAEC_TYPES} placeholder="Select exam type…" />
+                <SelectInput label={t("bills.examType")} value={form.examType} onChange={v => { setF("examType", v); loadExamPrice("waec", v); }} options={WAEC_TYPES.map(o => ({ ...o, name: t(EXAM_TYPE_KEYS[o.code]) }))} placeholder={t("bills.selectExamType")} />
                 <ExamPriceNote state={examPrice} />
-                <PhoneInput label="Phone Number *" value={form.phone} onChange={e => setF("phone", e.target.value)} placeholder="08012345678" />
+                <PhoneInput label={t("bills.phoneLabel")} value={form.phone} onChange={e => setF("phone", e.target.value)} placeholder="08012345678" />
                 {form.examType && (
                   <div className="bg-cyan-50 dark:bg-cyan-900/20 border border-cyan-200 dark:border-cyan-800 rounded-xl px-4 py-3">
-                    <p className="text-xs text-cyan-700 dark:text-cyan-300 font-medium">The ePin/scratch card details will be shown after payment.</p>
+                    <p className="text-xs text-cyan-700 dark:text-cyan-300 font-medium">{t("bills.epinAfterPayment")}</p>
                   </div>
                 )}
               </>}
 
               {/* ── JAMB ── */}
               {selectedCat === "jamb" && <>
-                <SelectInput label="Exam Type *" value={form.examType} onChange={v => { setF("examType", v); resetVerify(); loadExamPrice("jamb", v); }} options={JAMB_TYPES} placeholder="Select exam type…" />
+                <SelectInput label={t("bills.examType")} value={form.examType} onChange={v => { setF("examType", v); resetVerify(); loadExamPrice("jamb", v); }} options={JAMB_TYPES.map(o => ({ ...o, name: t(EXAM_TYPE_KEYS[o.code]) }))} placeholder={t("bills.selectExamType")} />
                 <ExamPriceNote state={examPrice} />
-                <PhoneInput label="Phone Number *" value={form.phone} onChange={e => setF("phone", e.target.value)} placeholder="08012345678" />
-                <TextInput label="JAMB Profile ID (optional — verify to confirm name)" value={form.profileId} onChange={v => { setF("profileId", v); resetVerify(); }} placeholder="Enter profile ID" />
+                <PhoneInput label={t("bills.phoneLabel")} value={form.phone} onChange={e => setF("phone", e.target.value)} placeholder="08012345678" />
+                <TextInput label={t("bills.jambProfileLabel")} value={form.profileId} onChange={v => { setF("profileId", v); resetVerify(); }} placeholder={t("bills.enterProfileId")} />
                 {form.profileId && (
                   <button type="button" onClick={verifyJamb} disabled={verifyStatus === "loading"}
                     className="w-full border-2 border-orange-500 text-orange-600 dark:text-orange-400 font-bold rounded-xl py-2.5 text-sm disabled:opacity-50">
-                    {verifyStatus === "loading" ? "Verifying…" : "Verify Profile ID"}
+                    {verifyStatus === "loading" ? t("bp.verifying") : t("bills.verifyProfileId")}
                   </button>
                 )}
                 <VerifyBadge status={verifyStatus === "idle" ? null : verifyStatus} name={verifyName} />
@@ -3608,9 +3643,9 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
               {/* ── SPECTRANET ── */}
               {selectedCat === "spectranet" && <>
-                <TextInput label="Account Number *" value={form.accountNo} onChange={v => setF("accountNo", v)} placeholder="Enter Spectranet account number" />
+                <TextInput label={t("bills.accountNumber")} value={form.accountNo} onChange={v => setF("accountNo", v)} placeholder={t("bills.enterSpectranetAcct")} />
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">Data Plan *</label>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">{t("bills.dataPlan")}</label>
                   <PlanGrid plans={plans} selectedId={form.planId} loading={plansLoading} error={plansError}
                                         onSelect={pl => setForm(f => ({ ...f, planId: pl.plan_id, planName: pl.plan_name, amount: String(pl.plan_amount) }))} />
                 </div>
@@ -3618,15 +3653,15 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
               {/* ── SMILE ── */}
               {selectedCat === "smile" && <>
-                <TextInput label="Smile Account Number *" value={form.accountNo} onChange={v => { setF("accountNo", v); resetVerify(); }} placeholder="Enter Smile account number" />
+                <TextInput label={t("bills.smileAccount")} value={form.accountNo} onChange={v => { setF("accountNo", v); resetVerify(); }} placeholder={t("bills.enterSmileAcct")} />
                 <button type="button" onClick={verifySmile} disabled={verifyStatus === "loading"}
                   className="w-full border-2 border-pink-500 text-pink-600 dark:text-pink-400 font-bold rounded-xl py-2.5 text-sm disabled:opacity-50">
-                  {verifyStatus === "loading" ? "Verifying…" : "Verify Account"}
+                  {verifyStatus === "loading" ? t("bp.verifying") : t("bills.verifyAccount")}
                 </button>
                 <VerifyBadge status={verifyStatus === "idle" ? null : verifyStatus} name={verifyName} />
                 {verifyStatus === "ok" && (
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">Data Plan *</label>
+                    <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">{t("bills.dataPlan")}</label>
                     <PlanGrid plans={plans} selectedId={form.planId} loading={plansLoading} error={plansError}
                                             onSelect={pl => setForm(f => ({ ...f, planId: pl.plan_id, planName: pl.plan_name, amount: String(pl.plan_amount) }))} />
                   </div>
@@ -3637,7 +3672,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
               {selectedCat === "print-airtime" && <>
                 <NetworkSelector value={form.network} onChange={v => setF("network", v)} detected={null} />
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">Denomination *</label>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">{t("bills.denomination")}</label>
                   <div className="flex gap-2 flex-wrap">
                     {PRINT_VALUES.map(v => (
                       <button key={v} type="button" onClick={() => setF("value", v)}
@@ -3648,7 +3683,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Quantity (1–100) *</label>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">{t("bills.quantity")}</label>
                   <input type="number" value={form.quantity} onChange={e => setF("quantity", e.target.value)} min="1" max="100" placeholder="1"
                     className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-slate-500" />
                 </div>
@@ -3659,10 +3694,10 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                   return (
                     <div className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3">
                       <p className="text-xs text-slate-500 dark:text-slate-400">
-                        You pay: <strong className="text-slate-800 dark:text-white">₦{pay.toLocaleString()}</strong>
-                        {" "}({form.quantity} × ₦{form.value} face{save > 0 ? `, ₦${save.toLocaleString()} wholesale saving` : ""})
+                        {t("bills.youPayColon")} <strong className="text-slate-800 dark:text-white">₦{pay.toLocaleString()}</strong>
+                        {" "}{t("bills.faceBreakdown", { q: form.quantity ?? "", v: form.value ?? "", saving: save > 0 ? t("bills.wholesaleSavingPart", { amt: save.toLocaleString() }) : "" })}
                       </p>
-                      <p className="text-[10px] text-slate-400 mt-0.5">PINs will be shown after purchase · resell at up to ₦{face.toLocaleString()}</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">{t("bills.pinsAfterResell", { amt: face.toLocaleString() })}</p>
                     </div>
                   );
                 })()}
@@ -3672,16 +3707,16 @@ export default function BillPayments({ store, plan, session = null, staffName = 
               {selectedCat === "print-data" && <>
                 <NetworkSelector value={form.network} onChange={handleNetworkChange} detected={null} />
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">Data Plan *</label>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">{t("bills.dataPlan")}</label>
                   <PlanGrid plans={plans} selectedId={form.planId} loading={plansLoading} error={plansError}
                                         onSelect={pl => setForm(f => ({ ...f, planId: pl.plan_id, planName: pl.plan_name, amount: String(pl.plan_amount) }))} />
                 </div>
                 {form.planId && (
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Quantity (1–100) *</label>
+                    <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">{t("bills.quantity")}</label>
                     <input type="number" value={form.quantity} onChange={e => setF("quantity", e.target.value)} min="1" max="100" placeholder="1"
                       className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-slate-500" />
-                    <p className="text-[10px] text-slate-400 mt-1">PINs will be shown after purchase</p>
+                    <p className="text-[10px] text-slate-400 mt-1">{t("bills.pinsAfter")}</p>
                   </div>
                 )}
               </>}
@@ -3690,7 +3725,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
               {selectedCat === "airtime-bundle" && <>
                 {/* Denomination selector */}
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">Denomination per network *</label>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">{t("bills.denomPerNetwork")}</label>
                   <div className="flex gap-2 flex-wrap">
                     {BUNDLE_DENOMS.map(d => (
                       <button key={d} type="button" onClick={() => setF("denom", d)}
@@ -3699,12 +3734,12 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                       </button>
                     ))}
                   </div>
-                  <p className="text-[10px] text-slate-400 mt-1.5">A set = ₦{(form.denom || "1000")} on each of MTN, Airtel, 9mobile & Glo</p>
+                  <p className="text-[10px] text-slate-400 mt-1.5">{t("bills.setExplain", { d: form.denom || "1000" })}</p>
                 </div>
 
                 {/* Set selector */}
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">Number of Sets *</label>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">{t("bills.numberOfSets")}</label>
                   <div className="flex gap-2">
                     {BUNDLE_SET_OPTIONS.map(s => (
                       <button key={s} type="button" onClick={() => setF("sets", String(s))}
@@ -3725,8 +3760,8 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                   return (
                     <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700">
                       {[
-                        ["Face value",      `₦${faceTotal.toLocaleString()}`, "text-slate-700 dark:text-slate-200"],
-                        ["Wholesale saving", `-₦${discount.toLocaleString()}`, "text-green-600 dark:text-green-400"],
+                        [t("bills.faceValue"),      `₦${faceTotal.toLocaleString()}`, "text-slate-700 dark:text-slate-200"],
+                        [t("bills.wholesaleSaving"), `-₦${discount.toLocaleString()}`, "text-green-600 dark:text-green-400"],
                       ].map(([label, val, cls]) => (
                         <div key={label} className="flex justify-between items-center px-4 py-2.5 border-b border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800">
                           <span className="text-xs text-slate-500 dark:text-slate-400">{label}</span>
@@ -3734,11 +3769,11 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                         </div>
                       ))}
                       <div className="flex justify-between items-center px-4 py-3 bg-violet-50 dark:bg-violet-900/20">
-                        <span className="text-sm font-black text-slate-700 dark:text-white">You pay</span>
+                        <span className="text-sm font-black text-slate-700 dark:text-white">{t("bills.youPay")}</span>
                         <span className="text-lg font-black text-violet-700 dark:text-violet-300">₦{youPay.toLocaleString()}</span>
                       </div>
                       <p className="text-[10px] text-slate-400 px-4 py-2 text-center">
-                        {s * 4} PINs (₦{denom} each) across all 4 networks · shown after purchase
+                        {t("bills.bundlePinsNote", { n: s * 4, d: denom })}
                       </p>
                     </div>
                   );
@@ -3749,9 +3784,9 @@ export default function BillPayments({ store, plan, session = null, staffName = 
               {cashbackBalance > 0 && userEmailCB && uiChargeAmt > 0 && cashbackEligible(selectedCat) && (
                 <div className="flex items-center justify-between bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl px-4 py-3">
                   <div>
-                    <p className="text-xs font-black text-green-800 dark:text-green-200">Apply Cashback</p>
+                    <p className="text-xs font-black text-green-800 dark:text-green-200">{t("bills.applyCashback")}</p>
                     <p className="text-[10px] text-green-600 dark:text-green-400">
-                      Balance: ₦{cashbackBalance.toLocaleString()} · saves ₦{Math.min(cashbackBalance, Math.max(0, uiChargeAmt - 1)).toLocaleString()}
+                      {t("bills.cashbackBalSaves", { bal: cashbackBalance.toLocaleString(), save: Math.min(cashbackBalance, Math.max(0, uiChargeAmt - 1)).toLocaleString() })}
                     </p>
                   </div>
                   <button type="button" onClick={() => setUseCashback(v => !v)}
@@ -3765,9 +3800,9 @@ export default function BillPayments({ store, plan, session = null, staffName = 
               {pointsEnabled && pointsBalance >= 50 && uiChargeAmt > 0 && (
                 <div className="flex items-center justify-between bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-4 py-3">
                   <div>
-                    <p className="text-xs font-black text-amber-800 dark:text-amber-200">Use Reward Points</p>
+                    <p className="text-xs font-black text-amber-800 dark:text-amber-200">{t("bills.useRewardPoints")}</p>
                     <p className="text-[10px] text-amber-600 dark:text-amber-400">
-                      {pointsBalance} pts · saves ₦{Math.min(pointsBalance, Math.floor(uiChargeAmt * 0.5)).toLocaleString()}
+                      {t("bills.ptsSaves", { pts: pointsBalance, save: Math.min(pointsBalance, Math.floor(uiChargeAmt * 0.5)).toLocaleString() })}
                     </p>
                   </div>
                   <button type="button" onClick={() => setUsePoints(v => !v)}
@@ -3780,11 +3815,11 @@ export default function BillPayments({ store, plan, session = null, staffName = 
               {/* Coupon code */}
               {uiChargeAmt > 0 && (
                 <div className="border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3">
-                  <p className="text-xs font-black text-slate-700 dark:text-slate-200 mb-2">Have a coupon code?</p>
+                  <p className="text-xs font-black text-slate-700 dark:text-slate-200 mb-2">{t("bills.haveCoupon")}</p>
                   <div className="flex gap-2">
                     <input
                       type="text"
-                      placeholder="Enter code"
+                      placeholder={t("bills.enterCode")}
                       value={billCouponCode}
                       onChange={e => {
                         setBillCouponCode(e.target.value);
@@ -3799,7 +3834,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                       disabled={!billCouponCode.trim() || billCouponLoading}
                       className="px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-sm font-semibold transition-colors min-w-[60px]"
                     >
-                      {billCouponLoading ? "…" : billAppliedCoupon ? "✓ On" : "Apply"}
+                      {billCouponLoading ? "…" : billAppliedCoupon ? t("bills.couponOn") : t("bills.apply")}
                     </button>
                   </div>
                   {billCouponMsg && (
@@ -3809,7 +3844,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                   )}
                   {billAppliedCoupon && billCouponSavings > 0 && (
                     <p className="mt-1 text-[11px] font-bold text-green-600 dark:text-green-400">
-                      Saves ₦{billCouponSavings.toLocaleString()} on this payment
+                      {t("bills.couponSaves", { amt: billCouponSavings.toLocaleString() })}
                     </p>
                   )}
                 </div>
@@ -3822,17 +3857,17 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                 if (!walletEnabled || !wallet.hasAccount) {
                   return (
                     <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-3 py-2.5">
-                      <p className="text-[12px] font-bold text-amber-700 dark:text-amber-300">Your KudiAI Wallet isn't ready yet</p>
-                      <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">Bills on this portal are paid from your wallet — check back once it's activated.</p>
+                      <p className="text-[12px] font-bold text-amber-700 dark:text-amber-300">{t("bills.walletNotReady")}</p>
+                      <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">{t("bills.walletNotReadyDesc")}</p>
                     </div>
                   );
                 }
                 const walletShort = wallet.balanceKobo < Math.round(due * 100);
                 return (
                   <div className={`rounded-xl border px-3 py-2.5 ${walletShort ? "border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20" : "border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-900/20"}`}>
-                    <p className="text-[12px] font-bold text-slate-700 dark:text-slate-200">Paying from your KudiAI Wallet</p>
+                    <p className="text-[12px] font-bold text-slate-700 dark:text-slate-200">{t("bills.payingFromWallet")}</p>
                     <p className={`text-[11px] mt-0.5 ${walletShort ? "text-red-500 dark:text-red-400 font-semibold" : "text-slate-400"}`}>
-                      {walletShort ? `Balance too low — ${fmt(wallet.balanceNaira)} available, ${fmt(due)} needed. Fund your wallet to continue.` : `${fmt(wallet.balanceNaira)} available`}
+                      {walletShort ? t("bills.balanceTooLowDetail", { avail: fmt(wallet.balanceNaira), due: fmt(due) }) : t("bills.available", { amt: fmt(wallet.balanceNaira) })}
                     </p>
                   </div>
                 );
@@ -3846,13 +3881,13 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                       className={`rounded-xl border px-3 py-2.5 text-left transition-colors ${payMethod === "paystack"
                         ? "border-green-500 bg-green-50 dark:bg-green-900/20" : "border-slate-200 dark:border-slate-700"}`}>
                       <p className="text-[12px] font-bold text-slate-700 dark:text-slate-200">Paystack</p>
-                      <p className="text-[10px] text-slate-400">Card / transfer</p>
+                      <p className="text-[10px] text-slate-400">{t("bills.cardTransfer")}</p>
                     </button>
                     <button type="button" disabled={walletShort} onClick={() => setPayMethod("wallet")}
                       className={`rounded-xl border px-3 py-2.5 text-left transition-colors disabled:opacity-40 ${payMethod === "wallet"
                         ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20" : "border-slate-200 dark:border-slate-700"}`}>
-                      <p className="text-[12px] font-bold text-slate-700 dark:text-slate-200">Wallet</p>
-                      <p className="text-[10px] text-slate-400">{walletShort ? "Balance too low" : `${fmt(wallet.balanceNaira)} available`}</p>
+                      <p className="text-[12px] font-bold text-slate-700 dark:text-slate-200">{t("bills.wallet")}</p>
+                      <p className="text-[10px] text-slate-400">{walletShort ? t("bills.balanceTooLow") : t("bills.available", { amt: fmt(wallet.balanceNaira) })}</p>
                     </button>
                   </div>
                 );
@@ -3861,7 +3896,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
               {staffName && (
                 <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl px-4 py-2.5 flex items-center gap-2">
                   <Ico d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2|M12 11a4 4 0 100-8 4 4 0 000 8" size={14} c="#3b82f6" />
-                  <p className="text-xs text-blue-700 dark:text-blue-300 font-medium">Processed by <strong>{staffName}</strong></p>
+                  <p className="text-xs text-blue-700 dark:text-blue-300 font-medium">{t("bills.processedBy")} <strong>{staffName}</strong></p>
                 </div>
               )}
 
@@ -3873,15 +3908,15 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                   setTxnPinAmount(finalAmt * 100);
                 }} disabled={saving || initPaying || !!wrongNet}
                   className="w-full text-white font-bold rounded-xl py-3.5 text-sm transition-all disabled:opacity-60 bg-gradient-to-br from-green-600 to-green-700">
-                  {wrongNet ? `Choose ${wrongNet} to pay for this number` : (() => {
-                    const payWith = (walletEnabled && payMethod === "wallet") ? "from Wallet" : "with Paystack";
-                    const connecting = (walletEnabled && payMethod === "wallet") ? "Charging wallet…" : "Connecting to Paystack…";
-                    return initPaying ? connecting : saving ? (billAppliedCoupon && uiChargeAmt - ptsSavings - cbSavings - billCouponSavings <= 0 ? "Processing free bill…" : "Processing…") : (
-                      selectedCat === "print-airtime"   ? (uiChargeAmt > 0 ? `Pay ₦${uiChargeAmt.toLocaleString()} · ${form.quantity || 1} × ₦${form.value}` : "Select denomination") :
-                      selectedCat === "print-data"      ? `Pay ${payWith} · ${form.quantity || 1} Plan${parseInt(form.quantity||"1")>1?"s":""}` :
-                      selectedCat === "airtime-bundle"  ? (parseInt(form.sets||"0")>0 ? `Pay ₦${uiChargeAmt.toLocaleString()} · ${form.sets} Bundle Set${parseInt(form.sets)>1?"s":""}` : "Select number of sets") :
-                      form.amount && uiChargeAmt - ptsSavings - cbSavings - billCouponSavings <= 0 ? "Activate Free — Coupon Applied" :
-                      form.amount ? `Pay ${fmt(uiChargeAmt - ptsSavings - cbSavings - billCouponSavings)} ${payWith}${ptsSavings > 0 || cbSavings > 0 || billCouponSavings > 0 ? ` · savings applied` : ""}` : `Pay ${payWith}`
+                  {wrongNet ? t("bills.chooseNetToPay", { net: wrongNet }) : (() => {
+                    const payWith = (walletEnabled && payMethod === "wallet") ? t("bills.fromWallet") : t("bills.withPaystack");
+                    const connecting = (walletEnabled && payMethod === "wallet") ? t("bills.chargingWallet") : t("bills.connectingPaystack");
+                    return initPaying ? connecting : saving ? (billAppliedCoupon && uiChargeAmt - ptsSavings - cbSavings - billCouponSavings <= 0 ? t("bills.processingFree") : t("bill.processing")) : (
+                      selectedCat === "print-airtime"   ? (uiChargeAmt > 0 ? t("bills.payPrintAirtime", { amt: uiChargeAmt.toLocaleString(), q: form.quantity || 1, v: form.value ?? "" }) : t("bills.selectDenom")) :
+                      selectedCat === "print-data"      ? t(parseInt(form.quantity||"1")>1 ? "bills.payPrintDataPlural" : "bills.payPrintData", { payWith, q: form.quantity || 1 }) :
+                      selectedCat === "airtime-bundle"  ? (parseInt(form.sets||"0")>0 ? t(parseInt(form.sets)>1 ? "bills.payBundlePlural" : "bills.payBundle", { amt: uiChargeAmt.toLocaleString(), n: form.sets }) : t("bills.selectSets")) :
+                      form.amount && uiChargeAmt - ptsSavings - cbSavings - billCouponSavings <= 0 ? t("bills.activateFreeCoupon") :
+                      form.amount ? t("bills.payAmountWith", { amt: fmt(uiChargeAmt - ptsSavings - cbSavings - billCouponSavings), payWith, savings: ptsSavings > 0 || cbSavings > 0 || billCouponSavings > 0 ? t("bills.savingsApplied") : "" }) : t("bills.payWith", { payWith })
                     );
                   })()}
                 </button>
@@ -3948,8 +3983,8 @@ export default function BillPayments({ store, plan, session = null, staffName = 
                     return qToken;
                   }
                   throw new Error(q.status === "CANCELLED"
-                    ? "Order was cancelled by provider. Contact support with your reference."
-                    : "Token not ready yet. Please wait a few minutes and try again.");
+                    ? t("bills.errOrderCancelled")
+                    : t("bills.errTokenNotReady"));
                 }
               : undefined
           }

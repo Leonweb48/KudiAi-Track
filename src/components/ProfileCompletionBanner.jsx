@@ -5,8 +5,10 @@ import {
   bannerDismissKey,
   BANNER_SNOOZE_MS,
 } from "../utils/profileCompletion";
+import { useT } from "../contexts/LanguageContext";
 
 export default function ProfileCompletionBanner({ profile, onOpen }) {
+  const t = useT();
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -76,13 +78,13 @@ export default function ProfileCompletionBanner({ profile, onOpen }) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ color: "#fff", fontWeight: 700, fontSize: 13, lineHeight: 1.3 }}>
             {pct < 40
-              ? "Your profile is just getting started"
+              ? t("home.profileStarting")
               : pct < 70
-              ? "Good progress — keep going!"
-              : "Almost there — finish your profile"}
+              ? t("home.profileGoodProgress")
+              : t("home.profileAlmostThere")}
           </div>
           <div style={{ color: "rgba(255,255,255,0.85)", fontSize: 12, marginTop: 2 }}>
-            {remaining} {remaining === 1 ? "field" : "fields"} left · Tap to complete
+            {t(remaining === 1 ? "home.fieldsLeftOne" : "home.fieldsLeftMany", { n: remaining })}
           </div>
         </div>
 
@@ -103,7 +105,7 @@ export default function ProfileCompletionBanner({ profile, onOpen }) {
             fontSize: 12,
             lineHeight: 1,
           }}
-          aria-label="Dismiss for 3 days"
+          aria-label={t("home.dismiss3Days")}
         >
           ✕
         </button>

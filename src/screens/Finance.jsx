@@ -14,47 +14,50 @@ import { AmountDisplay }    from "../components/shared/AmountDisplay";
 import { compute, computeCapital } from "../lib/profitEngine";
 import { supabase } from "../utils/supabase";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
+import { useT } from "../contexts/LanguageContext";
 
 /* ── Period config ───────────────────────────────────────────────────────────── */
+// label = translation key
 const PERIODS = [
-  { key: "today", label: "Today" },
-  { key: "week",  label: "Week"  },
-  { key: "month", label: "Month" },
-  { key: "year",  label: "Year"  },
+  { key: "today", label: "finance.periodToday" },
+  { key: "week",  label: "finance.periodWeek"  },
+  { key: "month", label: "finance.periodMonth" },
+  { key: "year",  label: "finance.periodYear"  },
 ];
 
-/* ── Finance tool tiles (icons only — backgrounds via card language) ──────────── */
+/* ── Finance tool tiles (icons only — backgrounds via card language); label = translation key ── */
 const FINANCE_TILES = [
   {
-    id: "credit", label: "Credit",
+    id: "credit", label: "finance.tileCredit",
     icon: "M2 8a2 2 0 012-2h16a2 2 0 012 2v9a2 2 0 01-2 2H4a2 2 0 01-2-2V8z|M2 11h20|M6 15h3",
     bg: "bg-rose-100 dark:bg-rose-900/30", color: "#e11d48",
   },
   {
-    id: "ajo", label: "Ajo Savings",
+    id: "ajo", label: "finance.tileAjo",
     icon: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2|M9 11a4 4 0 100-8 4 4 0 000 8|M23 21v-2a4 4 0 00-3-3.87|M16 3.13a4 4 0 010 7.75",
     bg: "bg-brand-100 dark:bg-brand-900/30", color: "#3DA829",
   },
   {
-    id: "loan", label: "Business Loan",
+    id: "loan", label: "finance.tileLoan",
     icon: "M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6",
     bg: "bg-emerald-100 dark:bg-emerald-900/30", color: "#059669",
   },
   {
-    id: "org", label: "Organisation",
+    id: "org", label: "finance.tileOrg",
     icon: "M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z|M9 22V12h6v10",
     bg: "bg-amber-100 dark:bg-amber-900/30", color: "#d97706",
   },
   {
-    id: "invoices", label: "Invoices",
+    id: "invoices", label: "finance.tileInvoices",
     icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2|M9 5a2 2 0 002 2h2a2 2 0 002-2|M9 5a2 2 0 012-2h2a2 2 0 012 2|M9 13h6|M9 17h4",
     bg: "bg-pink-100 dark:bg-pink-900/30", color: "#ec4899",
   },
 ];
 
+// translation keys
 const SECTION_LABELS = {
-  credit: "Credit", ajo: "Ajo Savings", loan: "Business Loan",
-  org: "Organisation", invoices: "Invoices",
+  credit: "finance.tileCredit", ajo: "finance.tileAjo", loan: "finance.tileLoan",
+  org: "finance.tileOrg", invoices: "finance.tileInvoices",
 };
 
 /* ── Period boundary helpers (client-side, no RPC) ──────────────────────────── */
@@ -166,51 +169,23 @@ function SectionHeader({ title, onBack }) {
   );
 }
 
-/* ── Loan T&C text ───────────────────────────────────────────────────────────── */
-const LOAN_TERMS = `BUSINESS LOAN ACCESS — TERMS & CONDITIONS
-
-1. ELIGIBILITY
-You must have been an active KudiAI Track subscriber on the Enterprise Plan for at least 4 calendar months (120 days). "Active" means consistently recording business transactions, managing credit records, and keeping your business data current on the platform throughout this period.
-
-2. DATA ANALYSIS & CONSENT
-By proceeding with a loan application, you explicitly authorize KudiAI Track and its verified lending partners to securely access and analyze your business transaction history, credit records, Ajo savings data, inventory activity, and other business records on the platform. This data is the primary basis for assessing your loan eligibility and the amount you qualify for.
-
-3. LOAN AMOUNT
-Eligible businesses may be assessed for loans ranging from ₦100,000 to ₦5,000,000 or higher, depending on their recorded business activity and financial performance. The final amount approved is solely determined by our lending partners based on your platform data and credit assessment.
-
-4. PRIVACY & DATA SECURITY
-Your business data will be transmitted securely to our verified lending partners under strict confidentiality and data protection agreements in compliance with the Nigeria Data Protection Act (NDPA). Your data will not be sold, rented, or shared for any purpose other than loan assessment.
-
-5. NO GUARANTEE OF APPROVAL
-Submitting an application does not guarantee loan approval. Our lending partners reserve the right to approve, decline, or modify any application based on their credit assessment criteria.
-
-6. REPAYMENT OBLIGATION
-All approved loans must be repaid in full according to the terms communicated by the lending partner. Failure to repay may result in legal action and will be reported to relevant credit bureaus.
-
-7. CONTINUED PLATFORM ACTIVITY
-You are encouraged to continue recording all business activities on KudiAI Track throughout the duration of any loan. Continued activity may positively impact future loan eligibility and credit limits.
-
-8. DATA ACCURACY
-You confirm and warrant that all business data recorded on the platform is accurate, truthful, and representative of your actual business operations. Providing false or misleading information is grounds for immediate application cancellation and may result in legal consequences.
-
-9. AMENDMENTS
-KudiAI Track reserves the right to modify these terms at any time. Continued use of the loan access feature constitutes acceptance of any updated terms.
-
-By tapping "I Accept & Continue", you confirm you have read, understood, and agreed to these terms and conditions.`;
+/* ── Loan T&C text: finance.loanTerms (src/i18n/finance.js) ─────────────────── */
 
 const LOAN_TC_KEY = "kt_loan_tc_accepted";
 
+// title/body = translation keys
 const ENCOURAGE_MSGS = [
-  { icon: "M12 5v14|M5 12l7-7 7 7", title: "You're building something great!", body: "Every transaction you record is building your financial profile. Our lending partners see active, consistent businesses — and they reward them with better loan limits." },
-  { icon: "M12 2v20|M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6", title: "Your records = your credit score!", body: "Unlike traditional banks, we don't just look at your bank statement. Every sale, every credit record, every Ajo contribution is evidence of your business strength." },
-  { icon: "M23 6l-9.5 9.5-5-5L1 18|M17 6h6v6", title: "Active businesses get more!", body: "The more consistently you record your business activities, the stronger your profile becomes. Businesses with 100+ records qualify for our highest loan tiers — up to ₦5,000,000 or more." },
-  { icon: "M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z", title: "Stay consistent — it pays!", body: "Our partners reward consistency. A business that records every day is far more trusted than one with gaps. Keep recording and watch your eligible amount grow." },
-  { icon: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2|M9 11a4 4 0 100-8 4 4 0 000 8|M23 21v-2a4 4 0 00-3-3.87|M16 3.13a4 4 0 010 7.75", title: "Partners are watching your growth!", body: "Our lending partners analyse real business data — not guesswork. Your daily records are your strongest loan application. Record every sale, every expense, every credit." },
-  { icon: "M13 2L3 14h9l-1 8 10-12h-9l1-8z", title: "Unlock up to ₦5,000,000!", body: "Hit 120 days of consistent activity and you'll be able to apply for up to ₦5,000,000 in business financing — with no collateral required." },
+  { icon: "M12 5v14|M5 12l7-7 7 7", title: "finance.enc1Title", body: "finance.enc1Body" },
+  { icon: "M12 2v20|M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6", title: "finance.enc2Title", body: "finance.enc2Body" },
+  { icon: "M23 6l-9.5 9.5-5-5L1 18|M17 6h6v6", title: "finance.enc3Title", body: "finance.enc3Body" },
+  { icon: "M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z", title: "finance.enc4Title", body: "finance.enc4Body" },
+  { icon: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2|M9 11a4 4 0 100-8 4 4 0 000 8|M23 21v-2a4 4 0 00-3-3.87|M16 3.13a4 4 0 010 7.75", title: "finance.enc5Title", body: "finance.enc5Body" },
+  { icon: "M13 2L3 14h9l-1 8 10-12h-9l1-8z", title: "finance.enc6Title", body: "finance.enc6Body" },
 ];
 
 /* ── Loan sub-screen ─────────────────────────────────────────────────────────── */
 function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) {
+  const t = useT();
   const [showTC,     setShowTC]    = useState(false);
   const [, setTcAccepted] = useState(() => localStorage.getItem(LOAN_TC_KEY) === "1");
   const [msgIdx,     setMsgIdx]    = useState(0);
@@ -279,13 +254,13 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
       <div className="px-4 pt-6 pb-28">
         <div className="rounded-3xl overflow-hidden mb-5 bg-gradient-to-br from-navy-500 to-navy-600">
           <div className="px-5 py-6 text-white">
-            <p className="text-[10px] font-bold uppercase tracking-[3px] opacity-60 mb-2">Business Loan</p>
+            <p className="text-[10px] font-bold uppercase tracking-[3px] opacity-60 mb-2">{t("finance.tileLoan")}</p>
             <p className="text-4xl font-black mb-1">₦5,000,000+</p>
-            <p className="text-sm opacity-70">Quick financing — no collateral required</p>
+            <p className="text-sm opacity-70">{t("finance.loanQuickFinancing")}</p>
           </div>
           <div className="bg-black/20 px-5 py-3 flex items-center gap-2">
             <Svg d="M7 11V7a5 5 0 0110 0v4|M3 11h18v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" size={14} color="white" sw={2.5} />
-            <p className="text-xs text-white/70 font-semibold">Enterprise Plan required to access loans</p>
+            <p className="text-xs text-white/70 font-semibold">{t("finance.loanEnterpriseRequired")}</p>
           </div>
         </div>
         <div className="space-y-2.5 mb-6">
@@ -295,8 +270,8 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
                 <Svg d={m.icon} size={16} color="#3DA829" sw={2} />
               </div>
               <div>
-                <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{m.title}</p>
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5 leading-relaxed">{m.body}</p>
+                <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{t(m.title)}</p>
+                <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5 leading-relaxed">{t(m.body)}</p>
               </div>
             </div>
           ))}
@@ -304,7 +279,7 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
         {canSellPlans() && (
           <button onClick={onUpgrade}
             className="w-full py-4 rounded-2xl font-bold text-sm text-white shadow-md active:scale-95 transition bg-brand-600 hover:bg-brand-700">
-            Upgrade to {getLowestPlanWithFeature("loanAccess")?.name ?? "Enterprise"} — Unlock Loans
+            {t("finance.loanUpgradeUnlock", { plan: getLowestPlanWithFeature("loanAccess")?.name ?? "Enterprise" })}
           </button>
         )}
       </div>
@@ -318,24 +293,24 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
       <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-t-3xl flex flex-col"
         style={{ maxHeight: "92dvh" }} onClick={e => e.stopPropagation()}>
         <div className="px-5 pt-5 pb-3 border-b border-slate-100 dark:border-slate-800 flex-shrink-0">
-          <p className="text-base font-black text-slate-800 dark:text-white">Terms & Conditions</p>
-          <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Read carefully before applying for a loan</p>
+          <p className="text-base font-black text-slate-800 dark:text-white">{t("finance.loanTermsTitle")}</p>
+          <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{t("finance.loanTermsRead")}</p>
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-4"
           style={{ WebkitOverflowScrolling: "touch", overscrollBehavior: "contain" }}>
           <pre className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed whitespace-pre-wrap font-sans">
-            {LOAN_TERMS}
+            {t("finance.loanTerms")}
           </pre>
         </div>
         <div className="px-5 py-4 border-t border-slate-100 dark:border-slate-800 flex-shrink-0"
           style={{ paddingBottom: "calc(1rem + env(safe-area-inset-bottom, 0px))" }}>
           <button onClick={acceptTC}
             className="w-full py-4 rounded-2xl font-bold text-sm text-white mb-2 active:scale-95 transition bg-brand-600 hover:bg-brand-700">
-            I Accept & Continue to Apply
+            {t("finance.loanAccept")}
           </button>
           <button onClick={() => setShowTC(false)}
             className="w-full py-3 rounded-2xl font-semibold text-sm text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 active:scale-95 transition">
-            Cancel
+            {t("common.cancel")}
           </button>
         </div>
       </div>
@@ -350,16 +325,16 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
 
         <div className="rounded-3xl overflow-hidden mb-5 shadow-lg bg-gradient-to-br from-slate-800 to-slate-900">
           <div className="px-5 pt-5 pb-1 text-white">
-            <p className="text-[10px] font-bold uppercase tracking-[3px] opacity-50 mb-1">Loan Access Unlocks In</p>
+            <p className="text-[10px] font-bold uppercase tracking-[3px] opacity-50 mb-1">{t("finance.loanUnlocksIn")}</p>
             <p className="text-4xl font-black mb-1 text-green-400">₦5,000,000+</p>
-            <p className="text-xs opacity-50 mb-4">Available once you reach 120 days of active use</p>
+            <p className="text-xs opacity-50 mb-4">{t("finance.loanAvailable120")}</p>
           </div>
           <div className="grid grid-cols-4 gap-2 px-5 pb-5">
             {[
-              { val: countdown.days,  label: "Days"    },
-              { val: countdown.hours, label: "Hours"   },
-              { val: countdown.mins,  label: "Minutes" },
-              { val: countdown.secs,  label: "Seconds" },
+              { val: countdown.days,  label: t("finance.cdDays")    },
+              { val: countdown.hours, label: t("finance.cdHours")   },
+              { val: countdown.mins,  label: t("finance.cdMinutes") },
+              { val: countdown.secs,  label: t("finance.cdSeconds") },
             ].map(({ val, label }) => (
               <div key={label} className="bg-white/10 rounded-2xl py-3 text-center">
                 <p className="text-2xl font-black text-white tabular-nums">{String(val).padStart(2, "0")}</p>
@@ -370,16 +345,16 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
         </div>
 
         <div className="bg-white dark:bg-slate-800 rounded-3xl p-5 mb-4 border border-slate-100 dark:border-slate-700/50 shadow-card">
-          <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4">Eligibility Progress</p>
+          <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4">{t("finance.loanEligibilityProgress")}</p>
           <div className="flex items-center gap-5">
             <ProgressRing pct={progressPct} size={100} stroke={9} color="#3DA829">
               <p className="text-xl font-black text-slate-800 dark:text-white">{progressPct}%</p>
-              <p className="text-[9px] text-slate-400 font-bold">Done</p>
+              <p className="text-[9px] text-slate-400 font-bold">{t("common.done")}</p>
             </ProgressRing>
             <div className="flex-1 space-y-2.5">
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <p className="text-[11px] font-bold text-slate-600 dark:text-slate-300">Days Active</p>
+                  <p className="text-[11px] font-bold text-slate-600 dark:text-slate-300">{t("finance.loanDaysActive")}</p>
                   <p className="text-[11px] font-black text-brand-600">{daysActive}/{REQUIRED_DAYS}</p>
                 </div>
                 <div className="h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
@@ -388,7 +363,7 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
               </div>
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <p className="text-[11px] font-bold text-slate-600 dark:text-slate-300">Activity Score</p>
+                  <p className="text-[11px] font-bold text-slate-600 dark:text-slate-300">{t("finance.loanActivityScore")}</p>
                   <p className="text-[11px] font-black text-blue-600">{activityScore}/100</p>
                 </div>
                 <div className="h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
@@ -398,17 +373,17 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
             </div>
           </div>
           <div className="mt-4 bg-brand-50 dark:bg-brand-900/20 rounded-2xl px-4 py-3 border border-brand-100 dark:border-brand-800/40">
-            <p className="text-[10px] font-bold text-brand-700 dark:text-brand-400 uppercase tracking-wider mb-0.5">Based on current activity, you may qualify for</p>
+            <p className="text-[10px] font-bold text-brand-700 dark:text-brand-400 uppercase tracking-wider mb-0.5">{t("finance.loanMayQualify")}</p>
             <p className="text-lg font-black text-brand-700 dark:text-brand-300">{loanTier}</p>
-            <p className="text-[10px] text-brand-600/70 dark:text-brand-400/60 mt-0.5">Keep recording to increase your limit!</p>
+            <p className="text-[10px] text-brand-600/70 dark:text-brand-400/60 mt-0.5">{t("finance.loanKeepRecording")}</p>
           </div>
         </div>
 
         <div className="grid grid-cols-3 gap-2.5 mb-4">
           {[
-            { label: "Transactions", val: totalTxns,    color: "text-blue-600 dark:text-blue-400",   bg: "bg-blue-50 dark:bg-blue-900/20"   },
-            { label: "Last 30 days",  val: recentTxns,  color: "text-brand-600 dark:text-brand-400", bg: "bg-brand-50 dark:bg-brand-900/20" },
-            { label: "Credit records", val: credits.length, color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-900/20" },
+            { label: t("finance.loanStatTransactions"), val: totalTxns,    color: "text-blue-600 dark:text-blue-400",   bg: "bg-blue-50 dark:bg-blue-900/20"   },
+            { label: t("finance.loanStatLast30"),  val: recentTxns,  color: "text-brand-600 dark:text-brand-400", bg: "bg-brand-50 dark:bg-brand-900/20" },
+            { label: t("finance.loanStatCreditRecords"), val: credits.length, color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-900/20" },
           ].map(s => (
             <div key={s.label} className={`${s.bg} rounded-2xl p-3 border border-slate-100 dark:border-slate-700/30 text-center`}>
               <p className={`text-xl font-black tabular-nums ${s.color}`}>{s.val}</p>
@@ -423,8 +398,8 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
               <Svg d={msg.icon} size={16} color="#3DA829" sw={2} />
             </div>
             <div>
-              <p className="text-sm font-black text-slate-800 dark:text-white mb-1">{msg.title}</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">{msg.body}</p>
+              <p className="text-sm font-black text-slate-800 dark:text-white mb-1">{t(msg.title)}</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">{t(msg.body)}</p>
             </div>
           </div>
           <div className="flex gap-1 mt-3 justify-center">
@@ -435,14 +410,14 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
         </div>
 
         <div className="bg-white dark:bg-slate-800 rounded-3xl p-5 border border-slate-100 dark:border-slate-700/50 shadow-card">
-          <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3">What Our Partners Analyse</p>
+          <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3">{t("finance.loanPartnersAnalyse")}</p>
           <div className="space-y-2">
             {[
-              { icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2|M9 5a2 2 0 002 2h2a2 2 0 002-2|M9 13h6|M9 17h4", text: "Transaction consistency & frequency", done: totalTxns >= 30 },
-              { icon: "M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6", text: "Business cash flow (income vs expenses)", done: cashIn > 0 },
-              { icon: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2|M9 11a4 4 0 100-8 4 4 0 000 8", text: "Credit management history", done: credits.length > 0 },
-              { icon: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2|M23 21v-2a4 4 0 00-3-3.87|M16 3.13a4 4 0 010 7.75", text: "Ajo savings & financial discipline", done: asoClients.length > 0 },
-              { icon: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z", text: "120 days of active platform use", done: eligible },
+              { icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2|M9 5a2 2 0 002 2h2a2 2 0 002-2|M9 13h6|M9 17h4", text: t("finance.loanCheckConsistency"), done: totalTxns >= 30 },
+              { icon: "M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6", text: t("finance.loanCheckCashflow"), done: cashIn > 0 },
+              { icon: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2|M9 11a4 4 0 100-8 4 4 0 000 8", text: t("finance.loanCheckCredit"), done: credits.length > 0 },
+              { icon: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2|M23 21v-2a4 4 0 00-3-3.87|M16 3.13a4 4 0 010 7.75", text: t("finance.loanCheckAjo"), done: asoClients.length > 0 },
+              { icon: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z", text: t("finance.loanCheck120"), done: eligible },
             ].map(item => (
               <div key={item.text} className="flex items-center gap-3">
                 <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${item.done ? "bg-brand-100 dark:bg-brand-900/30" : "bg-slate-100 dark:bg-slate-700"}`}>
@@ -471,14 +446,14 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
             <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center">
               <Svg d="M9 12l2 2 4-4" size={12} color="white" sw={2.5} />
             </div>
-            <p className="text-xs font-bold text-white/60 uppercase tracking-widest">You're Eligible!</p>
+            <p className="text-xs font-bold text-white/60 uppercase tracking-widest">{t("finance.loanYoureEligible")}</p>
           </div>
-          <p className="text-[10px] font-bold uppercase tracking-[3px] opacity-50 mb-1">Business Loan Access</p>
+          <p className="text-[10px] font-bold uppercase tracking-[3px] opacity-50 mb-1">{t("finance.loanAccess")}</p>
           <p className="text-5xl font-black mb-1">₦5,000,000</p>
-          <p className="text-sm opacity-60">or more, based on your activity</p>
+          <p className="text-sm opacity-60">{t("finance.loanOrMore")}</p>
         </div>
         <div className="bg-white/10 px-5 py-3 flex items-center justify-between">
-          <p className="text-xs text-white/60 font-semibold">Activity Score</p>
+          <p className="text-xs text-white/60 font-semibold">{t("finance.loanActivityScore")}</p>
           <div className="flex items-center gap-2">
             <div className="h-2 w-24 bg-white/20 rounded-full overflow-hidden">
               <div className="h-full bg-white rounded-full" style={{ width: `${activityScore}%` }} />
@@ -489,21 +464,21 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
       </div>
 
       <div className="bg-brand-50 dark:bg-brand-900/20 rounded-2xl px-5 py-4 mb-4 border border-brand-200 dark:border-brand-800/40">
-        <p className="text-[10px] font-bold text-brand-700 dark:text-brand-400 uppercase tracking-wider mb-1">Your Estimated Loan Range</p>
+        <p className="text-[10px] font-bold text-brand-700 dark:text-brand-400 uppercase tracking-wider mb-1">{t("finance.loanEstimatedRange")}</p>
         <p className="text-2xl font-black text-brand-800 dark:text-brand-300">{loanTier}</p>
-        <p className="text-xs text-brand-700/60 dark:text-brand-400/60 mt-1">Final amount determined by our partners after review</p>
+        <p className="text-xs text-brand-700/60 dark:text-brand-400/60 mt-1">{t("finance.loanFinalAmount")}</p>
       </div>
 
       <div className="bg-white dark:bg-slate-800 rounded-3xl p-5 mb-4 border border-slate-100 dark:border-slate-700/50 shadow-card">
-        <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4">Your Business Profile</p>
+        <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4">{t("finance.loanBusinessProfile")}</p>
         <div className="grid grid-cols-2 gap-3">
           {[
-            { label: "Days Active",        val: daysActive,          color: "text-emerald-600 dark:text-emerald-400" },
-            { label: "Total Transactions", val: totalTxns,           color: "text-blue-600 dark:text-blue-400" },
-            { label: "Last 30 Days",       val: `${recentTxns} txns`, color: "text-brand-600 dark:text-brand-400" },
-            { label: "Total Revenue",      val: fmt(cashIn),         color: "text-slate-800 dark:text-white" },
-            { label: "Credit Records",     val: credits.length,      color: "text-amber-600 dark:text-amber-400" },
-            { label: "Ajo Clients",        val: asoClients.length,   color: "text-indigo-600 dark:text-indigo-400" },
+            { label: t("finance.loanDaysActive"),        val: daysActive,          color: "text-emerald-600 dark:text-emerald-400" },
+            { label: t("finance.loanTotalTransactions"), val: totalTxns,           color: "text-blue-600 dark:text-blue-400" },
+            { label: t("finance.loanLast30Days"),       val: t("finance.loanNTxns", { n: recentTxns }), color: "text-brand-600 dark:text-brand-400" },
+            { label: t("finance.loanTotalRevenue"),      val: fmt(cashIn),         color: "text-slate-800 dark:text-white" },
+            { label: t("finance.loanCreditRecords"),     val: credits.length,      color: "text-amber-600 dark:text-amber-400" },
+            { label: t("finance.loanAjoClients"),        val: asoClients.length,   color: "text-indigo-600 dark:text-indigo-400" },
           ].map(s => (
             <div key={s.label} className="bg-slate-50 dark:bg-slate-700/50 rounded-xl px-3 py-2.5">
               <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wide mb-0.5">{s.label}</p>
@@ -515,10 +490,10 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
 
       <div className="space-y-2 mb-5">
         {[
-          { icon: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z", text: "Fast review within 48–72 hours",    sub: "Our partners respond quickly" },
-          { icon: "M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6", text: "Competitive interest rates", sub: "Based on your business profile" },
-          { icon: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z", text: "No collateral required",             sub: "Your data is your guarantee" },
-          { icon: "M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01", text: "Flexible repayment terms",     sub: "Tailored to your cash flow" },
+          { icon: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z", text: t("finance.loanFeatFast"),    sub: t("finance.loanFeatFastSub") },
+          { icon: "M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6", text: t("finance.loanFeatRates"), sub: t("finance.loanFeatRatesSub") },
+          { icon: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z", text: t("finance.loanFeatCollateral"),             sub: t("finance.loanFeatCollateralSub") },
+          { icon: "M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01", text: t("finance.loanFeatRepay"),     sub: t("finance.loanFeatRepaySub") },
         ].map(f => (
           <div key={f.text} className="flex items-center gap-3 bg-white dark:bg-slate-800 rounded-2xl px-4 py-3 border border-slate-100 dark:border-slate-700/50 shadow-sm">
             <div className="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-900/30 flex items-center justify-center flex-shrink-0">
@@ -538,16 +513,16 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
             <Svg d={msg.icon} size={16} color="#3DA829" sw={2} />
           </div>
           <div>
-            <p className="text-sm font-black text-slate-800 dark:text-white mb-1">{msg.title}</p>
-            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">{msg.body}</p>
+            <p className="text-sm font-black text-slate-800 dark:text-white mb-1">{t(msg.title)}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">{t(msg.body)}</p>
           </div>
         </div>
       </div>
 
       <div className="w-full py-4 rounded-2xl bg-slate-100 dark:bg-slate-800 flex flex-col items-center justify-center gap-1.5 border border-slate-200 dark:border-slate-700">
-        <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Business Loans</span>
+        <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">{t("finance.loanBusinessLoans")}</span>
         <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-brand-50 dark:bg-brand-900/20 text-brand-600 dark:text-brand-400 text-[10px] font-bold rounded-full uppercase tracking-wider">
-          Coming Soon
+          {t("finance.comingSoon")}
         </span>
       </div>
     </div>
@@ -555,11 +530,16 @@ function LoanTab({ isEnterprise, accountCreatedAt, onUpgrade, onApply, store }) 
 }
 
 /* ── Expense category label map ──────────────────────────────────────────────── */
-const CAT_LABEL = { expense: "Expense", stock: "Stock Purchase", other: "Other" };
+// credit status (stored value) -> translation key for the pill
+const CREDIT_STATUS = { active: "finance.cstatusActive", overdue: "finance.cstatusOverdue", paid: "finance.cstatusPaid", partially_paid: "finance.cstatusPartial" };
+
+// translation keys; any other category is the business's own name, shown as-is
+const CAT_LABEL = { expense: "finance.catExpense", stock: "finance.catStock", other: "finance.catOther" };
 
 /* ── Business Position lens sub-components ───────────────────────────────────── */
 
 function LensToggle({ value, onChange }) {
+  const t = useT();
   return (
     <div className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-slate-100 dark:bg-slate-800">
       {["profit", "cash"].map(k => (
@@ -572,7 +552,7 @@ function LensToggle({ value, onChange }) {
               : "text-slate-400 dark:text-slate-500"
           }`}
         >
-          {k === "profit" ? "Profit & Loss" : "Cash Flow"}
+          {k === "profit" ? t("finance.lensProfit") : t("finance.lensCash")}
         </button>
       ))}
     </div>
@@ -665,6 +645,7 @@ const SkeletonRow = () => (
 );
 
 function ProfitCard({ engine, loading, onDrill, onInfo }) {
+  const t = useT();
   if (loading) return (
     <div className="bg-white dark:bg-slate-800 rounded-3xl p-4 border border-slate-100 dark:border-slate-700/50 shadow-card">
       {[...Array(5)].map((_, i) => <SkeletonRow key={i} />)}
@@ -677,35 +658,35 @@ function ProfitCard({ engine, loading, onDrill, onInfo }) {
 
   return (
     <div className="bg-white dark:bg-slate-800 rounded-3xl p-4 border border-slate-100 dark:border-slate-700/50 shadow-card">
-      <PLRow label="Revenue" amount={revenue.amount} onDrill={drill("Revenue", revenue)} />
+      <PLRow label={t("finance.plRevenue")} amount={revenue.amount} onDrill={drill(t("finance.plRevenue"), revenue)} />
       {interestEarned.amount > 0 && (
-        <PLRow label="Interest earned" amount={interestEarned.amount} onDrill={drill("Interest earned", interestEarned)} />
+        <PLRow label={t("finance.plInterest")} amount={interestEarned.amount} onDrill={drill(t("finance.plInterest"), interestEarned)} />
       )}
       {cogs.amount > 0 && (
-        <PLRow label="Cost of Goods" amount={cogs.amount} sign={-1} onDrill={drill("Cost of Goods", cogs)} />
+        <PLRow label={t("finance.plCogs")} amount={cogs.amount} sign={-1} onDrill={drill(t("finance.plCogs"), cogs)} />
       )}
       {cogs.amount > 0 && (
-        <PLRow label="Gross Profit" amount={grossProfit.amount} isSub />
+        <PLRow label={t("finance.plGross")} amount={grossProfit.amount} isSub />
       )}
       {expenses.amount > 0 && (
-        <PLRow label="Expenses" amount={expenses.amount} sign={-1} onDrill={drill("Expenses", expenses)} />
+        <PLRow label={t("finance.plExpenses")} amount={expenses.amount} sign={-1} onDrill={drill(t("finance.plExpenses"), expenses)} />
       )}
-      <PLRow label="Net Profit" amount={netProfit.amount} isSub />
+      <PLRow label={t("finance.plNet")} amount={netProfit.amount} isSub />
 
       {unmeasured.count > 0 && (
         <div className="mt-3 pt-3 border-t border-dashed border-amber-200 dark:border-amber-700/40">
           <div className="flex items-start justify-between gap-3">
             <div className="flex-1 min-w-0">
               <p className="text-[11px] font-bold text-amber-700 dark:text-amber-400 leading-tight">
-                {unmeasured.count} sale{unmeasured.count !== 1 ? "s" : ""} — margin unknown
+                {t(unmeasured.count !== 1 ? "finance.unmeasuredMany" : "finance.unmeasuredOne", { n: unmeasured.count })}
               </p>
               <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 leading-tight">
-                Set cost prices in Inventory to measure profit
+                {t("finance.setCostPrices")}
               </p>
             </div>
             <div className="flex-shrink-0 text-right">
               <p className="text-sm font-bold text-amber-600 dark:text-amber-400 tabular-nums">{fmt(unmeasured.revenue)}</p>
-              <p className="text-[10px] text-slate-400 dark:text-slate-500">revenue only</p>
+              <p className="text-[10px] text-slate-400 dark:text-slate-500">{t("finance.revenueOnly")}</p>
             </div>
           </div>
         </div>
@@ -715,7 +696,7 @@ function ProfitCard({ engine, loading, onDrill, onInfo }) {
         onClick={onInfo}
         className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-700/60 w-full text-left flex items-center gap-1 text-[11px] text-brand-600 dark:text-brand-400 font-semibold"
       >
-        How is this calculated?
+        {t("finance.howCalculated")}
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <polyline points="9 18 15 12 9 6" />
         </svg>
@@ -725,6 +706,7 @@ function ProfitCard({ engine, loading, onDrill, onInfo }) {
 }
 
 function CashCard({ engine, loading, onDrill }) {
+  const t = useT();
   if (loading) return (
     <div className="bg-white dark:bg-slate-800 rounded-3xl p-4 border border-slate-100 dark:border-slate-700/50 shadow-card">
       {[...Array(8)].map((_, i) => <SkeletonRow key={i} />)}
@@ -738,53 +720,53 @@ function CashCard({ engine, loading, onDrill }) {
   const hasFailedBills = (byStream.failedBills?.amount || 0) > 0;
 
   const inflows = [
-    ["Sales",             byStream.sales],
-    ["Credit sales",      byStream.creditSales],
-    ["Debt repayments",   byStream.creditRepayments],
-    ["Invoice payments",  byStream.invoicePayments],
-    ["Ajo fee income",    byStream.ajoFeeIncome],
+    [t("finance.cfSales"),            byStream.sales],
+    [t("finance.cfCreditSales"),      byStream.creditSales],
+    [t("finance.cfDebtRepayments"),   byStream.creditRepayments],
+    [t("finance.cfInvoicePayments"),  byStream.invoicePayments],
+    [t("finance.cfAjoFees"),          byStream.ajoFeeIncome],
   ].filter(([, d]) => d.amount > 0);
 
   const outflows = [
-    ["Expenses",          byStream.expenses,      -1],
-    ["Stock purchases",   byStream.stockInvestment,-1],
-    ["Bill payments",     byStream.billPayments,  -1],
+    [t("finance.cfExpenses"),         byStream.expenses,      -1],
+    [t("finance.cfStockPurchases"),   byStream.stockInvestment,-1],
+    [t("finance.cfBillPayments"),     byStream.billPayments,  -1],
   ].filter(([, d]) => d.amount > 0);
 
   return (
     <div className="bg-white dark:bg-slate-800 rounded-3xl p-4 border border-slate-100 dark:border-slate-700/50 shadow-card">
       {inflows.length > 0 && (
         <>
-          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-1">Money in</p>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-1">{t("finance.moneyIn")}</p>
           {inflows.map(([label, d]) => (
             <StreamRow key={label} label={label} amount={d.amount} onDrill={drill(label, d)} />
           ))}
-          <StreamRow label="Total in" amount={cashIn.amount} isSub />
+          <StreamRow label={t("finance.cfTotalIn")} amount={cashIn.amount} isSub />
         </>
       )}
 
       {outflows.length > 0 && (
         <>
-          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 mt-4 mb-1">Money out</p>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 mt-4 mb-1">{t("finance.moneyOut")}</p>
           {outflows.map(([label, d, sign]) => (
             <StreamRow key={label} label={label} amount={d.amount} sign={sign} onDrill={drill(label, d)} />
           ))}
-          <StreamRow label="Total out" amount={cashOut.amount} sign={-1} isSub />
+          <StreamRow label={t("finance.cfTotalOut")} amount={cashOut.amount} sign={-1} isSub />
         </>
       )}
 
-      <StreamRow label="Net cash flow" amount={cashNet.amount} isSub />
+      <StreamRow label={t("finance.cfNet")} amount={cashNet.amount} isSub />
 
       {hasFailedBills && (
         <>
           <p className="text-[10px] font-bold uppercase tracking-widest text-red-500 dark:text-red-400 mt-4 mb-1">
-            Failed bill payments (not deducted from balance)
+            {t("finance.cfFailedBillsTitle")}
           </p>
           <StreamRow
-            label="Bills attempted but failed"
+            label={t("finance.cfFailedBills")}
             amount={byStream.failedBills.amount}
             isWarning
-            onDrill={drill("Failed bill payments", byStream.failedBills)}
+            onDrill={drill(t("finance.cfFailedBillPayments"), byStream.failedBills)}
           />
         </>
       )}
@@ -792,10 +774,10 @@ function CashCard({ engine, loading, onDrill }) {
       {hasAjo && (
         <>
           <p className="text-[10px] font-bold uppercase tracking-widest text-amber-500 dark:text-amber-400 mt-4 mb-1">
-            Client savings (not business income)
+            {t("finance.cfClientSavings")}
           </p>
-          {ajoHeld.amount > 0 && <StreamRow label="Held in trust" amount={ajoHeld.amount} isLiability />}
-          {ajoReleased.amount > 0 && <StreamRow label="Released to clients" amount={ajoReleased.amount} isLiability />}
+          {ajoHeld.amount > 0 && <StreamRow label={t("finance.cfHeldInTrust")} amount={ajoHeld.amount} isLiability />}
+          {ajoReleased.amount > 0 && <StreamRow label={t("finance.cfReleased")} amount={ajoReleased.amount} isLiability />}
         </>
       )}
     </div>
@@ -803,6 +785,7 @@ function CashCard({ engine, loading, onDrill }) {
 }
 
 function DrillDownSheet({ label, txIds, transactions, invoices, meta, onClose }) {
+  const t = useT();
   const txMap = useMemo(
     () => new Map((transactions || []).map(t => [t.id, t])),
     [transactions],
@@ -820,27 +803,29 @@ function DrillDownSheet({ label, txIds, transactions, invoices, meta, onClose })
   const items = useMemo(() =>
     txIds.map(id => {
       if (txMap.has(id)) {
-        const t = txMap.get(id);
+        const tx = txMap.get(id);
         return {
           id,
-          label:  t.item_name?.trim() || t.customer_name?.trim() || t.category || "Transaction",
-          amount: t.amount,
-          date:   t.transaction_date || t.created_at?.slice(0, 10),
-          type:   t.type,
-          failed: t.bill_status === "failed",
+          label:  tx.item_name?.trim() || tx.customer_name?.trim() || tx.category || t("finance.ddTransaction"),
+          amount: tx.amount,
+          date:   tx.transaction_date || tx.created_at?.slice(0, 10),
+          type:   tx.type,
+          failed: tx.bill_status === "failed",
         };
       }
       if (invPmtMap.has(id)) {
         const p = invPmtMap.get(id);
-        return { id, label: `Invoice ${p.ref}`, amount: p.amount, date: p.date };
+        return { id, label: t("finance.ddInvoice", { ref: p.ref }), amount: p.amount, date: p.date };
       }
       if (meta?.has(id)) {
         const m = meta.get(id);
-        return { id, label: m.label, amount: m.amount, date: m.date };
+        // the engine labels interest rows "Interest — <customer>" (English); show that prefix in the chosen language
+        const label = String(m.label || "").startsWith("Interest — ") ? t("finance.ddInterestFor", { name: m.label.slice("Interest — ".length) }) : m.label;
+        return { id, label, amount: m.amount, date: m.date };
       }
       return null;
     }).filter(Boolean),
-  [txIds, txMap, invPmtMap, meta]);
+  [txIds, txMap, invPmtMap, meta, t]);
 
   const total = items.reduce((s, x) => s + x.amount, 0);
 
@@ -852,7 +837,7 @@ function DrillDownSheet({ label, txIds, transactions, invoices, meta, onClose })
           <div>
             <p className="text-sm font-extrabold text-slate-900 dark:text-white">{label}</p>
             <p className="text-[11px] text-slate-400 mt-0.5">
-              {items.length} item{items.length !== 1 ? "s" : ""} · sum {fmt(total)}
+              {t(items.length !== 1 ? "finance.ddItemsSumMany" : "finance.ddItemsSumOne", { n: items.length, sum: fmt(total) })}
             </p>
           </div>
           <button onClick={onClose} className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 min-w-[32px]">
@@ -863,7 +848,7 @@ function DrillDownSheet({ label, txIds, transactions, invoices, meta, onClose })
         </div>
         <div className="overflow-y-auto flex-1 px-4 py-2 pb-[calc(env(safe-area-inset-bottom,0px)+16px)]">
           {items.length === 0 && (
-            <p className="text-sm text-slate-400 py-6 text-center">No items to show</p>
+            <p className="text-sm text-slate-400 py-6 text-center">{t("finance.ddNoItems")}</p>
           )}
           {items.map(item => (
             <div key={item.id} className="flex items-center gap-3 py-3 border-b border-slate-100 dark:border-slate-800/60 last:border-0">
@@ -872,7 +857,7 @@ function DrillDownSheet({ label, txIds, transactions, invoices, meta, onClose })
                   <p className="text-sm font-semibold text-slate-800 dark:text-white truncate">{item.label}</p>
                   {item.failed && (
                     <span className="flex-shrink-0 text-[9px] bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded-full font-bold leading-none">
-                      Failed
+                      {t("finance.rl_failed")}
                     </span>
                   )}
                 </div>
@@ -893,38 +878,39 @@ function DrillDownSheet({ label, txIds, transactions, invoices, meta, onClose })
 }
 
 function InfoSheet({ onClose }) {
+  const t = useT();
   const rules = [
     {
-      title: "Revenue",
-      body: "Every money-in transaction with category 'sale' or 'credit sale'. Credit sales count at recording time — when the sale happens, not when the customer pays. Debt repayments received count as cash movement only; they don't create new revenue.",
+      title: t("finance.info1Title"),
+      body: t("finance.info1Body"),
     },
     {
-      title: "Service income",
-      body: "Ajo registration fees, withdrawal fees, and commissions are business service income — they appear in revenue with zero cost of goods (service work, no stock consumed).",
+      title: t("finance.info2Title"),
+      body: t("finance.info2Body"),
     },
     {
-      title: "Cost of Goods (COGS)",
-      body: "Cost price × quantity for each named sale where the product has a known cost price set in Inventory. Items in the Needs-Costing queue (no cost price yet) contribute to revenue but not to gross profit — their margin is unknown until cost prices are set.",
+      title: t("finance.info3Title"),
+      body: t("finance.info3Body"),
     },
     {
-      title: "Gross Profit",
-      body: "Revenue from measurable sales (products with known cost prices) minus the cost of those goods. Unmeasured sales sit in a separate row — their revenue is tracked but margin is unknown.",
+      title: t("finance.info4Title"),
+      body: t("finance.info4Body"),
     },
     {
-      title: "Expenses",
-      body: "All money-out transactions except stock purchases (which are inventory investment, not a P&L expense) and bill payments (pass-through for utilities, data, etc.).",
+      title: t("finance.info5Title"),
+      body: t("finance.info5Body"),
     },
     {
-      title: "Cash view",
-      body: "Every actual money movement in the period: all money in (including debt repayments received) and all money out (including stock purchases and bill payments). Ajo contributions and payouts are shown separately as client savings held in trust — they are never mixed into business cash or income.",
+      title: t("finance.info6Title"),
+      body: t("finance.info6Body"),
     },
     {
-      title: "Interest earned",
-      body: "When a credit record carries a declared interest charge, repayments are allocated principal-first. Once the full principal is recovered, any further repayment in the period is recognised as interest income in the Profit view — zero cost of goods, fully measured. Interest is never double-counted in Cash: the repayment transaction already captures the cash flow.",
+      title: t("finance.info7Title"),
+      body: t("finance.info7Body"),
     },
     {
-      title: "Working Capital",
-      body: "Working Capital position = your declared capital + cumulative net profit since the 'count from' date you set. Healthy means profit has not eroded your capital. Caution (amber) means losses are within 10% of declared capital. Shortfall (red) means losses have exceeded that threshold. Set your declared capital in Settings → Business.",
+      title: t("finance.info8Title"),
+      body: t("finance.info8Body"),
     },
   ];
 
@@ -933,7 +919,7 @@ function InfoSheet({ onClose }) {
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div className="relative bg-white dark:bg-slate-900 rounded-t-3xl max-h-[85vh] flex flex-col shadow-2xl">
         <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-slate-100 dark:border-slate-800">
-          <p className="text-sm font-extrabold text-slate-900 dark:text-white">How is this calculated?</p>
+          <p className="text-sm font-extrabold text-slate-900 dark:text-white">{t("finance.howCalculated")}</p>
           <button onClick={onClose} className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 min-w-[32px]">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -962,6 +948,7 @@ export default function Finance({
   inventory,
   invoiceHook,
 }) {
+  const t = useT();
   const [section,   setSection]   = useState(autoOpenTab || null);
   const [showLoan,  setShowLoan]  = useState(false);
   const { loansEnabled, coopEnabled } = usePlatformConfig();   // co-operatives: hidden until coop_module_enabled (was reachable here, incl. its Paystack registration fee)          // business loans: off ("coming soon", no tile, no application) until the lender is live
@@ -1125,7 +1112,7 @@ export default function Finance({
   if (section && !(section === "loan" && !loansEnabled)) {
     return (
       <div className="flex flex-col min-h-full">
-        <SectionHeader title={SECTION_LABELS[section]} onBack={() => { setSection(null); setSectionLink(null); }} />
+        <SectionHeader title={SECTION_LABELS[section] ? t(SECTION_LABELS[section]) : ""} onBack={() => { setSection(null); setSectionLink(null); }} />
 
         {section === "credit"  && <Credit store={store} plan={plan} autoOpen={false} onAutoOpened={null} onUpgrade={onUpgrade} embedded inventory={inventory} deepLink={sectionLink} onDeepLinkHandled={() => setSectionLink(null)} />}
         {section === "ajo"     && <Aso    store={store} plan={plan} autoOpen={false} onAutoOpened={null} onUpgrade={onUpgrade} embedded deepLink={sectionLink} onDeepLinkHandled={() => setSectionLink(null)} />}
@@ -1173,7 +1160,7 @@ export default function Finance({
                   ? "bg-white text-navy"
                   : "bg-white/15 text-white/70 active:bg-white/25"
               }`}>
-              {p.label}
+              {t(p.label)}
             </button>
           ))}
         </div>
@@ -1185,7 +1172,7 @@ export default function Finance({
             return (
               <>
                 <p className="text-[9px] font-bold uppercase tracking-widest opacity-60 mb-1">
-                  {lens === "profit" ? "Net P&L" : "Net Cash"}
+                  {lens === "profit" ? t("finance.netPL") : t("finance.netCash")}
                 </p>
                 <AmountDisplay
                   amount={Math.abs(lensNet)} size="hero" align="left"
@@ -1203,7 +1190,7 @@ export default function Finance({
             <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${
               trendUp ? "bg-green-500/20 text-green-300" : "bg-red-500/20 text-red-300"
             }`}>
-              {trendUp ? "↑" : "↓"} {trendPct}% vs prior period
+              {trendUp ? "↑" : "↓"} {t("finance.vsPrior", { pct: trendPct })}
             </span>
           </div>
         )}
@@ -1235,35 +1222,35 @@ export default function Finance({
               : capitalResult.status === "amber"  ? "text-amber-700 dark:text-amber-400"
               : "text-red-700 dark:text-red-400"
             }`}>
-              Working Capital · {capitalResult.status === "healthy" ? "Healthy" : capitalResult.status === "amber" ? "Caution" : "Shortfall"}
+              {t("finance.wcTitle")} · {capitalResult.status === "healthy" ? t("finance.wcHealthy") : capitalResult.status === "amber" ? t("finance.wcCaution") : t("finance.wcShortfall")}
             </p>
           </div>
           {/* Breakdown rows */}
           <div className="space-y-1">
             <div className="flex justify-between text-[11px]">
-              <span className="text-slate-500 dark:text-slate-400">Declared capital</span>
+              <span className="text-slate-500 dark:text-slate-400">{t("finance.wcDeclared")}</span>
               <span className="font-semibold text-slate-700 dark:text-slate-200 tabular-nums">{fmt(capitalResult.capital.amount)}</span>
             </div>
             <div className="flex justify-between text-[11px]">
-              <span className="text-slate-500 dark:text-slate-400">Net profit / loss</span>
+              <span className="text-slate-500 dark:text-slate-400">{t("finance.wcNetPL")}</span>
               <span className={`font-semibold tabular-nums ${capitalResult.netProfit.amount >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-500"}`}>
                 {capitalResult.netProfit.amount >= 0 ? "+" : "−"}{fmt(Math.abs(capitalResult.netProfit.amount))}
               </span>
             </div>
             {capitalResult.stockInvested.amount > 0 && (
               <div className="flex justify-between text-[11px]">
-                <span className="text-slate-500 dark:text-slate-400">Stock purchased</span>
+                <span className="text-slate-500 dark:text-slate-400">{t("finance.wcStockPurchased")}</span>
                 <span className="font-semibold text-slate-600 dark:text-slate-300 tabular-nums">−{fmt(capitalResult.stockInvested.amount)}</span>
               </div>
             )}
             {capitalResult.unsoldStock.amount > 0 && (
               <div className="flex justify-between text-[11px]">
-                <span className="text-slate-500 dark:text-slate-400">Stock sold (COGS back)</span>
+                <span className="text-slate-500 dark:text-slate-400">{t("finance.wcStockSold")}</span>
                 <span className="font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums">+{fmt(capitalResult.stockInvested.amount - capitalResult.unsoldStock.amount)}</span>
               </div>
             )}
             <div className="flex justify-between text-[11px] pt-1 mt-1 border-t border-slate-200 dark:border-slate-700">
-              <span className="font-bold text-slate-700 dark:text-slate-200">Cash position</span>
+              <span className="font-bold text-slate-700 dark:text-slate-200">{t("finance.wcCashPosition")}</span>
               <span className={`font-extrabold tabular-nums ${capitalResult.position.amount >= capitalResult.capital.amount ? "text-emerald-600 dark:text-emerald-400" : "text-red-500"}`}>
                 {fmt(capitalResult.position.amount)}
               </span>
@@ -1271,7 +1258,7 @@ export default function Finance({
           </div>
           {capitalResult.unsoldStock.amount > 0 && (
             <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1.5">
-              {fmt(capitalResult.unsoldStock.amount)} locked in unsold inventory
+              {t("finance.wcLocked", { amount: fmt(capitalResult.unsoldStock.amount) })}
             </p>
           )}
         </div>
@@ -1304,15 +1291,15 @@ export default function Finance({
               <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
             </svg>
           </div>
-          <p className="text-sm font-bold text-slate-700 dark:text-slate-300 text-center">No transactions for this period</p>
-          <p className="text-xs text-slate-400 dark:text-slate-500 text-center">Tap + to record income or expenses</p>
+          <p className="text-sm font-bold text-slate-700 dark:text-slate-300 text-center">{t("finance.noTxPeriod")}</p>
+          <p className="text-xs text-slate-400 dark:text-slate-500 text-center">{t("finance.tapPlus")}</p>
         </div>
       )}
 
       {/* ── Expense category breakdown (profit lens only) ── */}
       {lens === "profit" && expenseBreakdown.length > 0 && (
         <div className="bg-white dark:bg-slate-800 rounded-3xl p-4 border border-slate-100 dark:border-slate-700/50 shadow-card">
-          <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3.5">Where it went</p>
+          <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3.5">{t("finance.whereItWent")}</p>
           <div className="space-y-3">
             {expenseBreakdown.map(([cat, total]) => {
               const pct = Math.round((total / expenseBreakdown[0][1]) * 100);
@@ -1320,7 +1307,7 @@ export default function Finance({
                 <div key={cat}>
                   <div className="flex items-center justify-between mb-1">
                     <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 capitalize">
-                      {CAT_LABEL[cat] || cat}
+                      {CAT_LABEL[cat] ? t(CAT_LABEL[cat]) : cat}
                     </p>
                     <p className="text-xs font-extrabold text-slate-700 dark:text-slate-200 tabular-nums">{fmt(total)}</p>
                   </div>
@@ -1336,7 +1323,7 @@ export default function Finance({
 
       {/* ── Finance Tools — card language ── */}
       <div className="bg-white dark:bg-slate-800 rounded-3xl p-4 border border-slate-100 dark:border-slate-700/50 shadow-card">
-        <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3.5">Finance Tools</p>
+        <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3.5">{t("finance.financeTools")}</p>
 
         {/* Top row: Credit + Ajo as data cards */}
         <div className="grid grid-cols-2 gap-3 mb-3">
@@ -1348,18 +1335,18 @@ export default function Finance({
                 <Svg d={FINANCE_TILES[0].icon} size={13} color="#e11d48" sw={2} />
               </div>
               <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
-                {hasCreditAccess ? "Credit" : "🔒 Credit"}
+                {hasCreditAccess ? t("finance.tileCredit") : `🔒 ${t("finance.tileCredit")}`}
               </p>
             </div>
             {hasCreditAccess ? (
               <>
                 <AmountDisplay amount={creditOutstanding} size="small" colorBy="out" align="left" />
                 <p className="text-[10px] text-slate-400 dark:text-slate-500">
-                  {overdueCount > 0 ? `⚠ ${overdueCount} overdue` : `${credits.length} record${credits.length !== 1 ? "s" : ""}`}
+                  {overdueCount > 0 ? `⚠ ${t("finance.nOverdue", { n: overdueCount })}` : t(credits.length !== 1 ? "finance.nRecords" : "finance.nRecord", { n: credits.length })}
                 </p>
               </>
             ) : (
-              <p className="text-xs font-bold text-rose-600 dark:text-rose-400">{canSellPlans() ? "Upgrade to access" : "Not in your plan"}</p>
+              <p className="text-xs font-bold text-rose-600 dark:text-rose-400">{canSellPlans() ? t("finance.upgradeToAccess") : t("finance.notInPlan")}</p>
             )}
           </button>
 
@@ -1370,11 +1357,11 @@ export default function Finance({
               <div className="w-7 h-7 rounded-lg bg-brand-100 dark:bg-brand-900/30 flex items-center justify-center flex-shrink-0">
                 <Svg d={FINANCE_TILES[1].icon} size={13} color="#3DA829" sw={2} />
               </div>
-              <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400">Ajo Savings</p>
+              <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400">{t("finance.tileAjo")}</p>
             </div>
             <AmountDisplay amount={ajoBalance} size="small" align="left" />
             <p className="text-[10px] text-slate-400 dark:text-slate-500">
-              {ajoActive} active client{ajoActive !== 1 ? "s" : ""}
+              {t(ajoActive !== 1 ? "finance.nActiveClients" : "finance.nActiveClient", { n: ajoActive })}
             </p>
           </button>
         </div>
@@ -1388,7 +1375,7 @@ export default function Finance({
                 <Svg d={tile.icon} size={15} color={tile.color} sw={2} />
               </div>
               <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400 text-center leading-tight px-1">
-                {tile.label}
+                {t(tile.label)}
               </span>
             </button>
           ))}
@@ -1399,9 +1386,9 @@ export default function Finance({
       {hasCreditAccess && urgentCredits.length > 0 && (
         <div>
           <div className="flex items-center justify-between mb-2.5">
-            <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Pending Credits</p>
+            <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">{t("finance.pendingCredits")}</p>
             <button onClick={() => openSection("credit")}
-              className="text-[11px] font-bold text-brand-600 dark:text-brand-400">See all</button>
+              className="text-[11px] font-bold text-brand-600 dark:text-brand-400">{t("finance.seeAll")}</button>
           </div>
           {urgentCredits.map(c => (
             <button key={c.id} onClick={() => openSection("credit")}
@@ -1418,8 +1405,8 @@ export default function Finance({
                     c.status === "overdue"
                       ? "bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400"
                       : "bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400"
-                  }`}>{c.status}</span>
-                  {c.due_date && <span className="text-[10px] text-slate-400">Due {new Date(c.due_date).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })}</span>}
+                  }`}>{CREDIT_STATUS[c.status] ? t(CREDIT_STATUS[c.status]) : c.status}</span>
+                  {c.due_date && <span className="text-[10px] text-slate-400">{t("finance.dueOn")} {new Date(c.due_date).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })}</span>}
                 </div>
               </div>
               <AmountDisplay amount={c.outstanding} size="small" colorBy="out" align="right" className="flex-shrink-0" />
@@ -1432,9 +1419,9 @@ export default function Finance({
       {activeAjo.length > 0 && (
         <div>
           <div className="flex items-center justify-between mb-2.5">
-            <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Active Ajo</p>
+            <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">{t("finance.activeAjo")}</p>
             <button onClick={() => openSection("ajo")}
-              className="text-[11px] font-bold text-brand-600 dark:text-brand-400">See all</button>
+              className="text-[11px] font-bold text-brand-600 dark:text-brand-400">{t("finance.seeAll")}</button>
           </div>
           {activeAjo.map(c => {
             const displayName = c.full_name || c.name || "";
@@ -1449,7 +1436,7 @@ export default function Finance({
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold text-slate-800 dark:text-white truncate">{displayName}</p>
                   {c.next_contribution_date && (
-                    <p className="text-[10px] text-slate-400 mt-0.5">Next: {new Date(c.next_contribution_date).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })}</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">{t("finance.nextOn")} {new Date(c.next_contribution_date).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })}</p>
                   )}
                 </div>
                 <AmountDisplay amount={c.current_balance || 0} size="small" align="right" className="flex-shrink-0" />

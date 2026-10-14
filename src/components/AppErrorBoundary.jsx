@@ -1,5 +1,6 @@
 import { Component } from "react";
 import { isChunkLoadError, reloadOnceForNewVersion } from "../utils/lazyWithRetry";
+import { tNow } from "../contexts/LanguageContext";
 
 // The whole app's safety net (2026-10-14). Before this there was none, so any error while starting up left a blank
 // white page that only closing the app or refreshing got past. Now: a part of the app that failed to download (an old
@@ -37,15 +38,15 @@ export default class AppErrorBoundary extends Component {
       <div style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
         padding: 24, textAlign: "center", fontFamily: "DM Sans, system-ui, sans-serif", background: "#f8fafc", color: "#0f172a" }}>
         <img src="/icon-192.png" alt="" width={64} height={64} style={{ borderRadius: 16, marginBottom: 16 }} />
-        <p style={{ fontSize: 18, fontWeight: 800 }}>{this.state.reloading ? "Updating KudiAI Track…" : "Something went wrong"}</p>
+        <p style={{ fontSize: 18, fontWeight: 800 }}>{this.state.reloading ? tNow("settings.notif.error.updating") : tNow("settings.notif.error.title")}</p>
         {!this.state.reloading && (
           <>
             <p style={{ fontSize: 14, color: "#64748b", marginTop: 6, maxWidth: 320, lineHeight: 1.5 }}>
-              Your data is safe. Reload to continue — if you're offline, connect and try again.
+              {tNow("settings.notif.error.body")}
             </p>
             <button onClick={this.reload}
               style={{ marginTop: 20, padding: "12px 28px", borderRadius: 12, border: "none", background: "#2f8a1f", color: "#fff", fontWeight: 700, fontSize: 15 }}>
-              Reload
+              {tNow("settings.notif.error.reload")}
             </button>
           </>
         )}

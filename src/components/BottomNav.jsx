@@ -15,7 +15,7 @@ export default function BottomNav({ active, onNavigate, badges }) {
   return (
     <nav
       className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md z-40 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 shadow-float will-change-transform"
-      role="navigation" aria-label="Main navigation"
+      role="navigation" aria-label={t("settings.acct.nav.main")}
     >
       <div className="flex items-stretch h-[64px] px-1">
         {NAV_IDS.map((n) => {

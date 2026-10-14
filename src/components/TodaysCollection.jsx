@@ -3,6 +3,7 @@ import { supabase } from "../utils/supabase";
 import TransactionPinModal from "./TransactionPinModal";
 import { effectiveNextDue } from "../utils/asoOverdue";
 import { today as localToday } from "../utils/helpers";
+import { useT } from "../contexts/LanguageContext";
 
 const AMBER_DAYS = 3;
 const RED_DAYS   = 7;
@@ -11,16 +12,22 @@ const fmtCur = (n) => "₦" + Number(n || 0).toLocaleString();
 const todayISO = () => localToday();   // the local (Lagos) date — toISOString() was the UTC date, a day behind 00:00–01:00
 
 function OverduePill({ days }) {
-  if (days === 0) return <span className="text-[10px] font-bold text-green-600 dark:text-green-400">Due today</span>;
+  const t = useT();
+  if (days === 0) return <span className="text-[10px] font-bold text-green-600 dark:text-green-400">{t("ajo.today.dueToday")}</span>;
   const red = days >= RED_DAYS;
   return (
     <span className={`text-[10px] font-bold ${red ? "text-red-500 dark:text-red-400" : "text-amber-500 dark:text-amber-400"}`}>
-      {days} day{days !== 1 ? "s" : ""} overdue
+      {t(days !== 1 ? "ajo.today.daysOverdueMany" : "ajo.today.daysOverdueOne", { n: days })}
     </span>
   );
 }
 
+// Frequency is stored in English (daily/weekly/…); only its on-screen label is translated.
+const FREQ_KEY = { daily: "ajo.today.freq_daily", weekly: "ajo.today.freq_weekly", monthly: "ajo.today.freq_monthly", custom: "ajo.today.freq_custom" };
+
 export default function TodaysCollection({ clients, groups, onRecord, staffCanRecord, clientCycles = {} }) {
+  const t = useT();
+  const freqLabel = (f) => (FREQ_KEY[f] ? t(FREQ_KEY[f]) : f);
   const [todayContribs, setTodayContribs] = useState([]);
   const [selected,      setSelected]       = useState(new Set());
   const [batchMode,     setBatchMode]       = useState(false);
@@ -88,9 +95,9 @@ export default function TodaysCollection({ clients, groups, onRecord, staffCanRe
   }, [dueClients]);
 
   const groupLabel = (groupId) => {
-    if (groupId === "__personal__") return "Personal Savings";
+    if (groupId === "__personal__") return t("ajo.today.personalSavings");
     const g = groups?.find(x => x.id === groupId);
-    return g?.name || "Group";
+    return g?.name || t("ajo.today.group");
   };
 
   const getContext = (client) => {
@@ -182,8 +189,8 @@ export default function TodaysCollection({ clients, groups, onRecord, staffCanRe
             <path d="M20 6L9 17l-5-5" />
           </svg>
         </div>
-        <p className="text-slate-700 dark:text-slate-200 font-bold">All caught up!</p>
-        <p className="text-slate-400 dark:text-slate-500 text-sm mt-1">No collections due today</p>
+        <p className="text-slate-700 dark:text-slate-200 font-bold">{t("ajo.today.allCaughtUp")}</p>
+        <p className="text-slate-400 dark:text-slate-500 text-sm mt-1">{t("ajo.today.noneDueToday")}</p>
       </div>
     );
   }
@@ -195,13 +202,13 @@ export default function TodaysCollection({ clients, groups, onRecord, staffCanRe
       <div className="bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800/40 rounded-2xl px-4 py-3 flex items-center justify-between">
         <div>
           <p className="text-[10px] font-bold text-violet-500 dark:text-violet-400 uppercase tracking-widest mb-0.5">
-            Today's Running Total
+            {t("ajo.today.runningTotal")}
           </p>
           <p className="text-2xl font-black text-violet-700 dark:text-violet-300 tabular">{fmtCur(runningTotal)}</p>
           <p className="text-[10px] text-violet-400/80 dark:text-violet-400/60 mt-0.5">
-            {dueClients.length} client{dueClients.length !== 1 ? "s" : ""} due
+            {t(dueClients.length !== 1 ? "ajo.today.nClientsDueMany" : "ajo.today.nClientsDueOne", { n: dueClients.length })}
             {dueClients.filter(c => c.daysOverdue >= RED_DAYS).length > 0 &&
-              <span className="ml-1.5 text-red-400">· {dueClients.filter(c => c.daysOverdue >= RED_DAYS).length} critical</span>
+              <span className="ml-1.5 text-red-400">· {t("ajo.today.nCritical", { n: dueClients.filter(c => c.daysOverdue >= RED_DAYS).length })}</span>
             }
           </p>
         </div>
@@ -212,7 +219,7 @@ export default function TodaysCollection({ clients, groups, onRecord, staffCanRe
               ? "bg-violet-600 text-white shadow-sm"
               : "bg-white dark:bg-slate-800 text-violet-600 dark:text-violet-400 border border-violet-200 dark:border-violet-700"
           }`}>
-          {batchMode ? "Cancel" : "Batch"}
+          {batchMode ? t("common.cancel") : t("ajo.today.batch")}
         </button>
       </div>
 
@@ -221,7 +228,7 @@ export default function TodaysCollection({ clients, groups, onRecord, staffCanRe
         <div className="flex items-center justify-between">
           <button onClick={toggleAll}
             className="text-xs font-bold text-violet-600 dark:text-violet-400 active:opacity-70">
-            {selected.size === dueClients.length ? "Deselect All" : "Select All"}
+            {selected.size === dueClients.length ? t("ajo.today.deselectAll") : t("ajo.today.selectAll")}
             {selected.size > 0 && <span className="ml-1 text-slate-400 font-normal">({selected.size})</span>}
           </button>
           {selected.size > 0 && (
@@ -231,7 +238,7 @@ export default function TodaysCollection({ clients, groups, onRecord, staffCanRe
               <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
                 <path d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" />
               </svg>
-              Record {selected.size} — {fmtCur(batchTotal)}
+              {t("ajo.today.recordNTotal", { n: selected.size, total: fmtCur(batchTotal) })}
             </button>
           )}
         </div>
@@ -241,10 +248,10 @@ export default function TodaysCollection({ clients, groups, onRecord, staffCanRe
       {batchResults && (
         <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-2">
           <div className="flex items-center justify-between mb-1">
-            <p className="text-sm font-extrabold text-slate-800 dark:text-slate-100">Batch Results</p>
+            <p className="text-sm font-extrabold text-slate-800 dark:text-slate-100">{t("ajo.today.batchResults")}</p>
             <button onClick={() => setBatchResults(null)}
               className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 underline underline-offset-2">
-              Dismiss
+              {t("ajo.rot.dismiss")}
             </button>
           </div>
           {batchResults.map((r, i) => (
@@ -268,7 +275,7 @@ export default function TodaysCollection({ clients, groups, onRecord, staffCanRe
                   <span className="text-[11px] font-bold text-green-700 dark:text-green-400">{fmtCur(r.amount)}</span>
                   {r.recovered && (
                     <span className="text-[9px] font-bold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 px-1.5 py-0.5 rounded-full">
-                      recovered
+                      {t("ajo.today.recovered")}
                     </span>
                   )}
                 </div>
@@ -279,15 +286,15 @@ export default function TodaysCollection({ clients, groups, onRecord, staffCanRe
           ))}
           <div className="pt-1.5 border-t border-slate-100 dark:border-slate-700 flex items-center gap-3">
             <span className="text-[11px] font-bold text-green-600 dark:text-green-400">
-              {batchResults.filter(r => r.ok).length} succeeded
+              {t("ajo.today.nSucceeded", { n: batchResults.filter(r => r.ok).length })}
             </span>
             {batchResults.some(r => !r.ok) && (
               <span className="text-[11px] font-bold text-red-500 dark:text-red-400">
-                {batchResults.filter(r => !r.ok).length} failed
+                {t("ajo.today.nFailed", { n: batchResults.filter(r => !r.ok).length })}
               </span>
             )}
             <span className="ml-auto text-[11px] text-slate-400">
-              Total collected: {fmtCur(batchResults.filter(r => r.ok).reduce((s, r) => s + r.amount, 0))}
+              {t("ajo.today.totalCollected", { amount: fmtCur(batchResults.filter(r => r.ok).reduce((s, r) => s + r.amount, 0)) })}
             </span>
           </div>
         </div>
@@ -339,7 +346,7 @@ export default function TodaysCollection({ clients, groups, onRecord, staffCanRe
                             ? "border-violet-500 bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-300"
                             : "border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400"
                         }`}>
-                        {cyc.label || "Savings"}
+                        {cyc.label || t("ajo.today.savings")}
                       </button>
                     ))}
                   </div>
@@ -380,12 +387,12 @@ export default function TodaysCollection({ clients, groups, onRecord, staffCanRe
                       <OverduePill days={days} />
                       {collected?.hasCompleted && (
                         <span className="text-[9px] font-bold bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-1.5 py-0.5 rounded-full">
-                          ✓ Collected
+                          {t("ajo.today.collected")}
                         </span>
                       )}
                       {collected?.hasPending && !collected?.hasCompleted && (
                         <span className="text-[9px] font-bold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded-full">
-                          Pending
+                          {t("ajo.card.mark_pending")}
                         </span>
                       )}
                     </div>
@@ -398,7 +405,7 @@ export default function TodaysCollection({ clients, groups, onRecord, staffCanRe
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <div className="text-right">
                       <p className="text-sm font-extrabold text-slate-800 dark:text-slate-100 tabular">{fmtCur(amt)}</p>
-                      <p className="text-[9px] text-slate-400 dark:text-slate-500 capitalize">{client.contribution_frequency}</p>
+                      <p className="text-[9px] text-slate-400 dark:text-slate-500 capitalize">{freqLabel(client.contribution_frequency)}</p>
                     </div>
                     {/* Edit amount */}
                     <button
@@ -419,7 +426,7 @@ export default function TodaysCollection({ clients, groups, onRecord, staffCanRe
                             ? "bg-slate-100 dark:bg-slate-700 text-slate-400 cursor-not-allowed"
                             : "bg-violet-600 text-white shadow-sm"
                         }`}>
-                        {inFlight ? "…" : "Record"}
+                        {inFlight ? "…" : t("ajo.today.record")}
                       </button>
                     )}
                   </div>
@@ -438,7 +445,7 @@ export default function TodaysCollection({ clients, groups, onRecord, staffCanRe
           <div className="bg-white dark:bg-slate-800 rounded-t-3xl w-full max-w-lg px-6 pt-6 pb-10 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between mb-1">
               <p className="text-base font-extrabold text-slate-800 dark:text-slate-100">
-                Adjust Amount — {adjustFor.client.full_name}
+                {t("ajo.today.adjustAmountFor", { name: adjustFor.client.full_name })}
               </p>
               <button onClick={() => setAdjustFor(null)}
                 className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
@@ -448,7 +455,7 @@ export default function TodaysCollection({ clients, groups, onRecord, staffCanRe
               </button>
             </div>
             <p className="text-xs text-slate-400 dark:text-slate-500">
-              Default: {fmtCur(adjustFor.defaultAmount)} / {adjustFor.client.contribution_frequency}
+              {t("ajo.today.defaultPer", { amount: fmtCur(adjustFor.defaultAmount), freq: freqLabel(adjustFor.client.contribution_frequency) })}
             </p>
             <input
               type="number"
@@ -456,14 +463,14 @@ export default function TodaysCollection({ clients, groups, onRecord, staffCanRe
               value={adjustAmt}
               autoFocus
               onChange={e => setAdjustAmt(e.target.value)}
-              placeholder="Enter amount"
+              placeholder={t("ajo.today.enterAmount")}
               className="w-full text-2xl font-black text-slate-800 dark:text-slate-100 bg-slate-50 dark:bg-slate-700 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-violet-400/60"
             />
             <div className="flex gap-3">
               <button
                 onClick={() => setAdjustFor(null)}
                 className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold rounded-xl text-sm">
-                Cancel
+                {t("common.cancel")}
               </button>
               <button
                 onClick={() => {
@@ -472,7 +479,7 @@ export default function TodaysCollection({ clients, groups, onRecord, staffCanRe
                   setAdjustFor(null);
                 }}
                 className="flex-1 py-3 bg-violet-600 text-white font-bold rounded-xl text-sm shadow-sm active:scale-95 transition-transform">
-                Set Amount
+                {t("ajo.today.setAmount")}
               </button>
             </div>
           </div>
@@ -485,8 +492,8 @@ export default function TodaysCollection({ clients, groups, onRecord, staffCanRe
           onCancel={() => setPinFor(null)}
           title={
             pinFor.mode === "batch"
-              ? `Record ${pinFor.items?.length} contribution${pinFor.items?.length !== 1 ? "s" : ""}`
-              : "Record contribution"
+              ? t(pinFor.items?.length !== 1 ? "ajo.today.recordNContribsMany" : "ajo.today.recordNContribsOne", { n: pinFor.items?.length })
+              : t("ajo.today.recordContribution")
           }
         />
       )}

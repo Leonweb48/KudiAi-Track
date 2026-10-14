@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import SelfieCapture from "./SelfieCapture";
 import { submitSecuritySelfie } from "../utils/securitySelfie";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
+import { useT } from "../contexts/LanguageContext";
 
 // Mounted once, as a sibling of <App/> in index.js (the same spot as <AdminAccessBannerHost/>, for the same
 // reason: it must render outside App's many early-return status branches, so it works no matter which portal
@@ -11,6 +12,7 @@ import { usePlatformConfig } from "../hooks/usePlatformConfig";
 // utils/securitySelfie.js) — dismissible, never blocks app usage, unlike the PIN-reset/large-transfer selfie
 // steps which sit INSIDE a specific action's own flow.
 export default function NewDeviceSelfiePrompt() {
+  const t = useT();
   // Paused unless platform_config.security_selfie_enabled = "true" (see usePlatformConfig).
   const { securitySelfieEnabled } = usePlatformConfig();
   const [open, setOpen] = useState(false);
@@ -32,8 +34,8 @@ export default function NewDeviceSelfiePrompt() {
   // Close on its own a moment after the selfie is saved, instead of leaving "Thanks — recorded" on screen.
   useEffect(() => {
     if (!done) return;
-    const t = setTimeout(() => { setOpen(false); setDone(false); setSelfie(""); }, 2500);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => { setOpen(false); setDone(false); setSelfie(""); }, 2500);
+    return () => clearTimeout(timer);
   }, [done]);
 
   if (!open || !securitySelfieEnabled) return null;
@@ -52,7 +54,7 @@ export default function NewDeviceSelfiePrompt() {
   };
 
   return (
-    <div role="dialog" aria-label="New device sign-in"
+    <div role="dialog" aria-label={t("settings.kyc.newDevice.title")}
       style={{ position: "fixed", left: "50%", bottom: "calc(env(safe-area-inset-bottom,0px) + 16px)", transform: "translateX(-50%)", zIndex: 480, width: "calc(100vw - 32px)", maxWidth: 380 }}>
       <div style={{ background: "#fff", borderRadius: 18, padding: 18, boxShadow: "0 8px 28px rgba(15,28,69,.18)", border: "1px solid #e2e8f0" }}>
         {done ? (
@@ -60,21 +62,21 @@ export default function NewDeviceSelfiePrompt() {
             <div className="w-9 h-9 rounded-full bg-emerald-50 flex items-center justify-center flex-shrink-0">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="11" fill="#16a34a" /><path d="M7 12.5l3.2 3.2L17 9" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </div>
-            <p className="text-[13px] font-semibold text-slate-700">Thanks — recorded.</p>
+            <p className="text-[13px] font-semibold text-slate-700">{t("settings.kyc.newDevice.thanks")}</p>
           </div>
         ) : (
           <>
-            <p className="text-[14px] font-extrabold text-[#0f1c45]">New device sign-in</p>
+            <p className="text-[14px] font-extrabold text-[#0f1c45]">{t("settings.kyc.newDevice.title")}</p>
             <p className="text-[12.5px] text-slate-500 mt-1 leading-relaxed">
-              We don't recognise this device. A quick selfie helps if you ever need to prove this was you — it's optional and never blocks your access.
+              {t("settings.kyc.newDevice.body")}
             </p>
             {error && <p className="text-[12px] text-red-500 mt-2">{error}</p>}
             <div className="mt-3">
-              <SelfieCapture value={selfie} onCapture={capture} onClear={() => setSelfie("")} label="Take a quick selfie" />
+              <SelfieCapture value={selfie} onCapture={capture} onClear={() => setSelfie("")} label={t("settings.kyc.newDevice.quickSelfie")} />
             </div>
-            {busy && <p className="text-[11px] text-slate-400 mt-1.5">Saving…</p>}
+            {busy && <p className="text-[11px] text-slate-400 mt-1.5">{t("common.saving")}</p>}
             <button type="button" onClick={dismiss} className="text-[12px] font-semibold text-slate-400 mt-3">
-              Not now
+              {t("settings.kyc.newDevice.notNow")}
             </button>
           </>
         )}

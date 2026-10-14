@@ -1,5 +1,15 @@
 import React from "react";
 import { getMissingPaidFields, getPaidGraceInfo } from "../utils/paidCompliance";
+import { useT } from "../contexts/LanguageContext";
+
+// The missing-item groups (English names from utils/paidCompliance.js) → translation keys; others show as given
+const GROUP_KEY = {
+  "Personal details":   "home.groupPersonal",
+  "Business details":   "home.groupBusiness",
+  "Business location":  "home.groupLocation",
+  "Settlement account": "home.groupSettlement",
+  "Verification":       "home.groupVerification",
+};
 
 // Non-dismissible compliance banner for paid-plan owners.
 // Unlike the free-plan nudge (ProfileCompletionBanner), this banner cannot be
@@ -9,6 +19,7 @@ import { getMissingPaidFields, getPaidGraceInfo } from "../utils/paidCompliance"
 // just "false because unknown", and rendering would flash a "wallet missing"
 // banner on every open/refresh that vanishes a moment later — so render nothing.
 export default function PaidProfileBanner({ profile, walletActive = false, walletSettled = true, onOpen, onGoVerification, onGoSettings }) {
+  const t = useT();
   if (!profile?.id) return null;
   if (!walletSettled) return null;
 
@@ -36,7 +47,7 @@ export default function PaidProfileBanner({ profile, walletActive = false, walle
         <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>⚠️</span>
         <div style={{ flex: 1 }}>
           <div style={{ color: "#fff", fontWeight: 700, fontSize: 13, lineHeight: 1.35 }}>
-            Complete your profile to keep your plan active
+            {t("home.paidTitle")}
           </div>
         </div>
         {inGrace ? (
@@ -46,7 +57,7 @@ export default function PaidProfileBanner({ profile, walletActive = false, walle
             padding: "3px 8px", borderRadius: 20, flexShrink: 0, letterSpacing: "0.03em",
             whiteSpace: "nowrap",
           }}>
-            {graceDaysLeft}d left
+            {t("home.daysLeftShort", { n: graceDaysLeft })}
           </span>
         ) : (
           <span style={{
@@ -55,7 +66,7 @@ export default function PaidProfileBanner({ profile, walletActive = false, walle
             padding: "3px 8px", borderRadius: 20, flexShrink: 0, letterSpacing: "0.03em",
             whiteSpace: "nowrap",
           }}>
-            Features restricted
+            {t("home.featuresRestricted")}
           </span>
         )}
       </div>
@@ -64,8 +75,8 @@ export default function PaidProfileBanner({ profile, walletActive = false, walle
       <div style={{ padding: "0 14px 8px" }}>
         <p style={{ color: "rgba(255,255,255,0.85)", fontSize: 11, lineHeight: 1.55, margin: 0 }}>
           {isUrgent
-            ? "Some premium features are restricted until your profile is complete. Core transactions, savings, and bills are always available."
-            : `You have ${graceDaysLeft} day${graceDaysLeft === 1 ? "" : "s"} to complete your profile. Verified identity is required for your plan.`}
+            ? t("home.paidUrgentBody")
+            : t(graceDaysLeft === 1 ? "home.paidGraceOne" : "home.paidGraceMany", { n: graceDaysLeft })}
         </p>
       </div>
 
@@ -78,7 +89,7 @@ export default function PaidProfileBanner({ profile, walletActive = false, walle
             color: "#fff", fontSize: 10, fontWeight: 700,
             padding: "3px 10px", borderRadius: 20,
           }}>
-            ✗ {g}
+            ✗ {GROUP_KEY[g] ? t(GROUP_KEY[g]) : g}
           </span>
         ))}
       </div>
@@ -96,7 +107,7 @@ export default function PaidProfileBanner({ profile, walletActive = false, walle
             padding: "10px 8px", cursor: "pointer",
           }}
         >
-          Complete profile
+          {t("home.completeProfile")}
         </button>
         {hasVerification && (
           <button
@@ -109,7 +120,7 @@ export default function PaidProfileBanner({ profile, walletActive = false, walle
               padding: "10px 10px", cursor: "pointer", whiteSpace: "nowrap",
             }}
           >
-            Verify ID
+            {t("home.verifyId")}
           </button>
         )}
         {hasSettlement && (
@@ -123,7 +134,7 @@ export default function PaidProfileBanner({ profile, walletActive = false, walle
               padding: "10px 10px", cursor: "pointer", whiteSpace: "nowrap",
             }}
           >
-            Settlement
+            {t("home.settlement")}
           </button>
         )}
       </div>

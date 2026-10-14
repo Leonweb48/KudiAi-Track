@@ -8,6 +8,7 @@
  * `avatar` and `status` come from utils/historyEntries.js.
  */
 import { useState } from "react";
+import { useT } from "../../contexts/LanguageContext";
 
 // 24 x 24 stroke paths (feather-style), "|" separates sub-paths
 const ICONS = {
@@ -75,11 +76,22 @@ const PILL = {
   muted:   "bg-slate-100 dark:bg-slate-700/60 text-slate-500 dark:text-slate-400",
 };
 
+// The pill's English labels (from utils/historyEntries.js statusOf) → translation keys; any other label shows as given
+const PILL_LABEL_KEY = {
+  Successful: "sales.statusSuccessful",
+  Pending:    "sales.statusPending",
+  Processing: "sales.statusProcessing",
+  Reversed:   "sales.statusReversed",
+  Failed:     "sales.statusFailed",
+};
+
 export function StatusPill({ status, className = "" }) {
+  const t = useT();
   if (!status) return null;
+  const labelKey = PILL_LABEL_KEY[status.label];
   return (
     <span className={`inline-block text-[10px] font-semibold leading-none px-1.5 py-1 rounded-md ${PILL[status.tone] || PILL.ok} ${className}`}>
-      {status.label}
+      {labelKey ? t(labelKey) : status.label}
     </span>
   );
 }

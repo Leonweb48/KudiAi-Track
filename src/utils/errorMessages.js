@@ -1,39 +1,43 @@
+import { trNow } from "../i18n/now";
+import { translate } from "../i18n";
+
 // Known backend / SDK error strings → plain-language UI messages.
 // Order matters: more specific substrings before broader ones.
+// Values are keys in src/i18n/messages.js, shown in the language the user picked.
 const KNOWN = {
   // Network
-  "Failed to fetch":                 "Check your connection and try again.",
-  "Load failed":                     "Check your connection and try again.",
-  "NetworkError":                    "Check your connection and try again.",
-  "network error":                   "Check your connection and try again.",
+  "Failed to fetch":                 "msg.err.network",
+  "Load failed":                     "msg.err.network",
+  "NetworkError":                    "msg.err.network",
+  "network error":                   "msg.err.network",
 
   // Paystack / payment
-  "Payment not confirmed by Paystack":  "Payment wasn't confirmed — your balance was not affected. Tap Retry if you completed the payment.",
-  "Payment initialization failed":      "Payment couldn't be started — please try again.",
-  "Payment couldn't be started":        "Payment couldn't be started — please try again.",
+  "Payment not confirmed by Paystack":  "msg.err.paymentNotConfirmed",
+  "Payment initialization failed":      "msg.err.paymentNotStarted",
+  "Payment couldn't be started":        "msg.err.paymentNotStarted",
 
   // Account / client
-  "Client not found":                   "We couldn't find your account — please sign out and sign back in.",
-  "Your account has no email address":  "You don't have an email on file — ask your savings agent to add one.",
-  "No email on file":                   "You don't have an email on file — ask your savings agent to add one.",
+  "Client not found":                   "msg.err.clientNotFound",
+  "Your account has no email address":  "msg.err.noEmail",
+  "No email on file":                   "msg.err.noEmail",
 
   // Balance / amounts
-  "Insufficient balance":               "You don't have enough balance for this amount.",
-  "Amount too small after fee":         "The amount is too small — the fee would use it all up.",
-  "Enter an amount to contribute.":     "Enter an amount to continue.",
-  "Amount must be greater than zero":   "Enter an amount greater than zero.",
+  "Insufficient balance":               "msg.err.insufficient",
+  "Amount too small after fee":         "msg.err.tooSmallAfterFee",
+  "Enter an amount to contribute.":     "msg.err.enterAmount",
+  "Amount must be greater than zero":   "msg.err.amountAboveZero",
 
   // PIN / OTP
-  "PIN must be exactly 4 digits":       "Your PIN must be exactly 4 digits.",
-  "Invalid PIN":                        "Incorrect PIN — try again.",
-  "Current PIN is incorrect":           "That PIN isn't right — try again.",
-  "Invalid OTP":                        "That code isn't right — check and try again.",
-  "OTP has expired":                    "This code has expired — tap Resend to get a new one.",
+  "PIN must be exactly 4 digits":       "msg.err.pin4",
+  "Invalid PIN":                        "msg.err.pinWrong",
+  "Current PIN is incorrect":           "msg.err.pinCurrentWrong",
+  "Invalid OTP":                        "msg.err.otpWrong",
+  "OTP has expired":                    "msg.err.otpExpired",
 
   // Supabase Auth SDK
-  "should be at least 6 characters":   "Password must be at least 8 characters.",
-  "Auth session missing":               "Your session has expired — please sign out and sign back in.",
-  "only request this after":            "Please wait a moment before trying again.",
+  "should be at least 6 characters":   "msg.err.password8",
+  "Auth session missing":               "msg.err.sessionExpired",
+  "only request this after":            "msg.err.waitMoment",
 };
 
 // Raw-technical patterns — these should never reach the user directly.
@@ -48,38 +52,44 @@ const TECHNICAL = [
   /\bstack trace\b/i,
 ];
 
-const GENERIC = "Something went wrong — please try again.";
+const GENERIC = "msg.err.generic";
 
 /**
  * Map any error to a plain-language string safe to show to end users.
  * Technical details are logged to console.error and never shown.
  */
 export function friendlyError(e) {
-  if (!e) return GENERIC;
+  const out = friendlyKey(e);
+  return out.key ? trNow(out.key) : out.text;
+}
+
+// { key } for a known message, or { text } for a server message passed through as is.
+function friendlyKey(e) {
+  if (!e) return { key: GENERIC };
   const raw = e instanceof Error ? (e.message || "") : (typeof e === "string" ? e : "");
-  if (!raw) return GENERIC;
+  if (!raw) return { key: GENERIC };
 
   // 1. Network errors (case-insensitive)
   const lower = raw.toLowerCase();
   if (lower.includes("failed to fetch") || lower.includes("load failed") ||
       lower.includes("networkerror") || lower.includes("network error") ||
       lower.includes("failed to send a request to the edge function")) {
-    return "Check your connection and try again.";
+    return { key: "msg.err.network" };
   }
 
   // 2. Known map (substring match, most-specific first)
   for (const [key, friendly] of Object.entries(KNOWN)) {
-    if (raw.includes(key)) return friendly;
+    if (raw.includes(key)) return { key: friendly };
   }
 
   // 3. Looks technical → log and return generic
   if (TECHNICAL.some(p => p.test(raw))) {
     console.error("[kuditrack]", raw);
-    return GENERIC;
+    return { key: GENERIC };
   }
 
   // 4. Probably already user-friendly (from our server-side fixes) — pass through
-  return raw;
+  return { text: raw };
 }
 
 /**
@@ -87,8 +97,10 @@ export function friendlyError(e) {
  * Only use when the operation is guaranteed to NOT have moved money.
  */
 export function moneyError(e) {
-  const msg = friendlyError(e);
-  // Don't append if the message already mentions the balance state
-  if (msg.includes("balance") || msg.includes("not affected")) return msg;
-  return msg + " Your balance was not affected.";
+  const out = friendlyKey(e);
+  const msg = out.key ? trNow(out.key) : out.text;
+  // Don't append if the message already mentions the balance state (checked on the English text)
+  const en = out.key ? translate(out.key, "en") : out.text;
+  if (en.includes("balance") || en.includes("not affected")) return msg;
+  return msg + " " + trNow("msg.err.balanceSafe");
 }

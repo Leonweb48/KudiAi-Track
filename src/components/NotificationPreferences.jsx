@@ -7,6 +7,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../utils/supabase";
 import Modal from "./shared/Modal";
+import { useT } from "../contexts/LanguageContext";
 import { webPushSupported, webPushConfigured, webPushPermission, needsIosInstall, enableWebPush } from "../utils/webPush";
 
 // ── Native push helpers ────────────────────────────────────────────────────────
@@ -40,6 +41,7 @@ function Toggle({ on, onChange, locked = false }) {
 }
 
 function PrefRow({ label, sub, on, onChange, locked = false }) {
+  const t = useT();
   return (
     <div className="flex items-center justify-between gap-4 py-3.5">
       <div className="min-w-0 flex-1">
@@ -47,7 +49,7 @@ function PrefRow({ label, sub, on, onChange, locked = false }) {
           <p className="text-[14px] font-semibold text-slate-800 dark:text-slate-100 truncate">{label}</p>
           {locked && (
             <span className="text-[10px] font-bold text-[#16255A] dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 rounded-full flex-shrink-0">
-              Always on
+              {t("settings.notif.alwaysOn")}
             </span>
           )}
         </div>
@@ -60,11 +62,12 @@ function PrefRow({ label, sub, on, onChange, locked = false }) {
 
 // ── Status pill ───────────────────────────────────────────────────────────────
 function StatusPill({ status }) {
+  const t = useT();
   const cfg = {
-    granted: { dot: "bg-green-500", bg: "bg-green-100 dark:bg-green-900/30", text: "text-green-700 dark:text-green-400", label: "Permission granted" },
-    denied:  { dot: "bg-red-500",   bg: "bg-red-100 dark:bg-red-900/30",     text: "text-red-700 dark:text-red-400",   label: "Permission denied" },
-    prompt:  { dot: "bg-amber-500", bg: "bg-amber-100 dark:bg-amber-900/30", text: "text-amber-700 dark:text-amber-400", label: "Not yet enabled" },
-  }[status] ?? { dot: "bg-slate-400", bg: "bg-slate-100 dark:bg-slate-800", text: "text-slate-500", label: "Checking…" };
+    granted: { dot: "bg-green-500", bg: "bg-green-100 dark:bg-green-900/30", text: "text-green-700 dark:text-green-400", label: t("settings.notif.status.granted") },
+    denied:  { dot: "bg-red-500",   bg: "bg-red-100 dark:bg-red-900/30",     text: "text-red-700 dark:text-red-400",   label: t("settings.notif.status.denied") },
+    prompt:  { dot: "bg-amber-500", bg: "bg-amber-100 dark:bg-amber-900/30", text: "text-amber-700 dark:text-amber-400", label: t("settings.notif.status.prompt") },
+  }[status] ?? { dot: "bg-slate-400", bg: "bg-slate-100 dark:bg-slate-800", text: "text-slate-500", label: t("settings.notif.status.checking") };
 
   return (
     <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold ${cfg.bg} ${cfg.text}`}>
@@ -90,9 +93,10 @@ function InfoMsg({ children, type = "info" }) {
 // "did it work?" has a real answer instead of a green tick that only proves a
 // token was stored. A short delay gives the user time to leave the tab/app —
 // browsers hide the OS popup while a KudiAI tab is visible.
-const DEVICE_LABEL = { web: "Browser", android: "Android app", ios: "iPhone app" };
+const DEVICE_LABEL = { web: "settings.notif.device.web", android: "settings.notif.device.android", ios: "settings.notif.device.ios" };
 
 function TestNotificationCard({ native, enabled }) {
+  const t = useT();
   const [phase,     setPhase]     = useState("idle"); // idle | waiting | done
   const [countdown, setCountdown] = useState(0);
   const [result,    setResult]    = useState(null);
@@ -123,8 +127,8 @@ function TestNotificationCard({ native, enabled }) {
   return (
     <div className="mt-3 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 px-4 py-4 space-y-3">
       <div>
-        <p className="text-[13px] font-semibold text-slate-700 dark:text-slate-200">Test notifications</p>
-        <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">Sends a test alert to your devices and shows what each one answered</p>
+        <p className="text-[13px] font-semibold text-slate-700 dark:text-slate-200">{t("settings.notif.test.title")}</p>
+        <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{t("settings.notif.test.sub")}</p>
       </div>
 
       <button
@@ -132,33 +136,33 @@ function TestNotificationCard({ native, enabled }) {
         disabled={phase === "waiting"}
         className="w-full py-2.5 rounded-xl text-[13px] font-bold text-[#16255A] dark:text-slate-100 border border-slate-200 dark:border-slate-600 active:opacity-80 transition-opacity disabled:opacity-60"
       >
-        {phase === "waiting" ? "Sending…" : "Send test notification"}
+        {phase === "waiting" ? t("settings.notif.test.sending") : t("settings.notif.test.send")}
       </button>
 
       {phase === "waiting" && (
         <InfoMsg type="warn">
           {native
-            ? `Leave the app now (press Home) — the test arrives in ${countdown}s`
-            : `Switch to another tab or minimise this window now — the test arrives in ${countdown}s`}
+            ? t("settings.notif.test.leaveApp", { n: countdown })
+            : t("settings.notif.test.switchTab", { n: countdown })}
         </InfoMsg>
       )}
 
       {phase === "done" && result?.error && (
-        <InfoMsg type="error">Couldn't send the test: {result.error}</InfoMsg>
+        <InfoMsg type="error">{t("settings.notif.test.failed", { error: result.error })}</InfoMsg>
       )}
       {phase === "done" && !result?.error && result?.registered_devices === 0 && (
-        <InfoMsg type="warn">No device is registered for this account yet. Turn notifications on above, then try again.</InfoMsg>
+        <InfoMsg type="warn">{t("settings.notif.test.noDevice")}</InfoMsg>
       )}
       {phase === "done" && !result?.error && devices.length > 0 && (
         <div className="space-y-1.5">
           {devices.map((d, i) => (
             <p key={i} className={`text-[12px] font-semibold text-center ${d.ok ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}>
-              {DEVICE_LABEL[d.platform] || d.platform}:{" "}
-              {d.ok ? "accepted by Google's push service ✓" : `failed — ${d.errCode || `status ${d.status}`}${d.errMsg ? ` (${d.errMsg})` : ""}`}
+              {DEVICE_LABEL[d.platform] ? t(DEVICE_LABEL[d.platform]) : d.platform}:{" "}
+              {d.ok ? t("settings.notif.test.accepted") : t("settings.notif.test.deviceFailed", { reason: `${d.errCode || t("settings.notif.test.status", { status: d.status })}${d.errMsg ? ` (${d.errMsg})` : ""}` })}
             </p>
           ))}
           <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center leading-snug">
-            "Accepted" means it reached the device. If nothing appeared, check that this browser or app isn't blocked in your system notification settings and that Do Not Disturb is off.
+            {t("settings.notif.test.note")}
           </p>
         </div>
       )}
@@ -187,41 +191,42 @@ const PREF_COLUMNS = "push_enabled, pref_money, pref_savings, pref_stock, pref_p
 // Category rows shown per portal
 const PORTAL_CATEGORIES = {
   owner: [
-    { field: "pref_money",     label: "Money & Sales",      sub: "Sales, cash-ins, withdrawals, security holds" },
-    { field: "pref_savings",   label: "Ajo & Savings",      sub: "Contributions, payouts, collection reminders" },
-    { field: "pref_credit",    label: "Credit & Invoice",   sub: "Credit sales, repayments, due reminders, invoices" },
-    { field: "pref_alert",     label: "Alerts & Warnings",  sub: "Unusual transactions, capital alerts" },
-    { field: "pref_stock",     label: "Stock",              sub: "Low inventory warnings" },
-    { field: "pref_bills",     label: "Bills & Payments",   sub: "Airtime, data, and bill payment confirmations" },
-    { field: "pref_milestone", label: "Milestones",         sub: "Sales targets reached" },
+    { field: "pref_money",     lkey: "settings.notif.cat.owner.money", skey: "settings.notif.cat.owner.moneySub" },
+    { field: "pref_savings",   lkey: "settings.notif.cat.owner.savings", skey: "settings.notif.cat.owner.savingsSub" },
+    { field: "pref_credit",    lkey: "settings.notif.cat.owner.credit", skey: "settings.notif.cat.owner.creditSub" },
+    { field: "pref_alert",     lkey: "settings.notif.cat.owner.alert", skey: "settings.notif.cat.owner.alertSub" },
+    { field: "pref_stock",     lkey: "settings.notif.cat.owner.stock", skey: "settings.notif.cat.owner.stockSub" },
+    { field: "pref_bills",     lkey: "settings.notif.cat.owner.bills", skey: "settings.notif.cat.owner.billsSub" },
+    { field: "pref_milestone", lkey: "settings.notif.cat.owner.milestone", skey: "settings.notif.cat.owner.milestoneSub" },
   ],
   staff: [
-    { field: "pref_money",       label: "Money Alerts",        sub: "Security holds, cash-in alerts" },
-    { field: "pref_credit",      label: "Credit Sales",        sub: "Credit extended and repayments" },
-    { field: "pref_approvals",   label: "Collection Approvals", sub: "Approval and rejection of your recorded collections" },
-    { field: "pref_permissions", label: "Permissions & Access", sub: "Permission changes, shift updates, invitations" },
+    { field: "pref_money",       lkey: "settings.notif.cat.staff.money", skey: "settings.notif.cat.staff.moneySub" },
+    { field: "pref_credit",      lkey: "settings.notif.cat.staff.credit", skey: "settings.notif.cat.staff.creditSub" },
+    { field: "pref_approvals",   lkey: "settings.notif.cat.staff.approvals", skey: "settings.notif.cat.staff.approvalsSub" },
+    { field: "pref_permissions", lkey: "settings.notif.cat.staff.permissions", skey: "settings.notif.cat.staff.permissionsSub" },
   ],
   manager: [
-    { field: "pref_money",       label: "Branch Money Alerts",  sub: "Cash-in alerts and security holds for your branch" },
-    { field: "pref_approvals",   label: "Approvals",            sub: "Collection approvals from branch staff" },
-    { field: "pref_permissions", label: "Permissions & Access", sub: "Permission changes and role updates" },
+    { field: "pref_money",       lkey: "settings.notif.cat.manager.money", skey: "settings.notif.cat.manager.moneySub" },
+    { field: "pref_approvals",   lkey: "settings.notif.cat.manager.approvals", skey: "settings.notif.cat.manager.approvalsSub" },
+    { field: "pref_permissions", lkey: "settings.notif.cat.manager.permissions", skey: "settings.notif.cat.manager.permissionsSub" },
   ],
   ajo: [
-    { field: "pref_savings", label: "Savings Activity",    sub: "Contribution approvals, payouts, group releases" },
-    { field: "pref_money",   label: "Money Transactions",  sub: "Deposits confirmed/rejected, withdrawals approved/rejected" },
+    { field: "pref_savings", lkey: "settings.notif.cat.ajo.savings", skey: "settings.notif.cat.ajo.savingsSub" },
+    { field: "pref_money",   lkey: "settings.notif.cat.ajo.money", skey: "settings.notif.cat.ajo.moneySub" },
   ],
   coop: [
-    { field: "pref_savings", label: "Savings & Programs",  sub: "Savings activity, programs, announcements" },
-    { field: "pref_credit",  label: "Loans",               sub: "Loan requests, approvals, repayments" },
-    { field: "pref_money",   label: "Money Transactions",  sub: "Withdrawals and disbursements" },
+    { field: "pref_savings", lkey: "settings.notif.cat.coop.savings", skey: "settings.notif.cat.coop.savingsSub" },
+    { field: "pref_credit",  lkey: "settings.notif.cat.coop.credit", skey: "settings.notif.cat.coop.creditSub" },
+    { field: "pref_money",   lkey: "settings.notif.cat.coop.money", skey: "settings.notif.cat.coop.moneySub" },
   ],
 };
 
 // Offers & updates — on every portal; turning it off stops promotional messages (push and bell) from KudiAI Track.
-const PROMO_ROW = { field: "pref_promotions", label: "Offers & updates", sub: "News, offers and tips from KudiAI Track" };
+const PROMO_ROW = { field: "pref_promotions", lkey: "settings.notif.cat.promo", skey: "settings.notif.cat.promoSub" };
 
 // eslint-disable-next-line no-unused-vars
 export default function NotificationPreferences({ userId, onClose, portal = "owner" }) {
+  const t = useT();
   const [prefs,        setPrefs]        = useState(DEFAULT_PREFS);
   const [loading,      setLoading]      = useState(true);
   const [saving,       setSaving]       = useState(false);
@@ -344,7 +349,7 @@ export default function NotificationPreferences({ userId, onClose, portal = "own
 
 
   return (
-    <Modal title="Notification Preferences" onClose={onClose}>
+    <Modal title={t("settings.notif.title")} onClose={onClose}>
       {loading ? (
         <div className="flex items-center justify-center py-10">
           <div className="w-5 h-5 border-2 border-[#16255A] border-t-transparent rounded-full animate-spin" />
@@ -353,25 +358,25 @@ export default function NotificationPreferences({ userId, onClose, portal = "own
         <div className="px-4 pb-6 space-y-0">
 
           {/* ── Channels ── */}
-          <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider pt-4 pb-1">Channels</p>
+          <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider pt-4 pb-1">{t("settings.notif.channels")}</p>
           <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-700 px-4">
             <PrefRow
-              label="In-app Notifications"
-              sub="Bell icon and notification center"
+              label={t("settings.notif.inApp")}
+              sub={t("settings.notif.inAppSub")}
               on={true}
               onChange={() => {}}
               locked
             />
             <PrefRow
-              label="Push Notifications"
-              sub="Alerts when the app is closed (Android app and browser)"
+              label={t("settings.notif.push")}
+              sub={t("settings.notif.pushSub")}
               on={prefs.push_enabled}
               onChange={update("push_enabled")}
             />
             {portal === "owner" && (
               <PrefRow
-                label="Summary & Alert Emails"
-                sub="Daily summary and bill payment emails"
+                label={t("settings.notif.email")}
+                sub={t("settings.notif.emailSub")}
                 on={prefs.email_enabled}
                 onChange={update("email_enabled")}
               />
@@ -385,11 +390,11 @@ export default function NotificationPreferences({ userId, onClose, portal = "own
               {/* Status row */}
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-[13px] font-semibold text-slate-700 dark:text-slate-200">Android permission</p>
-                  <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">Required to receive push alerts</p>
+                  <p className="text-[13px] font-semibold text-slate-700 dark:text-slate-200">{t("settings.notif.androidPerm")}</p>
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{t("settings.notif.androidPermSub")}</p>
                 </div>
                 {pushStatus ? <StatusPill status={pushStatus} /> : (
-                  <span className="text-[11px] text-slate-400">Checking…</span>
+                  <span className="text-[11px] text-slate-400">{t("settings.notif.status.checking")}</span>
                 )}
               </div>
 
@@ -401,29 +406,29 @@ export default function NotificationPreferences({ userId, onClose, portal = "own
                   className="w-full py-2.5 rounded-xl text-[13px] font-bold text-white bg-[#16255A] active:opacity-80 transition-opacity disabled:opacity-60"
                 >
                   {enabling
-                    ? "Waiting for Android response…"
+                    ? t("settings.notif.android.waiting")
                     : pushStatus === "denied"
-                      ? "Open Android Settings"
-                      : "Enable Push Notifications"}
+                      ? t("settings.notif.android.openSettings")
+                      : t("settings.notif.android.enable")}
                 </button>
               )}
 
               {/* Result messages */}
               {enableResult === "ok" && (
-                <InfoMsg type="success">Push enabled — your device is now registered.</InfoMsg>
+                <InfoMsg type="success">{t("settings.notif.android.ok")}</InfoMsg>
               )}
               {enableResult === "denied" && (
                 <InfoMsg type="warn">
-                  Go to Android Settings → Apps → KudiAI Track → Notifications and turn it on.
+                  {t("settings.notif.android.denied")}
                 </InfoMsg>
               )}
               {enableResult === "timeout" && (
                 <InfoMsg type="warn">
-                  The Android dialog didn't appear. Go to Android Settings → Apps → KudiAI Track → Notifications.
+                  {t("settings.notif.android.timeout")}
                 </InfoMsg>
               )}
               {enableResult === "error" && (
-                <InfoMsg type="error">Something went wrong. Try restarting the app.</InfoMsg>
+                <InfoMsg type="error">{t("settings.notif.android.error")}</InfoMsg>
               )}
 
             </div>
@@ -434,8 +439,8 @@ export default function NotificationPreferences({ userId, onClose, portal = "own
             <div className="mt-3 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 px-4 py-4 space-y-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-[13px] font-semibold text-slate-700 dark:text-slate-200">Browser notifications</p>
-                  <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">Alerts on this device even when the tab is closed</p>
+                  <p className="text-[13px] font-semibold text-slate-700 dark:text-slate-200">{t("settings.notif.web.title")}</p>
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{t("settings.notif.web.sub")}</p>
                 </div>
                 <StatusPill status={webStatus === "default" ? "prompt" : webStatus} />
               </div>
@@ -446,23 +451,23 @@ export default function NotificationPreferences({ userId, onClose, portal = "own
                   disabled={webEnabling}
                   className="w-full py-2.5 rounded-xl text-[13px] font-bold text-white bg-[#16255A] active:opacity-80 transition-opacity disabled:opacity-60"
                 >
-                  {webEnabling ? "Waiting for your browser…" : "Enable browser notifications"}
+                  {webEnabling ? t("settings.notif.web.waiting") : t("settings.notif.web.enable")}
                 </button>
               )}
 
               {webStatus === "denied" && (
                 <InfoMsg type="warn">
-                  Notifications are blocked for this site. Click the padlock icon beside the address bar → Site settings → Notifications → Allow, then reload the page.
+                  {t("settings.notif.web.blocked")}
                 </InfoMsg>
               )}
               {webResult === "ok" && (
-                <InfoMsg type="success">Browser notifications are on for this device.</InfoMsg>
+                <InfoMsg type="success">{t("settings.notif.web.ok")}</InfoMsg>
               )}
               {webResult === "dismissed" && (
-                <InfoMsg type="warn">You closed the permission prompt — tap the button again whenever you're ready.</InfoMsg>
+                <InfoMsg type="warn">{t("settings.notif.web.dismissed")}</InfoMsg>
               )}
               {webResult === "error" && (
-                <InfoMsg type="error">Couldn't turn on browser notifications. Try again, or reload the page first.</InfoMsg>
+                <InfoMsg type="error">{t("settings.notif.web.error")}</InfoMsg>
               )}
             </div>
           )}
@@ -473,19 +478,19 @@ export default function NotificationPreferences({ userId, onClose, portal = "own
           {!isNative() && webPushConfigured() && needsIosInstall() && (
             <div className="mt-3 px-1">
               <InfoMsg type="info">
-                On iPhone or iPad: tap Share → Add to Home Screen, then open KudiAI Track from your Home Screen to turn on notifications.
+                {t("settings.notif.iosInstall")}
               </InfoMsg>
             </div>
           )}
 
           {/* ── Categories ── */}
-          <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider pt-5 pb-1">Categories</p>
+          <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider pt-5 pb-1">{t("settings.notif.categories")}</p>
           <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-700 px-4">
             {[...(PORTAL_CATEGORIES[portal] ?? PORTAL_CATEGORIES.owner), PROMO_ROW].map(cat => (
               <PrefRow
                 key={cat.field}
-                label={cat.label}
-                sub={cat.sub}
+                label={t(cat.lkey)}
+                sub={t(cat.skey)}
                 on={prefs[cat.field] ?? true}
                 onChange={update(cat.field)}
               />
@@ -495,12 +500,12 @@ export default function NotificationPreferences({ userId, onClose, portal = "own
           {/* ── Thresholds (owner only) ── */}
           {portal === "owner" && (
             <>
-              <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider pt-5 pb-1">Thresholds</p>
+              <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider pt-5 pb-1">{t("settings.notif.thresholds")}</p>
               <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-700 px-4">
                 <div className="py-3.5">
-                  <p className="text-[14px] font-semibold text-slate-800 dark:text-slate-100">Large transaction alert (₦)</p>
+                  <p className="text-[14px] font-semibold text-slate-800 dark:text-slate-100">{t("settings.notif.largeTxn")}</p>
                   <p className="text-[12px] text-slate-400 dark:text-slate-500 mt-0.5 mb-2">
-                    Flags a staff-recorded transaction at or above this amount. Default ₦50,000.
+                    {t("settings.notif.largeTxnSub")}
                   </p>
                   <input
                     type="number" min="0" inputMode="numeric" placeholder="50000"
@@ -518,7 +523,7 @@ export default function NotificationPreferences({ userId, onClose, portal = "own
             disabled={saving}
             className="mt-5 w-full py-3 rounded-2xl text-[15px] font-bold text-white bg-[#16255A] active:opacity-80 transition-opacity disabled:opacity-60"
           >
-            {saved ? "Saved!" : saving ? "Saving…" : "Save Preferences"}
+            {saved ? t("settings.notif.saved") : saving ? t("common.saving") : t("settings.notif.savePrefs")}
           </button>
         </div>
       )}

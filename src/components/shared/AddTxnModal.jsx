@@ -4,6 +4,7 @@ import { today } from "../../utils/helpers";
 import { speakEvent } from "../../utils/tts";
 import { getLang, speakConfirmation } from "../../utils/i18n";
 import { isoDueDate } from "../../utils/creditFromSale";
+import { useT } from "../../contexts/LanguageContext";
 
 /* ── Fuzzy near-match ──────────────────────────────────────────── */
 function fuzzyMatch(query, target) {
@@ -18,18 +19,28 @@ function fuzzyMatch(query, target) {
 /* ── Category sets ─────────────────────────────────────────────── */
 const CATS_IN  = ["sale", "credit sale", "debt repayment"];
 const CATS_OUT = ["expense", "stock", "other"];
+// category value → chip label key (the values themselves are saved as-is)
+const CAT_CHIP_KEY = {
+  sale:             "sales.catShortSale",
+  "credit sale":    "sales.catShortCreditSale",
+  "debt repayment": "sales.catShortDebtRepayment",
+  expense:          "sales.catShortExpense",
+  stock:            "sales.catShortStock",
+  other:            "sales.catShortOther",
+};
 
+// `label` is a translation key
 const PAYMENT_TYPES = [
-  { id: "cash",         label: "Cash" },
-  { id: "transfer",     label: "Transfer" },
-  { id: "pos",          label: "POS" },
-  { id: "mobile money", label: "Mobile Money" },
+  { id: "cash",         label: "sales.pmCash" },
+  { id: "transfer",     label: "sales.pmTransfer" },
+  { id: "pos",          label: "sales.pmPos" },
+  { id: "mobile money", label: "sales.pmMobileMoney" },
 ];
 
 const DUE_CHIPS = [
-  { id: "tomorrow", label: "Tomorrow" },
-  { id: "1week",    label: "1 Week"   },
-  { id: "custom",   label: "Custom"   },
+  { id: "tomorrow", label: "sales.dueTomorrow" },
+  { id: "1week",    label: "sales.due1Week"    },
+  { id: "custom",   label: "sales.periodCustom" },
 ];
 
 function calcDueDate(label, customDate) {
@@ -67,16 +78,17 @@ function AmountInput({ value, onChange, placeholder = "0.00", label, autoFocus, 
 
 /* ── Line item row in cart ─────────────────────────────────────── */
 function LineItemRow({ item, index, onRemove, typeColor }) {
+  const t = useT();
   return (
     <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60">
       <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold text-slate-800 dark:text-white truncate">
-          {item.name || <span className="text-slate-400 italic">Unnamed item</span>}
+          {item.name || <span className="text-slate-400 italic">{t("sales.unnamedItem")}</span>}
         </p>
         <p className="text-[11px] text-slate-400 mt-0.5">
           {item.qty > 1 ? `${item.qty} × ₦${fmtMoney(item.unitPrice)}` : `₦${fmtMoney(item.unitPrice)}`}
           {item.productId && (
-            <span className="ml-1.5 text-green-600 dark:text-green-400 font-bold">· stock-linked</span>
+            <span className="ml-1.5 text-green-600 dark:text-green-400 font-bold">· {t("sales.stockLinked")}</span>
           )}
         </p>
       </div>
@@ -107,6 +119,7 @@ export function AddTxnModal({
   defaultCategory = "sale",
   inventory       = null,
 }) {
+  const t = useT();
   /* ── Transaction-level fields ── */
   const [type,         setType]         = useState(defaultType);
   const [category,     setCategory]     = useState(defaultCategory);
@@ -373,11 +386,13 @@ export function AddTxnModal({
       setTimeout(() => animClose(onClose), 1100);
     } catch (err) {
       setSaving(false);
-      setSaveError(err?.message || "Something went wrong. Try again.");
+      setSaveError(err?.message || t("sales.saveErrorFallback"));
     }
   };
 
   const cats = type === "in" ? CATS_IN : CATS_OUT;
+  // "Did you mean {name}?" — split around the name so it can stay bold in any language
+  const didYouMean = t("sales.didYouMean").split("{name}");
 
   /* ════════════════════════════════════════════════════════════════
      RENDER
@@ -414,7 +429,7 @@ export function AddTxnModal({
             <div className="w-10 h-1 rounded-full bg-slate-200 dark:bg-slate-700" />
           </div>
           <div className="flex items-center justify-between px-5 py-2">
-            <h2 className="text-base font-bold text-slate-800 dark:text-white">Record Transaction</h2>
+            <h2 className="text-base font-bold text-slate-800 dark:text-white">{t("sales.recordTransaction")}</h2>
             <button
               onClick={tryClose}
               className="w-11 h-11 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 active:scale-95 transition-transform">
@@ -432,8 +447,8 @@ export function AddTxnModal({
           {/* Type toggle */}
           <div className="flex gap-2 mb-4">
             {[
-              { id: "in",  label: "Money In",  activeStyle: { background: "var(--brand-green)" } },
-              { id: "out", label: "Money Out", activeStyle: { background: "var(--navy)" } },
+              { id: "in",  label: t("sales.moneyIn"),  activeStyle: { background: "var(--brand-green)" } },
+              { id: "out", label: t("sales.moneyOut"), activeStyle: { background: "var(--navy)" } },
             ].map(btn => (
               <button key={btn.id} onClick={() => setType(btn.id)}
                 className={`flex-1 min-h-[44px] py-3 rounded-xl font-bold text-sm transition-colors ${
@@ -455,7 +470,7 @@ export function AddTxnModal({
               <div className="flex items-center justify-between px-3.5 py-3 rounded-xl border-2"
                 style={{ borderColor: type === "in" ? "var(--brand-green)" : "var(--navy)" }}>
                 <span className="text-sm font-bold text-slate-500 dark:text-slate-400">
-                  Total{lineItems.length > 1 ? ` (${lineItems.length} items)` : ""}
+                  {t("common.total")}{lineItems.length > 1 ? ` ${t("sales.nItems", { n: lineItems.length })}` : ""}
                 </span>
                 <span className="text-xl font-extrabold" style={{ color: typeColor, fontVariantNumeric: "tabular-nums" }}>
                   ₦{fmtMoney(cartTotal)}
@@ -469,14 +484,14 @@ export function AddTxnModal({
             style={{ background: "rgba(0,0,0,0.015)" }}>
 
             <p className="text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wide">
-              {lineItems.length === 0 ? "Add item" : "Add another item"}
+              {lineItems.length === 0 ? t("sales.addItem") : t("sales.addAnotherItem")}
             </p>
 
             {/* Item name + autocomplete */}
             <div className="relative">
               <input
                 type="text"
-                placeholder={type === "in" ? "Item or product name" : "Expense description"}
+                placeholder={type === "in" ? t("sales.itemPlaceholder") : t("sales.expensePlaceholder")}
                 value={itemName}
                 onChange={e => { setItemName(e.target.value); setShowSugs(true); }}
                 onFocus={scrollIntoViewDelayed}
@@ -494,7 +509,7 @@ export function AddTxnModal({
                       <div className="text-right flex-shrink-0 ml-3">
                         <p className="text-xs font-bold text-green-600">₦{(p.selling_price || 0).toLocaleString()}</p>
                         <p className={`text-[10px] font-bold ${p.quantity <= (p.low_stock_threshold || 0) ? "text-amber-500" : "text-slate-400"}`}>
-                          {p.quantity} in stock
+                          {t("sales.inStock", { n: p.quantity })}
                         </p>
                       </div>
                     </button>
@@ -507,15 +522,15 @@ export function AddTxnModal({
             {fuzzySuggestion && (
               <div className="flex items-center gap-2 px-3.5 py-2.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl">
                 <span className="text-xs text-amber-700 dark:text-amber-300 flex-1 leading-snug">
-                  Did you mean <strong>{fuzzySuggestion.product_name}</strong>?
+                  {didYouMean[0]}<strong>{fuzzySuggestion.product_name}</strong>{didYouMean[1]}
                 </span>
                 <button onPointerDown={e => { e.preventDefault(); selectSuggestion(fuzzySuggestion); }}
                   className="text-xs font-bold text-amber-700 dark:text-amber-300 underline active:opacity-70 flex-shrink-0 px-1">
-                  Link
+                  {t("sales.link")}
                 </button>
                 <button onPointerDown={e => { e.preventDefault(); setFuzzySugDismissed(true); }}
                   className="text-[11px] text-amber-500 dark:text-amber-400 active:opacity-70 flex-shrink-0 px-1">
-                  Ignore
+                  {t("sales.ignore")}
                 </button>
               </div>
             )}
@@ -538,9 +553,9 @@ export function AddTxnModal({
                   : "text-green-600 dark:text-green-400"
                 }>
                   {itemOverStock
-                    ? `Only ${matchedProduct.quantity} available`
-                    : stockAfter !== null ? `After sale: ${stockAfter} left`
-                    : `${matchedProduct.quantity} in stock`}
+                    ? t("sales.onlyAvailable", { n: matchedProduct.quantity })
+                    : stockAfter !== null ? t("sales.afterSaleLeft", { n: stockAfter })
+                    : t("sales.inStock", { n: matchedProduct.quantity })}
                 </span>
               </div>
             )}
@@ -549,7 +564,7 @@ export function AddTxnModal({
             <div className="flex gap-2 items-end">
               {/* Qty stepper */}
               <div className="flex-shrink-0">
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Qty</label>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">{t("sales.qty")}</label>
                 <div className="flex items-center gap-1.5">
                   <button
                     onClick={() => setQty(String(Math.max(1, qtyNum - 1)))}
@@ -574,13 +589,13 @@ export function AddTxnModal({
               {/* Unit price */}
               <div className="flex-1">
                 <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">
-                  {qtyNum > 1 ? "Unit price" : "Amount"}
+                  {qtyNum > 1 ? t("sales.unitPrice") : t("common.amount")}
                 </label>
                 <AmountInput
                   value={unitPrice}
                   onChange={v => setUnitPrice(v)}
                   placeholder="0.00"
-                  label={qtyNum > 1 ? "Unit price" : "Amount"}
+                  label={qtyNum > 1 ? t("sales.unitPrice") : t("common.amount")}
                 />
               </div>
             </div>
@@ -588,7 +603,7 @@ export function AddTxnModal({
             {/* Line total preview (only when qty > 1) */}
             {qtyNum > 1 && unitPriceVal > 0 && (
               <p className="text-[11px] text-slate-400 dark:text-slate-500 text-right">
-                Line total: <strong className="text-slate-700 dark:text-slate-200">₦{fmtMoney(lineTotal)}</strong>
+                {t("sales.lineTotal")} <strong className="text-slate-700 dark:text-slate-200">₦{fmtMoney(lineTotal)}</strong>
               </p>
             )}
 
@@ -599,20 +614,20 @@ export function AddTxnModal({
             {type === "in" && itemName.trim() && !matchedProduct && (
               <div>
                 <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">
-                  Cost price <span className="normal-case font-medium">(optional — helps track profit)</span>
+                  {t("sales.costPrice")} <span className="normal-case font-medium">{t("sales.costPriceHint")}</span>
                 </label>
                 <AmountInput
                   value={itemCostPrice}
                   onChange={v => setItemCostPrice(v)}
                   placeholder="0.00"
-                  label="Cost price"
+                  label={t("sales.costPrice")}
                 />
                 {itemCostPrice && unitPriceVal > 0 && (
                   parseFloat(itemCostPrice) > 0 ? (
                     <p className={`text-[11px] mt-1 font-semibold ${unitPriceVal > parseFloat(itemCostPrice) ? "text-green-600 dark:text-green-400" : "text-red-500"}`}>
                       {unitPriceVal > parseFloat(itemCostPrice)
-                        ? `${Math.round(((unitPriceVal - parseFloat(itemCostPrice)) / parseFloat(itemCostPrice)) * 100)}% margin`
-                        : "Selling at or below cost"}
+                        ? t("sales.margin", { pct: Math.round(((unitPriceVal - parseFloat(itemCostPrice)) / parseFloat(itemCostPrice)) * 100) })
+                        : t("sales.belowCost")}
                     </p>
                   ) : null
                 )}
@@ -628,7 +643,7 @@ export function AddTxnModal({
               <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.5}>
                 <path d="M12 5v14M5 12h14"/>
               </svg>
-              {lineItems.length === 0 ? "Add item" : "Add to cart"}
+              {lineItems.length === 0 ? t("sales.addItem") : t("sales.addToCart")}
             </button>
           </div>
 
@@ -646,10 +661,9 @@ export function AddTxnModal({
                 </svg>
               </div>
               <div>
-                <p className="text-sm font-bold text-green-700 dark:text-green-400">Saved</p>
+                <p className="text-sm font-bold text-green-700 dark:text-green-400">{t("sales.saved")}</p>
                 <p className="text-xs text-green-600 dark:text-green-500">
-                  ₦{cartTotal.toLocaleString("en-NG", { minimumFractionDigits: 2 })}
-                  {type === "in" ? " recorded as income" : " recorded as expense"}
+                  {t(type === "in" ? "sales.recordedAsIncome" : "sales.recordedAsExpense", { amount: `₦${cartTotal.toLocaleString("en-NG", { minimumFractionDigits: 2 })}` })}
                 </p>
               </div>
             </div>
@@ -660,10 +674,10 @@ export function AddTxnModal({
             <button
               onClick={() => setShowDetails(v => !v)}
               className="w-full flex items-center justify-between py-2.5 text-sm font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors">
-              <span>{showDetails ? "Hide details ↑" : "Add details ↓"}</span>
+              <span>{showDetails ? t("sales.hideDetails") : t("sales.addDetails")}</span>
               {!showDetails && (customerName || note || category !== (type === "in" ? "sale" : "expense")) && (
                 <span className="text-[10px] font-bold text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/30 px-2 py-0.5 rounded-full">
-                  edited
+                  {t("sales.edited")}
                 </span>
               )}
             </button>
@@ -673,7 +687,7 @@ export function AddTxnModal({
 
                 {/* Category chips */}
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-2">Category</label>
+                  <label className="block text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-2">{t("sales.category")}</label>
                   <div className="flex gap-2 overflow-x-auto no-scrollbar pb-0.5">
                     {cats.map(c => (
                       <button key={c} onClick={() => setCategory(c)}
@@ -681,7 +695,7 @@ export function AddTxnModal({
                           category === c ? "text-white" : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
                         }`}
                         style={category === c ? { background: "var(--brand-green)" } : undefined}>
-                        {c}
+                        {CAT_CHIP_KEY[c] ? t(CAT_CHIP_KEY[c]) : c}
                       </button>
                     ))}
                   </div>
@@ -689,7 +703,7 @@ export function AddTxnModal({
 
                 {/* Payment method chips */}
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-2">Payment Method</label>
+                  <label className="block text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-2">{t("sales.paymentMethod")}</label>
                   <div className="flex gap-2 flex-wrap">
                     {PAYMENT_TYPES.map(pm => (
                       <button key={pm.id} onClick={() => setPaymentType(pm.id)}
@@ -697,7 +711,7 @@ export function AddTxnModal({
                           paymentType === pm.id ? "text-white" : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
                         }`}
                         style={paymentType === pm.id ? { background: "var(--brand-green)" } : undefined}>
-                        {pm.label}
+                        {t(pm.label)}
                       </button>
                     ))}
                   </div>
@@ -707,17 +721,17 @@ export function AddTxnModal({
                 {type === "in" && (
                   <div>
                     <label className="block text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-1.5">
-                      Discount <span className="normal-case font-medium">(optional)</span>
+                      {t("sales.discount")} <span className="normal-case font-medium">({t("common.optional")})</span>
                     </label>
                     <div className="flex items-center gap-2 px-3.5 h-11 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700">
                       <span className="text-sm font-bold text-slate-400">₦</span>
                       <input type="number" inputMode="decimal" min="0" value={discount} onChange={e => setDiscount(e.target.value)}
-                        placeholder="Amount off this sale"
+                        placeholder={t("sales.discountPlaceholder")}
                         className="flex-1 bg-transparent text-sm font-semibold text-slate-800 dark:text-slate-100 outline-none placeholder:font-normal placeholder:text-slate-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
                     </div>
                     {discountAmt > 0 && (
                       <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                        ₦{fmtMoney(cartTotal)} − ₦{fmtMoney(discountAmt)} discount = <strong className="text-slate-700 dark:text-slate-200">₦{fmtMoney(netTotal)}</strong>
+                        ₦{fmtMoney(cartTotal)} − ₦{fmtMoney(discountAmt)} {t("sales.discountWord")} = <strong className="text-slate-700 dark:text-slate-200">₦{fmtMoney(netTotal)}</strong>
                       </p>
                     )}
                   </div>
@@ -726,12 +740,12 @@ export function AddTxnModal({
                 {/* Customer */}
                 <div>
                   <label className="block text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-1.5">
-                    Customer {category === "credit sale" && <span className="text-red-400">*</span>}
-                    {category !== "credit sale" && <span className="normal-case font-medium">(optional)</span>}
+                    {t("sales.customer")} {category === "credit sale" && <span className="text-red-400">*</span>}
+                    {category !== "credit sale" && <span className="normal-case font-medium">({t("common.optional")})</span>}
                   </label>
                   <input
                     type="text"
-                    placeholder={category === "credit sale" ? "Customer name" : "Customer name (optional)"}
+                    placeholder={category === "credit sale" ? t("sales.customerName") : t("sales.customerNameOptional")}
                     value={customerName}
                     onChange={e => setCustomerName(e.target.value)}
                     onFocus={scrollIntoViewDelayed}
@@ -742,7 +756,7 @@ export function AddTxnModal({
                 {/* Credit: due date chips */}
                 {category === "credit sale" && (
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-2">Due Date</label>
+                    <label className="block text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-2">{t("sales.dueDate")}</label>
                     <div className="flex gap-2">
                       {DUE_CHIPS.map(d => (
                         <button key={d.id} onClick={() => setDueLabel(prev => prev === d.id ? null : d.id)}
@@ -750,7 +764,7 @@ export function AddTxnModal({
                             dueLabel === d.id ? "text-white" : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
                           }`}
                           style={dueLabel === d.id ? { background: "var(--navy)" } : undefined}>
-                          {d.label}
+                          {t(d.label)}
                         </button>
                       ))}
                     </div>
@@ -766,10 +780,10 @@ export function AddTxnModal({
                 {/* Note */}
                 <div>
                   <label className="block text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-1.5">
-                    Note <span className="normal-case font-medium">(optional)</span>
+                    {t("common.note")} <span className="normal-case font-medium">({t("common.optional")})</span>
                   </label>
                   <textarea
-                    placeholder="Any extra notes…"
+                    placeholder={t("sales.notesPlaceholder")}
                     value={note}
                     onChange={e => setNote(e.target.value)}
                     onFocus={scrollIntoViewDelayed}
@@ -780,7 +794,7 @@ export function AddTxnModal({
 
                 {/* Date */}
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-1.5">Date</label>
+                  <label className="block text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-1.5">{t("common.date")}</label>
                   <input
                     type="date" value={txDate} onChange={e => setTxDate(e.target.value)}
                     className="w-full h-11 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-green-500/30"
@@ -802,10 +816,10 @@ export function AddTxnModal({
               <div className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
             )}
             {saveSuccess
-              ? "Saved ✓"
+              ? t("sales.savedCheck")
               : canSave
-              ? `Save ${type === "in" ? "Sale" : "Expense"}${netTotal > 0 ? ` · ₦${fmtMoney(netTotal)}` : ""}`
-              : "Add at least one item"}
+              ? `${t(type === "in" ? "sales.saveSale" : "sales.saveExpense")}${netTotal > 0 ? ` · ₦${fmtMoney(netTotal)}` : ""}`
+              : t("sales.addAtLeastOne")}
           </button>
         </div>
       </div>
@@ -820,20 +834,20 @@ export function AddTxnModal({
             className="w-full bg-white dark:bg-slate-900 rounded-t-2xl p-6 shadow-2xl"
             style={{ paddingBottom: "max(24px, env(safe-area-inset-bottom, 24px))" }}
             onClick={e => e.stopPropagation()}>
-            <p className="text-base font-bold text-slate-900 dark:text-white">Discard transaction?</p>
+            <p className="text-base font-bold text-slate-900 dark:text-white">{t("sales.discardTitle")}</p>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-              Your items and details will be lost.
+              {t("sales.discardBody")}
             </p>
             <div className="flex gap-3 mt-5">
               <button
                 onClick={() => setShowDiscardConfirm(false)}
                 className="flex-1 h-11 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-semibold text-sm active:scale-95 transition">
-                Keep editing
+                {t("sales.keepEditing")}
               </button>
               <button
                 onClick={() => { setShowDiscardConfirm(false); animClose(onClose); }}
                 className="flex-1 h-11 rounded-xl bg-red-500 text-white font-semibold text-sm active:scale-95 transition">
-                Discard
+                {t("sales.discard")}
               </button>
             </div>
           </div>

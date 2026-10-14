@@ -6,11 +6,12 @@ import { BottomSheet } from "../components/WalletPanel";
 import { friendlyError } from "../utils/errorMessages";
 import EsusuRotationDashboard from "../components/EsusuRotationDashboard";
 import TransactionPinModal from "../components/TransactionPinModal";
+import { useT, tNow } from "../contexts/LanguageContext";
 
 async function peerEsusuFn(action, body = {}) {
   const { data, error } = await supabase.functions.invoke("peer-esusu", { body: { action, ...body } });
   if (error) {
-    let msg = error.message || "Request failed";
+    let msg = error.message || tNow("circles.requestFailed");
     try {
       const errBody = await error.context?.json?.();
       if (errBody?.error) msg = errBody.error;
@@ -21,30 +22,39 @@ async function peerEsusuFn(action, body = {}) {
   return data;
 }
 
-// The organiser's fee on each collector's payout, in words — null when the circle has none
-export function circleFeeLabel(g) {
+// The organiser's fee on each collector's payout, in words — null when the circle has none.
+// `t` is the screen's translator (useT); without one it uses the current language.
+export function circleFeeLabel(g, t = tNow) {
   const v = Number(g?.payout_fee_value || 0);
   if (!g || !(v > 0)) return null;
-  if (g.payout_fee_type === "percent") return `Organiser fee: ${v}% of each payout`;
-  if (g.payout_fee_type === "fixed") return `Organiser fee: ${fmt(v)} from each payout`;
+  if (g.payout_fee_type === "percent") return t("circles.feePercent", { v });
+  if (g.payout_fee_type === "fixed") return t("circles.feeFixed", { amount: fmt(v) });
   return null;
 }
 
+// label = translation key (circles.js); id is what is stored
 const FEE_TYPES = [
-  { id: "none",    label: "No fee" },
-  { id: "percent", label: "Percentage" },
-  { id: "fixed",   label: "Fixed amount" },
+  { id: "none",    label: "circles.feeTypeNone" },
+  { id: "percent", label: "circles.feeTypePercent" },
+  { id: "fixed",   label: "circles.feeTypeFixed" },
 ];
 
 const FREQUENCIES = [
-  { id: "daily",   label: "Daily"   },
-  { id: "weekly",  label: "Weekly"  },
-  { id: "monthly", label: "Monthly" },
-  { id: "custom",  label: "Custom"  },
+  { id: "daily",   label: "circles.freqDaily"   },
+  { id: "weekly",  label: "circles.freqWeekly"  },
+  { id: "monthly", label: "circles.freqMonthly" },
+  { id: "custom",  label: "circles.freqCustom"  },
 ];
+
+// Stored frequency / status → the words shown (an unknown value is shown as it is)
+const PER_FREQ = { daily: "circles.perDaily", weekly: "circles.perWeekly", monthly: "circles.perMonthly", custom: "circles.perCustom" };
+const perFreq = (t, f) => (PER_FREQ[f] ? t(PER_FREQ[f]) : f);
+const STATUS_LABEL = { forming: "circles.statusForming", active: "circles.statusActive", completed: "circles.statusCompleted", cancelled: "circles.statusCancelled" };
+const statusLabel = (t, st) => (STATUS_LABEL[st] ? t(STATUS_LABEL[st]) : st);
 
 /* ── Create Circle sheet ──────────────────────────────────────────────── */
 function CreateCircleSheet({ onClose, onCreated }) {
+  const t = useT();
   const [name,       setName]       = useState("");
   const [amount,     setAmount]     = useState("");
   const [frequency,  setFrequency]  = useState("monthly");
@@ -56,11 +66,11 @@ function CreateCircleSheet({ onClose, onCreated }) {
   const [err,        setErr]        = useState("");
 
   const create = async () => {
-    if (!name.trim())            { setErr("Give your circle a name"); return; }
-    if (!(Number(amount) > 0))   { setErr("Enter a contribution amount"); return; }
-    if (frequency === "custom" && !(Number(customDays) > 0)) { setErr("Enter how many days between rotations"); return; }
-    if (feeType === "percent" && !(Number(feeValue) > 0 && Number(feeValue) <= 50)) { setErr("Enter a fee between 0.01% and 50%"); return; }
-    if (feeType === "fixed" && !(Number(feeValue) > 0 && Number(feeValue) <= Number(amount))) { setErr("A fixed fee can't be more than one contribution"); return; }
+    if (!name.trim())            { setErr(t("circles.errName")); return; }
+    if (!(Number(amount) > 0))   { setErr(t("circles.errAmount")); return; }
+    if (frequency === "custom" && !(Number(customDays) > 0)) { setErr(t("circles.errDays")); return; }
+    if (feeType === "percent" && !(Number(feeValue) > 0 && Number(feeValue) <= 50)) { setErr(t("circles.errFeePct")); return; }
+    if (feeType === "fixed" && !(Number(feeValue) > 0 && Number(feeValue) <= Number(amount))) { setErr(t("circles.errFeeFixed")); return; }
     setSaving(true); setErr("");
     try {
       const res = await peerEsusuFn("create-group", {
@@ -78,20 +88,20 @@ function CreateCircleSheet({ onClose, onCreated }) {
   };
 
   return (
-    <BottomSheet open onClose={onClose} title="Create an Esusu circle">
+    <BottomSheet open onClose={onClose} title={t("circles.createTitle")}>
       <p className="text-[12px] text-slate-500 dark:text-slate-400 mb-4 leading-relaxed">
-        You'll be the first member — invite others once it's created.
+        {t("circles.createIntro")}
       </p>
       {err && <p className="text-[12px] text-red-500 mb-3">{err}</p>}
 
       <div className="space-y-3">
         <div>
-          <label className="text-[12px] font-semibold text-slate-500 dark:text-slate-400">Circle name</label>
-          <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Office Circle"
+          <label className="text-[12px] font-semibold text-slate-500 dark:text-slate-400">{t("circles.circleName")}</label>
+          <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder={t("circles.circleNamePh")}
             className="w-full mt-1.5 px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/60 text-slate-900 dark:text-slate-50 text-[14px] font-semibold placeholder:font-normal placeholder:text-slate-400 focus:outline-none focus:border-brand-400" />
         </div>
         <div>
-          <label className="text-[12px] font-semibold text-slate-500 dark:text-slate-400">Contribution per rotation</label>
+          <label className="text-[12px] font-semibold text-slate-500 dark:text-slate-400">{t("circles.contribPerRotation")}</label>
           <div className="flex items-center gap-2 mt-1.5 px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/60">
             <span className="text-[15px] font-black text-brand-600 dark:text-brand-300">₦</span>
             <input type="number" inputMode="decimal" min="1" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00"
@@ -99,33 +109,33 @@ function CreateCircleSheet({ onClose, onCreated }) {
           </div>
         </div>
         <div>
-          <label className="text-[12px] font-semibold text-slate-500 dark:text-slate-400">How often</label>
+          <label className="text-[12px] font-semibold text-slate-500 dark:text-slate-400">{t("circles.howOften")}</label>
           <div className="flex gap-2 mt-1.5">
             {FREQUENCIES.map(f => (
               <button key={f.id} type="button" onClick={() => setFrequency(f.id)}
                 className={`flex-1 py-2.5 rounded-xl text-[12px] font-bold transition-transform active:scale-[0.98] ${
                   frequency === f.id ? "bg-brand-500 text-white" : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300"
                 }`}>
-                {f.label}
+                {t(f.label)}
               </button>
             ))}
           </div>
           {frequency === "custom" && (
             <input type="number" inputMode="numeric" min="1" value={customDays} onChange={e => setCustomDays(e.target.value)}
-              placeholder="Days between rotations"
+              placeholder={t("circles.daysPh")}
               className="w-full mt-2 px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/60 text-slate-900 dark:text-slate-50 text-[14px] font-semibold placeholder:font-normal placeholder:text-slate-400 focus:outline-none focus:border-brand-400" />
           )}
         </div>
         <div>
           <label className="text-[12px] font-semibold text-slate-500 dark:text-slate-400">
-            Winners per rotation <span className="text-slate-300 font-normal">1 = one person collects each round</span>
+            {t("circles.winners")} <span className="text-slate-300 font-normal">{t("circles.winnersHint")}</span>
           </label>
           <input type="number" inputMode="numeric" min="1" value={slots} onChange={e => setSlots(e.target.value)}
             className="w-full mt-1.5 px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/60 text-slate-900 dark:text-slate-50 text-[14px] font-semibold outline-none focus:border-brand-400" />
         </div>
         <div>
           <label className="text-[12px] font-semibold text-slate-500 dark:text-slate-400">
-            Your fee on each payout <span className="text-slate-300 font-normal">taken before the collector is paid, kept in your wallet</span>
+            {t("circles.yourFee")} <span className="text-slate-300 font-normal">{t("circles.yourFeeHint")}</span>
           </label>
           <div className="flex gap-2 mt-1.5">
             {FEE_TYPES.map(f => (
@@ -133,7 +143,7 @@ function CreateCircleSheet({ onClose, onCreated }) {
                 className={`flex-1 py-2.5 rounded-xl text-[12px] font-bold transition-transform active:scale-[0.98] ${
                   feeType === f.id ? "bg-brand-500 text-white" : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300"
                 }`}>
-                {f.label}
+                {t(f.label)}
               </button>
             ))}
           </div>
@@ -141,22 +151,22 @@ function CreateCircleSheet({ onClose, onCreated }) {
             <div className="flex items-center gap-2 mt-2 px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/60">
               {feeType === "fixed" && <span className="text-[15px] font-black text-brand-600 dark:text-brand-300">₦</span>}
               <input type="number" inputMode="decimal" min="0" value={feeValue} onChange={e => setFeeValue(e.target.value)}
-                placeholder={feeType === "percent" ? "e.g. 5" : "e.g. 500"}
+                placeholder={t("circles.egValue", { v: feeType === "percent" ? 5 : 500 })}
                 className="flex-1 bg-transparent text-[14px] font-semibold text-slate-900 dark:text-slate-50 outline-none placeholder:font-normal placeholder:text-slate-400 tabular [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
               {feeType === "percent" && <span className="text-[15px] font-black text-brand-600 dark:text-brand-300">%</span>}
             </div>
           )}
           <p className="text-[11px] text-slate-400 mt-1.5 leading-snug">
             {feeType === "none"
-              ? "Collectors receive the full pot."
-              : "Members see this fee before they accept your invite. It can't be changed once the circle is created, and you never pay it on your own turn."}
+              ? t("circles.feeNoneNote")
+              : t("circles.feeNote")}
           </p>
         </div>
       </div>
 
       <button onClick={create} disabled={saving}
         className="w-full mt-5 py-3.5 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99]">
-        {saving ? "Creating…" : "Create circle"}
+        {saving ? t("circles.creating") : t("circles.createBtn")}
       </button>
     </BottomSheet>
   );
@@ -164,6 +174,7 @@ function CreateCircleSheet({ onClose, onCreated }) {
 
 /* ── Search & Invite sheet ────────────────────────────────────────────── */
 function InviteMemberSheet({ groupId, onClose, onInvited }) {
+  const t = useT();
   const [acctNo,    setAcctNo]    = useState("");
   const [searching, setSearching] = useState(false);
   const [result,    setResult]    = useState(null); // { found, user_id, display_name }
@@ -171,11 +182,11 @@ function InviteMemberSheet({ groupId, onClose, onInvited }) {
   const [inviting,  setInviting]  = useState(false);
 
   const search = async () => {
-    if (!/^\d{10}$/.test(acctNo)) { setErr("Enter a 10-digit wallet account number"); return; }
+    if (!/^\d{10}$/.test(acctNo)) { setErr(t("circles.errAcct")); return; }
     setSearching(true); setErr(""); setResult(null);
     try {
       const res = await peerEsusuFn("search-wallet-user", { account_number: acctNo });
-      if (!res.found) { setErr(res.error || "No active KudiAI wallet found for that number"); return; }
+      if (!res.found) { setErr(res.error || t("circles.noWallet")); return; }
       setResult(res);
     } catch (e) {
       setErr(friendlyError(e));
@@ -198,20 +209,20 @@ function InviteMemberSheet({ groupId, onClose, onInvited }) {
   };
 
   return (
-    <BottomSheet open onClose={onClose} title="Invite a member">
+    <BottomSheet open onClose={onClose} title={t("circles.inviteTitle")}>
       <p className="text-[12px] text-slate-500 dark:text-slate-400 mb-4 leading-relaxed">
-        Enter their KudiAI wallet account number — anyone with an active wallet can be invited, whichever business they're a client of.
+        {t("circles.inviteIntro")}
       </p>
       {err && <p className="text-[12px] text-red-500 mb-3">{err}</p>}
 
       <div className="flex gap-2">
         <input type="text" inputMode="numeric" maxLength={10} value={acctNo}
           onChange={e => { setAcctNo(e.target.value.replace(/\D/g, "").slice(0, 10)); setResult(null); }}
-          placeholder="10-digit wallet account number"
+          placeholder={t("circles.acctPh")}
           className="flex-1 px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/60 text-slate-900 dark:text-slate-50 text-[14px] font-semibold placeholder:font-normal placeholder:text-slate-400 focus:outline-none focus:border-brand-400" />
         <button onClick={search} disabled={searching || acctNo.length !== 10}
           className="px-5 rounded-2xl bg-brand-100 dark:bg-brand-900/30 text-brand-700 dark:text-brand-300 text-sm font-bold disabled:opacity-40">
-          {searching ? "…" : "Search"}
+          {searching ? "…" : t("common.search")}
         </button>
       </div>
 
@@ -222,14 +233,14 @@ function InviteMemberSheet({ groupId, onClose, onInvited }) {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-extrabold text-slate-800 dark:text-white truncate">{result.display_name}</p>
-            <p className="text-[11px] text-slate-400">Wallet {acctNo}</p>
+            <p className="text-[11px] text-slate-400">{t("circles.walletNo", { n: acctNo })}</p>
           </div>
         </div>
       )}
 
       <button onClick={invite} disabled={!result?.found || inviting}
         className="w-full mt-5 py-3.5 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99]">
-        {inviting ? "Sending invite…" : "Send invite"}
+        {inviting ? t("circles.sendingInvite") : t("circles.sendInvite")}
       </button>
     </BottomSheet>
   );
@@ -239,10 +250,10 @@ function InviteMemberSheet({ groupId, onClose, onInvited }) {
  * A client-started circle lives in its own tables (peer_esusu_*), keyed by the members' login ids. toRotationData
  * maps get-group-detail onto the shape EsusuRotationDashboard renders for business-run esusu groups, so a circle shows
  * the same Current Pot card, this-period ticks, avatar rail, "your turn is next" and rotation order. */
-function toRotationData(detail) {
+function toRotationData(detail, memberWord = "Member") {
   const { group, members = [], round, turns = [], contributions = [] } = detail || {};
   if (!group) return null;
-  const nameOf = (uid) => members.find((m) => m.user_id === uid)?.display_name || "Member";
+  const nameOf = (uid) => members.find((m) => m.user_id === uid)?.display_name || memberWord;
   const paidBy = {};
   for (const c of contributions) paidBy[c.user_id] = (paidBy[c.user_id] || 0) + Number(c.amount || 0);
   const active = members.filter((m) => m.status === "active");
@@ -262,14 +273,16 @@ function toRotationData(detail) {
 }
 
 function CircleActiveView({ detail, groupId, myUserId, reload, onChanged }) {
+  const t = useT();
   const { group, members = [], is_creator: isCreator } = detail;
-  const data = useMemo(() => toRotationData(detail), [detail]);
+  const memberWord = t("circles.member");
+  const data = useMemo(() => toRotationData(detail, memberWord), [detail, memberWord]);
   const [busy, setBusy] = useState(false);
   const [err,  setErr]  = useState("");
   const [askPin, setAskPin] = useState(false);   // paying in needs the member's transaction PIN
   const due       = Number(group.contribution_amount || 0);
   const haveIPaid = (data._paidBy[myUserId] || 0) >= due;
-  const creatorName = members.find((m) => m.user_id === group.creator_user_id)?.display_name || "the circle creator";
+  const creatorName = members.find((m) => m.user_id === group.creator_user_id)?.display_name || t("circles.creatorFallback");
 
   // Called by the dashboard with the creator's transaction PIN; the server checks it again before moving the pot
   const executePayout = async (_turnId, pin) => {
@@ -304,26 +317,28 @@ function CircleActiveView({ detail, groupId, myUserId, reload, onChanged }) {
         <EsusuRotationDashboard data={data} loading={false} isOwner={!!isCreator} myClientId={myUserId}
           onRefresh={reload} onExecutePayout={isCreator ? executePayout : undefined} />
       ) : (
-        <p className="text-xs text-slate-500 dark:text-slate-400">No active rotation round yet.</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400">{t("circles.noRound")}</p>
       )}
       {err && <p className="text-[12px] text-red-500">{err}</p>}
       {/* Where the money goes: the circle's collection account is the creator's own wallet */}
       <p className="text-[11px] text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/60 rounded-xl px-3 py-2.5 leading-relaxed">
         {isCreator
-          ? "Members pay into your KudiAI Wallet, and each payout is taken from it. The pot is kept safe in your wallet until you pay out — it can't be spent on anything else."
-          : `Your ${fmt(due)} is paid into ${creatorName}'s KudiAI Wallet, and each payout is paid out of it.`}
-        {circleFeeLabel(group) && ` ${circleFeeLabel(group)}${isCreator ? " — taken from each collector's payout and kept in your wallet (never on your own turn)." : `, kept by ${isCreator ? "you" : creatorName}.`}`}
+          ? t("circles.moneyCreator")
+          : t("circles.moneyMember", { amount: fmt(due), creator: creatorName })}
+        {circleFeeLabel(group, t) && ` ${isCreator
+          ? t("circles.feeKeptCreator", { fee: circleFeeLabel(group, t) })
+          : t("circles.feeKeptBy", { fee: circleFeeLabel(group, t), who: creatorName })}`}
       </p>
       {data.round && (haveIPaid ? (
-        <p className="text-[12px] text-green-600 dark:text-green-400 font-semibold">You've paid for this payout ✓</p>
+        <p className="text-[12px] text-green-600 dark:text-green-400 font-semibold">{t("circles.paidThis")}</p>
       ) : (
         <button onClick={() => { setErr(""); setAskPin(true); }} disabled={busy}
           className="w-full py-3.5 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99]">
-          {busy ? "Paying…" : `Pay my ${fmt(due)} contribution`}
+          {busy ? t("circles.paying") : t("circles.payMy", { amount: fmt(due) })}
         </button>
       ))}
       {askPin && (
-        <TransactionPinModal title="Confirm Contribution" onApprove={payMyShare} onCancel={() => setAskPin(false)} />
+        <TransactionPinModal title={t("circles.confirmContribution")} onApprove={payMyShare} onCancel={() => setAskPin(false)} />
       )}
     </div>
   );
@@ -331,6 +346,7 @@ function CircleActiveView({ detail, groupId, myUserId, reload, onChanged }) {
 
 /* One circle as a dashboard card — on My Circles and on the client's Home, like an owner-run esusu group */
 export function PeerCircleDashboard({ groupId, myUserId, onChanged, onOpen }) {
+  const t = useT();
   const [detail, setDetail] = useState(null);
   const [err,    setErr]    = useState("");
   // Silent reload: the dashboard stays mounted, so its payout success screen isn't lost
@@ -345,17 +361,17 @@ export function PeerCircleDashboard({ groupId, myUserId, onChanged, onOpen }) {
     <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4 space-y-4">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider truncate">{group?.name || "Circle"}</p>
+          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider truncate">{group?.name || t("circles.circle")}</p>
           {group && (
             <p className="text-[10px] text-slate-400 mt-0.5">
-              My circle · {fmt(group.contribution_amount)} / {group.frequency}{detail?.is_creator ? " · You run it" : ""}
-              {circleFeeLabel(group) && <span className="block">{circleFeeLabel(group)}</span>}
+              {t("circles.myCircle")} · {fmt(group.contribution_amount)} / {perFreq(t, group.frequency)}{detail?.is_creator ? ` · ${t("circles.youRunIt")}` : ""}
+              {circleFeeLabel(group, t) && <span className="block">{circleFeeLabel(group, t)}</span>}
             </p>
           )}
         </div>
         {onOpen && group && (
           <button onClick={onOpen} className="text-[10px] font-bold text-brand-500 dark:text-brand-400 px-2 py-1 rounded-lg bg-brand-50 dark:bg-brand-900/20 flex-shrink-0">
-            Members
+            {t("circles.members")}
           </button>
         )}
       </div>
@@ -366,12 +382,12 @@ export function PeerCircleDashboard({ groupId, myUserId, onChanged, onOpen }) {
       )}
       {detail && group.status === "forming" && (
         <p className="text-xs text-slate-500 dark:text-slate-400">
-          Forming — {(detail.members || []).length} member{(detail.members || []).length === 1 ? "" : "s"} so far. {detail.is_creator ? "Invite members and start the circle." : "Waiting for the creator to start it."}
+          {t((detail.members || []).length === 1 ? "circles.formingOne" : "circles.formingMany", { n: (detail.members || []).length })} {detail.is_creator ? t("circles.inviteAndStart") : t("circles.waitingCreator")}
         </p>
       )}
       {detail && (group.status === "completed" || group.status === "cancelled") && (
         <p className="text-xs text-slate-500 dark:text-slate-400">
-          {group.status === "completed" ? "This circle has completed — every member has collected." : "This circle was cancelled."}
+          {group.status === "completed" ? t("circles.completed") : t("circles.cancelled")}
         </p>
       )}
     </div>
@@ -380,6 +396,7 @@ export function PeerCircleDashboard({ groupId, myUserId, onChanged, onOpen }) {
 
 /* Active circles on the client's Home — the same section look as the business's esusu groups */
 export function ActiveCirclesOnHome({ myUserId }) {
+  const t = useT();
   const [ids, setIds] = useState([]);
   useEffect(() => {
     let live = true;
@@ -395,7 +412,7 @@ export function ActiveCirclesOnHome({ myUserId }) {
   if (!myUserId || ids.length === 0) return null;
   return (
     <>
-      <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider px-1 mt-2">My Circles</p>
+      <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider px-1 mt-2">{t("circles.myCircles")}</p>
       {ids.map((id) => <PeerCircleDashboard key={id} groupId={id} myUserId={myUserId} />)}
     </>
   );
@@ -403,6 +420,7 @@ export function ActiveCirclesOnHome({ myUserId }) {
 
 /* ── Circle detail ────────────────────────────────────────────────────── */
 function CircleDetail({ groupId, myUserId, onClose, onChanged }) {
+  const t = useT();
   const [detail,   setDetail]   = useState(null);
   const [loading,  setLoading]  = useState(true);
   const [showInvite, setShowInvite] = useState(false);
@@ -426,8 +444,8 @@ function CircleDetail({ groupId, myUserId, onClose, onChanged }) {
 
   if (loading || !detail) {
     return (
-      <BottomSheet open onClose={onClose} title="Circle">
-        <p className="text-sm text-slate-400 text-center py-8">Loading…</p>
+      <BottomSheet open onClose={onClose} title={t("circles.circle")}>
+        <p className="text-sm text-slate-400 text-center py-8">{t("common.loading")}</p>
       </BottomSheet>
     );
   }
@@ -481,27 +499,27 @@ function CircleDetail({ groupId, myUserId, onClose, onChanged }) {
 
         <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-800/60 rounded-2xl px-4 py-3 mb-4">
           <div>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Per rotation</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">{t("circles.perRotation")}</p>
             <p className="text-lg font-extrabold text-slate-800 dark:text-white">{fmt(group.contribution_amount)}</p>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400">{circleFeeLabel(group) || "No organiser fee"}</p>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">{circleFeeLabel(group, t) || t("circles.noOrganiserFee")}</p>
           </div>
           <div className="text-right">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Status</p>
-            <p className="text-sm font-bold text-brand-600 dark:text-brand-400 capitalize">{group.status}</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">{t("circles.status")}</p>
+            <p className="text-sm font-bold text-brand-600 dark:text-brand-400 capitalize">{statusLabel(t, group.status)}</p>
           </div>
         </div>
 
         {forming && (
           <>
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-2">
-              Members ({orderedMembers.length}) {isCreator && "— reorder before starting"}
+              {t("circles.membersCount", { n: orderedMembers.length })} {isCreator && t("circles.reorderHint")}
             </p>
             <div className="space-y-2 mb-3">
               {orderedMembers.map((m, i) => (
                 <div key={m.id} className="flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl px-3 py-2.5">
                   <span className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-[11px] font-extrabold flex items-center justify-center flex-shrink-0">{i + 1}</span>
                   <span className="flex-1 text-sm font-semibold text-slate-700 dark:text-slate-200 truncate">
-                    {m.display_name}{m.user_id === myUserId ? " (You)" : ""}
+                    {m.display_name}{m.user_id === myUserId ? ` ${t("circles.you")}` : ""}
                   </span>
                   {isCreator && (
                     <div className="flex gap-1 flex-shrink-0">
@@ -516,21 +534,21 @@ function CircleDetail({ groupId, myUserId, onClose, onChanged }) {
             {isCreator && (
               <>
                 {pendingInvites?.length > 0 && (
-                  <p className="text-[11px] text-amber-600 dark:text-amber-400 mb-3">{pendingInvites.length} invite(s) awaiting response</p>
+                  <p className="text-[11px] text-amber-600 dark:text-amber-400 mb-3">{t("circles.invitesAwaiting", { n: pendingInvites.length })}</p>
                 )}
                 <div className="flex gap-2">
                   <button onClick={() => setShowInvite(true)}
                     className="flex-1 py-3 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold text-sm active:scale-[0.98]">
-                    + Invite
+                    {t("circles.inviteBtn")}
                   </button>
                   <button onClick={saveOrder} disabled={busy}
                     className="flex-1 py-3 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-sm disabled:opacity-50 active:scale-[0.98]">
-                    Save order
+                    {t("circles.saveOrder")}
                   </button>
                 </div>
                 <button onClick={startCircle} disabled={busy || orderedMembers.length < 2}
                   className="w-full mt-3 py-3.5 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99]">
-                  {busy ? "Starting…" : orderedMembers.length < 2 ? "Need at least 2 members" : "Start circle"}
+                  {busy ? t("circles.starting") : orderedMembers.length < 2 ? t("circles.needTwo") : t("circles.startCircle")}
                 </button>
               </>
             )}
@@ -542,7 +560,7 @@ function CircleDetail({ groupId, myUserId, onClose, onChanged }) {
         )}
         {(group.status === "completed" || group.status === "cancelled") && (
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            {group.status === "completed" ? "This circle has completed — every member has collected." : "This circle was cancelled."}
+            {group.status === "completed" ? t("circles.completed") : t("circles.cancelled")}
           </p>
         )}
       </BottomSheet>
@@ -557,6 +575,7 @@ function CircleDetail({ groupId, myUserId, onClose, onChanged }) {
 
 /* ── Main screen — list of circles + invites inbox ────────────────────── */
 export default function PeerEsusuScreen({ session, openGroupId: deepLinkGroupId, onDeepLinkHandled }) {
+  const t = useT();
   const myUserId = session?.user?.id;
   const [data,       setData]       = useState(null);
   const [loading,     setLoading]    = useState(true);
@@ -603,7 +622,7 @@ export default function PeerEsusuScreen({ session, openGroupId: deepLinkGroupId,
   return (
     <div className="px-4 pt-4 pb-28 screen-enter space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-extrabold text-slate-800 dark:text-white">My Circles</h1>
+        <h1 className="text-lg font-extrabold text-slate-800 dark:text-white">{t("circles.myCircles")}</h1>
         <button onClick={() => setShowCreate(true)}
           className="w-10 h-10 rounded-full bg-brand-500 text-white flex items-center justify-center active:scale-95 transition-transform">
           <Icon name="plus" size={18} />
@@ -614,25 +633,25 @@ export default function PeerEsusuScreen({ session, openGroupId: deepLinkGroupId,
 
       {data?.invites?.length > 0 && (
         <div className="space-y-2">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Invites for you</p>
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">{t("circles.invitesForYou")}</p>
           {data.invites.map(inv => (
             <div key={inv.id} className="bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-800 rounded-2xl px-4 py-3.5">
               <p className="text-sm font-bold text-slate-800 dark:text-white">"{inv.peer_esusu_groups?.name}"</p>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-2.5">
-                You've been invited to join this Esusu circle
-                {inv.peer_esusu_groups?.contribution_amount ? ` · ${fmt(inv.peer_esusu_groups.contribution_amount)} / ${inv.peer_esusu_groups.frequency}` : ""}
+                {t("circles.invitedToJoin")}
+                {inv.peer_esusu_groups?.contribution_amount ? ` · ${fmt(inv.peer_esusu_groups.contribution_amount)} / ${perFreq(t, inv.peer_esusu_groups.frequency)}` : ""}
                 <span className="block font-semibold text-slate-600 dark:text-slate-300">
-                  {circleFeeLabel(inv.peer_esusu_groups) || "No organiser fee — collectors get the full pot"}
+                  {circleFeeLabel(inv.peer_esusu_groups, t) || t("circles.noFeeFullPot")}
                 </span>
               </p>
               <div className="flex gap-2">
                 <button onClick={() => respondInvite(inv.id, false)} disabled={busyInvite === inv.id}
                   className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold text-xs disabled:opacity-50">
-                  Decline
+                  {t("circles.decline")}
                 </button>
                 <button onClick={() => respondInvite(inv.id, true)} disabled={busyInvite === inv.id}
                   className="flex-1 py-2.5 rounded-xl bg-brand-500 text-white font-bold text-xs disabled:opacity-50">
-                  {busyInvite === inv.id ? "…" : "Accept"}
+                  {busyInvite === inv.id ? "…" : t("circles.accept")}
                 </button>
               </div>
             </div>
@@ -642,11 +661,11 @@ export default function PeerEsusuScreen({ session, openGroupId: deepLinkGroupId,
 
       <div className="space-y-2">
         {loading ? (
-          <p className="text-sm text-slate-400 text-center py-8">Loading…</p>
+          <p className="text-sm text-slate-400 text-center py-8">{t("common.loading")}</p>
         ) : groups.length === 0 ? (
           <div className="text-center py-10">
-            <p className="text-sm text-slate-400 mb-1">No circles yet</p>
-            <p className="text-[12px] text-slate-400">Create one, or wait for an invite</p>
+            <p className="text-sm text-slate-400 mb-1">{t("circles.noCircles")}</p>
+            <p className="text-[12px] text-slate-400">{t("circles.createOrWait")}</p>
           </div>
         ) : groups.map(g => g.status === "active" ? (
           <PeerCircleDashboard key={g.id} groupId={g.id} myUserId={myUserId} onChanged={load} onOpen={() => setOpenGroupId(g.id)} />
@@ -655,8 +674,8 @@ export default function PeerEsusuScreen({ session, openGroupId: deepLinkGroupId,
             className="w-full text-left bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl px-4 py-3.5 flex items-center justify-between active:scale-[0.99] transition-transform">
             <div className="min-w-0">
               <p className="text-sm font-extrabold text-slate-800 dark:text-white truncate">{g.name}</p>
-              <p className="text-[11px] text-slate-400 capitalize">{g.status} · {fmt(g.contribution_amount)} / {g.frequency}</p>
-              {circleFeeLabel(g) && <p className="text-[11px] text-slate-400">{circleFeeLabel(g)}</p>}
+              <p className="text-[11px] text-slate-400 capitalize">{statusLabel(t, g.status)} · {fmt(g.contribution_amount)} / {perFreq(t, g.frequency)}</p>
+              {circleFeeLabel(g, t) && <p className="text-[11px] text-slate-400">{circleFeeLabel(g, t)}</p>}
             </div>
             <Icon name="chevron-right" size={16} className="text-slate-300 flex-shrink-0" />
           </button>

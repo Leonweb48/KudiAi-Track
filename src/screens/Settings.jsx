@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, Fragment } from "react";
 import { canSellPlans } from "../utils/platform";
 import { Capacitor } from "@capacitor/core";
 import { CapacitorUpdater } from "@capgo/capacitor-updater";
@@ -15,11 +15,11 @@ import ForgotPinFlow      from "../components/ForgotPinFlow";
 import { supabase }       from "../utils/supabase";
 import { performLogout }  from "../utils/logout";
 import { DeleteAccountLink } from "../components/shared/DeleteAccountSheet";
-import { canDo, planAvailableText, hasHigherPlanAvailable, getPlanInfo } from "../utils/plans";
+import { canDo, hasHigherPlanAvailable, getPlanInfo, getLowestPlanWithFeature } from "../utils/plans";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
 import { LANGUAGES, getLangMeta, markLangChosen } from "../utils/i18n";
 import { useLanguage, useT } from "../contexts/LanguageContext";
-import { maxDobDate, isAtLeast18, AGE_ERROR } from "../utils/ageValidation";
+import { maxDobDate, isAtLeast18 } from "../utils/ageValidation";
 import { useCampaigns } from "../hooks/useCampaigns";
 import AnnouncementBarSlot from "../components/slots/AnnouncementBarSlot";
 import { computeCompletion, isProfileComplete } from "../utils/profileCompletion";
@@ -37,7 +37,16 @@ const PinBsIcon = () => (
   </svg>
 );
 
+// Fills {name} slots in translated text with React nodes (e.g. bold values) so each language keeps its own word order.
+function richText(text, parts) {
+  return String(text).split(/(\{\w+\})/).map((seg, i) => {
+    const m = seg.match(/^\{(\w+)\}$/);
+    return m && parts[m[1]] !== undefined ? <Fragment key={i}>{parts[m[1]]}</Fragment> : seg;
+  });
+}
+
 function ChangePinModal({ pinLength = 6, title, onVerifyCurrent, onSetNew, onClose, onForgotPin }) {
+  const t = useT();
   const [step,        setStep]       = useState("current");
   const [verifiedPin, setVerifiedPin] = useState("");
   const [newPin,      setNewPin]      = useState("");
@@ -46,12 +55,12 @@ function ChangePinModal({ pinLength = 6, title, onVerifyCurrent, onSetNew, onClo
   const [checking,    setChecking]    = useState(false);
 
   const maxLen = pinLength;
-  const stepTitle = step === "current" ? "Enter current PIN" : step === "new" ? "Enter new PIN" : "Confirm new PIN";
+  const stepTitle = step === "current" ? t("settings.main.pinStepCurrent") : step === "new" ? t("settings.main.pinStepNew") : t("settings.main.pinStepConfirm");
   const stepSub   = step === "current"
-    ? `Your ${pinLength}-digit PIN`
+    ? t("settings.main.pinSubCurrent", { n: pinLength })
     : step === "new"
-    ? `Choose a new ${pinLength}-digit PIN`
-    : "Re-enter your new PIN to confirm";
+    ? t("settings.main.pinSubNew", { n: pinLength })
+    : t("settings.main.pinSubConfirm");
 
   const handleDigit = async (d) => {
     if (pin.length >= maxLen || checking) return;
@@ -66,18 +75,18 @@ function ChangePinModal({ pinLength = 6, title, onVerifyCurrent, onSetNew, onClo
         const result = await onVerifyCurrent(next);
         setChecking(false);
         if (result.success) { setVerifiedPin(next); setPin(""); setStep("new"); }
-        else { setPin(""); setError(result.error || "Incorrect PIN."); }
+        else { setPin(""); setError(result.error || t("settings.main.pinIncorrectDot")); }
         return;
       }
       if (step === "new") { setNewPin(next); setPin(""); setStep("confirm"); return; }
       if (step === "confirm") {
-        if (next !== newPin) { setPin(""); setError("PINs don't match. Try again."); setStep("new"); setNewPin(""); return; }
+        if (next !== newPin) { setPin(""); setError(t("settings.main.pinMismatch")); setStep("new"); setNewPin(""); return; }
         setChecking(true);
         const res = await onSetNew(verifiedPin, next);
         setChecking(false);
         if (res && res.success === false) {
           // nothing changed — start again from the current PIN so the owner isn't told it worked
-          setPin(""); setNewPin(""); setVerifiedPin(""); setStep("current"); setError(res.error || "Couldn't change your PIN.");
+          setPin(""); setNewPin(""); setVerifiedPin(""); setStep("current"); setError(res.error || t("settings.main.pinChangeFailedShort"));
           return;
         }
         onClose();
@@ -114,7 +123,7 @@ function ChangePinModal({ pinLength = 6, title, onVerifyCurrent, onSetNew, onClo
 
         <div className="h-4 -mt-2">
           {error   && <p className="text-xs text-red-500 font-semibold text-center">{error}</p>}
-          {checking && <p className="text-xs text-slate-400 text-center">Checking…</p>}
+          {checking && <p className="text-xs text-slate-400 text-center">{t("settings.main.checking")}</p>}
         </div>
 
         {/* Shared numpad */}
@@ -140,7 +149,7 @@ function ChangePinModal({ pinLength = 6, title, onVerifyCurrent, onSetNew, onClo
         {step === "current" && onForgotPin && (
           <button onClick={onForgotPin}
             className="text-xs text-slate-400 dark:text-slate-500 underline underline-offset-2 py-1">
-            Forgot PIN?
+            {t("settings.main.forgotPin")}
           </button>
         )}
       </div>
@@ -150,6 +159,8 @@ function ChangePinModal({ pinLength = 6, title, onVerifyCurrent, onSetNew, onClo
 
 
 const GENDERS = ["Male", "Female", "Prefer not to say"];
+// Stored gender values stay English; only the label shown changes.
+const GENDER_TKEYS = { "Male": "settings.main.genderMale", "Female": "settings.main.genderFemale", "Prefer not to say": "settings.main.genderNone" };
 
 
 async function uploadProfileImg(file, userId) {
@@ -188,16 +199,17 @@ function VerifyIcon() {
 }
 
 const VERIFY_STATUS_CFG = {
-  unverified:     { label: "Unverified",  color: "#9ca3af" },
-  tier1_failed:   { label: "Failed",      color: "#ef4444" },
-  tier1_verified: { label: "Verified",    color: "#16a34a" },
-  tier2_required: { label: "Action needed", color: "#d97706" },
-  tier2_pending:  { label: "Pending",     color: "#2563eb" },
-  tier2_verified: { label: "Verified ✓✓", color: "#16a34a" },
-  tier2_rejected: { label: "Rejected",    color: "#ef4444" },
+  unverified:     { tkey: "settings.main.verifyUnverified", color: "#9ca3af" },
+  tier1_failed:   { tkey: "settings.main.verifyFailed",     color: "#ef4444" },
+  tier1_verified: { tkey: "settings.main.verifyVerified",   color: "#16a34a" },
+  tier2_required: { tkey: "settings.main.verifyAction",     color: "#d97706" },
+  tier2_pending:  { tkey: "settings.main.verifyPending",    color: "#2563eb" },
+  tier2_verified: { tkey: "settings.main.verifyVerified2",  color: "#16a34a" },
+  tier2_rejected: { tkey: "settings.main.verifyRejected",   color: "#ef4444" },
 };
 
 function VerifyBadge({ status }) {
+  const t = useT();
   const cfg = VERIFY_STATUS_CFG[status] || VERIFY_STATUS_CFG.unverified;
   return (
     <span style={{
@@ -205,16 +217,17 @@ function VerifyBadge({ status }) {
       background: cfg.color + "18", borderRadius: 6,
       padding: "2px 8px", flexShrink: 0,
     }}>
-      {cfg.label}
+      {t(cfg.tkey)}
     </span>
   );
 }
 
 function ProfilePct({ profile }) {
+  const t = useT();
   if (!profile) return null;
   const { pct } = computeCompletion(profile);
   if (isProfileComplete(profile)) {
-    return <span style={{ fontSize: 12, fontWeight: 700, color: "#16a34a" }}>✓ Complete</span>;
+    return <span style={{ fontSize: 12, fontWeight: 700, color: "#16a34a" }}>{t("settings.main.complete")}</span>;
   }
   const r = 10, cx = 13, cy = 13, circ = 2 * Math.PI * r;
   const dash = (pct / 100) * circ;
@@ -299,6 +312,7 @@ const LogoutIconSvg  = () => (
 /* ── Language picker modal ────────────────────────────────────────── */
 function LanguageModal({ current, userId, onClose }) {
   const { changeLang } = useLanguage();
+  const t = useT();
   const pick = (code) => {
     changeLang(code);
     markLangChosen();
@@ -308,9 +322,9 @@ function LanguageModal({ current, userId, onClose }) {
     onClose();
   };
   return (
-    <Modal title="Choose Language" onClose={onClose}>
+    <Modal title={t("settings.main.chooseLang")} onClose={onClose}>
       <p className="text-xs text-slate-400 dark:text-slate-500 mb-4">
-        The AI Assistant will reply in the language you type — this sets the default.
+        {t("settings.main.langHint")}
       </p>
       <div className="space-y-2">
         {LANGUAGES.map(lang => (
@@ -351,6 +365,12 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
   const { lang: langCode }      = useLanguage();
   const t                       = useT();
   const navigate                = useNavigate();
+  // "Available on the X plan" line, in the chosen language (same rules as planAvailableText in utils/plans).
+  const planAvail = (featureKey) => {
+    if (!canSellPlans()) return t("settings.main.planNotIncluded");
+    const p = getLowestPlanWithFeature(featureKey);
+    return p ? t("settings.main.planAvailableOn", { plan: p.name }) : t("settings.main.planUpgradeAccess");
+  };
   const [staffMgmt,     setStaffMgmt]     = useState(false);
   const [editProfile,   setEditProfile]   = useState(false);
   const [fp,            setFp]            = useState({ ...profile });
@@ -438,7 +458,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
     const file = e.target.files[0];
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) {
-      setSaveError("Image must be under 5 MB.");
+      setSaveError(t("settings.main.photoTooBig"));
       return;
     }
     setPhotoFile(file);
@@ -450,7 +470,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
 
   const handleSaveProfile = async () => {
     if (fp.date_of_birth && !isAtLeast18(fp.date_of_birth)) {
-      setSaveError(AGE_ERROR);
+      setSaveError(t("settings.main.ageError"));
       return;
     }
     setSaving(true);
@@ -460,14 +480,14 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
       try {
         imageUrl = await uploadProfileImg(photoFile, session.user.id);
       } catch (err) {
-        setSaveError(`Photo upload failed: ${err.message}`);
+        setSaveError(t("settings.main.photoUploadFailed", { msg: err.message }));
         setSaving(false);
         return;
       }
     }
     const { error } = await setProfile({ ...fp, profile_image_url: imageUrl });
     setSaving(false);
-    if (error) { setSaveError(error.message || "Failed to save."); return; }
+    if (error) { setSaveError(error.message || t("settings.main.failedSaveDot")); return; }
     setEditProfile(false);
   };
 
@@ -475,7 +495,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
     setWcError(""); setWcSuccess(false);
     const nairaVal = parseFloat(wcAmountStr);
     if (!wcAmountStr.trim() || isNaN(nairaVal) || nairaVal <= 0) {
-      setWcError("Enter a valid amount in ₦");
+      setWcError(t("settings.main.enterValidAmount"));
       return;
     }
     const kobo = Math.round(nairaVal * 100);
@@ -486,7 +506,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
       working_capital_as_of:  wcAsOf || null,
     });
     setWcSaving(false);
-    if (error) { setWcError(error.message || "Failed to save"); return; }
+    if (error) { setWcError(error.message || t("settings.main.failedSave")); return; }
     setWcSuccess(true);
     setTimeout(() => setWcSuccess(false), 3000);
   };
@@ -610,12 +630,12 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
       >
         <div className="w-14 h-14 rounded-2xl overflow-hidden flex-shrink-0 border-2 border-slate-100 dark:border-slate-700">
           {avatarSrc
-            ? <img src={avatarSrc} alt="Profile" className="w-full h-full object-cover" />
+            ? <img src={avatarSrc} alt={t("settings.profile")} className="w-full h-full object-cover" />
             : <div className="w-full h-full bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-white font-bold text-xl">{initials}</div>
           }
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-[15px] font-extrabold text-slate-800 dark:text-white truncate">{profile.business_name || profile.owner_name || "Business"}</p>
+          <p className="text-[15px] font-extrabold text-slate-800 dark:text-white truncate">{profile.business_name || profile.owner_name || t("settings.main.business")}</p>
           {profile.business_name && profile.owner_name && (
             <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{profile.owner_name}</p>
           )}
@@ -627,7 +647,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
           onClick={e => { e.stopPropagation(); setShowProfilePreview(true); }}
           className="flex-shrink-0 text-xs font-bold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-900/20 px-3 py-2.5 min-h-[44px] inline-flex items-center rounded-xl active:scale-95 transition"
         >
-          Edit
+          {t("common.edit")}
         </button>
       </button>
 
@@ -655,7 +675,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
       </button>
 
       {/* ── SUBSCRIPTION MANAGEMENT ────────────────────────────────── */}
-      <SectionLabel>Subscription</SectionLabel>
+      <SectionLabel>{t("settings.main.subscription")}</SectionLabel>
       <div className="mb-5 bg-white dark:bg-slate-800 rounded-3xl shadow-card border border-slate-100 dark:border-slate-700/50 overflow-hidden">
         {/* Plan info row */}
         <div className="px-4 py-4 flex items-center justify-between gap-3">
@@ -664,13 +684,13 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
               {planTier > 0 && sub?.expires_at
                 ? cancelDone
-                  ? `Cancels on ${fmt(sub.expires_at)} — moves to Free Plan`
-                  : `${sub?.billing_cycle === "yearly" ? "Annual" : "Monthly"} · Renews ${fmt(sub.expires_at)}`
-                : "Free forever"}
+                  ? t("settings.main.cancelsOn", { date: fmt(sub.expires_at) })
+                  : t(sub?.billing_cycle === "yearly" ? "settings.main.renewsAnnual" : "settings.main.renewsMonthly", { date: fmt(sub.expires_at) })
+                : t("settings.main.freeForever")}
             </p>
           </div>
           <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full flex-shrink-0 ${planBadgeClass}`}>
-            {planTier === 0 ? "Free" : sub?.billing_cycle === "yearly" ? "Yearly" : "Monthly"}
+            {planTier === 0 ? t("settings.main.badgeFree") : sub?.billing_cycle === "yearly" ? t("settings.main.badgeYearly") : t("settings.main.badgeMonthly")}
           </span>
         </div>
 
@@ -679,7 +699,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
           <div className="mx-4 mb-3 flex items-start gap-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 rounded-2xl px-3 py-2.5">
             <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
             <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
-              Your subscription is cancelled. You keep access to <strong>{planName}</strong> until <strong>{fmt(sub.expires_at)}</strong>, then your account moves to the Free Plan.
+              {richText(t("settings.main.cancelledBanner"), { plan: <strong>{planName}</strong>, date: <strong>{fmt(sub.expires_at)}</strong> })}
             </p>
           </div>
         )}
@@ -691,7 +711,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
             <button
               onClick={onUpgrade}
               className={`flex-1 py-2.5 rounded-2xl text-sm font-bold text-white active:scale-95 transition ${planTier >= 2 ? "bg-navy" : planTier >= 1 ? "bg-blue-700" : "bg-brand-600"}`}>
-              {planTier === 0 ? "Upgrade Plan" : hasHigherPlanAvailable(plan) ? "Upgrade Plan" : "Change Plan"}
+              {planTier === 0 ? t("settings.main.upgradePlan") : hasHigherPlanAvailable(plan) ? t("settings.main.upgradePlan") : t("settings.main.changePlan")}
             </button>
           )}
 
@@ -700,7 +720,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
             <button
               onClick={() => setShowCancelModal(true)}
               className="px-4 py-2.5 rounded-2xl text-sm font-semibold text-red-500 border border-red-200 dark:border-red-800/50 bg-red-50 dark:bg-red-900/20 active:scale-95 transition">
-              Cancel
+              {t("common.cancel")}
             </button>
           )}
         </div>
@@ -714,23 +734,25 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
             <div className="w-14 h-14 bg-red-100 dark:bg-red-900/30 rounded-2xl flex items-center justify-center mx-auto mb-4">
               <svg viewBox="0 0 24 24" fill="none" className="w-7 h-7 text-red-500" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
             </div>
-            <h3 className="text-base font-bold text-slate-800 dark:text-white text-center mb-2">Cancel Subscription?</h3>
+            <h3 className="text-base font-bold text-slate-800 dark:text-white text-center mb-2">{t("settings.main.cancelTitle")}</h3>
             <p className="text-sm text-slate-500 dark:text-slate-400 text-center leading-relaxed mb-6">
-              You'll keep full access to <strong className="text-slate-700 dark:text-slate-200">{planName}</strong> until{" "}
-              <strong className="text-slate-700 dark:text-slate-200">{fmt(sub?.expires_at)}</strong>.
-              After that, your account moves to the <strong className="text-slate-700 dark:text-slate-200">Free Plan</strong> automatically.{canSellPlans() ? " You can resubscribe anytime." : ""}
+              {richText(t("settings.main.cancelBody"), {
+                plan: <strong className="text-slate-700 dark:text-slate-200">{planName}</strong>,
+                date: <strong className="text-slate-700 dark:text-slate-200">{fmt(sub?.expires_at)}</strong>,
+                free: <strong className="text-slate-700 dark:text-slate-200">{t("settings.main.freePlan")}</strong>,
+              })}{canSellPlans() ? t("settings.main.resubscribe") : ""}
             </p>
             <div className="space-y-2.5">
               <button
                 onClick={handleCancelSubscription}
                 disabled={cancelling}
                 className="w-full py-3 rounded-2xl font-bold text-sm text-white bg-red-500 active:scale-[0.98] transition disabled:opacity-50">
-                {cancelling ? "Cancelling…" : "Yes, Cancel Subscription"}
+                {cancelling ? t("settings.main.cancelling") : t("settings.main.yesCancel")}
               </button>
               <button
                 onClick={() => setShowCancelModal(false)}
                 className="w-full py-3 rounded-2xl font-bold text-sm text-white bg-green-600 active:scale-[0.98] transition">
-                Keep My Plan
+                {t("settings.main.keepPlan")}
               </button>
             </div>
           </div>
@@ -738,12 +760,12 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
       )}
 
       {/* ── NOTIFICATIONS ──────────────────────────────────────────── */}
-      <SectionLabel>Notifications</SectionLabel>
+      <SectionLabel>{t("settings.notif")}</SectionLabel>
       <SettingsCard>
         <Row
           icon={<BellSettingsIcon />}
-          label="Notification Preferences"
-          sub="Push alerts, in-app bell, category toggles"
+          label={t("settings.main.notifPrefs")}
+          sub={t("settings.main.notifPrefsSub")}
           onClick={() => setShowNotifPrefs(true)}
         />
       </SettingsCard>
@@ -766,8 +788,8 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
               <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
             </svg>
           }
-          label="Voice Feedback"
-          sub="Speak confirmations after transactions and AI replies"
+          label={t("settings.main.voiceFeedback")}
+          sub={t("settings.main.voiceFeedbackSub")}
           onClick={toggleTts}
           right={
             <button
@@ -791,8 +813,8 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
               <path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
             </svg>
           }
-          label="Daily Brief"
-          sub="AI-generated morning summary with voice read-aloud on app open"
+          label={t("settings.main.dailyBrief")}
+          sub={t("settings.main.dailyBriefSub")}
           onClick={toggleBrief}
           right={
             <button
@@ -833,61 +855,61 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
           onClick={() => navigate("/profile")}
           right={<ProfilePct profile={store.profile} />}
         />
-        <Row icon={<UsersIcon />}  label={t("settings.staff")}     sub={canDo(plan, "staffManagement") ? t("settings.staffSub") : planAvailableText("staffManagement")}    onClick={() => canDo(plan, "staffManagement") ? setStaffMgmt(true) : onUpgrade?.()} />
+        <Row icon={<UsersIcon />}  label={t("settings.staff")}     sub={canDo(plan, "staffManagement") ? t("settings.staffSub") : planAvail("staffManagement")}    onClick={() => canDo(plan, "staffManagement") ? setStaffMgmt(true) : onUpgrade?.()} />
         <Row
           icon={<VerifyIcon />}
-          label="Business Verification"
-          sub="Required for paid plans and withdrawals"
+          label={t("settings.main.bizVerify")}
+          sub={t("settings.main.bizVerifySub")}
           onClick={() => navigate("/verification")}
           right={<VerifyBadge status={store.profile?.verification_status} />}
         />
       </SettingsCard>
 
       {/* ── FEATURES ───────────────────────────────────────────────── */}
-      <SectionLabel>Features</SectionLabel>
+      <SectionLabel>{t("settings.main.features")}</SectionLabel>
       <SettingsCard>
         <Row
           icon={<GiftIcon />}
-          label="Loyalty Program"
-          sub={canDo(plan, "loyalty") ? "Points, cashback & referrals" : planAvailableText("loyalty")}
+          label={t("settings.main.loyalty")}
+          sub={canDo(plan, "loyalty") ? t("settings.main.loyaltySub") : planAvail("loyalty")}
           onClick={canDo(plan, "loyalty") ? onLoyalty : onUpgrade}
         />
         <Row
           icon={<BranchIcon />}
-          label="Branch Management"
-          sub={canDo(plan, "branches") ? "Manage branches & staff" : planAvailableText("branches")}
+          label={t("settings.main.branchMgmt")}
+          sub={canDo(plan, "branches") ? t("settings.main.branchSub") : planAvail("branches")}
           onClick={canDo(plan, "branches") ? onBranches : onUpgrade}
         />
         <Row
           icon={<CoopIcon />}
-          label="My Organisations"
-          sub={canDo(plan, "organisation") ? "Cooperatives, associations & groups" : planAvailableText("organisation")}
+          label={t("settings.main.orgs")}
+          sub={canDo(plan, "organisation") ? t("settings.main.orgsSub") : planAvail("organisation")}
           onClick={canDo(plan, "organisation") ? onCoops : onUpgrade}
         />
       </SettingsCard>
 
       {/* ── BUSINESS ───────────────────────────────────────────────── */}
-      <SectionLabel>Business</SectionLabel>
+      <SectionLabel>{t("settings.main.business")}</SectionLabel>
       <SettingsCard>
         <div className="px-4 py-4">
-          <p className="font-semibold text-[15px] text-slate-800 dark:text-slate-100 mb-0.5">Working Capital</p>
+          <p className="font-semibold text-[15px] text-slate-800 dark:text-slate-100 mb-0.5">{t("settings.main.wcTitle")}</p>
           <p className="text-[12px] text-slate-400 dark:text-slate-500 mb-4">
-            Set your declared capital so KudiAI can track how much of it your business has earned or lost.
+            {t("settings.main.wcDesc")}
           </p>
           <label className="block text-[12px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
-            Declared Capital (₦)
+            {t("settings.main.wcLabel")}
           </label>
           <input
             type="number"
             min="0"
             inputMode="numeric"
-            placeholder="e.g. 500000"
+            placeholder={t("settings.main.wcPlaceholder")}
             value={wcAmountStr}
             onChange={e => { setWcAmountStr(e.target.value); setWcError(""); setWcSuccess(false); }}
             className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-3.5 py-2.5 text-sm font-medium text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-400 mb-3"
           />
           <label className="block text-[12px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
-            Count profit from (optional)
+            {t("settings.main.wcFrom")}
           </label>
           <input
             type="date"
@@ -896,36 +918,36 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
             className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-3.5 py-2.5 text-sm font-medium text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-400 mb-4"
           />
           {wcError && <p className="text-[12px] text-red-500 mb-3">{wcError}</p>}
-          {wcSuccess && <p className="text-[12px] text-emerald-600 dark:text-emerald-400 mb-3">Saved</p>}
+          {wcSuccess && <p className="text-[12px] text-emerald-600 dark:text-emerald-400 mb-3">{t("settings.main.saved")}</p>}
           <button
             onClick={handleSaveWorkingCapital}
             disabled={wcSaving}
             className="w-full py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 active:scale-[0.98] text-white font-semibold text-sm transition-colors disabled:opacity-60"
           >
-            {wcSaving ? "Saving…" : "Save"}
+            {wcSaving ? t("common.saving") : t("common.save")}
           </button>
         </div>
       </SettingsCard>
 
       {/* ── SAVINGS PAYMENTS ────────────────────────────────────────── */}
-      <SectionLabel>Savings Payments</SectionLabel>
+      <SectionLabel>{t("settings.main.savingsPayments")}</SectionLabel>
       <SettingsCard>
         <div className="px-4 py-4">
-          <p className="font-semibold text-[15px] text-slate-800 dark:text-slate-100 mb-0.5">Settlement Account</p>
+          <p className="font-semibold text-[15px] text-slate-800 dark:text-slate-100 mb-0.5">{t("settings.main.settlement")}</p>
           <p className="text-[12px] text-slate-400 dark:text-slate-500 mb-4 leading-relaxed">
-            Ajo/Aso client contributions settle straight into your KudiAI wallet — no separate bank account to link.
+            {t("settings.main.settlementDesc")}
           </p>
 
           {wallet.loading ? (
-            <p className="text-[13px] text-slate-400 dark:text-slate-500 py-1">Loading…</p>
+            <p className="text-[13px] text-slate-400 dark:text-slate-500 py-1">{t("common.loading")}</p>
           ) : wallet.hasAccount && wallet.accountState === "retired" ? (
             <div className="space-y-3">
-              <p className="text-[12px] text-red-600 dark:text-red-400">Your old wallet number has stopped receiving money. Get your new number to keep receiving settlements.</p>
+              <p className="text-[12px] text-red-600 dark:text-red-400">{t("settings.main.walletRetired")}</p>
               <button
                 onClick={() => navigate("/wallet")}
                 className="w-full py-2.5 rounded-xl bg-red-600 hover:bg-red-700 active:scale-[0.98] text-white font-semibold text-sm transition-colors"
               >
-                Get my new number
+                {t("settings.main.getNewNumber")}
               </button>
             </div>
           ) : wallet.hasAccount ? (
@@ -938,12 +960,12 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
             </div>
           ) : (
             <div className="space-y-3">
-              <p className="text-[12px] text-amber-600 dark:text-amber-400">Your wallet isn't active yet — activate it to start receiving settlements.</p>
+              <p className="text-[12px] text-amber-600 dark:text-amber-400">{t("settings.main.walletInactive")}</p>
               <button
                 onClick={() => navigate("/wallet")}
                 className="w-full py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 active:scale-[0.98] text-white font-semibold text-sm transition-colors"
               >
-                Activate wallet
+                {t("settings.main.activateWallet")}
               </button>
             </div>
           )}
@@ -956,8 +978,8 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
         {/* App Lock PIN */}
         <Row
           icon={<LockIcon />}
-          label="App Lock PIN"
-          sub={lock?.status?.appPinSet ? "Change your 6-digit unlock PIN" : "Not set"}
+          label={t("settings.main.appLockPin")}
+          sub={lock?.status?.appPinSet ? t("settings.main.appLockPinSub") : t("settings.main.notSet")}
           onClick={() => {
             setChangePinType("app");
             if (lock?.status?.txnPinSet) {
@@ -971,12 +993,12 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
         {/* Transaction PIN */}
         <Row
           icon={<ShieldIcon />}
-          label="Transaction PIN"
+          label={t("settings.main.txnPin")}
           sub={lock?.status?.txnPinSet
             ? lock?.status?.txnPinResetAt
-              ? "Recently reset — high-value ops under 24h review"
-              : "Change your 4-digit payment PIN"
-            : "Not set"}
+              ? t("settings.main.txnPinReset")
+              : t("settings.main.txnPinSub")
+            : t("settings.main.notSet")}
           onClick={() => { setChangePinType("txn"); setShowChangePin(true); }}
         />
 
@@ -992,8 +1014,8 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
                 <circle cx="12" cy="12" r="1" fill="currentColor" />
               </svg>
             }
-            label="Biometric Unlock"
-            sub={lock?.biometricEnabled ? "Fingerprint / Face ID enabled" : "Use biometrics to unlock faster"}
+            label={t("settings.main.biometric")}
+            sub={lock?.biometricEnabled ? t("settings.main.biometricOn") : t("settings.main.biometricOff")}
             onClick={async () => {
               if (lock?.biometricEnabled) {
                 await lock.disableBiometric();
@@ -1017,13 +1039,13 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
               <path d="M12 7v5l3 3" />
             </svg>
           }
-          label="Auto-lock"
+          label={t("settings.main.autoLock")}
           sub={(() => {
-            const t = lock?.autoLockTimeout ?? 300;
-            if (t === 0)   return "Auto-lock is disabled";
-            if (t < 60)    return `Locks after ${t} seconds of inactivity`;
-            const m = t / 60;
-            return `Locks after ${m} minute${m === 1 ? "" : "s"} of inactivity`;
+            const secs = lock?.autoLockTimeout ?? 300;
+            if (secs === 0)   return t("settings.main.autoLockOff");
+            if (secs < 60)    return t("settings.main.lockSecs", { n: secs });
+            const m = secs / 60;
+            return t(m === 1 ? "settings.main.lockMin1" : "settings.main.lockMins", { n: m });
           })()}
           onClick={() => setShowAutoLock(true)}
         />
@@ -1032,16 +1054,16 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
       {/* ── LEGAL ──────────────────────────────────────────────────── */}
       <SectionLabel>{t("settings.legal")}</SectionLabel>
       <SettingsCard>
-        <Row icon={<DocIcon />}  label={t("settings.terms")}   sub="Last updated 1 July 2026"   onClick={() => setLegalScreen("terms")} />
-        <Row icon={<DocIcon />}  label={t("settings.privacy")} sub="NDPA 2023 compliant"         onClick={() => setLegalScreen("privacy")} />
+        <Row icon={<DocIcon />}  label={t("settings.terms")}   sub={t("settings.main.termsUpdated")}   onClick={() => setLegalScreen("terms")} />
+        <Row icon={<DocIcon />}  label={t("settings.privacy")} sub={t("settings.main.ndpa")}         onClick={() => setLegalScreen("privacy")} />
         {acceptedConsent && (
           <Row
             icon={<DocIcon />}
-            label="Your accepted version"
-            sub={`T&C v${acceptedConsent.tnc_version} · Privacy v${acceptedConsent.privacy_version} · ${new Date(acceptedConsent.consented_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`}
+            label={t("settings.main.acceptedVersion")}
+            sub={t("settings.main.consentLine", { tnc: acceptedConsent.tnc_version, privacy: acceptedConsent.privacy_version, date: new Date(acceptedConsent.consented_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) })}
           />
         )}
-        <Row icon={<HelpIcon />} label="Help & Support"        onClick={() => navigate("/help")} />
+        <Row icon={<HelpIcon />} label={t("settings.help")}        onClick={() => navigate("/help")} />
       </SettingsCard>
 
       {/* ── LOG OUT ────────────────────────────────────────────────── */}
@@ -1078,7 +1100,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
       {/* ── Txn PIN gate (before changing app lock PIN) ────────────── */}
       {showTxnGate && (
         <TransactionPinModal
-          title="Confirm Transaction PIN"
+          title={t("settings.main.confirmTxnPin")}
           onApprove={() => { setShowTxnGate(false); setShowChangePin(true); }}
           onCancel={() => setShowTxnGate(false)}
         />
@@ -1087,7 +1109,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
       {/* ── Change PIN modal ───────────────────────────────────────── */}
       {showChangePin && (
         <ChangePinModal
-          title={changePinType === "app" ? "Change App Lock PIN" : "Change Transaction PIN"}
+          title={changePinType === "app" ? t("settings.main.changeAppPin") : t("settings.main.changeTxnPin")}
           pinLength={changePinType === "app" ? 6 : 4}
           onVerifyCurrent={async (pin) => {
             const action = changePinType === "app" ? "verify_app_pin" : "verify_txn_pin";
@@ -1096,7 +1118,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
             }) ?? Promise.resolve({ data: null }));
             return {
               success: !!data?.success,
-              error: data?.success ? null : (data?.locked ? "Too many attempts — try later" : "Incorrect PIN"),
+              error: data?.success ? null : (data?.locked ? t("settings.main.tooManyAttempts") : t("settings.main.incorrectPin")),
             };
           }}
           onSetNew={async (currentPinVerified, newPin) => {
@@ -1107,7 +1129,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
               body: { action, current_pin: currentPinVerified, new_pin: newPin },
             }) ?? Promise.resolve({ data: null, error: null }));
             await lock?.refetch?.();
-            if (error || !data?.success) return { success: false, error: data?.error || "Couldn't change your PIN. Please try again." };
+            if (error || !data?.success) return { success: false, error: data?.error || t("settings.main.changeFailed") };
             return { success: true };
           }}
           onClose={() => setShowChangePin(false)}
@@ -1117,18 +1139,18 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
 
       {/* ── Auto-lock timeout picker ────────────────────────────────── */}
       {showAutoLock && (
-        <Modal title="Auto-lock Timeout" onClose={() => setShowAutoLock(false)}>
+        <Modal title={t("settings.main.autoLockTitle")} onClose={() => setShowAutoLock(false)}>
           <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
-            App will lock automatically after this period of inactivity.
+            {t("settings.main.autoLockDesc")}
           </p>
           <div className="space-y-2">
             {[
-              { value: 30,   label: "30 seconds" },
-              { value: 60,   label: "1 minute" },
-              { value: 300,  label: "5 minutes" },
-              { value: 900,  label: "15 minutes" },
-              { value: 1800, label: "30 minutes" },
-              { value: 0,    label: "Never" },
+              { value: 30,   label: t("settings.main.opt30s") },
+              { value: 60,   label: t("settings.main.opt1m") },
+              { value: 300,  label: t("settings.main.opt5m") },
+              { value: 900,  label: t("settings.main.opt15m") },
+              { value: 1800, label: t("settings.main.opt30m") },
+              { value: 0,    label: t("settings.main.never") },
             ].map(({ value, label }) => (
               <button
                 key={value}
@@ -1158,7 +1180,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
           </div>
           {(lock?.autoLockTimeout ?? 300) === 0 && (
             <p className="mt-3 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-3 py-2.5 leading-relaxed">
-              Your app won&apos;t lock automatically. Anyone with access to your phone may be able to open it.
+              {t("settings.main.noLockWarn")}
             </p>
           )}
         </Modal>
@@ -1175,7 +1197,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
 
       {/* ── Edit profile modal ─────────────────────────────────────── */}
       {editProfile && (
-        <Modal title="Edit Profile" onClose={() => setEditProfile(false)}>
+        <Modal title={t("common.editProfile")} onClose={() => setEditProfile(false)}>
           <div className="space-y-4 max-h-[72dvh] overflow-y-auto pr-1">
 
             {/* Photo */}
@@ -1183,7 +1205,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
               <label className="relative cursor-pointer">
                 <div className="w-24 h-24 rounded-full overflow-hidden flex items-center justify-center border-2 border-brand-200 dark:border-brand-800">
                   {avatarSrc
-                    ? <img src={avatarSrc} alt="profile" className="w-full h-full object-cover" />
+                    ? <img src={avatarSrc} alt={t("settings.main.photoAlt")} className="w-full h-full object-cover" />
                     : <div className="w-full h-full bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-white font-bold text-2xl">{initials}</div>
                   }
                 </div>
@@ -1194,42 +1216,42 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
                 </span>
                 <input type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />
               </label>
-              <p className="text-xs text-slate-400 dark:text-slate-500 mt-2">Tap to change photo</p>
+              <p className="text-xs text-slate-400 dark:text-slate-500 mt-2">{t("settings.main.tapChangePhoto")}</p>
             </div>
 
-            <Field label="Full Name" value={fp.owner_name || ""} placeholder="Your full name"
+            <Field label={t("profile.fullName")} value={fp.owner_name || ""} placeholder={t("settings.main.fullNamePh")}
               onChange={e => setFp(p => ({ ...p, owner_name: e.target.value }))} />
 
-            <Field label="Business Name" value={fp.business_name || ""} placeholder="Your business name"
+            <Field label={t("profile.businessName")} value={fp.business_name || ""} placeholder={t("settings.main.bizNamePh")}
               onChange={e => setFp(p => ({ ...p, business_name: e.target.value }))} />
 
             <div>
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">Gender</label>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">{t("settings.main.gender")}</label>
               <select value={fp.gender || ""} onChange={e => setFp(p => ({ ...p, gender: e.target.value }))} className={inputCls}>
-                <option value="">Select gender…</option>
-                {GENDERS.map(g => <option key={g} value={g}>{g}</option>)}
+                <option value="">{t("settings.main.selectGender")}</option>
+                {GENDERS.map(g => <option key={g} value={g}>{t(GENDER_TKEYS[g])}</option>)}
               </select>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">Date of Birth</label>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">{t("settings.main.dob")}</label>
               <input type="date" value={fp.date_of_birth || ""} max={maxDobDate()}
                 onChange={e => setFp(p => ({ ...p, date_of_birth: e.target.value }))} className={inputCls} />
             </div>
 
-            <Field label="NIN" type="text" inputMode="numeric" placeholder="11-digit NIN" value={fp.nin || ""}
+            <Field label="NIN" type="text" inputMode="numeric" placeholder={t("settings.main.ninPh")} value={fp.nin || ""}
               onChange={e => setFp(p => ({ ...p, nin: e.target.value.replace(/\D/g, "").slice(0, 11) }))} />
 
-            <Field label="Phone Number" type="tel" value={fp.phone || ""}
+            <Field label={t("profile.phone")} type="tel" value={fp.phone || ""}
               onChange={e => setFp(p => ({ ...p, phone: e.target.value }))} placeholder="08012345678" />
 
-            <Field label="Business Address" value={fp.address || ""}
+            <Field label={t("settings.main.bizAddress")} value={fp.address || ""}
               onChange={e => setFp(p => ({ ...p, address: e.target.value }))} placeholder="12 Market Road, Onitsha" />
 
             <div>
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">State</label>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">{t("settings.main.state")}</label>
               <select value={fp.state || ""} onChange={e => handleStateChange(e.target.value)} className={inputCls}>
-                <option value="">Select State…</option>
+                <option value="">{t("settings.main.selectState")}</option>
                 {STATES.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
@@ -1237,15 +1259,15 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
             <div>
               <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">LGA</label>
               <select value={fp.lga || ""} onChange={e => handleLgaChange(e.target.value)} disabled={!fp.state} className={inputCls}>
-                <option value="">{fp.state ? "Select LGA…" : "Select state first"}</option>
+                <option value="">{fp.state ? t("settings.main.selectLga") : t("settings.main.selectStateFirst")}</option>
                 {lgas.map(l => <option key={l} value={l}>{l}</option>)}
               </select>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">Ward</label>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">{t("settings.main.ward")}</label>
               <select value={fp.ward || ""} onChange={e => setFp(p => ({ ...p, ward: e.target.value }))} disabled={!fp.lga} className={inputCls}>
-                <option value="">{fp.lga ? "Select Ward…" : "Select LGA first"}</option>
+                <option value="">{fp.lga ? t("settings.main.selectWard") : t("settings.main.selectLgaFirst")}</option>
                 {wards.map(w => <option key={w} value={w}>{w}</option>)}
               </select>
             </div>
@@ -1258,7 +1280,7 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
 
             <button onClick={handleSaveProfile} disabled={saving}
               className="w-full py-3 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-bold text-sm disabled:opacity-60 transition-colors active:scale-[0.99]">
-              {saving ? "Saving…" : "Save Changes"}
+              {saving ? t("common.saving") : t("settings.main.saveChanges")}
             </button>
           </div>
         </Modal>

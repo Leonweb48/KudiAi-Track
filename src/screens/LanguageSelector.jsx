@@ -1,14 +1,10 @@
 import { useState } from "react";
 import { LANGUAGES, setLang, markLangChosen } from "../utils/i18n";
 import { supabase } from "../utils/supabase";
+import { translate } from "../i18n";
 
-const LABELS = {
-  en:     { title: "Choose your language",  sub: "You can change this anytime in Settings" },
-  pidgin: { title: "Choose your language",  sub: "You fit change am anytime for Settings"  },
-  ha:     { title: "Zaɓi harshen ku",       sub: "Za ku iya canza shi a kowane lokaci a Saiti" },
-  ig:     { title: "Họọ asụsụ gị",         sub: "Ị nwere ike gbanwee ya n'oge ọ bụla na Ntọala" },
-  yo:     { title: "Yan ede rẹ",            sub: "O le yipada rẹ ni akoko eyikeyi ni Eto"     },
-};
+// The screen's own text is shown in the language being picked (live preview), not the stored one, so it
+// reads the tables directly with translate(key, selected) — the stored language changes only on Continue.
 
 export default function LanguageSelector({ userId }) {
   const [selected, setSelected] = useState("en");
@@ -31,7 +27,7 @@ export default function LanguageSelector({ userId }) {
     window.location.reload();
   };
 
-  const L = LABELS[selected] || LABELS.en;
+  const tt = (key, vars) => translate(key, selected, vars);
 
   return (
     <div className="min-h-screen bg-white dark:bg-slate-900 flex flex-col items-center justify-center px-6 py-10">
@@ -40,9 +36,9 @@ export default function LanguageSelector({ userId }) {
 
       {/* Heading — updates live as user picks */}
       <h1 className="text-2xl font-extrabold text-slate-800 dark:text-slate-100 text-center mb-1 tracking-tight transition-all">
-        {L.title}
+        {tt("account.lang.title")}
       </h1>
-      <p className="text-sm text-slate-500 dark:text-slate-400 text-center mb-8">{L.sub}</p>
+      <p className="text-sm text-slate-500 dark:text-slate-400 text-center mb-8">{tt("account.lang.sub")}</p>
 
       {/* Language options */}
       <div className="w-full max-w-sm space-y-3">
@@ -89,16 +85,12 @@ export default function LanguageSelector({ userId }) {
         disabled={saving}
         className="mt-8 w-full max-w-sm py-4 rounded-2xl bg-brand-600 active:bg-brand-700 text-white font-extrabold text-base shadow-lg active:scale-[0.98] transition-all disabled:opacity-60"
       >
-        {saving ? "…" : (selected === "en" ? "Continue" : selected === "pidgin" ? "Continue" : selected === "ha" ? "Ci gaba" : selected === "ig" ? "Gaa n'ihu" : "Tẹsiwaju")}
+        {saving ? "…" : tt("account.lang.continue")}
       </button>
 
       {/* Disclaimer */}
       <p className="mt-5 text-[11px] text-slate-400 dark:text-slate-500 text-center max-w-xs leading-relaxed">
-        {selected === "en"     && "AI responses and the morning brief will be in your chosen language."}
-        {selected === "pidgin" && "AI go reply and morning brief go dey for your language."}
-        {selected === "ha"     && "AI da taƙaitaccen safiya za su kasance cikin harshen ku."}
-        {selected === "ig"     && "AI na nchọpụta ụtụtụ ga-adị n'asụsụ gị."}
-        {selected === "yo"     && "AI ati akọọlẹ owurọ yoo wa ni ede rẹ."}
+        {tt("account.lang.disclaimer")}
       </p>
     </div>
   );

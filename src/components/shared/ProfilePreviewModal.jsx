@@ -1,7 +1,12 @@
 import { useNavigate } from "react-router-dom";
 import { getPlanInfo } from "../../utils/plans";
+import { useT } from "../../contexts/LanguageContext";
+
+// Plan names come from the plans table; the usual three are shown translated, anything else as stored.
+const PLAN_KEYS = { Free: "settings.acct.plan.free", Standard: "settings.acct.plan.standard", Premium: "settings.acct.plan.premium" };
 
 export default function ProfilePreviewModal({ profile, plan, onClose }) {
+  const t = useT();
   const navigate = useNavigate();
   const initials = (profile.business_name || profile.owner_name || "?")[0].toUpperCase();
   const { name: planName, sortOrder: planTier } = getPlanInfo(plan || "free");
@@ -33,14 +38,14 @@ export default function ProfilePreviewModal({ profile, plan, onClose }) {
         <div className="flex flex-col items-center px-6 pt-4 pb-5 text-center">
           <div className="w-20 h-20 rounded-2xl overflow-hidden mb-3 border-2 border-slate-100 dark:border-slate-700 shadow-md">
             {profile.profile_image_url
-              ? <img src={profile.profile_image_url} alt="Profile" className="w-full h-full object-cover" />
+              ? <img src={profile.profile_image_url} alt={t("settings.acct.pv.photoAlt")} className="w-full h-full object-cover" />
               : <div className="w-full h-full bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-white font-bold text-3xl">
                   {initials}
                 </div>
             }
           </div>
           <p className="text-xl font-black text-slate-800 dark:text-white leading-tight">
-            {profile.business_name || profile.owner_name || "Business"}
+            {profile.business_name || profile.owner_name || t("settings.acct.pv.business")}
           </p>
           {profile.business_name && profile.owner_name && (
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">{profile.owner_name}</p>
@@ -50,7 +55,7 @@ export default function ProfilePreviewModal({ profile, plan, onClose }) {
               className="inline-block mt-2 text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full"
               style={planBadgeStyle}
             >
-              {planName}
+              {PLAN_KEYS[planName] ? t(PLAN_KEYS[planName]) : planName}
             </span>
           )}
         </div>
@@ -66,7 +71,7 @@ export default function ProfilePreviewModal({ profile, plan, onClose }) {
                   </svg>
                 </div>
                 <div className="min-w-0">
-                  <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Phone</p>
+                  <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">{t("settings.acct.phone")}</p>
                   <p className="text-sm font-bold text-slate-800 dark:text-white">{profile.phone}</p>
                 </div>
               </div>
@@ -80,7 +85,7 @@ export default function ProfilePreviewModal({ profile, plan, onClose }) {
                   </svg>
                 </div>
                 <div className="min-w-0">
-                  <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Email</p>
+                  <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">{t("profile.email")}</p>
                   <p className="text-sm font-bold text-slate-800 dark:text-white truncate">{profile.email}</p>
                 </div>
               </div>
@@ -94,13 +99,13 @@ export default function ProfilePreviewModal({ profile, plan, onClose }) {
             onClick={onClose}
             className="flex-1 py-3.5 rounded-2xl text-sm font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 active:scale-95 transition"
           >
-            Close
+            {t("common.close")}
           </button>
           <button
             onClick={goEdit}
             className="flex-1 py-3.5 rounded-2xl text-sm font-bold text-white active:scale-95 transition bg-[linear-gradient(135deg,#059669,#047857)]"
           >
-            Edit Profile
+            {t("settings.acct.editProfile")}
           </button>
         </div>
       </div>

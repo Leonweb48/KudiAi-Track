@@ -43,13 +43,14 @@ export default function AIChatWidget({
     { label: t("aiChip.monthlyReport")|| "Monthly Report",  q: "Give me a full monthly business report"                    },
   ], [t]);
 
-  const defaultGreeting = `${t("home.welcome") || "Hi"}! I'm **KudiAI**, your AI business assistant powered by Gemini.\n\nAsk me anything about your sales, credit, stock, Ajo savings, staff, or branches — I know your real data!`;
+  const defaultGreeting = `${t("account.ai.widgetGreetHello")}\n\n${t("account.ai.widgetGreetAsk")}`;
 
   const effectiveQuick    = quickChips   || defaultQuick;
   const effectiveGreeting = greetingProp || defaultGreeting;
 
   const [open,        setOpen]        = useState(false);
-  const [messages,    setMessages]    = useState([{ role: "assistant", text: effectiveGreeting }]);
+  // The greeting row is marked so it re-renders in the current language; history skips it (slice(1)).
+  const [messages,    setMessages]    = useState([{ role: "assistant", text: effectiveGreeting, greeting: true }]);
   const [input,       setInput]       = useState("");
   const [thinking,    setThinking]    = useState(false);
   const [widgetHidden, setWidgetHidden] = useState(() => localStorage.getItem(LS_HIDDEN) === "1");
@@ -164,7 +165,7 @@ export default function AIChatWidget({
         .map(m => ({ role: m.role, text: m.text }));
     } catch {
       setThinking(false);
-      setMessages(prev => [...prev, { role: "assistant", text: "Couldn't load your data. Please refresh and try again.", isError: true }]);
+      setMessages(prev => [...prev, { role: "assistant", text: t("account.ai.loadDataFailed"), isError: true }]);
       return;
     }
 
@@ -188,7 +189,7 @@ export default function AIChatWidget({
       });
       if (firstChunk) {
         setThinking(false);
-        setMessages(prev => [...prev, { role: "assistant", text: "No response received. Please try again.", isError: true }]);
+        setMessages(prev => [...prev, { role: "assistant", text: t("account.ai.noResponse"), isError: true }]);
       }
     } catch (err) {
       setThinking(false);
@@ -247,7 +248,7 @@ export default function AIChatWidget({
         onClick={showWidget}
         style={{ position: "fixed", zIndex: 55, bottom: fabPos.bottom, ...(fabPos.side === "right" ? { right: colOffset } : { left: colOffset }) }}
         className={`w-6 h-12 bg-gradient-to-b from-brand-500 to-brand-700 text-white flex items-center justify-center shadow-lg ${fabPos.side === "right" ? "rounded-l-xl" : "rounded-r-xl"}`}
-        aria-label="Show AI Assistant"
+        aria-label={t("account.ai.showAssistant")}
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" className="w-3 h-3">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
@@ -267,7 +268,7 @@ export default function AIChatWidget({
             onTouchStart={onFabPointerDown}
             className="w-[52px] h-[52px] rounded-full shadow-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-white cursor-grab active:cursor-grabbing touch-none"
             role="button"
-            aria-label="Open AI Assistant"
+            aria-label={t("account.ai.openAssistant")}
           >
             <span className="text-xl leading-none select-none">🤖</span>
           </div>
@@ -278,7 +279,7 @@ export default function AIChatWidget({
             onTouchStart={e => e.stopPropagation()}
             onClick={hideWidget}
             className="absolute -top-1 -right-1 w-[18px] h-[18px] rounded-full bg-slate-500 border border-slate-300 dark:border-slate-600 text-white flex items-center justify-center shadow"
-            aria-label="Hide AI widget"
+            aria-label={t("account.ai.hideAiWidget")}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" className="w-2.5 h-2.5">
               <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -300,15 +301,15 @@ export default function AIChatWidget({
                 <span className="text-sm leading-none">✨</span>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-slate-800 dark:text-white leading-tight">KudiAI Assistant</p>
-                <p className="text-[10px] text-brand-500 dark:text-brand-400 font-medium">Powered by Gemini · knows your real data</p>
+                <p className="text-sm font-bold text-slate-800 dark:text-white leading-tight">{t("account.ai.widgetTitle")}</p>
+                <p className="text-[10px] text-brand-500 dark:text-brand-400 font-medium">{t("account.ai.poweredBy")}</p>
               </div>
               <div className="flex items-center gap-1.5">
                 {/* Hide widget from header too */}
                 <button
                   onClick={hideWidget}
                   className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-red-100 hover:text-red-500 dark:hover:bg-red-900/30 dark:hover:text-red-400 transition-colors"
-                  title="Hide widget"
+                  title={t("account.ai.hideWidget")}
                 >
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" className="w-3.5 h-3.5">
                     <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
@@ -320,7 +321,7 @@ export default function AIChatWidget({
                 <button
                   onClick={() => setOpen(false)}
                   className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600"
-                  title="Close chat"
+                  title={t("account.ai.closeChat")}
                 >
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="w-3.5 h-3.5">
                     <polyline points="18 15 12 9 6 15" />
@@ -345,7 +346,7 @@ export default function AIChatWidget({
                         ? "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-bl-sm border border-red-200 dark:border-red-800"
                         : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-bl-sm border border-slate-200 dark:border-slate-700"
                   }`}>
-                    <FormattedText text={m.text} />
+                    <FormattedText text={m.greeting ? effectiveGreeting : m.text} />
                     {m.isError && (
                       <button
                         onClick={retry}
@@ -354,7 +355,7 @@ export default function AIChatWidget({
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="w-3 h-3">
                           <path d="M1 4v6h6" /><path d="M3.51 15a9 9 0 1 0 .49-3.27" />
                         </svg>
-                        Retry
+                        {t("account.ai.retry")}
                       </button>
                     )}
                   </div>
@@ -405,7 +406,7 @@ export default function AIChatWidget({
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={handleKey}
                 disabled={thinking}
-                placeholder={inputPlaceholder || (thinking ? "KudiAI is thinking…" : "Ask anything…")}
+                placeholder={inputPlaceholder || (thinking ? t("account.ai.thinking") : t("account.ai.askAnything"))}
                 className="flex-1 px-3 py-2 rounded-xl text-xs bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 border border-transparent focus:border-brand-300 dark:focus:border-brand-600 outline-none disabled:opacity-60"
               />
               <button

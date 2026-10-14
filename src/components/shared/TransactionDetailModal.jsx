@@ -21,6 +21,7 @@ import { captureReceiptCanvas } from "../../utils/captureReceipt";
 import { ReceiptCard } from "./ReceiptCard";
 import SupportTicketModal from "./SupportTicketModal";
 import { shareVoucherPDF } from "../../utils/printVouchers";
+import { useT } from "../../contexts/LanguageContext";
 
 const GREEN = '#3da829';
 
@@ -28,6 +29,7 @@ const GREEN = '#3da829';
 
 // ── Electricity token retrieval ───────────────────────────────────────────────
 function TokenSection({ onRetrieveToken }) {
+  const t = useT();
   const [state, setState] = useState({ phase: 'idle', token: null, error: null });
 
   async function fetch() {
@@ -36,14 +38,14 @@ function TokenSection({ onRetrieveToken }) {
       const token = await onRetrieveToken();
       setState({ phase: 'done', token, error: null });
     } catch (e) {
-      setState({ phase: 'error', token: null, error: e.message || 'Could not retrieve token.' });
+      setState({ phase: 'error', token: null, error: e.message || t("sales.tokenError") });
     }
   }
 
   return (
     <div className="bg-amber-50 dark:bg-amber-900/20 rounded-2xl border border-amber-200 dark:border-amber-700 overflow-hidden mb-3">
       <div className="px-4 pt-3 pb-2">
-        <p className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-widest">Electricity Token</p>
+        <p className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-widest">{t("sales.elecToken")}</p>
       </div>
       {state.phase === 'done' ? (
         <div className="px-4 pb-4">
@@ -54,7 +56,7 @@ function TokenSection({ onRetrieveToken }) {
       ) : state.phase === 'error' ? (
         <div className="px-4 pb-4 space-y-2">
           <p className="text-xs text-red-500 dark:text-red-400">{state.error}</p>
-          <button onClick={fetch} className="text-xs font-bold text-emerald-600 dark:text-emerald-400">Try again</button>
+          <button onClick={fetch} className="text-xs font-bold text-emerald-600 dark:text-emerald-400">{t("common.retry")}</button>
         </div>
       ) : (
         <div className="px-4 pb-4">
@@ -64,8 +66,8 @@ function TokenSection({ onRetrieveToken }) {
             className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold text-amber-700 dark:text-amber-400 active:scale-[.98] transition disabled:opacity-60"
           >
             {state.phase === 'loading'
-              ? <><span className="w-3.5 h-3.5 border-2 border-amber-300 border-t-amber-600 rounded-full animate-spin inline-block" /> Retrieving…</>
-              : <>⚡ Retrieve Electricity Token</>
+              ? <><span className="w-3.5 h-3.5 border-2 border-amber-300 border-t-amber-600 rounded-full animate-spin inline-block" /> {t("sales.retrieving")}</>
+              : <>⚡ {t("sales.retrieveToken")}</>
             }
           </button>
         </div>
@@ -76,6 +78,7 @@ function TokenSection({ onRetrieveToken }) {
 
 // ── Share sheet ───────────────────────────────────────────────────────────────
 function ShareSheet({ onOption, onClose }) {
+  const t = useT();
   return (
     <div
       className="fixed inset-0 z-[70] flex items-end justify-center"
@@ -87,7 +90,7 @@ function ShareSheet({ onOption, onClose }) {
         onClick={e => e.stopPropagation()}
       >
         <div className="w-10 h-1 bg-slate-200 dark:bg-slate-600 rounded-full mx-auto mt-3 mb-4" />
-        <p className="text-sm font-bold text-slate-700 dark:text-slate-200 text-center mb-4">Share Receipt</p>
+        <p className="text-sm font-bold text-slate-700 dark:text-slate-200 text-center mb-4">{t("sales.shareReceipt")}</p>
 
         <button
           onClick={() => onOption('image')}
@@ -101,8 +104,8 @@ function ShareSheet({ onOption, onClose }) {
             </svg>
           </div>
           <div className="text-left">
-            <p className="text-sm font-bold text-slate-800 dark:text-slate-100">Share as Image</p>
-            <p className="text-xs text-slate-400 dark:text-slate-500">High-res PNG · WhatsApp, Instagram…</p>
+            <p className="text-sm font-bold text-slate-800 dark:text-slate-100">{t("sales.shareAsImage")}</p>
+            <p className="text-xs text-slate-400 dark:text-slate-500">{t("sales.shareAsImageSub")}</p>
           </div>
         </button>
 
@@ -117,8 +120,8 @@ function ShareSheet({ onOption, onClose }) {
             </svg>
           </div>
           <div className="text-left">
-            <p className="text-sm font-bold text-slate-800 dark:text-slate-100">Save as PDF</p>
-            <p className="text-xs text-slate-400 dark:text-slate-500">Email, print, or save to files</p>
+            <p className="text-sm font-bold text-slate-800 dark:text-slate-100">{t("sales.saveAsPdf")}</p>
+            <p className="text-xs text-slate-400 dark:text-slate-500">{t("sales.saveAsPdfSub")}</p>
           </div>
         </button>
       </div>
@@ -141,6 +144,7 @@ function LoadingOverlay({ label }) {
 
 // ── Main modal ───────────────────────────────────────────────────────────────
 export default function TransactionDetailModal({ data, onClose, onReportIssue, onRetrieveToken }) {
+  const t = useT();
   const receiptRef = useRef(null);
   const [shareOpen,  setShareOpen]  = useState(false);
   const [loading,    setLoading]    = useState(null);
@@ -165,10 +169,10 @@ export default function TransactionDetailModal({ data, onClose, onReportIssue, o
         await saveReceiptPdf(data);
         result = Capacitor.isNativePlatform() ? 'shared' : 'downloaded';
       }
-      if (result === 'downloaded') toast({ title: 'Receipt saved to your downloads folder.', type: 'success' });
+      if (result === 'downloaded') toast({ title: t("sales.receiptSaved"), type: 'success' });
     } catch (e) {
       if (!e?.message?.includes('cancel') && e?.name !== 'AbortError') {
-        toast({ title: 'Could not share receipt. Please try again.', type: 'error' });
+        toast({ title: t("sales.shareFailed"), type: 'error' });
       }
     } finally {
       setLoading(null);
@@ -234,12 +238,12 @@ export default function TransactionDetailModal({ data, onClose, onReportIssue, o
               <div className="px-4 pt-4 pb-1">
                 <div className="bg-amber-50 dark:bg-amber-900/20 rounded-2xl border border-amber-200 dark:border-amber-700 overflow-hidden">
                   <div className="px-4 pt-3 pb-2 flex items-center justify-between">
-                    <p className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-widest">Electricity Token</p>
+                    <p className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-widest">{t("sales.elecToken")}</p>
                     <button
                       onClick={() => { try { navigator.clipboard.writeText(data.elecToken); } catch (_) {} }}
                       className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 active:opacity-60"
                     >
-                      Copy
+                      {t("sales.copy")}
                     </button>
                   </div>
                   <div className="px-4 pb-4">
@@ -255,12 +259,12 @@ export default function TransactionDetailModal({ data, onClose, onReportIssue, o
               <div className="px-4 pt-4 pb-1">
                 <div className="bg-blue-50 dark:bg-blue-900/20 rounded-2xl border border-blue-200 dark:border-blue-700 overflow-hidden">
                   <div className="px-4 pt-3 pb-2 flex items-center justify-between">
-                    <p className="text-[10px] font-bold text-blue-700 dark:text-blue-300 uppercase tracking-widest">Card Details</p>
+                    <p className="text-[10px] font-bold text-blue-700 dark:text-blue-300 uppercase tracking-widest">{t("sales.cardDetails")}</p>
                     <button
                       onClick={() => { try { navigator.clipboard.writeText(data.cardDetails); } catch (_) {} }}
                       className="text-[10px] font-bold text-blue-600 dark:text-blue-400 active:opacity-60"
                     >
-                      Copy
+                      {t("sales.copy")}
                     </button>
                   </div>
                   <div className="px-4 pb-4">
@@ -278,14 +282,14 @@ export default function TransactionDetailModal({ data, onClose, onReportIssue, o
                 {/* Header row */}
                 <div className="flex items-center justify-between gap-2 mb-3">
                   <p className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-widest">
-                    Voucher PINs ({data.pinsArr.length})
+                    {t("sales.voucherPins", { n: data.pinsArr.length })}
                   </p>
                   <div className="flex items-center gap-3">
                     <button
                       onClick={() => shareVoucherPDF(data.pinsArr, data.businessName, data.category, { receiptRef: data.hasRef ? data.receiptRef : "" })}
                       className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 active:opacity-60"
                     >
-                      📤 Share Cards
+                      📤 {t("sales.shareCards")}
                     </button>
                   </div>
                 </div>
@@ -305,7 +309,7 @@ export default function TransactionDetailModal({ data, onClose, onReportIssue, o
                         <div className="px-4 pt-3 pb-1 flex items-center justify-between">
                           <div className="flex items-center gap-2 flex-wrap">
                             {(() => {
-                              const tl  = (data.category || '').toLowerCase().includes('data') ? 'Data' : 'Airtime';
+                              const tl  = (data.category || '').toLowerCase().includes('data') ? t("bill.data") : t("bill.airtime");
                               const lbl = net ? `${net} ${tl} PIN` : `${tl} PIN ${i + 1}`;
                               return <span className="text-[9px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">{lbl}</span>;
                             })()}
@@ -315,7 +319,7 @@ export default function TransactionDetailModal({ data, onClose, onReportIssue, o
                             onClick={() => { try { navigator.clipboard.writeText(bare); } catch (_) {} }}
                             className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 active:opacity-60"
                           >
-                            Copy
+                            {t("sales.copy")}
                           </button>
                         </div>
                         <div className="px-4 pb-1">
@@ -327,7 +331,7 @@ export default function TransactionDetailModal({ data, onClose, onReportIssue, o
                         {(serial || bare) && (
                           <div className="px-4 pb-3 pt-1 flex items-center gap-4 flex-wrap">
                             {serial && <span className="text-[9px] text-slate-400 dark:text-slate-500 font-mono">SN: {serial}</span>}
-                            {bare   && <span className="text-[9px] text-slate-400 dark:text-slate-500 font-mono">Dial: *311*{bare}#</span>}
+                            {bare   && <span className="text-[9px] text-slate-400 dark:text-slate-500 font-mono">{t("sales.dial")} *311*{bare}#</span>}
                           </div>
                         )}
                       </div>
@@ -352,7 +356,7 @@ export default function TransactionDetailModal({ data, onClose, onReportIssue, o
                     }}
                     className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 active:opacity-60"
                   >
-                    Copy All PINs
+                    {t("sales.copyAllPins")}
                   </button>
                 </div>
               </div>
@@ -376,7 +380,7 @@ export default function TransactionDetailModal({ data, onClose, onReportIssue, o
               <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                 <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
               </svg>
-              Report Issue
+              {t("sales.reportIssue")}
             </button>
             <button
               onClick={() => setShareOpen(true)}
@@ -388,14 +392,14 @@ export default function TransactionDetailModal({ data, onClose, onReportIssue, o
                 <polyline points="16 6 12 2 8 6" />
                 <line x1="12" y1="2" x2="12" y2="15" />
               </svg>
-              Share Receipt
+              {t("sales.shareReceipt")}
             </button>
           </div>
         </div>
       </div>
 
       {shareOpen && <ShareSheet onOption={handleShare} onClose={() => setShareOpen(false)} />}
-      {loading   && <LoadingOverlay label={loading === 'image' ? 'Preparing image…' : 'Preparing PDF…'} />}
+      {loading   && <LoadingOverlay label={loading === 'image' ? t("sales.preparingImage") : t("sales.preparingPdf")} />}
 
       {ticketData && (
         <SupportTicketModal

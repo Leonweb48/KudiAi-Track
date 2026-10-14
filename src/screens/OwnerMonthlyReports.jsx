@@ -5,6 +5,22 @@ import { businessHolder, formatWATDate, monthKeyLabel } from "../utils/statement
 import { statementMonths, watToday } from "../utils/statementPeriod";
 import { letterheadFrom } from "../shared/businessReport.js";
 import { saveWalletMonthPdf } from "../utils/generateWalletStatementPdf";
+import { useT } from "../contexts/LanguageContext";
+
+const SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+// On-screen month labels in the chosen language ("2026-10" -> "October 2026"); the PDFs keep their English dates.
+const monthLabel = (t, key) => {
+  const [y, m] = String(key || "").split("-");
+  const i = Number(m);
+  return i >= 1 && i <= 12 ? `${t(`finance.month${i}`)} ${y}` : monthKeyLabel(key);
+};
+// "3 Oct 2026" (formatWATDate) -> the same date with the month name in the chosen language
+const dateLabel = (t, input) => {
+  const text = formatWATDate(input);
+  const [d, mon, y] = text.split(" ");
+  const i = SHORT_MONTHS.indexOf(mon);
+  return i < 0 ? text : `${d} ${t(`finance.monthShort${i + 1}`)} ${y}`;
+};
 
 // The owner's monthly reports (Reports page): for every month, the General Business Report and the Wallet Statement —
 // the same PDFs emailed on the 1st of the next month (server: supabase/functions/owner-reports, the same shared code) —
@@ -23,6 +39,7 @@ function Toggle({ on, onChange, disabled }) {
 }
 
 export default function OwnerMonthlyReports({ profile, highlight = "", onBusinessPdf }) {
+  const t = useT();
   // from the month the business joined (the last 12 months when that isn't known)
   const months = useMemo(() => statementMonths(profile?.created_at || (() => {
     const d = new Date(); d.setMonth(d.getMonth() - 11); return d.toISOString();
@@ -57,14 +74,14 @@ export default function OwnerMonthlyReports({ profile, highlight = "", onBusines
   const setEmail = async (on) => {
     setEmailOn(on); setSaving(true); setError("");
     const { error: e } = await supabase.from("profiles").update({ monthly_reports_email: on }).eq("id", profile.id);
-    if (e) { setEmailOn(!on); setError("Couldn't save that — try again."); }
+    if (e) { setEmailOn(!on); setError(t("finance.couldntSave")); }
     setSaving(false);
   };
 
   const run = async (key, fn) => {
     setBusy(key); setError("");
     try { await fn(); }
-    catch (e) { setError(e?.message || "Could not prepare the report"); }
+    catch (e) { setError(e?.message || t("finance.couldNotPrepare")); }
     finally { setBusy(""); }
   };
   const business = (m) => run(`${m}:business`, () => onBusinessPdf(m));
@@ -80,15 +97,14 @@ export default function OwnerMonthlyReports({ profile, highlight = "", onBusines
   return (
     <div className="space-y-3">
       <div className="rounded-2xl bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800/40 px-4 py-3">
-        <p className="text-[12px] font-bold text-brand-700 dark:text-brand-300">Monthly reports</p>
+        <p className="text-[12px] font-bold text-brand-700 dark:text-brand-300">{t("finance.monthlyReports")}</p>
         <p className="text-[11px] text-brand-700/80 dark:text-brand-300/80 mt-0.5 leading-relaxed">
-          On the 1st of every month we send you last month's <strong>Business Report</strong>{wallet ? <> and <strong>Wallet Statement</strong></> : ""} as PDFs —
-          here in the app{emailOn && email ? <> and to <strong>{email}</strong></> : ""}. Each has a QR code anyone can scan to check it's genuine.
+          {t("finance.monthlyIntro1")}<strong>{t("finance.businessReportTitle")}</strong>{wallet ? <>{t("finance.monthlyIntroAnd")}<strong>{t("finance.walletStatementTitle")}</strong></> : ""}{t("finance.monthlyIntro2")}{emailOn && email ? <>{t("finance.monthlyIntroTo")}<strong>{email}</strong></> : ""}{t("finance.monthlyIntro3")}
         </p>
         <div className="flex items-center gap-3 mt-3 pt-3 border-t border-brand-100 dark:border-brand-800/40">
           <div className="flex-1 min-w-0">
-            <p className="text-[12px] font-bold text-slate-800 dark:text-slate-100">Email them to me</p>
-            <p className="text-[10.5px] text-slate-500 dark:text-slate-400">{emailOn ? "On — PDFs attached to an email on the 1st" : "Off — you'll still get them here in the app"}</p>
+            <p className="text-[12px] font-bold text-slate-800 dark:text-slate-100">{t("finance.emailThemToMe")}</p>
+            <p className="text-[10.5px] text-slate-500 dark:text-slate-400">{emailOn ? t("finance.emailOnNote") : t("finance.emailOffNote")}</p>
           </div>
           <Toggle on={emailOn} onChange={setEmail} disabled={saving} />
         </div>
@@ -102,21 +118,21 @@ export default function OwnerMonthlyReports({ profile, highlight = "", onBusines
                 <Icon name="bills" size={16} className="text-slate-500 dark:text-slate-300" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-[13px] font-bold text-slate-800 dark:text-slate-100">{monthKeyLabel(m)}</p>
+                <p className="text-[13px] font-bold text-slate-800 dark:text-slate-100">{monthLabel(t, m)}</p>
                 <p className="text-[11px] text-slate-400 mt-0.5">
-                  {m === current ? "So far this month" : sent[m] ? `Sent ${formatWATDate(sent[m])}` : "Business report" + (wallet ? " and wallet statement" : "")}
+                  {m === current ? t("finance.soFarThisMonth") : sent[m] ? t("finance.sentOn", { date: dateLabel(t, sent[m]) }) : (wallet ? t("finance.businessAndWallet") : t("finance.businessReport"))}
                 </p>
               </div>
             </div>
             <div className="flex gap-2 mt-2.5 pl-12">
               <button onClick={() => business(m)} disabled={!!busy}
                 className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-brand-600 text-white text-[12px] font-bold disabled:opacity-50 active:scale-95 transition">
-                <Icon name="download" size={13} /> {busy === `${m}:business` ? "Preparing…" : "Business report"}
+                <Icon name="download" size={13} /> {busy === `${m}:business` ? t("finance.preparing") : t("finance.businessReport")}
               </button>
               {wallet && (
                 <button onClick={() => walletPdf(m)} disabled={!!busy}
                   className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-800 dark:bg-slate-600 text-white text-[12px] font-bold disabled:opacity-50 active:scale-95 transition">
-                  <Icon name="download" size={13} /> {busy === `${m}:wallet` ? "Preparing…" : "Wallet statement"}
+                  <Icon name="download" size={13} /> {busy === `${m}:wallet` ? t("finance.preparing") : t("finance.walletStatement")}
                 </button>
               )}
             </div>

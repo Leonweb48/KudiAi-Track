@@ -1,11 +1,12 @@
-import { useState, useRef } from "react";
+import { useState, useRef, Fragment } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../utils/supabase";
 import { STATES, getLGAs, getWards } from "../utils/nigeriaData";
-import { maxDobDate, isAtLeast18, AGE_ERROR } from "../utils/ageValidation";
+import { maxDobDate, isAtLeast18 } from "../utils/ageValidation";
 import { compressImage } from "../utils/compressImage";
 import WalletTierCard from "../components/WalletTierCard";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
+import { useT } from "../contexts/LanguageContext";
 
 // ── Icons ────────────────────────────────────────────────────────────────────
 const ArrowLeft  = () => <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>;
@@ -25,6 +26,34 @@ const BUSINESS_CATEGORIES = [
   "Manufacturing", "Wholesale", "Real Estate", "Other",
 ];
 
+// Stored values stay English; these map each one to the label shown in the chosen language.
+const GENDER_TKEYS = { "Male": "settings.main.genderMale", "Female": "settings.main.genderFemale", "Prefer not to say": "settings.main.genderNone" };
+const CATEGORY_TKEYS = {
+  "Retail & Trading": "settings.prof.catRetail", "Food & Beverage": "settings.prof.catFood", "Fashion & Beauty": "settings.prof.catFashion",
+  "Technology": "settings.prof.catTech", "Agriculture": "settings.prof.catAgric", "Transportation": "settings.prof.catTransport",
+  "Healthcare": "settings.prof.catHealth", "Education": "settings.prof.catEducation", "Construction": "settings.prof.catConstruction",
+  "Entertainment": "settings.prof.catEntertainment", "Finance": "settings.prof.catFinance", "Manufacturing": "settings.prof.catManufacturing",
+  "Wholesale": "settings.prof.catWholesale", "Real Estate": "settings.prof.catRealEstate", "Other": "settings.prof.other",
+};
+const BUSINESS_TYPES = ["Sole Proprietorship","Partnership","Limited Liability Company (LLC)","Non-Governmental Organization (NGO)","Cooperative","Startup","Other"];
+const BUSINESS_TYPE_TKEYS = {
+  "Sole Proprietorship": "settings.prof.typeSole", "Partnership": "settings.prof.typePartnership",
+  "Limited Liability Company (LLC)": "settings.prof.typeLlc", "Non-Governmental Organization (NGO)": "settings.prof.typeNgo",
+  "Cooperative": "settings.prof.typeCoop", "Startup": "settings.prof.typeStartup", "Other": "settings.prof.other",
+};
+const REG_STATUSES = ["Registered","Unregistered","In Process"];
+const REG_STATUS_TKEYS = { "Registered": "settings.prof.regRegistered", "Unregistered": "settings.prof.regUnregistered", "In Process": "settings.prof.regInProcess" };
+// Label for a stored value: the translation when we know the value, otherwise the value itself (user-typed / older data).
+const labelFor = (t, map, v) => (v && map[v] ? t(map[v]) : v);
+
+// Fills {name} slots in translated text with React nodes so each language keeps its own word order.
+function richText(text, parts) {
+  return String(text).split(/(\{\w+\})/).map((seg, i) => {
+    const m = seg.match(/^\{(\w+)\}$/);
+    return m && parts[m[1]] !== undefined ? <Fragment key={i}>{parts[m[1]]}</Fragment> : seg;
+  });
+}
+
 // ── Validation ────────────────────────────────────────────────────────────────
 function isValidPhone(p) {
   if (!p) return true;
@@ -38,6 +67,7 @@ function isValidEmail(e) {
 
 // ── Photo Lightbox ────────────────────────────────────────────────────────────
 function PhotoLightbox({ src, onClose }) {
+  const t = useT();
   return (
     <div
       className="fixed inset-0 z-[200] bg-black/92 flex items-center justify-center p-4"
@@ -51,7 +81,7 @@ function PhotoLightbox({ src, onClose }) {
       </button>
       <img
         src={src}
-        alt="Full size"
+        alt={t("settings.prof.fullSize")}
         className="max-w-full max-h-[85dvh] object-contain rounded-2xl shadow-2xl"
         onClick={e => e.stopPropagation()}
       />
@@ -61,10 +91,11 @@ function PhotoLightbox({ src, onClose }) {
 
 // ── Upload Progress Bar ───────────────────────────────────────────────────────
 function UploadProgressBar({ progress, label }) {
+  const t = useT();
   if (!progress) return null;
   return (
     <div className="mt-2 px-1">
-      <p className="text-[10px] text-slate-400 dark:text-slate-500 mb-1">{label || "Uploading…"} {progress}%</p>
+      <p className="text-[10px] text-slate-400 dark:text-slate-500 mb-1">{label || t("settings.prof.uploadingDots")} {progress}%</p>
       <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-1 overflow-hidden">
         <div
           className="h-full bg-brand-500 rounded-full transition-all duration-200"
@@ -77,6 +108,7 @@ function UploadProgressBar({ progress, label }) {
 
 // ── Phone Verify Modal ────────────────────────────────────────────────────────
 function PhoneVerifyModal({ currentEmail, newPhone, onVerified, onClose }) {
+  const t = useT();
   const [sent,    setSent]    = useState(false);
   const [otp,     setOtp]     = useState("");
   const [error,   setError]   = useState("");
@@ -90,12 +122,12 @@ function PhoneVerifyModal({ currentEmail, newPhone, onVerified, onClose }) {
       options: { shouldCreateUser: false },
     });
     setLoading(false);
-    if (e) { setError("Could not send code. Please try again."); return; }
+    if (e) { setError(t("settings.prof.sendCodeFailed")); return; }
     setSent(true);
   };
 
   const verifyOtp = async () => {
-    if (otp.length !== 6) { setError("Enter the full 6-digit code."); return; }
+    if (otp.length !== 6) { setError(t("settings.prof.enterFullCode")); return; }
     setLoading(true);
     setError("");
     const { error: e } = await supabase.auth.verifyOtp({
@@ -104,7 +136,7 @@ function PhoneVerifyModal({ currentEmail, newPhone, onVerified, onClose }) {
       type: "email",
     });
     setLoading(false);
-    if (e) { setError("Invalid or expired code. Try again."); return; }
+    if (e) { setError(t("settings.prof.invalidCode")); return; }
     onVerified();
   };
 
@@ -112,11 +144,11 @@ function PhoneVerifyModal({ currentEmail, newPhone, onVerified, onClose }) {
     <div className="fixed inset-0 z-[120] bg-black/60 flex items-end sm:items-center justify-center p-4">
       <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-sm p-6 shadow-2xl">
         <p className="text-3xl text-center mb-3">📱</p>
-        <p className="text-base font-bold text-slate-800 dark:text-white mb-2 text-center">Verify Phone Change</p>
+        <p className="text-base font-bold text-slate-800 dark:text-white mb-2 text-center">{t("settings.prof.verifyPhoneTitle")}</p>
         <p className="text-sm text-slate-500 dark:text-slate-400 mb-5 text-center leading-relaxed">
           {sent
-            ? <>Enter the 6-digit code sent to <span className="font-semibold text-slate-700 dark:text-slate-200">{currentEmail}</span>.</>
-            : <>To update your phone to <span className="font-semibold text-slate-700 dark:text-slate-200">{newPhone}</span>, confirm your identity.</>}
+            ? richText(t("settings.prof.codeSentTo"), { email: <span className="font-semibold text-slate-700 dark:text-slate-200">{currentEmail}</span> })
+            : richText(t("settings.prof.updatePhoneTo"), { phone: <span className="font-semibold text-slate-700 dark:text-slate-200">{newPhone}</span> })}
         </p>
 
         {error && (
@@ -129,7 +161,7 @@ function PhoneVerifyModal({ currentEmail, newPhone, onVerified, onClose }) {
             disabled={loading}
             className="w-full py-3 rounded-2xl bg-brand-600 text-white text-sm font-bold mb-3 active:scale-[0.98] transition disabled:opacity-60"
           >
-            {loading ? "Sending…" : "Send Verification Code"}
+            {loading ? t("settings.prof.sending") : t("settings.prof.sendCode")}
           </button>
         ) : (
           <>
@@ -145,13 +177,13 @@ function PhoneVerifyModal({ currentEmail, newPhone, onVerified, onClose }) {
               disabled={loading || otp.length !== 6}
               className="w-full py-3 rounded-2xl bg-brand-600 text-white text-sm font-bold mb-3 active:scale-[0.98] transition disabled:opacity-50"
             >
-              {loading ? "Verifying…" : "Confirm Change"}
+              {loading ? t("settings.prof.verifying") : t("settings.prof.confirmChange")}
             </button>
           </>
         )}
 
         <button onClick={onClose} className="w-full text-sm text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 py-1">
-          Cancel
+          {t("common.cancel")}
         </button>
       </div>
     </div>
@@ -174,6 +206,7 @@ function SectionCard({ title, children }) {
 
 // ── Profile Row ───────────────────────────────────────────────────────────────
 function ProfileRow({ label, value, mono = false, editing, children }) {
+  const t = useT();
   return (
     <div className="px-4 py-3 flex items-start gap-3">
       <p className="text-xs text-slate-400 dark:text-slate-500 w-28 flex-shrink-0 pt-0.5">{label}</p>
@@ -181,7 +214,7 @@ function ProfileRow({ label, value, mono = false, editing, children }) {
         <div className="flex-1 min-w-0">{children}</div>
       ) : (
         <p className={`flex-1 text-sm font-semibold text-slate-800 dark:text-slate-100 break-words ${mono ? "font-mono" : ""}`}>
-          {value || <span className="text-slate-300 dark:text-slate-600 font-normal italic">Not set</span>}
+          {value || <span className="text-slate-300 dark:text-slate-600 font-normal italic">{t("settings.main.notSet")}</span>}
         </p>
       )}
     </div>
@@ -190,19 +223,18 @@ function ProfileRow({ label, value, mono = false, editing, children }) {
 
 // ── Email Change Banner ───────────────────────────────────────────────────────
 function EmailChangeBanner({ newEmail, onClose }) {
+  const t = useT();
   return (
     <div className="fixed inset-0 z-[120] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4">
       <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-sm p-6 shadow-2xl">
         <p className="text-3xl text-center mb-3">📧</p>
-        <p className="text-base font-bold text-slate-800 dark:text-white mb-2 text-center">Confirm your new email</p>
+        <p className="text-base font-bold text-slate-800 dark:text-white mb-2 text-center">{t("settings.prof.confirmEmailTitle")}</p>
         <p className="text-sm text-slate-500 dark:text-slate-400 mb-5 text-center leading-relaxed">
-          A confirmation link was sent to{" "}
-          <span className="font-semibold text-slate-700 dark:text-slate-200">{newEmail}</span>.
-          Click the link in that email to complete the change.
+          {richText(t("settings.prof.confirmEmailBody"), { email: <span className="font-semibold text-slate-700 dark:text-slate-200">{newEmail}</span> })}
         </p>
         <button onClick={onClose}
           className="w-full py-3 rounded-2xl bg-brand-600 text-white text-sm font-bold active:scale-95">
-          Got it
+          {t("settings.prof.gotIt")}
         </button>
       </div>
     </div>
@@ -211,6 +243,7 @@ function EmailChangeBanner({ newEmail, onClose }) {
 
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function Profile({ store, session, plan }) {
+  const t = useT();
   const navigate = useNavigate();
   const { walletEnabled } = usePlatformConfig();
   const profile  = store?.profile || {};
@@ -265,19 +298,19 @@ export default function Profile({ store, session, plan }) {
   const validate = () => {
     const errs = {};
     if (fp.phone && !isValidPhone(fp.phone)) {
-      errs.phone = "Enter a valid Nigerian phone number (e.g. 08012345678 or +2348012345678)";
+      errs.phone = t("settings.prof.invalidPhoneLong");
     }
     if (fp.business_phone && !isValidPhone(fp.business_phone)) {
-      errs.business_phone = "Enter a valid Nigerian phone number";
+      errs.business_phone = t("settings.prof.invalidPhone");
     }
     if (fp.business_email && !isValidEmail(fp.business_email)) {
-      errs.business_email = "Enter a valid email address";
+      errs.business_email = t("settings.prof.invalidEmail");
     }
     if (fp.email && fp.email !== email && !isValidEmail(fp.email)) {
-      errs.email = "Enter a valid email address";
+      errs.email = t("settings.prof.invalidEmail");
     }
     if (fp.date_of_birth && !isAtLeast18(fp.date_of_birth)) {
-      errs.date_of_birth = AGE_ERROR;
+      errs.date_of_birth = t("settings.main.ageError");
     }
     setFieldErrors(errs);
     return Object.keys(errs).length === 0;
@@ -307,11 +340,11 @@ export default function Profile({ store, session, plan }) {
     setErr("");
     const isImage = file.type.startsWith("image/");
     if (!isImage) {
-      setErr("Please choose an image file (JPG, PNG, WEBP…).");
+      setErr(t("settings.prof.notImage"));
       return;
     }
     if (file.size > MAX_IMG_BYTES) {
-      setErr("Image must be under 5 MB. Please choose a smaller file.");
+      setErr(t("settings.prof.imageTooBig"));
       return;
     }
     const reader = new FileReader();
@@ -367,7 +400,7 @@ export default function Profile({ store, session, plan }) {
         profile_image_url: imageUrl,
         store_image_url:   logoUrl,
       });
-      if (error) throw new Error(error.message || "Failed to save");
+      if (error) throw new Error(error.message || t("settings.main.failedSave"));
 
       // Optional: flag legal identity change for admin review
       if (flagLegalChange && isLegalChange) {
@@ -388,7 +421,7 @@ export default function Profile({ store, session, plan }) {
       setSaveOk(true);
       setTimeout(() => { setSaveOk(false); if (!fp.email || fp.email === email) setEditing(false); }, 1400);
     } catch (err) {
-      setSaveError(err.message || "Failed to save. Please try again.");
+      setSaveError(err.message || t("settings.prof.saveFailedRetry"));
     } finally {
       setSaving(false);
     }
@@ -420,12 +453,12 @@ export default function Profile({ store, session, plan }) {
           <button onClick={() => navigate("/settings")} className="text-slate-600 dark:text-slate-300 active:scale-90 transition">
             <ArrowLeft />
           </button>
-          <h1 className="text-[22px] font-bold text-slate-900 dark:text-white flex-1">My Profile</h1>
+          <h1 className="text-[22px] font-bold text-slate-900 dark:text-white flex-1">{t("settings.prof.myProfile")}</h1>
           <button
             onClick={openEdit}
             className="flex items-center gap-1.5 text-xs font-bold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-900/20 px-3 py-1.5 rounded-xl active:scale-95 transition"
           >
-            <EditIcon /> Edit
+            <EditIcon /> {t("common.edit")}
           </button>
         </div>
 
@@ -437,7 +470,7 @@ export default function Profile({ store, session, plan }) {
           >
             {avatarSrc ? (
               <>
-                <img src={avatarSrc} alt="Profile" className="w-full h-full object-cover" />
+                <img src={avatarSrc} alt={t("settings.profile")} className="w-full h-full object-cover" />
                 <div className="absolute inset-0 bg-black/0 group-active:bg-black/20 transition flex items-center justify-center opacity-0 group-active:opacity-100">
                   <ZoomIcon />
                 </div>
@@ -453,18 +486,18 @@ export default function Profile({ store, session, plan }) {
               onClick={() => setLightboxSrc(avatarSrc)}
               className="text-[11px] text-slate-400 dark:text-slate-500 flex items-center gap-1 mb-2 active:text-brand-500"
             >
-              <ZoomIcon /> <span style={{ width: "3px" }} />{" "}Tap to enlarge
+              <ZoomIcon /> <span style={{ width: "3px" }} />{" "}{t("settings.prof.tapEnlarge")}
             </button>
           )}
           <p className="text-lg font-extrabold text-slate-800 dark:text-white">
-            {profile.business_name || profile.owner_name || "Your Business"}
+            {profile.business_name || profile.owner_name || t("settings.prof.yourBusiness")}
           </p>
           {profile.business_name && profile.full_name && (
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">{profile.full_name}</p>
           )}
           {profile.business_category && (
             <span className="mt-2 text-[11px] font-semibold text-brand-700 dark:text-brand-400 bg-brand-50 dark:bg-brand-900/20 px-2.5 py-1 rounded-full">
-              {profile.business_category}
+              {labelFor(t, CATEGORY_TKEYS, profile.business_category)}
             </span>
           )}
         </div>
@@ -478,68 +511,68 @@ export default function Profile({ store, session, plan }) {
           )}
 
           {/* Personal Information */}
-          <SectionCard title="Personal Information">
-            <ProfileRow label="Full Name"     value={profile.full_name} />
-            <ProfileRow label="Email"         value={email} />
-            <ProfileRow label="Phone"         value={profile.phone} />
-            <ProfileRow label="Gender"        value={profile.gender} />
-            <ProfileRow label="Date of Birth" value={fmtDate(profile.date_of_birth)} />
+          <SectionCard title={t("settings.prof.personalInfo")}>
+            <ProfileRow label={t("profile.fullName")} value={profile.full_name} />
+            <ProfileRow label={t("profile.email")} value={email} />
+            <ProfileRow label={t("settings.prof.phone")} value={profile.phone} />
+            <ProfileRow label={t("settings.main.gender")} value={labelFor(t, GENDER_TKEYS, profile.gender)} />
+            <ProfileRow label={t("settings.main.dob")} value={fmtDate(profile.date_of_birth)} />
             <ProfileRow label="NIN"           value={profile.nin ? `${profile.nin.slice(0, 4)}·····${profile.nin.slice(-2)}` : null} mono />
-            <ProfileRow label="Home Address"  value={profile.address} />
-            <ProfileRow label="State"         value={profile.state} />
+            <ProfileRow label={t("settings.prof.homeAddress")} value={profile.address} />
+            <ProfileRow label={t("settings.main.state")} value={profile.state} />
             <ProfileRow label="LGA"           value={profile.lga} />
-            <ProfileRow label="Ward"          value={profile.ward} />
+            <ProfileRow label={t("settings.main.ward")} value={profile.ward} />
           </SectionCard>
 
           {/* Business Information */}
-          <SectionCard title="Business Information">
-            <ProfileRow label="Business Name"  value={profile.business_name} />
-            <ProfileRow label="Industry"       value={profile.industry || profile.business_category} />
-            <ProfileRow label="Business Type"  value={profile.business_type} />
-            <ProfileRow label="Reg. Status"    value={profile.reg_status} />
-            <ProfileRow label="Reg. Number"    value={profile.business_registration_number} />
-            <ProfileRow label="Business Phone" value={profile.business_phone} />
-            <ProfileRow label="Business Email" value={profile.business_email} />
-            <ProfileRow label="Country"        value={profile.business_country} />
-            <ProfileRow label="Business State" value={profile.business_state} />
-            <ProfileRow label="Business LGA"   value={profile.business_lga} />
-            <ProfileRow label="Business Ward"  value={profile.business_ward} />
-            <ProfileRow label="Business Addr"  value={profile.business_address} />
-            <ProfileRow label="Business Size"   value={profile.business_size} />
-            <ProfileRow label="Target Market"   value={profile.target_market} />
-            <ProfileRow label="Operating Model" value={profile.operating_model} />
-            <ProfileRow label="Products/Svcs"   value={profile.products_services_type} />
+          <SectionCard title={t("settings.prof.businessInfo")}>
+            <ProfileRow label={t("profile.businessName")} value={profile.business_name} />
+            <ProfileRow label={t("settings.prof.industry")} value={labelFor(t, CATEGORY_TKEYS, profile.industry || profile.business_category)} />
+            <ProfileRow label={t("settings.prof.businessType")} value={labelFor(t, BUSINESS_TYPE_TKEYS, profile.business_type)} />
+            <ProfileRow label={t("settings.prof.regStatusShort")} value={labelFor(t, REG_STATUS_TKEYS, profile.reg_status)} />
+            <ProfileRow label={t("settings.prof.regNumberShort")} value={profile.business_registration_number} />
+            <ProfileRow label={t("settings.prof.businessPhone")} value={profile.business_phone} />
+            <ProfileRow label={t("settings.prof.businessEmail")} value={profile.business_email} />
+            <ProfileRow label={t("settings.prof.country")} value={profile.business_country} />
+            <ProfileRow label={t("settings.prof.businessState")} value={profile.business_state} />
+            <ProfileRow label={t("settings.prof.businessLga")} value={profile.business_lga} />
+            <ProfileRow label={t("settings.prof.businessWard")} value={profile.business_ward} />
+            <ProfileRow label={t("settings.prof.businessAddrShort")} value={profile.business_address} />
+            <ProfileRow label={t("settings.prof.businessSize")} value={profile.business_size} />
+            <ProfileRow label={t("settings.prof.targetMarket")} value={profile.target_market} />
+            <ProfileRow label={t("settings.prof.operatingModel")} value={profile.operating_model} />
+            <ProfileRow label={t("settings.prof.productsShort")} value={profile.products_services_type} />
             {profile.reg_doc_url && (
               <div className="px-4 py-3 flex items-center gap-3">
-                <p className="text-xs text-slate-400 dark:text-slate-500 w-28 flex-shrink-0">Reg. Document</p>
+                <p className="text-xs text-slate-400 dark:text-slate-500 w-28 flex-shrink-0">{t("settings.prof.regDocument")}</p>
                 <a href={profile.reg_doc_url} target="_blank" rel="noopener noreferrer"
                   className="text-xs font-semibold text-brand-600 dark:text-brand-400 underline underline-offset-2">
-                  View Document
+                  {t("settings.prof.viewDocument")}
                 </a>
               </div>
             )}
 
             {/* Invoice Logo */}
             <div className="px-4 py-3 flex items-center gap-3">
-              <p className="text-xs text-slate-400 dark:text-slate-500 w-28 flex-shrink-0">Invoice Logo</p>
+              <p className="text-xs text-slate-400 dark:text-slate-500 w-28 flex-shrink-0">{t("settings.prof.invoiceLogo")}</p>
               {logoSrc || profile.store_image_url ? (
                 <img
                   src={logoSrc || profile.store_image_url}
-                  alt="Store logo"
+                  alt={t("settings.prof.storeLogoAlt")}
                   className="w-14 h-14 rounded-2xl object-cover border border-slate-100 dark:border-slate-700 cursor-pointer active:scale-95 transition shadow-sm"
                   onClick={() => setLightboxSrc(logoSrc || profile.store_image_url)}
                 />
               ) : (
-                <span className="text-xs text-slate-300 dark:text-slate-600 italic">Not set</span>
+                <span className="text-xs text-slate-300 dark:text-slate-600 italic">{t("settings.main.notSet")}</span>
               )}
             </div>
           </SectionCard>
 
           {/* Account (read-only) */}
-          <SectionCard title="Account">
-            <ProfileRow label="Member Since" value={fmtDate(memberSince)} />
-            <ProfileRow label="Plan"         value={plan?.name || "Free Plan"} />
-            <ProfileRow label="Currency"     value={profile.currency || "NGN"} />
+          <SectionCard title={t("settings.account")}>
+            <ProfileRow label={t("settings.prof.memberSince")} value={fmtDate(memberSince)} />
+            <ProfileRow label={t("settings.prof.plan")} value={plan?.name || t("settings.main.freePlan")} />
+            <ProfileRow label={t("settings.prof.currency")} value={profile.currency || "NGN"} />
           </SectionCard>
         </div>
       </div>
@@ -572,13 +605,13 @@ export default function Profile({ store, session, plan }) {
         <button onClick={() => setEditing(false)} className="text-slate-600 dark:text-slate-300 active:scale-90 transition">
           <XIcon />
         </button>
-        <h1 className="text-[17px] font-bold text-slate-900 dark:text-white flex-1">Edit Profile</h1>
+        <h1 className="text-[17px] font-bold text-slate-900 dark:text-white flex-1">{t("common.editProfile")}</h1>
         <button
           onClick={handleSave}
           disabled={saving || saveOk}
           className="flex items-center gap-1.5 text-xs font-bold text-white bg-brand-600 px-3 py-1.5 rounded-xl active:scale-95 transition disabled:opacity-60"
         >
-          {saveOk ? <><CheckIcon /> Saved!</> : saving ? "Saving…" : <><CheckIcon /> Save</>}
+          {saveOk ? <><CheckIcon /> {t("settings.prof.savedBang")}</> : saving ? t("common.saving") : <><CheckIcon /> {t("common.save")}</>}
         </button>
       </div>
 
@@ -596,7 +629,7 @@ export default function Profile({ store, session, plan }) {
             <label className="relative cursor-pointer active:scale-95 transition">
               <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-brand-200 dark:border-brand-800">
                 {avatarSrc
-                  ? <img src={avatarSrc} alt="profile" className="w-full h-full object-cover" />
+                  ? <img src={avatarSrc} alt={t("settings.main.photoAlt")} className="w-full h-full object-cover" />
                   : <div className="w-full h-full bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-white font-bold text-2xl">{initials}</div>
                 }
               </div>
@@ -605,9 +638,9 @@ export default function Profile({ store, session, plan }) {
               </span>
               <input ref={photoRef} type="file" accept="image/jpeg,image/png" className="hidden" onChange={e => handlePhotoChange(e, "avatar")} />
             </label>
-            <p className="text-[10px] text-slate-400 dark:text-slate-500">Profile Photo</p>
+            <p className="text-[10px] text-slate-400 dark:text-slate-500">{t("settings.prof.profilePhoto")}</p>
             {photoErr && <p className="text-[10px] text-red-500 text-center max-w-[100px]">{photoErr}</p>}
-            {uploadLabel === "Uploading photo" && <UploadProgressBar progress={uploadProgress} label="Uploading" />}
+            {uploadLabel === "Uploading photo" && <UploadProgressBar progress={uploadProgress} label={t("settings.prof.uploading")} />}
           </div>
 
           {/* Store logo */}
@@ -615,7 +648,7 @@ export default function Profile({ store, session, plan }) {
             <label className="relative cursor-pointer active:scale-95 transition">
               <div className="w-20 h-20 rounded-2xl overflow-hidden border-2 border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700">
                 {logoSrc
-                  ? <img src={logoSrc} alt="store" className="w-full h-full object-cover" />
+                  ? <img src={logoSrc} alt={t("settings.prof.storeAlt")} className="w-full h-full object-cover" />
                   : <div className="w-full h-full flex items-center justify-center text-slate-300 dark:text-slate-500 text-3xl">🏪</div>
                 }
               </div>
@@ -624,24 +657,24 @@ export default function Profile({ store, session, plan }) {
               </span>
               <input ref={logoRef} type="file" accept="image/jpeg,image/png" className="hidden" onChange={e => handlePhotoChange(e, "logo")} />
             </label>
-            <p className="text-[10px] text-slate-400 dark:text-slate-500">Invoice Logo</p>
+            <p className="text-[10px] text-slate-400 dark:text-slate-500">{t("settings.prof.invoiceLogo")}</p>
             {logoErr && <p className="text-[10px] text-red-500 text-center max-w-[100px]">{logoErr}</p>}
-            {uploadLabel === "Uploading logo" && <UploadProgressBar progress={uploadProgress} label="Uploading" />}
+            {uploadLabel === "Uploading logo" && <UploadProgressBar progress={uploadProgress} label={t("settings.prof.uploading")} />}
           </div>
         </div>
-        <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center -mt-2">JPG, PNG or WEBP · up to 5 MB (compressed before upload)</p>
+        <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center -mt-2">{t("settings.prof.photoHint")}</p>
 
         {/* ── Personal Information ───────────────────────────────────────── */}
         <div>
-          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-3 px-1">Personal Information</p>
+          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-3 px-1">{t("settings.prof.personalInfo")}</p>
           <div className="space-y-3">
             <div>
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Full Name</label>
-              <input value={fp.full_name || ""} onChange={e => setFp(p => ({ ...p, full_name: e.target.value }))} placeholder="Your full name" className={inputCls} />
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">{t("profile.fullName")}</label>
+              <input value={fp.full_name || ""} onChange={e => setFp(p => ({ ...p, full_name: e.target.value }))} placeholder={t("settings.main.fullNamePh")} className={inputCls} />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Email Address</label>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">{t("settings.prof.emailAddress")}</label>
               <input
                 value={fp.email !== undefined ? fp.email : email}
                 onChange={e => setFp(p => ({ ...p, email: e.target.value }))}
@@ -652,13 +685,13 @@ export default function Profile({ store, session, plan }) {
               {fieldErrors.email && <p className="text-[10px] text-red-500 mt-1">{fieldErrors.email}</p>}
               {fp.email && fp.email !== email && !fieldErrors.email && (
                 <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">
-                  A verification link will be sent to this email to confirm the change.
+                  {t("settings.prof.emailVerifyNote")}
                 </p>
               )}
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Phone Number</label>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">{t("profile.phone")}</label>
               <input
                 value={fp.phone || ""}
                 onChange={e => setFp(p => ({ ...p, phone: e.target.value }))}
@@ -669,21 +702,21 @@ export default function Profile({ store, session, plan }) {
               {fieldErrors.phone && <p className="text-[10px] text-red-500 mt-1">{fieldErrors.phone}</p>}
               {fp.phone && fp.phone !== (profile.phone || "") && !fieldErrors.phone && (
                 <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">
-                  You'll receive a verification code to confirm this change.
+                  {t("settings.prof.phoneVerifyNote")}
                 </p>
               )}
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Gender</label>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">{t("settings.main.gender")}</label>
               <select value={fp.gender || ""} onChange={e => setFp(p => ({ ...p, gender: e.target.value }))} className={inputCls}>
-                <option value="">Select gender…</option>
-                {GENDERS.map(g => <option key={g} value={g}>{g}</option>)}
+                <option value="">{t("settings.main.selectGender")}</option>
+                {GENDERS.map(g => <option key={g} value={g}>{t(GENDER_TKEYS[g])}</option>)}
               </select>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Date of Birth</label>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">{t("settings.main.dob")}</label>
               <input type="date" value={fp.date_of_birth || ""} max={maxDobDate()}
                 onChange={e => setFp(p => ({ ...p, date_of_birth: e.target.value }))} className={inputCls} />
               {fieldErrors?.date_of_birth && <p className="text-xs text-red-500 mt-1">{fieldErrors.date_of_birth}</p>}
@@ -691,19 +724,19 @@ export default function Profile({ store, session, plan }) {
 
             <div>
               <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">NIN</label>
-              <input value={fp.nin || ""} inputMode="numeric" placeholder="11-digit NIN"
+              <input value={fp.nin || ""} inputMode="numeric" placeholder={t("settings.main.ninPh")}
                 onChange={e => setFp(p => ({ ...p, nin: e.target.value.replace(/\D/g, "").slice(0, 11) }))} className={inputCls} />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Home Address</label>
-              <input value={fp.address || ""} onChange={e => setFp(p => ({ ...p, address: e.target.value }))} placeholder="12 Street Name, Town" className={inputCls} />
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">{t("settings.prof.homeAddress")}</label>
+              <input value={fp.address || ""} onChange={e => setFp(p => ({ ...p, address: e.target.value }))} placeholder={t("settings.prof.homeAddressPh")} className={inputCls} />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">State</label>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">{t("settings.main.state")}</label>
               <select value={fp.state || ""} onChange={e => setFp(p => ({ ...p, state: e.target.value, lga: "", ward: "" }))} className={inputCls}>
-                <option value="">Select State…</option>
+                <option value="">{t("settings.main.selectState")}</option>
                 {STATES.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
@@ -711,15 +744,15 @@ export default function Profile({ store, session, plan }) {
             <div>
               <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">LGA</label>
               <select value={fp.lga || ""} onChange={e => setFp(p => ({ ...p, lga: e.target.value, ward: "" }))} disabled={!fp.state} className={inputCls}>
-                <option value="">{fp.state ? "Select LGA…" : "Select state first"}</option>
+                <option value="">{fp.state ? t("settings.main.selectLga") : t("settings.main.selectStateFirst")}</option>
                 {lgas.map(l => <option key={l} value={l}>{l}</option>)}
               </select>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Ward</label>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">{t("settings.main.ward")}</label>
               <select value={fp.ward || ""} onChange={e => setFp(p => ({ ...p, ward: e.target.value }))} disabled={!fp.lga} className={inputCls}>
-                <option value="">{fp.lga ? "Select Ward…" : "Select LGA first"}</option>
+                <option value="">{fp.lga ? t("settings.main.selectWard") : t("settings.main.selectLgaFirst")}</option>
                 {wards.map(w => <option key={w} value={w}>{w}</option>)}
               </select>
             </div>
@@ -728,15 +761,15 @@ export default function Profile({ store, session, plan }) {
 
         {/* ── Business Information ───────────────────────────────────────── */}
         <div>
-          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-3 px-1">Business Information</p>
+          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-3 px-1">{t("settings.prof.businessInfo")}</p>
           <div className="space-y-3">
             <div>
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Business Name</label>
-              <input value={fp.business_name || ""} onChange={e => setFp(p => ({ ...p, business_name: e.target.value }))} placeholder="Your business name" className={inputCls} />
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">{t("profile.businessName")}</label>
+              <input value={fp.business_name || ""} onChange={e => setFp(p => ({ ...p, business_name: e.target.value }))} placeholder={t("settings.main.bizNamePh")} className={inputCls} />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Registration Number (BN/RC)</label>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">{t("settings.prof.regNumber")}</label>
               <input value={fp.business_registration_number || ""} onChange={e => setFp(p => ({ ...p, business_registration_number: e.target.value }))} placeholder="BN123456789" className={inputCls} />
             </div>
 
@@ -751,94 +784,94 @@ export default function Profile({ store, session, plan }) {
                   className="mt-0.5 accent-amber-600 w-4 h-4 flex-shrink-0"
                 />
                 <label htmlFor="flag-legal" className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed cursor-pointer">
-                  Flag for admin review — business name and registration number appear on your invoices as legal identity. Check this so an admin is notified of the change.
+                  {t("settings.prof.flagLegal")}
                 </label>
               </div>
             )}
 
             <div>
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Industry / Category</label>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">{t("settings.prof.industryCategory")}</label>
               <select value={fp.industry || fp.business_category || ""} onChange={e => setFp(p => ({ ...p, industry: e.target.value, business_category: e.target.value }))} className={inputCls}>
-                <option value="">Select category…</option>
-                {BUSINESS_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                <option value="">{t("settings.prof.selectCategory")}</option>
+                {BUSINESS_CATEGORIES.map(c => <option key={c} value={c}>{labelFor(t, CATEGORY_TKEYS, c)}</option>)}
               </select>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Business Type</label>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">{t("settings.prof.businessType")}</label>
               <select value={fp.business_type || ""} onChange={e => setFp(p => ({ ...p, business_type: e.target.value }))} className={inputCls}>
-                <option value="">Select type…</option>
-                {["Sole Proprietorship","Partnership","Limited Liability Company (LLC)","Non-Governmental Organization (NGO)","Cooperative","Startup","Other"].map(t => <option key={t} value={t}>{t}</option>)}
+                <option value="">{t("settings.prof.selectType")}</option>
+                {BUSINESS_TYPES.map(bt => <option key={bt} value={bt}>{labelFor(t, BUSINESS_TYPE_TKEYS, bt)}</option>)}
               </select>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Registration Status</label>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">{t("settings.prof.regStatus")}</label>
               <select value={fp.reg_status || ""} onChange={e => setFp(p => ({ ...p, reg_status: e.target.value }))} className={inputCls}>
-                <option value="">Select status…</option>
-                {["Registered","Unregistered","In Process"].map(s => <option key={s} value={s}>{s}</option>)}
+                <option value="">{t("settings.prof.selectStatus")}</option>
+                {REG_STATUSES.map(s => <option key={s} value={s}>{labelFor(t, REG_STATUS_TKEYS, s)}</option>)}
               </select>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Business Phone</label>
-              <input value={fp.business_phone || ""} type="tel" onChange={e => setFp(p => ({ ...p, business_phone: e.target.value }))} placeholder="Business phone number" className={inputCls} />
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">{t("settings.prof.businessPhone")}</label>
+              <input value={fp.business_phone || ""} type="tel" onChange={e => setFp(p => ({ ...p, business_phone: e.target.value }))} placeholder={t("settings.prof.businessPhonePh")} className={inputCls} />
               {fieldErrors.business_phone && <p className="text-[10px] text-red-500 mt-1">{fieldErrors.business_phone}</p>}
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Business Email</label>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">{t("settings.prof.businessEmail")}</label>
               <input value={fp.business_email || ""} type="email" onChange={e => setFp(p => ({ ...p, business_email: e.target.value }))} placeholder="business@example.com" className={inputCls} />
               {fieldErrors.business_email && <p className="text-[10px] text-red-500 mt-1">{fieldErrors.business_email}</p>}
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Business Address</label>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">{t("settings.main.bizAddress")}</label>
               <input value={fp.business_address || ""} onChange={e => setFp(p => ({ ...p, business_address: e.target.value }))} placeholder="12 Market Road, Onitsha" className={inputCls} />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Business State</label>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">{t("settings.prof.businessState")}</label>
               <select value={fp.business_state || ""} onChange={e => setFp(p => ({ ...p, business_state: e.target.value, business_lga: "", business_ward: "" }))} className={inputCls}>
-                <option value="">Select State…</option>
+                <option value="">{t("settings.main.selectState")}</option>
                 {STATES.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Business LGA</label>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">{t("settings.prof.businessLga")}</label>
               <select value={fp.business_lga || ""} onChange={e => setFp(p => ({ ...p, business_lga: e.target.value, business_ward: "" }))} disabled={!fp.business_state} className={inputCls}>
-                <option value="">{fp.business_state ? "Select LGA…" : "Select state first"}</option>
+                <option value="">{fp.business_state ? t("settings.main.selectLga") : t("settings.main.selectStateFirst")}</option>
                 {bizLgas.map(l => <option key={l} value={l}>{l}</option>)}
               </select>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Business Ward</label>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">{t("settings.prof.businessWard")}</label>
               <select value={fp.business_ward || ""} onChange={e => setFp(p => ({ ...p, business_ward: e.target.value }))} disabled={!fp.business_lga} className={inputCls}>
-                <option value="">{fp.business_lga ? "Select Ward…" : "Select LGA first"}</option>
+                <option value="">{fp.business_lga ? t("settings.main.selectWard") : t("settings.main.selectLgaFirst")}</option>
                 {bizWards.map(w => <option key={w} value={w}>{w}</option>)}
               </select>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Business Size</label>
-              <input value={fp.business_size || ""} onChange={e => setFp(p => ({ ...p, business_size: e.target.value }))} placeholder="e.g. Small, Medium, Large" className={inputCls} />
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">{t("settings.prof.businessSize")}</label>
+              <input value={fp.business_size || ""} onChange={e => setFp(p => ({ ...p, business_size: e.target.value }))} placeholder={t("settings.prof.businessSizePh")} className={inputCls} />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Target Market</label>
-              <input value={fp.target_market || ""} onChange={e => setFp(p => ({ ...p, target_market: e.target.value }))} placeholder="e.g. Retail customers, Wholesale, B2B" className={inputCls} />
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">{t("settings.prof.targetMarket")}</label>
+              <input value={fp.target_market || ""} onChange={e => setFp(p => ({ ...p, target_market: e.target.value }))} placeholder={t("settings.prof.targetMarketPh")} className={inputCls} />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Operating Model</label>
-              <input value={fp.operating_model || ""} onChange={e => setFp(p => ({ ...p, operating_model: e.target.value }))} placeholder="e.g. Physical store, Online, Both" className={inputCls} />
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">{t("settings.prof.operatingModel")}</label>
+              <input value={fp.operating_model || ""} onChange={e => setFp(p => ({ ...p, operating_model: e.target.value }))} placeholder={t("settings.prof.operatingModelPh")} className={inputCls} />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Products / Services</label>
-              <input value={fp.products_services_type || ""} onChange={e => setFp(p => ({ ...p, products_services_type: e.target.value }))} placeholder="e.g. Food items, Electronics, Services" className={inputCls} />
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">{t("settings.prof.productsServices")}</label>
+              <input value={fp.products_services_type || ""} onChange={e => setFp(p => ({ ...p, products_services_type: e.target.value }))} placeholder={t("settings.prof.productsPh")} className={inputCls} />
             </div>
           </div>
         </div>
@@ -849,7 +882,7 @@ export default function Profile({ store, session, plan }) {
           disabled={saving || saveOk}
           className="w-full py-3.5 rounded-2xl bg-brand-600 text-white font-bold text-sm active:scale-[0.98] transition disabled:opacity-50 flex items-center justify-center gap-2"
         >
-          {saveOk ? "✓ Saved!" : saving ? "Saving…" : "Save Changes"}
+          {saveOk ? t("settings.prof.savedTick") : saving ? t("common.saving") : t("settings.main.saveChanges")}
         </button>
       </div>
     </div>

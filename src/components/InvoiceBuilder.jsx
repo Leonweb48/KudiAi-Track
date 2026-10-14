@@ -1,12 +1,14 @@
 import { useState, useMemo } from "react";
 import Field  from "./shared/Field";
 import { fmt } from "../utils/helpers";
+import { useT } from "../contexts/LanguageContext";
 
 const nairaToKobo = (n) => Math.round((parseFloat(n) || 0) * 100);
 const koboToNaira = (k) => (k || 0) / 100;
 const fmtK        = (k) => fmt(koboToNaira(k));
 
 const STEPS = ["Customer", "Items", "Adjustments", "Payment", "Review"];
+const STEP_KEYS = ["invoices.step.customer", "invoices.step.items", "invoices.step.adjust", "invoices.step.payment", "invoices.step.review"];
 
 function StepBar({ step }) {
   return (
@@ -31,6 +33,7 @@ function StepBar({ step }) {
 function StepCustomer({ customers, value, onChange }) {
   const [query, setQuery] = useState("");
   const [mode,  setMode]  = useState(value.id ? "existing" : "new"); // 'search' | 'existing' | 'new'
+  const t = useT();
 
   const filtered = useMemo(() => {
     if (!query.trim()) return customers.slice(0, 8);
@@ -55,14 +58,14 @@ function StepCustomer({ customers, value, onChange }) {
     return (
       <div>
         <div className="bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-700 rounded-2xl p-4 mb-4">
-          <p className="text-xs font-bold text-brand-600 dark:text-brand-400 uppercase tracking-wide mb-1">Selected Customer</p>
+          <p className="text-xs font-bold text-brand-600 dark:text-brand-400 uppercase tracking-wide mb-1">{t("invoices.b.selectedCustomer")}</p>
           <p className="font-bold text-slate-800 dark:text-white">{value.name}</p>
           {value.phone && <p className="text-sm text-slate-500 dark:text-slate-400">{value.phone}</p>}
           {value.email && <p className="text-sm text-slate-500 dark:text-slate-400">{value.email}</p>}
         </div>
         <button onClick={clearSelection}
           className="text-sm text-brand-600 dark:text-brand-400 font-semibold">
-          Change customer
+          {t("invoices.b.changeCustomer")}
         </button>
       </div>
     );
@@ -72,10 +75,10 @@ function StepCustomer({ customers, value, onChange }) {
     <div>
       {customers.length > 0 && (
         <div className="mb-4">
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Search existing</p>
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">{t("invoices.b.searchExisting")}</p>
           <input
             className="w-full border border-slate-200 dark:border-slate-600 rounded-xl px-3.5 py-3 text-sm bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
-            placeholder="Name or phone…"
+            placeholder={t("invoices.b.namePhonePh")}
             value={query}
             onChange={e => setQuery(e.target.value)}
           />
@@ -92,24 +95,24 @@ function StepCustomer({ customers, value, onChange }) {
           )}
           <div className="mt-3 flex items-center gap-2">
             <div className="flex-1 h-px bg-slate-100 dark:bg-slate-700" />
-            <span className="text-xs text-slate-400">or create new</span>
+            <span className="text-xs text-slate-400">{t("invoices.b.orCreateNew")}</span>
             <div className="flex-1 h-px bg-slate-100 dark:bg-slate-700" />
           </div>
         </div>
       )}
 
       <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">
-        {customers.length === 0 ? "Customer details" : "New customer"}
+        {customers.length === 0 ? t("invoices.b.customerDetails") : t("invoices.b.newCustomer")}
       </p>
-      <Field label="Full Name *" value={value.name}
+      <Field label={t("invoices.b.fullName")} value={value.name}
         onChange={e => onChange({ ...value, id: null, name: e.target.value })}
-        placeholder="e.g. Chike Obi" />
-      <Field label="Phone *" type="tel" value={value.phone}
+        placeholder={t("invoices.b.fullNamePh")} />
+      <Field label={t("invoices.b.phone")} type="tel" value={value.phone}
         onChange={e => onChange({ ...value, id: null, phone: e.target.value })}
         placeholder="080…" />
-      <Field label="Email" type="email" value={value.email}
+      <Field label={t("invoices.b.email")} type="email" value={value.email}
         onChange={e => onChange({ ...value, id: null, email: e.target.value })}
-        placeholder="optional" />
+        placeholder={t("common.optional")} />
     </div>
   );
 }
@@ -128,6 +131,7 @@ function recalcItem(item) {
 function StepItems({ items, onChange, products }) {
   const [showPicker, setShowPicker] = useState(false);
   const [pickerQ,    setPickerQ]    = useState("");
+  const t = useT();
 
   const addBlank = () => onChange([...items, {
     description: "", quantity: "1", unit_price: "", unit_price_kobo: 0,
@@ -213,10 +217,10 @@ function StepItems({ items, onChange, products }) {
             {/* Parent row */}
             <div className="flex items-start gap-2">
               <div className="flex-1">
-                <Field label="Description *"
+                <Field label={t("invoices.b.description")}
                   value={item.description}
                   onChange={e => update(i, "description", e.target.value)}
-                  placeholder="Product or service" />
+                  placeholder={t("invoices.b.descriptionPh")} />
               </div>
               <button onClick={() => remove(i)}
                 className="mt-5 w-11 h-11 flex items-center justify-center rounded-xl text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 flex-shrink-0 active:scale-95 transition">
@@ -228,29 +232,29 @@ function StepItems({ items, onChange, products }) {
                 item.available_qty <= 0 ? "text-red-400" :
                 item.available_qty <= 5 ? "text-amber-500" : "text-emerald-500"
               }`}>
-                {item.available_qty <= 0 ? "⚠ Out of stock" : `${item.available_qty} available`}
+                {item.available_qty <= 0 ? t("invoices.b.outOfStockWarn") : t("invoices.b.available", { n: item.available_qty })}
               </p>
             )}
             <div className="flex gap-2">
               <div className="w-16 flex-shrink-0">
-                <Field label="Qty" type="number" inputMode="numeric" value={item.quantity}
+                <Field label={t("invoices.b.qty")} type="number" inputMode="numeric" value={item.quantity}
                   onChange={e => update(i, "quantity", e.target.value)} />
               </div>
               <div className="flex-1">
                 {isAuto ? (
                   <div>
-                    <label className="block text-xs font-semibold text-slate-400 mb-1.5 tracking-wide uppercase">Unit Price</label>
+                    <label className="block text-xs font-semibold text-slate-400 mb-1.5 tracking-wide uppercase">{t("invoices.b.unitPrice")}</label>
                     <div className="py-2.5 px-3 text-xs text-slate-400 italic bg-white dark:bg-slate-600 rounded-xl border border-slate-100 dark:border-slate-600">
-                      Auto-sum ↑
+                      {t("invoices.b.autoSum")}
                     </div>
                   </div>
                 ) : (
-                  <Field label="Unit Price (₦)" type="number" inputMode="decimal" value={item.unit_price}
+                  <Field label={t("invoices.b.unitPriceN")} type="number" inputMode="decimal" value={item.unit_price}
                     onChange={e => update(i, "unit_price", e.target.value)} />
                 )}
               </div>
               <div className="flex-1">
-                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 tracking-wide uppercase">Total</label>
+                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 tracking-wide uppercase">{t("common.total")}</label>
                 <div className="py-3 text-sm font-bold text-slate-800 dark:text-slate-100">
                   {fmtK(item.line_total_kobo)}
                 </div>
@@ -260,11 +264,11 @@ function StepItems({ items, onChange, products }) {
             {/* Cost price — only for manual (non-catalog) items */}
             {!item.product_id && (
               <div className="mt-1">
-                <Field label="Cost Price (₦) — optional, for profit tracking"
+                <Field label={t("invoices.b.costPrice")}
                   type="number" inputMode="decimal"
                   value={item.cost_price || ""}
                   onChange={e => update(i, "cost_price", e.target.value)}
-                  placeholder="Your actual cost per unit" />
+                  placeholder={t("invoices.b.costPricePh")} />
               </div>
             )}
 
@@ -276,10 +280,10 @@ function StepItems({ items, onChange, products }) {
                     <div className="flex items-start gap-2">
                       <div className="flex-1">
                         <Field
-                          label={`Sub-item ${si + 1}`}
+                          label={t("invoices.b.subItemN", { n: si + 1 })}
                           value={sub.description}
                           onChange={e => updateSubItem(i, si, "description", e.target.value)}
-                          placeholder="e.g. Jollof rice ×25" />
+                          placeholder={t("invoices.b.subItemPh")} />
                       </div>
                       <button onClick={() => removeSubItem(i, si)}
                         className="mt-5 w-11 h-11 flex items-center justify-center rounded-xl text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 flex-shrink-0 active:scale-95 transition">
@@ -288,17 +292,17 @@ function StepItems({ items, onChange, products }) {
                     </div>
                     <div className="flex gap-2">
                       <div className="w-14 flex-shrink-0">
-                        <Field label="Qty" type="number" inputMode="numeric" value={sub.quantity}
+                        <Field label={t("invoices.b.qty")} type="number" inputMode="numeric" value={sub.quantity}
                           onChange={e => updateSubItem(i, si, "quantity", e.target.value)} />
                       </div>
                       <div className="flex-1">
-                        <Field label="Price (₦)" type="number" inputMode="decimal" value={sub.unit_price}
+                        <Field label={t("invoices.b.priceN")} type="number" inputMode="decimal" value={sub.unit_price}
                           onChange={e => updateSubItem(i, si, "unit_price", e.target.value)}
-                          placeholder="Blank = descriptive" />
+                          placeholder={t("invoices.b.blankDescriptive")} />
                       </div>
                       {sub.line_total_kobo > 0 && (
                         <div className="flex-1">
-                          <label className="block text-xs font-semibold text-slate-400 mb-1.5 tracking-wide uppercase">Sub-total</label>
+                          <label className="block text-xs font-semibold text-slate-400 mb-1.5 tracking-wide uppercase">{t("invoices.b.subTotal")}</label>
                           <div className="py-3 text-xs font-bold text-slate-600 dark:text-slate-300">{fmtK(sub.line_total_kobo)}</div>
                         </div>
                       )}
@@ -312,11 +316,11 @@ function StepItems({ items, onChange, products }) {
             <div className="flex items-center justify-between mt-2 pt-1.5">
               <button onClick={() => addSubItem(i)}
                 className="text-xs text-brand-600 dark:text-brand-400 font-semibold active:scale-95 transition py-1">
-                + Add sub-item
+                {t("invoices.b.addSubItem")}
               </button>
               {isAuto && (
                 <span className="text-[10px] text-slate-400 italic">
-                  {item.quantity}× bundle · sub-items drive the price
+                  {t("invoices.b.bundleHint", { qty: item.quantity })}
                 </span>
               )}
             </div>
@@ -327,12 +331,12 @@ function StepItems({ items, onChange, products }) {
       <div className="flex gap-2 mb-4">
         <button onClick={addBlank}
           className="flex-1 py-2.5 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-600 text-sm font-semibold text-slate-500 dark:text-slate-400 active:scale-95 transition">
-          + Add item
+          {t("invoices.b.addItem")}
         </button>
         {(products || []).length > 0 && (
           <button onClick={() => setShowPicker(true)}
             className="flex-1 py-2.5 rounded-xl border-2 border-dashed border-brand-200 dark:border-brand-700 text-sm font-semibold text-brand-600 dark:text-brand-400 active:scale-95 transition">
-            From catalog
+            {t("invoices.b.fromCatalog")}
           </button>
         )}
       </div>
@@ -340,7 +344,7 @@ function StepItems({ items, onChange, products }) {
       {showPicker && (
         <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-3 mb-4">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Product catalog</p>
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">{t("invoices.b.productCatalog")}</p>
             <button onClick={() => setShowPicker(false)}
               className="w-11 h-11 flex items-center justify-center rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 transition active:scale-95">
               <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M18 6L6 18M6 6l12 12"/></svg>
@@ -348,7 +352,7 @@ function StepItems({ items, onChange, products }) {
           </div>
           <input
             className="w-full border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2 text-sm bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 mb-2"
-            placeholder="Search products…"
+            placeholder={t("invoices.b.searchProducts")}
             value={pickerQ}
             onChange={e => setPickerQ(e.target.value)}
           />
@@ -364,7 +368,7 @@ function StepItems({ items, onChange, products }) {
                       p.quantity <= (p.low_stock_threshold || 5) ? "text-amber-500" :
                       "text-emerald-500"
                     }`}>
-                      {p.quantity <= 0 ? "Out of stock" : `${p.quantity} in stock`}
+                      {p.quantity <= 0 ? t("invoices.b.outOfStock") : t("invoices.b.inStock", { n: p.quantity })}
                     </span>
                   )}
                 </div>
@@ -372,7 +376,7 @@ function StepItems({ items, onChange, products }) {
               </button>
             ))}
             {filteredProducts.length === 0 && (
-              <p className="text-sm text-slate-400 text-center py-4">No products found</p>
+              <p className="text-sm text-slate-400 text-center py-4">{t("invoices.b.noProducts")}</p>
             )}
           </div>
         </div>
@@ -380,7 +384,7 @@ function StepItems({ items, onChange, products }) {
 
       {items.length > 0 && (
         <div className="flex items-center justify-between py-3 border-t border-slate-100 dark:border-slate-700">
-          <span className="text-sm font-bold text-slate-600 dark:text-slate-400">Subtotal</span>
+          <span className="text-sm font-bold text-slate-600 dark:text-slate-400">{t("invoices.subtotal")}</span>
           <span className="text-base font-extrabold text-slate-800 dark:text-white">{fmtK(subtotal)}</span>
         </div>
       )}
@@ -399,19 +403,20 @@ function StepAdjust({ items, value, onChange, profileVatEnabled }) {
     ? (value.other_charges_mode === "pct" ? Math.round(after_discount * ocv / 100) : nairaToKobo(ocv))
     : 0;
   const total_kobo     = after_discount + vat_kobo + other_charges_kobo;
+  const t = useT();
 
   return (
     <div>
-      <Field label="Discount (₦)" type="number" inputMode="decimal"
+      <Field label={t("invoices.b.discountN")} type="number" inputMode="decimal"
         value={value.discount_naira}
         onChange={e => onChange({ ...value, discount_naira: e.target.value })}
         placeholder="0" />
 
       <div className="flex items-center justify-between mb-4 bg-slate-50 dark:bg-slate-700/50 rounded-xl px-4 py-3">
         <div>
-          <p className="text-sm font-bold text-slate-700 dark:text-slate-200">VAT (7.5%)</p>
+          <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{t("invoices.vat")}</p>
           <p className="text-xs text-slate-400">
-            {value.vat_enabled ? `+${fmtK(vat_kobo)}` : "Off"}
+            {value.vat_enabled ? `+${fmtK(vat_kobo)}` : t("invoices.b.off")}
           </p>
         </div>
         <button onClick={() => onChange({ ...value, vat_enabled: !value.vat_enabled })}
@@ -422,9 +427,9 @@ function StepAdjust({ items, value, onChange, profileVatEnabled }) {
 
       <div className="flex items-center justify-between mb-2 bg-slate-50 dark:bg-slate-700/50 rounded-xl px-4 py-3">
         <div>
-          <p className="text-sm font-bold text-slate-700 dark:text-slate-200">Other Charges</p>
+          <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{t("invoices.otherCharges")}</p>
           <p className="text-xs text-slate-400">
-            {value.other_charges_enabled ? (other_charges_kobo > 0 ? `+${fmtK(other_charges_kobo)}` : "Set amount below") : "Off"}
+            {value.other_charges_enabled ? (other_charges_kobo > 0 ? `+${fmtK(other_charges_kobo)}` : t("invoices.b.setAmountBelow")) : t("invoices.b.off")}
           </p>
         </div>
         <button onClick={() => onChange({ ...value, other_charges_enabled: !value.other_charges_enabled })}
@@ -435,25 +440,25 @@ function StepAdjust({ items, value, onChange, profileVatEnabled }) {
 
       {value.other_charges_enabled && (
         <div className="bg-slate-50 dark:bg-slate-700/30 rounded-xl px-4 pt-3 pb-4 mb-4 space-y-2">
-          <Field label="Charge Label"
+          <Field label={t("invoices.b.chargeLabel")}
             value={value.other_charges_label}
             onChange={e => onChange({ ...value, other_charges_label: e.target.value })}
-            placeholder="e.g. Delivery Fee, Service Charge" />
+            placeholder={t("invoices.b.chargeLabelPh")} />
           <div className="flex gap-2">
             <div className="flex-1">
-              <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 tracking-wide uppercase">Type</label>
+              <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 tracking-wide uppercase">{t("invoices.b.type")}</label>
               <select
                 value={value.other_charges_mode}
                 onChange={e => onChange({ ...value, other_charges_mode: e.target.value })}
                 className="w-full border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500"
               >
-                <option value="fixed">Fixed (₦)</option>
-                <option value="pct">Percentage (%)</option>
+                <option value="fixed">{t("invoices.b.fixed")}</option>
+                <option value="pct">{t("invoices.b.percentage")}</option>
               </select>
             </div>
             <div className="flex-1">
               <Field
-                label={value.other_charges_mode === "pct" ? "Rate (%)" : "Amount (₦)"}
+                label={value.other_charges_mode === "pct" ? t("invoices.b.rate") : t("invoices.b.amountN")}
                 type="number" inputMode="decimal"
                 value={value.other_charges_value}
                 onChange={e => onChange({ ...value, other_charges_value: e.target.value })}
@@ -463,36 +468,36 @@ function StepAdjust({ items, value, onChange, profileVatEnabled }) {
         </div>
       )}
 
-      <Field label="Due Date" type="date"
+      <Field label={t("invoices.b.dueDate")} type="date"
         value={value.due_date}
         onChange={e => onChange({ ...value, due_date: e.target.value })} />
 
-      <Field label="Notes" as="textarea"
+      <Field label={t("invoices.b.notes")} as="textarea"
         value={value.notes}
         onChange={e => onChange({ ...value, notes: e.target.value })}
-        placeholder="Any additional notes for this invoice…" />
+        placeholder={t("invoices.b.notesPh")} />
 
       <div className="mt-4 bg-slate-50 dark:bg-slate-800 rounded-2xl p-4 space-y-2">
         <div className="flex justify-between text-sm text-slate-600 dark:text-slate-400">
-          <span>Subtotal</span><span>{fmtK(subtotal_kobo)}</span>
+          <span>{t("invoices.subtotal")}</span><span>{fmtK(subtotal_kobo)}</span>
         </div>
         {discount_kobo > 0 && (
           <div className="flex justify-between text-sm text-red-500">
-            <span>Discount</span><span>−{fmtK(discount_kobo)}</span>
+            <span>{t("invoices.discount")}</span><span>−{fmtK(discount_kobo)}</span>
           </div>
         )}
         {vat_kobo > 0 && (
           <div className="flex justify-between text-sm text-slate-600 dark:text-slate-400">
-            <span>VAT (7.5%)</span><span>{fmtK(vat_kobo)}</span>
+            <span>{t("invoices.vat")}</span><span>{fmtK(vat_kobo)}</span>
           </div>
         )}
         {other_charges_kobo > 0 && (
           <div className="flex justify-between text-sm text-slate-600 dark:text-slate-400">
-            <span>{value.other_charges_label || "Other Charges"}</span><span>{fmtK(other_charges_kobo)}</span>
+            <span>{value.other_charges_label || t("invoices.otherCharges")}</span><span>{fmtK(other_charges_kobo)}</span>
           </div>
         )}
         <div className="flex justify-between text-base font-extrabold text-slate-800 dark:text-white border-t border-slate-200 dark:border-slate-700 pt-2 mt-2">
-          <span>Total</span><span>{fmtK(total_kobo)}</span>
+          <span>{t("common.total")}</span><span>{fmtK(total_kobo)}</span>
         </div>
       </div>
     </div>
@@ -506,6 +511,7 @@ function StepPayment({ value, onChange, profile }) {
     profile?.bank_account_number && `Account: ${profile.bank_account_number}`,
     profile?.bank_account_name   && `Name: ${profile.bank_account_name}`,
   ].filter(Boolean).join("\n");
+  const t = useT();
 
   // Pre-fill once from profile if field is empty
   const handleFocus = () => {
@@ -517,17 +523,17 @@ function StepPayment({ value, onChange, profile }) {
   return (
     <div>
       <p className="text-xs text-slate-400 dark:text-slate-500 mb-3 leading-relaxed">
-        This text appears on the invoice PDF under "How to Pay". Pre-filled from your bank details in settings if available.
+        {t("invoices.b.payInfo")}
       </p>
-      <Field label="Payment Instructions" as="textarea"
+      <Field label={t("invoices.paymentInstructions")} as="textarea"
         value={value.payment_instructions}
         onChange={e => onChange({ ...value, payment_instructions: e.target.value })}
         onFocus={handleFocus}
-        placeholder={"Bank: GTBank\nAccount: 0123456789\nName: My Business"}
+        placeholder={t("invoices.b.payPh")}
         rows={5} />
       {!profile?.bank_account_number && (
         <p className="text-xs text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2">
-          Tip: Add your bank details in Settings → Profile to auto-fill this in future.
+          {t("invoices.b.payTip")}
         </p>
       )}
     </div>
@@ -545,17 +551,18 @@ function StepReview({ customer, items, adjust, payment }) {
     ? (adjust.other_charges_mode === "pct" ? Math.round(after_discount * ocv / 100) : nairaToKobo(ocv))
     : 0;
   const total_kobo     = after_discount + vat_kobo + other_charges_kobo;
+  const t = useT();
 
   return (
     <div className="space-y-4">
       <div className="bg-slate-50 dark:bg-slate-700/50 rounded-2xl p-4">
-        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Customer</p>
+        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">{t("invoices.step.customer")}</p>
         <p className="font-bold text-slate-800 dark:text-white">{customer.name}</p>
         {customer.phone && <p className="text-sm text-slate-500">{customer.phone}</p>}
       </div>
 
       <div className="bg-slate-50 dark:bg-slate-700/50 rounded-2xl p-4">
-        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Line Items</p>
+        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">{t("invoices.b.lineItems")}</p>
         {items.map((item, i) => (
           <div key={i} className="mb-3 last:mb-0">
             <div className="flex items-start justify-between">
@@ -563,7 +570,7 @@ function StepReview({ customer, items, adjust, payment }) {
                 <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">{item.description}</p>
                 <p className="text-xs text-slate-400">
                   {item.pricing_mode === "auto"
-                    ? `${item.quantity}× bundle (sub-items drive price)`
+                    ? t("invoices.b.bundleReview", { qty: item.quantity })
                     : `${item.quantity} × ${fmt(koboToNaira(item.unit_price_kobo))}`}
                 </p>
               </div>
@@ -592,38 +599,38 @@ function StepReview({ customer, items, adjust, payment }) {
 
       <div className="bg-slate-50 dark:bg-slate-700/50 rounded-2xl p-4 space-y-1.5">
         <div className="flex justify-between text-sm text-slate-600 dark:text-slate-400">
-          <span>Subtotal</span><span>{fmtK(subtotal_kobo)}</span>
+          <span>{t("invoices.subtotal")}</span><span>{fmtK(subtotal_kobo)}</span>
         </div>
         {discount_kobo > 0 && (
           <div className="flex justify-between text-sm text-red-500">
-            <span>Discount</span><span>−{fmtK(discount_kobo)}</span>
+            <span>{t("invoices.discount")}</span><span>−{fmtK(discount_kobo)}</span>
           </div>
         )}
         {vat_kobo > 0 && (
           <div className="flex justify-between text-sm text-slate-600 dark:text-slate-400">
-            <span>VAT (7.5%)</span><span>{fmtK(vat_kobo)}</span>
+            <span>{t("invoices.vat")}</span><span>{fmtK(vat_kobo)}</span>
           </div>
         )}
         {other_charges_kobo > 0 && (
           <div className="flex justify-between text-sm text-slate-600 dark:text-slate-400">
-            <span>{adjust.other_charges_label || "Other Charges"}</span><span>{fmtK(other_charges_kobo)}</span>
+            <span>{adjust.other_charges_label || t("invoices.otherCharges")}</span><span>{fmtK(other_charges_kobo)}</span>
           </div>
         )}
         <div className="flex justify-between text-base font-extrabold text-slate-800 dark:text-white pt-1.5 border-t border-slate-200 dark:border-slate-700">
-          <span>Total</span><span>{fmtK(total_kobo)}</span>
+          <span>{t("common.total")}</span><span>{fmtK(total_kobo)}</span>
         </div>
       </div>
 
       {adjust.due_date && (
         <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
           <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-          Due {new Date(adjust.due_date + "T00:00:00").toLocaleDateString("en-NG", { day:"numeric", month:"short", year:"numeric" })}
+          {t("invoices.dueOn", { date: new Date(adjust.due_date + "T00:00:00").toLocaleDateString("en-NG", { day:"numeric", month:"short", year:"numeric" }) })}
         </div>
       )}
 
       {payment.payment_instructions && (
         <div className="bg-slate-50 dark:bg-slate-700/50 rounded-2xl p-4">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Payment Instructions</p>
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">{t("invoices.paymentInstructions")}</p>
           <p className="text-sm text-slate-600 dark:text-slate-300 whitespace-pre-line">{payment.payment_instructions}</p>
         </div>
       )}
@@ -643,6 +650,7 @@ export default function InvoiceBuilder({
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error,  setError]  = useState("");
+  const t = useT();
 
   // Step state — pre-fill from initialData when editing
   const [customer, setCustomer] = useState(() => {
@@ -752,7 +760,7 @@ export default function InvoiceBuilder({
       _editId:  isEditing ? initialData.id : null,
     });
     setSaving(false);
-    if (err) { setError(err.message || "Failed to save invoice"); return; }
+    if (err) { setError(err.message || t("invoices.b.saveFailed")); return; }
     onClose(data);
   };
 
@@ -764,7 +772,7 @@ export default function InvoiceBuilder({
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex-shrink-0">
           <span className="font-bold text-slate-800 dark:text-white text-base">
-            {isEditing ? "Edit Invoice" : sourceTransaction ? "Convert to Invoice" : "New Invoice"}
+            {isEditing ? t("invoices.b.editTitle") : sourceTransaction ? t("invoices.b.convertTitle") : t("invoices.b.newTitle")}
           </span>
           <button onClick={() => onClose()} className="w-11 h-11 flex items-center justify-center rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 transition active:scale-95">
             <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M18 6L6 18M6 6l12 12"/></svg>
@@ -776,7 +784,7 @@ export default function InvoiceBuilder({
 
         {/* Step label */}
         <div className="px-5 pt-4 pb-1 flex-shrink-0">
-          <h2 className="text-base font-extrabold text-slate-800 dark:text-white">{STEPS[step]}</h2>
+          <h2 className="text-base font-extrabold text-slate-800 dark:text-white">{t(STEP_KEYS[step])}</h2>
         </div>
 
         {/* Content */}
@@ -797,18 +805,18 @@ export default function InvoiceBuilder({
           {step > 0 && (
             <button onClick={back} disabled={saving}
               className="flex-1 py-3 rounded-2xl border border-slate-200 dark:border-slate-600 text-sm font-bold text-slate-600 dark:text-slate-300 active:scale-95 transition">
-              Back
+              {t("common.back")}
             </button>
           )}
           {step < STEPS.length - 1 ? (
             <button onClick={next} disabled={!canNext}
               className={`flex-1 py-3 rounded-2xl text-sm font-bold text-white transition active:scale-95 ${canNext ? "bg-brand-600 hover:bg-brand-700" : "bg-slate-200 dark:bg-slate-700 text-slate-400 cursor-not-allowed"}`}>
-              Next
+              {t("common.next")}
             </button>
           ) : (
             <button onClick={() => handleSave("draft")} disabled={saving}
               className="flex-1 py-3 rounded-2xl bg-brand-600 hover:bg-brand-700 text-white text-sm font-bold active:scale-95 transition">
-              {saving ? "Saving…" : "Save Draft"}
+              {saving ? t("common.saving") : t("invoices.b.saveDraft")}
             </button>
           )}
         </div>

@@ -14,6 +14,7 @@ import { useState } from "react";
 import {
   webPushConfigured, webPushSupported, webPushPermission, needsIosInstall, enableWebPush,
 } from "../utils/webPush";
+import { useT } from "../contexts/LanguageContext";
 
 const DISMISS_MS = 7 * 24 * 3600 * 1000;
 const keyFor = (userId) => `kt_notif_banner_dismissed_${userId || "anon"}`;
@@ -30,6 +31,7 @@ function isNativeApp() {
 }
 
 export default function EnableNotificationsBanner({ userId }) {
+  const t = useT();
   const [hidden,  setHidden]  = useState(() => recentlyDismissed(userId));
   const [busy,    setBusy]    = useState(false);
   const [outcome, setOutcome] = useState(null); // "ok" | "denied" | "error" | null
@@ -64,19 +66,19 @@ export default function EnableNotificationsBanner({ userId }) {
 
       <div className="flex-1 min-w-0">
         {outcome === "ok" ? (
-          <p className="text-[13px] font-bold text-emerald-700 dark:text-emerald-300">Notifications are on</p>
+          <p className="text-[13px] font-bold text-emerald-700 dark:text-emerald-300">{t("settings.notif.banner.on")}</p>
         ) : iosInstall ? (
           <>
-            <p className="text-[13px] font-bold text-slate-800 dark:text-slate-100">Get alerts on your iPhone</p>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">Tap Share → Add to Home Screen, then open KudiAI Track from there.</p>
+            <p className="text-[13px] font-bold text-slate-800 dark:text-slate-100">{t("settings.notif.banner.iosTitle")}</p>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">{t("settings.notif.banner.iosBody")}</p>
           </>
         ) : (
           <>
-            <p className="text-[13px] font-bold text-slate-800 dark:text-slate-100">Get alerts when money moves</p>
+            <p className="text-[13px] font-bold text-slate-800 dark:text-slate-100">{t("settings.notif.banner.title")}</p>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
-              {outcome === "denied" ? "Notifications are blocked for this site — allow them from the padlock beside the address bar."
-                : outcome === "error" ? "Couldn't turn them on — please try again."
-                : "Contributions, payouts and wallet credits, even when this tab is closed."}
+              {outcome === "denied" ? t("settings.notif.banner.denied")
+                : outcome === "error" ? t("settings.notif.banner.error")
+                : t("settings.notif.banner.body")}
             </p>
           </>
         )}
@@ -88,11 +90,11 @@ export default function EnableNotificationsBanner({ userId }) {
           disabled={busy}
           className="flex-shrink-0 px-3.5 py-2 rounded-xl bg-emerald-600 text-white text-[12px] font-bold active:opacity-80 disabled:opacity-60"
         >
-          {busy ? "…" : "Turn on"}
+          {busy ? "…" : t("settings.notif.banner.turnOn")}
         </button>
       )}
       {outcome !== "ok" && (
-        <button onClick={dismiss} aria-label="Dismiss" className="flex-shrink-0 text-slate-400 dark:text-slate-500 text-lg leading-none px-1">×</button>
+        <button onClick={dismiss} aria-label={t("settings.notif.dismiss")} className="flex-shrink-0 text-slate-400 dark:text-slate-500 text-lg leading-none px-1">×</button>
       )}
     </div>
   );

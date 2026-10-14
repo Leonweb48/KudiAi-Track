@@ -70,13 +70,16 @@ function groupByDate(txns) {
 
 /* Sticky section header — "Today · Yesterday · 12 Jul" + subtotal chip */
 function SectionHeader({ label, net }) {
+  const t = useT();
   const pos   = net >= 0;
+  // groupByDate labels the newest two days "Today" / "Yesterday"; other days are dates
+  const shown = label === "Today" ? t("common.today") : label === "Yesterday" ? t("common.yesterday") : label;
   return (
     <div
       className="sticky flex items-center justify-between bg-white dark:bg-slate-900 py-1.5 -mx-4 px-4 border-b border-slate-50 dark:border-slate-800 mb-1.5 mt-3 first:mt-0"
       style={{ top: "108px", zIndex: "var(--z-sticky)" }}>
       <span className="text-[10px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
-        {label}
+        {shown}
       </span>
       <div className={`flex items-center rounded-full px-2 py-0.5 ${pos ? "bg-green-50 dark:bg-green-900/20" : "bg-red-50 dark:bg-red-900/20"}`}>
         <span className={`text-[9px] font-bold mr-0.5 ${pos ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}>
@@ -93,25 +96,26 @@ function SectionHeader({ label, net }) {
 
 /* Month-boundary summary card — inserted when feed crosses a month */
 function MonthSummaryCard({ date, totalIn, totalOut }) {
+  const t = useT();
   const net = totalIn - totalOut;
   const label = new Date(date.getFullYear(), date.getMonth(), 1)
     .toLocaleDateString("en-NG", { month: "long", year: "numeric" });
   return (
     <div className="bg-slate-50 dark:bg-slate-800/60 rounded-2xl px-4 py-3 border border-slate-100 dark:border-slate-700/40 my-3">
       <p className="text-[9px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">
-        {label} summary
+        {t("sales.monthSummary", { month: label })}
       </p>
       <div className="flex items-center gap-4">
         <div className="flex-1 min-w-0">
-          <p className="text-[9px] text-slate-400 dark:text-slate-500 mb-0.5">Total In</p>
+          <p className="text-[9px] text-slate-400 dark:text-slate-500 mb-0.5">{t("sales.totalIn")}</p>
           <AmountDisplay amount={totalIn} size="small" align="left" className="text-green-600 dark:text-green-400" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-[9px] text-slate-400 dark:text-slate-500 mb-0.5">Total Out</p>
+          <p className="text-[9px] text-slate-400 dark:text-slate-500 mb-0.5">{t("sales.totalOut")}</p>
           <AmountDisplay amount={totalOut} size="small" align="left" className="text-red-500 dark:text-red-400" />
         </div>
         <div className="flex-1 min-w-0 text-right">
-          <p className="text-[9px] text-slate-400 dark:text-slate-500 mb-0.5">Net</p>
+          <p className="text-[9px] text-slate-400 dark:text-slate-500 mb-0.5">{t("sales.net")}</p>
           <AmountDisplay
             amount={Math.abs(net)} size="small" align="right"
             className={net >= 0 ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"}
@@ -124,12 +128,13 @@ function MonthSummaryCard({ date, totalIn, totalOut }) {
 
 /* Per-filter empty states — warm copy */
 function EmptyState({ filter, onAdd }) {
+  const t = useT();
   const msg = {
-    in:     { title: "No money-in yet",       sub: "Record your first sale to see it here." },
-    out:    { title: "No expenses recorded",  sub: "Expenses and stock purchases appear here." },
-    bills:  { title: "No bill payments yet",  sub: "Bill payments via Quick Services show here." },
-    credit: { title: "No credit transactions",sub: "Credit sales and debt repayments appear here." },
-    all:    { title: "No transactions yet",   sub: "Record your first sale and watch this space come alive." },
+    in:     { title: t("sales.emptyInTitle"),     sub: t("sales.emptyInSub") },
+    out:    { title: t("sales.emptyOutTitle"),    sub: t("sales.emptyOutSub") },
+    bills:  { title: t("sales.emptyBillsTitle"),  sub: t("sales.emptyBillsSub") },
+    credit: { title: t("sales.emptyCreditTitle"), sub: t("sales.emptyCreditSub") },
+    all:    { title: t("txn.noTxns"),             sub: t("sales.emptyAllSub") },
   };
   const { title, sub } = msg[filter] || msg.all;
   return (
@@ -146,7 +151,7 @@ function EmptyState({ filter, onAdd }) {
         <button onClick={onAdd}
           className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold text-white active:scale-95 transition shadow-sm"
           style={{ background: "linear-gradient(135deg,var(--brand-green),var(--brand-green-dark))" }}>
-          + Record Transaction
+          + {t("sales.recordTransaction")}
         </button>
       )}
     </div>
@@ -219,7 +224,7 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
       await inventory.recordMovement({ product_id: product.id, type: "adjustment", quantity: returnedQty,
         unit_price: Number(sale.unit_price) || 0, notes: `Returned — refund${sale.customer_name ? ` to ${sale.customer_name}` : ""}` });
     }
-    toast({ type: "success", title: `Refund of ${fmt(amount)} recorded` });
+    toast({ type: "success", title: t("sales.refundRecorded", { amount: fmt(amount) }) });
   };
 
   // Wallet activity findable via search here too — kept OUT of filterBase/
@@ -535,9 +540,9 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
     { id: "all",    label: t("txn.all")    },
     { id: "in",     label: t("txn.cashIn") },
     { id: "out",    label: t("txn.cashOut")},
-    { id: "bills",  label: "Bills"         },
-    { id: "credit", label: "Credit"        },
-    { id: "ajo",    label: "Ajo"           },
+    { id: "bills",  label: t("nav.bills")  },
+    { id: "credit", label: t("nav.credit") },
+    { id: "ajo",    label: t("nav.ajo")    },
   ];
 
   /* ── Ajo feed (unchanged render logic) ── */
@@ -560,15 +565,15 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
         <div className="mx-4 mt-4 mb-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl px-4 py-3 flex items-start gap-3">
           <span className="text-base flex-shrink-0">⚠️</span>
           <div className="flex-1">
-            <p className="text-sm font-bold text-amber-800 dark:text-amber-300">Monthly limit reached</p>
+            <p className="text-sm font-bold text-amber-800 dark:text-amber-300">{t("sales.monthlyLimit")}</p>
             <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
-              {limits.maxTxPerMonth} transactions/month limit reached.{canSellPlans() ? " Upgrade to record more." : ""}
+              {t("sales.limitBody", { n: limits.maxTxPerMonth })}{canSellPlans() ? ` ${t("sales.upgradeToRecordMore")}` : ""}
             </p>
           </div>
           {canSellPlans() && (
             <button onClick={onUpgrade}
               className="text-xs font-bold text-amber-800 dark:text-amber-200 bg-amber-200 dark:bg-amber-700 px-2.5 py-1 rounded-lg flex-shrink-0">
-              Upgrade
+              {t("sales.upgrade")}
             </button>
           )}
         </div>
@@ -624,7 +629,7 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
                 </svg>
                 <input
                   ref={searchRef}
-                  type="search" autoFocus placeholder="Search item, customer or reference…" value={search}
+                  type="search" autoFocus placeholder={t("sales.searchPlaceholder")} value={search}
                   onChange={e => setSearch(e.target.value)}
                   className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-700 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-green-500/40"
                 />
@@ -674,11 +679,11 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
       <div className="px-4 pt-3">
         <div className="grid grid-cols-2 gap-3 mb-3">
           <div className="bg-green-50 dark:bg-green-900/20 rounded-2xl p-3.5 border border-green-100 dark:border-green-800/60">
-            <p className="text-[10px] text-green-600 dark:text-green-400 font-bold uppercase tracking-wide">Total In</p>
+            <p className="text-[10px] text-green-600 dark:text-green-400 font-bold uppercase tracking-wide">{t("sales.totalIn")}</p>
             <AmountDisplay amount={totIn} size="stat" align="left" className="text-green-700 dark:text-green-400 mt-0.5" />
           </div>
           <div className="bg-red-50 dark:bg-red-900/20 rounded-2xl p-3.5 border border-red-100 dark:border-red-800/60">
-            <p className="text-[10px] text-red-500 dark:text-red-400 font-bold uppercase tracking-wide">Total Out</p>
+            <p className="text-[10px] text-red-500 dark:text-red-400 font-bold uppercase tracking-wide">{t("sales.totalOut")}</p>
             <AmountDisplay amount={totOut} size="stat" align="left" className="text-red-600 dark:text-red-400 mt-0.5" />
           </div>
         </div>
@@ -688,7 +693,7 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
               ? "bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800/40"
               : "bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800/40"
           }`}>
-            <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400">Net Position</p>
+            <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400">{t("sales.netPosition")}</p>
             <div className="flex items-center gap-0.5">
               <span className={`text-[11px] font-bold ${net >= 0 ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}>
                 {net >= 0 ? "+" : "−"}
@@ -726,10 +731,10 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
                 const isWd     = c.type === "withdrawal" || isFee;
                 const amt      = parseFloat(c.amount) || 0;
                 const typeLabel = isFee
-                  ? (c.type === "withdrawal_fee" ? "Withdrawal Fee" : "Reg. Fee")
-                  : c.type === "withdrawal" ? "Withdrawal"
-                  : c.payment_method === "manual_transfer" ? "Manual Deposit"
-                  : "Contribution";
+                  ? (c.type === "withdrawal_fee" ? t("sales.ajoWithdrawalFee") : t("sales.ajoRegFee"))
+                  : c.type === "withdrawal" ? t("sales.ajoWithdrawal")
+                  : c.payment_method === "manual_transfer" ? t("sales.ajoManualDeposit")
+                  : t("sales.ajoContribution");
                 const dateStr  = c.created_at
                   ? new Date(c.created_at).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })
                   : "—";
@@ -742,7 +747,7 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
                         </svg>
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-[13px] font-bold text-slate-800 dark:text-white truncate">{client?.full_name || "Unknown Client"}</p>
+                        <p className="text-[13px] font-bold text-slate-800 dark:text-white truncate">{client?.full_name || t("sales.unknownClient")}</p>
                         <p className="text-[11px] text-slate-400 dark:text-slate-500">{typeLabel} · {dateStr}</p>
                       </div>
                       <p className={`text-[14px] font-extrabold tabular flex-shrink-0 ${isWd ? "text-red-500" : "text-violet-600 dark:text-violet-400"}`}>
@@ -768,8 +773,8 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
                       <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
                     </svg>
                   </div>
-                  <p className="text-slate-700 dark:text-slate-300 text-base font-bold mb-1">No results for "{search}"</p>
-                  <p className="text-slate-400 dark:text-slate-500 text-sm">Try a different item name or customer.</p>
+                  <p className="text-slate-700 dark:text-slate-300 text-base font-bold mb-1">{t("sales.noResultsFor", { q: search })}</p>
+                  <p className="text-slate-400 dark:text-slate-500 text-sm">{t("sales.tryDifferentItem")}</p>
                 </div>
               ) : (
                 <EmptyState filter={filter} onAdd={txLimitReached ? onUpgrade : () => openAdd("in")} />
@@ -809,7 +814,7 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
               <button
                 onClick={() => setDisplayCount(c => c + 50)}
                 className="w-full mt-3 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-500 dark:text-slate-400 active:scale-95 transition-transform bg-white dark:bg-slate-800">
-                Load {Math.min(50, totalRows - displayCount)} more
+                {t("sales.loadMore", { n: Math.min(50, totalRows - displayCount) })}
               </button>
             )}
           </>
@@ -839,13 +844,13 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
             className="w-full bg-white dark:bg-slate-900 rounded-t-2xl p-6 shadow-2xl overscroll-contain"
             style={{ paddingBottom: "max(24px, env(safe-area-inset-bottom, 24px))" }}
             onClick={e => e.stopPropagation()}>
-            <p className="text-base font-bold text-slate-900 dark:text-white">Delete this transaction?</p>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">This action cannot be undone.</p>
+            <p className="text-base font-bold text-slate-900 dark:text-white">{t("sales.deleteTitle")}</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t("sales.cannotUndo")}</p>
             <div className="flex gap-3 mt-5">
               <button
                 onClick={() => setConfirmDeleteId(null)}
                 className="flex-1 h-11 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-semibold text-sm active:scale-95 transition">
-                Cancel
+                {t("common.cancel")}
               </button>
               <button
                 onClick={async () => {
@@ -853,11 +858,11 @@ export default function Transactions({ store, plan = "starter", onVoiceOpen, aut
                   setConfirmDeleteId(null);
                   const result = await deleteTransaction(id);
                   if (result?.error) {
-                    toast({ type: "error", title: "Couldn't delete — check connection and try again", body: result.error?.message });
+                    toast({ type: "error", title: t("sales.deleteFailed"), body: result.error?.message });
                   }
                 }}
                 className="flex-1 h-11 rounded-xl bg-red-500 hover:bg-red-600 text-white font-semibold text-sm active:scale-95 transition">
-                Delete
+                {t("common.delete")}
               </button>
             </div>
           </div>

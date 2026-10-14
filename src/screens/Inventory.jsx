@@ -7,7 +7,7 @@ import Field from "../components/shared/Field";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
 import { useCampaigns }    from "../hooks/useCampaigns";
 import AnnouncementBarSlot from "../components/slots/AnnouncementBarSlot";
-import { canDo, featureLimit, upgradeLabel, planAvailableText } from "../utils/plans";
+import { canDo, featureLimit, getLowestPlanWithFeature } from "../utils/plans";
 import { useT } from "../contexts/LanguageContext";
 import { getLang, speakConfirmation } from "../utils/i18n";
 import AssignRecordModal from "../components/AssignRecordModal";
@@ -16,6 +16,25 @@ const CATEGORIES = [
   "Electronics", "Clothing", "Food & Beverages", "Cosmetics",
   "Household", "Medicines", "Stationery", "Agriculture", "Auto Parts", "Other",
 ];
+// The stored category stays English; a built-in one is shown in the chosen language, a custom one as typed
+const catLabel = (t, c) => {
+  const i = CATEGORIES.indexOf(c);
+  return i >= 0 ? t(`stock.cat${i}`) : c;
+};
+
+// utils/plans.js upgradeLabel / planAvailableText, with the words in the chosen language
+function planUpgradeLabel(t, featureKey) {
+  if (!canSellPlans()) return "";
+  const p = getLowestPlanWithFeature(featureKey);
+  if (!p) return t("finance.planUpgradePlan");
+  const price = p.price_monthly ? t("finance.planPricePerMonth", { amount: Number(p.price_monthly).toLocaleString() }) : t("finance.planFree");
+  return t("finance.planUpgradeTo", { plan: p.name, price });
+}
+function planAvailable(t, featureKey) {
+  if (!canSellPlans()) return t("finance.planNotInCurrent");
+  const p = getLowestPlanWithFeature(featureKey);
+  return p ? t("finance.planAvailableOn", { plan: p.name }) : t("finance.planUpgradeToAccess");
+}
 
 function fmtQty(n) { return Number(n || 0).toLocaleString("en-NG"); }
 
@@ -86,6 +105,7 @@ function ProductSkeleton() {
 
 /* ── Product Form ─────────────────────────────────────────────── */
 function ProductForm({ initial, onSave, onClose, saving, branches = [], staffBranchId = null }) {
+  const t = useT();
   const isEdit = Boolean(initial?.id);
   const [form, setForm] = useState({
     product_name:        initial?.product_name        || "",
@@ -113,57 +133,57 @@ function ProductForm({ initial, onSave, onClose, saving, branches = [], staffBra
         <button onClick={onClose} className="w-11 h-11 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center active:scale-95">
           <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
         </button>
-        <p className="text-base font-extrabold text-slate-800 dark:text-white">{isEdit ? "Edit Product" : "Add Product"}</p>
+        <p className="text-base font-extrabold text-slate-800 dark:text-white">{isEdit ? t("stock.editProduct") : t("stock.addProduct")}</p>
       </div>
 
       <form onSubmit={submit} className="flex-1 overflow-y-auto px-4 py-5 space-y-4">
-        <Field label="Product Name" value={form.product_name} onChange={e => set("product_name", e.target.value)} required placeholder="e.g. Samsung Galaxy A15" />
-        <Field label="SKU / Barcode" value={form.sku} onChange={e => set("sku", e.target.value)} placeholder="e.g. SAM-A15-64GB" />
+        <Field label={t("stock.productName")} value={form.product_name} onChange={e => set("product_name", e.target.value)} required placeholder={t("stock.productNamePh")} />
+        <Field label={t("stock.skuBarcode")} value={form.sku} onChange={e => set("sku", e.target.value)} placeholder={t("stock.skuPh")} />
 
         <div>
-          <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1.5">Category</p>
+          <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1.5">{t("stock.category")}</p>
           <select value={form.category} onChange={e => set("category", e.target.value)}
             className="w-full bg-slate-100 dark:bg-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500/40">
-            <option value="">Select category…</option>
-            {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+            <option value="">{t("stock.selectCategory")}</option>
+            {CATEGORIES.map(c => <option key={c} value={c}>{catLabel(t, c)}</option>)}
           </select>
         </div>
 
         {branches.length > 0 && (
           <div>
             <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1.5">
-              Branch{staffBranchId ? " (Your Branch)" : ""}
+              {staffBranchId ? t("stock.branchYours") : t("stock.branch")}
             </p>
             <select value={form.branch_id} onChange={e => set("branch_id", e.target.value)}
               disabled={!!staffBranchId}
               className="w-full bg-slate-100 dark:bg-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500/40 disabled:opacity-70">
-              {!staffBranchId && <option value="">No Branch (Main Inventory)</option>}
+              {!staffBranchId && <option value="">{t("stock.noBranch")}</option>}
               {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           </div>
         )}
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Cost Price (₦)" type="number" value={form.cost_price} onChange={e => set("cost_price", e.target.value)} min="0" step="0.01" placeholder="0.00" />
-          <Field label="Selling Price (₦)" type="number" value={form.selling_price} onChange={e => set("selling_price", e.target.value)} min="0" step="0.01" placeholder="0.00" />
+          <Field label={t("stock.costPrice")} type="number" value={form.cost_price} onChange={e => set("cost_price", e.target.value)} min="0" step="0.01" placeholder="0.00" />
+          <Field label={t("stock.sellingPrice")} type="number" value={form.selling_price} onChange={e => set("selling_price", e.target.value)} min="0" step="0.01" placeholder="0.00" />
         </div>
 
         {m !== null && (
           <div className={`text-xs font-bold px-3 py-2 rounded-xl text-center ${m > 0 ? "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400" : "bg-red-50 dark:bg-red-900/20 text-red-600"}`}>
-            Profit Margin: {m}% {m > 0 ? `(₦${(parseFloat(form.selling_price||0) - parseFloat(form.cost_price||0)).toLocaleString()} per unit)` : "(Loss)"}
+            {t("stock.profitMargin", { m })} {m > 0 ? t("stock.perUnit", { amount: (parseFloat(form.selling_price||0) - parseFloat(form.cost_price||0)).toLocaleString() }) : t("stock.loss")}
           </div>
         )}
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label={isEdit ? "Current Stock" : "Opening Stock"} type="number" value={form.quantity} onChange={e => set("quantity", e.target.value)} min="0" step="1" placeholder="0" />
-          <Field label="Low Stock Alert" type="number" value={form.low_stock_threshold} onChange={e => set("low_stock_threshold", e.target.value)} min="0" step="1" placeholder="5" />
+          <Field label={isEdit ? t("stock.currentStock") : t("stock.openingStock")} type="number" value={form.quantity} onChange={e => set("quantity", e.target.value)} min="0" step="1" placeholder="0" />
+          <Field label={t("stock.lowStockAlert")} type="number" value={form.low_stock_threshold} onChange={e => set("low_stock_threshold", e.target.value)} min="0" step="1" placeholder="5" />
         </div>
 
-        <p className="text-[10px] text-slate-400 dark:text-slate-500">Alert fires when quantity falls at or below the threshold value.</p>
+        <p className="text-[10px] text-slate-400 dark:text-slate-500">{t("stock.alertFires")}</p>
 
         <button type="submit" disabled={saving || !form.product_name.trim()}
           className="w-full py-3.5 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white font-extrabold text-sm rounded-2xl transition active:scale-[0.98] flex items-center justify-center gap-2 mt-2">
-          {saving ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/>Saving…</> : isEdit ? "Update Product" : "Add Product"}
+          {saving ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/>{t("common.saving")}</> : isEdit ? t("stock.updateProduct") : t("stock.addProduct")}
         </button>
         <div className="h-6"/>
       </form>
@@ -173,14 +193,15 @@ function ProductForm({ initial, onSave, onClose, saving, branches = [], staffBra
 
 /* ── Movement Modal ───────────────────────────────────────────── */
 function MovementModal({ product, movType, onRecord, onClose, saving }) {
+  const t = useT();
   const [qty,   setQty]   = useState("");
   const [price, setPrice] = useState(movType === "sale" ? String(product.selling_price || "") : String(product.cost_price || ""));
   const [notes, setNotes] = useState("");
 
   const TYPE_META = {
-    sale:       { label: "Record Sale",     color: "bg-brand-500",                   hint: "Enter qty sold. Stock will decrease." },
-    restock:    { label: "Record Restock",  color: "bg-blue-600",                    hint: "Enter qty received. Stock will increase." },
-    adjustment: { label: "Stock Adjustment",color: "bg-slate-700 dark:bg-slate-600", hint: "Positive to add, negative to remove." },
+    sale:       { label: t("stock.recordSale"),      color: "bg-brand-500",                   hint: t("stock.hintSale") },
+    restock:    { label: t("stock.recordRestock"),   color: "bg-blue-600",                    hint: t("stock.hintRestock") },
+    adjustment: { label: t("stock.stockAdjustment"), color: "bg-slate-700 dark:bg-slate-600", hint: t("stock.hintAdjust") },
   };
   const meta = TYPE_META[movType];
   const preview = (() => {
@@ -208,14 +229,14 @@ function MovementModal({ product, movType, onRecord, onClose, saving }) {
 
         <div className="bg-slate-50 dark:bg-slate-800 rounded-2xl px-4 py-3 mb-4 flex items-center justify-between">
           <div>
-            <p className="text-[10px] text-slate-400 uppercase tracking-wide font-bold">Current Stock</p>
+            <p className="text-[10px] text-slate-400 uppercase tracking-wide font-bold">{t("stock.currentStock")}</p>
             <p className="text-xl font-black text-slate-800 dark:text-white">{fmtQty(product.quantity)}</p>
           </div>
           {qty && (
             <>
               <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" className="text-slate-400"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
               <div className="text-right">
-                <p className="text-[10px] text-slate-400 uppercase tracking-wide font-bold">After</p>
+                <p className="text-[10px] text-slate-400 uppercase tracking-wide font-bold">{t("stock.after")}</p>
                 <p className={`text-xl font-black ${preview.newQ <= product.low_stock_threshold ? "text-amber-500" : "text-green-600"}`}>{fmtQty(preview.newQ)}</p>
               </div>
             </>
@@ -226,7 +247,7 @@ function MovementModal({ product, movType, onRecord, onClose, saving }) {
 
         <div className="space-y-3 mb-5">
           <Field
-            label={movType === "adjustment" ? "Quantity (+ or −)" : "Quantity"}
+            label={movType === "adjustment" ? t("stock.qtyPlusMinus") : t("stock.quantity")}
             type="number"
             value={qty}
             onChange={e => setQty(e.target.value)}
@@ -234,19 +255,19 @@ function MovementModal({ product, movType, onRecord, onClose, saving }) {
             step="1"
           />
           <Field
-            label={movType === "sale" ? "Sale Price per Unit (₦)" : "Unit Price (₦)"}
+            label={movType === "sale" ? t("stock.salePricePerUnit") : t("stock.unitPrice")}
             type="number"
             value={price}
             onChange={e => setPrice(e.target.value)}
             min="0" step="0.01"
           />
-          <Field label="Notes (optional)" value={notes} onChange={e => setNotes(e.target.value)} placeholder={movType === "restock" ? "e.g. Supplier: Mile 12 market" : "e.g. Customer: Mrs Bello"} />
+          <Field label={t("stock.notesOptional")} value={notes} onChange={e => setNotes(e.target.value)} placeholder={movType === "restock" ? t("stock.notesPhRestock") : t("stock.notesPhSale")} />
         </div>
 
         <button onClick={() => onRecord({ product_id: product.id, type: movType, quantity: qty, unit_price: price, notes })}
           disabled={saving || !qty}
           className={`w-full py-3.5 ${meta.color} disabled:opacity-50 text-white font-extrabold text-sm rounded-2xl transition active:scale-[0.98] flex items-center justify-center gap-2`}>
-          {saving ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/>Recording…</> : meta.label}
+          {saving ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/>{t("stock.recording")}</> : meta.label}
         </button>
       </div>
     </div>
@@ -255,6 +276,7 @@ function MovementModal({ product, movType, onRecord, onClose, saving }) {
 
 /* ── Product Detail ───────────────────────────────────────────── */
 function ProductDetail({ product, movements, onClose, onEdit, onDelete, onAdjust, isOwner }) {
+  const t = useT();
   const pMovements = movements.filter(m => m.product_id === product.id).slice(0, 30);
   const totalSold      = pMovements.filter(m => m.type === "sale").reduce((s,m) => s + Math.abs(m.quantity), 0);
   const totalRestocked = pMovements.filter(m => m.type === "restock").reduce((s,m) => s + Math.abs(m.quantity), 0);
@@ -271,10 +293,10 @@ function ProductDetail({ product, movements, onClose, onEdit, onDelete, onAdjust
         {isOwner && (
           <div className="flex gap-2">
             {onAdjust && (
-              <button onClick={() => onAdjust(product)} className="px-3 py-1.5 text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-xl active:scale-95">Adjust</button>
+              <button onClick={() => onAdjust(product)} className="px-3 py-1.5 text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-xl active:scale-95">{t("stock.adjust")}</button>
             )}
-            <button onClick={() => onEdit(product)} className="px-3 py-1.5 text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-xl active:scale-95">Edit</button>
-            <button onClick={() => onDelete(product)} className="px-3 py-1.5 text-xs font-bold bg-red-50 dark:bg-red-900/20 text-red-500 rounded-xl active:scale-95">Delete</button>
+            <button onClick={() => onEdit(product)} className="px-3 py-1.5 text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-xl active:scale-95">{t("common.edit")}</button>
+            <button onClick={() => onDelete(product)} className="px-3 py-1.5 text-xs font-bold bg-red-50 dark:bg-red-900/20 text-red-500 rounded-xl active:scale-95">{t("common.delete")}</button>
           </div>
         )}
       </div>
@@ -286,23 +308,23 @@ function ProductDetail({ product, movements, onClose, onEdit, onDelete, onAdjust
             <div className="flex-1 min-w-0">
               <p className="text-lg font-extrabold text-slate-800 dark:text-white leading-tight">{product.product_name}</p>
               {product.sku && <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5 font-mono">SKU: {product.sku}</p>}
-              {product.category && <span className="mt-1.5 inline-block text-[10px] font-bold px-2 py-0.5 bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 rounded-full">{product.category}</span>}
+              {product.category && <span className="mt-1.5 inline-block text-[10px] font-bold px-2 py-0.5 bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 rounded-full">{catLabel(t, product.category)}</span>}
             </div>
             <span className={`text-sm font-extrabold px-3 py-1.5 rounded-xl flex-shrink-0 ${qtyColor(product.quantity, product.low_stock_threshold)}`}>
-              {fmtQty(product.quantity)} units
+              {t("stock.nUnits", { n: fmtQty(product.quantity) })}
             </span>
           </div>
           <div className="grid grid-cols-3 gap-2 pt-3 border-t border-slate-100 dark:border-slate-700">
             <div>
-              <p className="text-[9px] text-slate-400 uppercase tracking-wide font-bold">Cost</p>
+              <p className="text-[9px] text-slate-400 uppercase tracking-wide font-bold">{t("stock.cost")}</p>
               <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{fmt(product.cost_price)}</p>
             </div>
             <div>
-              <p className="text-[9px] text-slate-400 uppercase tracking-wide font-bold">Sell Price</p>
+              <p className="text-[9px] text-slate-400 uppercase tracking-wide font-bold">{t("stock.sellPrice")}</p>
               <p className="text-sm font-bold text-brand-500">{fmt(product.selling_price)}</p>
             </div>
             <div>
-              <p className="text-[9px] text-slate-400 uppercase tracking-wide font-bold">Margin</p>
+              <p className="text-[9px] text-slate-400 uppercase tracking-wide font-bold">{t("stock.margin")}</p>
               <p className={`text-sm font-black ${m !== null && m > 0 ? "text-brand-500" : "text-red-500"}`}>{m !== null ? `${m}%` : "—"}</p>
             </div>
           </div>
@@ -311,9 +333,9 @@ function ProductDetail({ product, movements, onClose, onEdit, onDelete, onAdjust
         {/* Summary stats */}
         <div className="grid grid-cols-3 gap-2">
           {[
-            { label:"Units Sold",    value:fmtQty(totalSold),     color:"text-brand-500" },
-            { label:"Restocked",     value:fmtQty(totalRestocked), color:"text-blue-600" },
-            { label:"Total Revenue", value:fmt(totalRevenue),      color:"text-brand-500" },
+            { label:t("stock.unitsSold"),    value:fmtQty(totalSold),     color:"text-brand-500" },
+            { label:t("stock.restocked"),    value:fmtQty(totalRestocked), color:"text-blue-600" },
+            { label:t("stock.totalRevenue"), value:fmt(totalRevenue),      color:"text-brand-500" },
           ].map(s => (
             <div key={s.label} className="bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 p-3">
               <p className="text-[9px] text-slate-400 uppercase font-bold tracking-wide">{s.label}</p>
@@ -324,16 +346,16 @@ function ProductDetail({ product, movements, onClose, onEdit, onDelete, onAdjust
 
         {/* Stock value */}
         <div className="bg-navy rounded-2xl p-4">
-          <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wide">Stock Value</p>
+          <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wide">{t("stock.stockValue")}</p>
           <AmountDisplay amount={product.cost_price * product.quantity} size="stat" align="left" className="text-white mt-0.5" />
-          <p className="text-xs text-slate-400 mt-0.5">Retail value: {fmt(product.selling_price * product.quantity)}</p>
+          <p className="text-xs text-slate-400 mt-0.5">{t("stock.retailValueOf", { amount: fmt(product.selling_price * product.quantity) })}</p>
         </div>
 
         {/* Movement history */}
         <div>
-          <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-3">Movement History</p>
+          <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-3">{t("stock.movementHistory")}</p>
           {pMovements.length === 0
-            ? <p className="text-xs text-slate-400 dark:text-slate-500 text-center py-6">No movements yet</p>
+            ? <p className="text-xs text-slate-400 dark:text-slate-500 text-center py-6">{t("stock.noMovements")}</p>
             : (
               <div className="space-y-2">
                 {pMovements.map(mv => <TxRow key={mv.id} tx={mv} variant="stock" />)}
@@ -348,13 +370,14 @@ function ProductDetail({ product, movements, onClose, onEdit, onDelete, onAdjust
 
 /* ── Analytics ────────────────────────────────────────────────── */
 function AnalyticsView({ analytics, products, onClose }) {
+  const t = useT();
   const [tab, setTab] = useState("best");
   const { bestSelling, slowMoving, mostProfitable } = analytics;
 
   const TABS = [
-    { id:"best",   label:"Best Selling"     },
-    { id:"slow",   label:"Slow Moving"      },
-    { id:"profit", label:"Most Profitable"  },
+    { id:"best",   label:t("stock.bestSelling")     },
+    { id:"slow",   label:t("stock.slowMoving")      },
+    { id:"profit", label:t("stock.mostProfitable")  },
   ];
 
   const rows = tab === "best"   ? bestSelling
@@ -365,19 +388,19 @@ function AnalyticsView({ analytics, products, onClose }) {
     ? Math.max(...rows.map(p => tab === "best" ? p.unitsSold : tab === "slow" ? p.quantity : p.margin), 1)
     : 1;
 
-  const metricLabel = tab === "best"   ? "Units Sold"
-                    : tab === "slow"   ? "In Stock"
-                    : "Margin %";
+  const metricLabel = tab === "best"   ? t("stock.unitsSold")
+                    : tab === "slow"   ? t("stock.inStock")
+                    : t("stock.marginPct");
 
-  const metricVal = (p) => tab === "best"   ? `${fmtQty(p.unitsSold)} units`
-                         : tab === "slow"   ? `${fmtQty(p.quantity)} units`
+  const metricVal = (p) => tab === "best"   ? t("stock.nUnits", { n: fmtQty(p.unitsSold) })
+                         : tab === "slow"   ? t("stock.nUnits", { n: fmtQty(p.quantity) })
                          : `${Math.round(p.margin)}%`;
 
   const barVal = (p) => tab === "best" ? p.unitsSold : tab === "slow" ? p.quantity : p.margin;
 
-  const emptyMsg = tab === "best"   ? "No sales recorded yet"
-                 : tab === "slow"   ? "All products have recent sales — great!"
-                 : "No products with positive margin";
+  const emptyMsg = tab === "best"   ? t("stock.emptyBest")
+                 : tab === "slow"   ? t("stock.emptySlow")
+                 : t("stock.emptyProfit");
 
   return (
     <div className="fixed inset-0 z-sub-sheet flex flex-col bg-slate-50 dark:bg-slate-900">
@@ -385,47 +408,47 @@ function AnalyticsView({ analytics, products, onClose }) {
         <button onClick={onClose} className="w-11 h-11 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center active:scale-95">
           <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
         </button>
-        <p className="text-base font-extrabold text-slate-800 dark:text-white">Inventory Analytics</p>
+        <p className="text-base font-extrabold text-slate-800 dark:text-white">{t("stock.inventoryAnalytics")}</p>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-4">
         {/* Summary */}
         <div className="grid grid-cols-2 gap-2.5 mb-5">
           <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 p-3">
-            <p className="text-[9px] text-slate-400 uppercase font-bold tracking-wide">Products</p>
+            <p className="text-[9px] text-slate-400 uppercase font-bold tracking-wide">{t("stock.products")}</p>
             <p className="text-xl font-black text-slate-800 dark:text-white mt-0.5">{products.length}</p>
           </div>
           <div className="bg-green-50 dark:bg-green-900/20 rounded-xl border border-green-100 dark:border-green-800 p-3">
-            <p className="text-[9px] text-green-700 dark:text-green-400 uppercase font-bold tracking-wide">Retail Value</p>
+            <p className="text-[9px] text-green-700 dark:text-green-400 uppercase font-bold tracking-wide">{t("stock.retailValue")}</p>
             <AmountDisplay amount={analytics.totalRetail} size="stat" align="left" className="text-green-700 dark:text-green-400 mt-0.5" />
           </div>
           <div className="bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-3">
-            <p className="text-[9px] text-slate-400 uppercase font-bold tracking-wide">Stock Cost</p>
+            <p className="text-[9px] text-slate-400 uppercase font-bold tracking-wide">{t("stock.stockCost")}</p>
             <AmountDisplay amount={analytics.totalCost} size="stat" align="left" className="text-slate-700 dark:text-slate-300 mt-0.5" />
           </div>
           <div className="bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-100 dark:border-amber-800 p-3">
-            <p className="text-[9px] text-amber-600 dark:text-amber-400 uppercase font-bold tracking-wide">Low Stock</p>
+            <p className="text-[9px] text-amber-600 dark:text-amber-400 uppercase font-bold tracking-wide">{t("stock.lowStock")}</p>
             <p className="text-xl font-black text-amber-600 dark:text-amber-400 mt-0.5">{analytics.lowStock.length}</p>
           </div>
         </div>
 
         {/* Tabs */}
         <div className="flex gap-1.5 mb-4">
-          {TABS.map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)}
+          {TABS.map(tb => (
+            <button key={tb.id} onClick={() => setTab(tb.id)}
               className={`flex-1 py-2 rounded-xl text-[11px] font-bold transition-all ${
-                tab === t.id ? "bg-slate-800 dark:bg-white text-white dark:text-slate-900 shadow-sm" : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
+                tab === tb.id ? "bg-slate-800 dark:bg-white text-white dark:text-slate-900 shadow-sm" : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
               }`}>
-              {t.label}
+              {tb.label}
             </button>
           ))}
         </div>
 
         {/* Tab description */}
         <p className="text-[10px] text-slate-400 dark:text-slate-500 mb-3">
-          {tab === "best"   && "Products ranked by total units sold of all time."}
-          {tab === "slow"   && "Products with no sales in the last 30 days. Consider discounts or promotions."}
-          {tab === "profit" && "Products ranked by profit margin (selling price vs cost price)."}
+          {tab === "best"   && t("stock.descBest")}
+          {tab === "slow"   && t("stock.descSlow")}
+          {tab === "profit" && t("stock.descProfit")}
         </p>
 
         {rows.length === 0
@@ -456,7 +479,7 @@ function AnalyticsView({ analytics, products, onClose }) {
                         <span className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-[10px] font-black text-slate-500 dark:text-slate-400 flex-shrink-0">{i+1}</span>
                         <div className="min-w-0">
                           <p className="text-sm font-bold text-slate-800 dark:text-white truncate">{p.product_name}</p>
-                          {p.category && <p className="text-[10px] text-slate-400 dark:text-slate-500">{p.category}</p>}
+                          {p.category && <p className="text-[10px] text-slate-400 dark:text-slate-500">{catLabel(t, p.category)}</p>}
                         </div>
                       </div>
                       <div className="text-right flex-shrink-0">
@@ -473,12 +496,12 @@ function AnalyticsView({ analytics, products, onClose }) {
                     </div>
                     {tab === "profit" && (
                       <div className="flex justify-between mt-1.5">
-                        <p className="text-[10px] text-slate-400 dark:text-slate-500">Cost: {fmt(p.cost_price)} → Sell: {fmt(p.selling_price)}</p>
-                        <p className="text-[10px] font-bold text-green-600">{fmt(p.profit)}/unit</p>
+                        <p className="text-[10px] text-slate-400 dark:text-slate-500">{t("stock.costToSell", { cost: fmt(p.cost_price), sell: fmt(p.selling_price) })}</p>
+                        <p className="text-[10px] font-bold text-green-600">{t("stock.perUnitShort", { amount: fmt(p.profit) })}</p>
                       </div>
                     )}
                     {tab === "best" && (
-                      <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1.5">Revenue: {fmt(p.revenue)}</p>
+                      <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1.5">{t("stock.revenueOf", { amount: fmt(p.revenue) })}</p>
                     )}
                   </div>
                 );
@@ -494,6 +517,7 @@ function AnalyticsView({ analytics, products, onClose }) {
 
 /* ── Product Card ─────────────────────────────────────────────── */
 function ProductCard({ product, onView, onSale, onRestock, isOwner, onEdit, onAssign, staffBranchId }) {
+  const t = useT();
   const m    = margin(product.cost_price, product.selling_price);
   const low  = product.quantity <= product.low_stock_threshold;
   const zero = product.quantity === 0;
@@ -519,8 +543,8 @@ function ProductCard({ product, onView, onSale, onRestock, isOwner, onEdit, onAs
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-extrabold text-slate-800 dark:text-white leading-tight truncate">{product.product_name}</p>
                 <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                  {isMainStock && <span className="text-[9px] font-bold px-1.5 py-0.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full">Business Stock</span>}
-                  {product.category && <span className="text-[9px] font-semibold px-1.5 py-0.5 bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 rounded-full">{product.category}</span>}
+                  {isMainStock && <span className="text-[9px] font-bold px-1.5 py-0.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full">{t("stock.businessStock")}</span>}
+                  {product.category && <span className="text-[9px] font-semibold px-1.5 py-0.5 bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 rounded-full">{catLabel(t, product.category)}</span>}
                   {product.sku && <span className="text-[9px] font-mono text-slate-400 dark:text-slate-500 truncate max-w-[70px]">{product.sku}</span>}
                 </div>
               </div>
@@ -559,7 +583,7 @@ function ProductCard({ product, onView, onSale, onRestock, isOwner, onEdit, onAs
         <button onClick={e => { e.stopPropagation(); onSale(product); }}
           className="flex-1 py-2.5 text-xs font-bold text-brand-500 dark:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition rounded-bl-2xl flex items-center justify-center gap-1.5 min-h-[44px] active:scale-95">
           <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
-          Sale
+          {t("stock.sale")}
         </button>
         {!isMainStock && (
           <>
@@ -567,7 +591,7 @@ function ProductCard({ product, onView, onSale, onRestock, isOwner, onEdit, onAs
             <button onClick={e => { e.stopPropagation(); onRestock(product); }}
               className="flex-1 py-2.5 text-xs font-bold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition flex items-center justify-center gap-1.5 min-h-[44px] active:scale-95">
               <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M12 5v14M5 12l7-7 7 7"/></svg>
-              Restock
+              {t("stock.restock")}
             </button>
           </>
         )}
@@ -577,13 +601,13 @@ function ProductCard({ product, onView, onSale, onRestock, isOwner, onEdit, onAs
             <button onClick={e => { e.stopPropagation(); onEdit(product); }}
               className="flex-1 py-2.5 text-xs font-bold text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 transition flex items-center justify-center gap-1.5 min-h-[44px] active:scale-95">
               <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-              Edit
+              {t("common.edit")}
             </button>
             <div className="w-px bg-slate-100 dark:bg-slate-700"/>
             <button onClick={e => { e.stopPropagation(); onAssign(product); }}
               className="flex-1 py-2.5 text-xs font-bold text-violet-500 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20 transition rounded-br-2xl flex items-center justify-center gap-1.5 min-h-[44px] active:scale-95">
               <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
-              Assign
+              {t("stock.assign")}
             </button>
           </>
         )}
@@ -594,6 +618,7 @@ function ProductCard({ product, onView, onSale, onRestock, isOwner, onEdit, onAs
 
 /* ── Costing sheet — lets owner set cost_price + opening qty on an auto-stub ── */
 function CostingSheet({ prod, onSave, onClose, onDiscard, saving, discarding }) {
+  const t = useT();
   const [costPrice, setCostPrice] = useState("");
   const [openQty,   setOpenQty]   = useState("");
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
@@ -613,11 +638,11 @@ function CostingSheet({ prod, onSave, onClose, onDiscard, saving, discarding }) 
         <div className="px-5 pt-3 pb-2">
           <div className="flex items-start justify-between mb-1">
             <div className="flex-1 min-w-0 pr-3">
-              <p className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest mb-0.5">Set Cost Price</p>
+              <p className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest mb-0.5">{t("stock.setCostPrice")}</p>
               <h3 className="text-base font-bold text-slate-800 dark:text-white truncate">{prod.product_name}</h3>
             </div>
             <div className="text-right flex-shrink-0">
-              <p className="text-[10px] text-slate-400 uppercase font-bold">Selling</p>
+              <p className="text-[10px] text-slate-400 uppercase font-bold">{t("stock.selling")}</p>
               <p className="text-sm font-extrabold text-green-600 dark:text-green-400">₦{sp}</p>
             </div>
           </div>
@@ -625,9 +650,9 @@ function CostingSheet({ prod, onSave, onClose, onDiscard, saving, discarding }) 
           {prod.timesSold > 0 && (
             <div className="mt-1 mb-4 px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl">
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                <span className="font-bold text-slate-700 dark:text-slate-200">{prod.timesSold} sale{prod.timesSold !== 1 ? "s" : ""}</span>
+                <span className="font-bold text-slate-700 dark:text-slate-200">{t(prod.timesSold !== 1 ? "stock.nSales" : "stock.nSale", { n: prod.timesSold })}</span>
                 {" · "}
-                ₦{(prod.totalRevenue || 0).toLocaleString("en-NG", { maximumFractionDigits: 0 })} revenue before costing
+                {t("stock.revenueBeforeCosting", { amount: `₦${(prod.totalRevenue || 0).toLocaleString("en-NG", { maximumFractionDigits: 0 })}` })}
               </p>
             </div>
           )}
@@ -635,7 +660,7 @@ function CostingSheet({ prod, onSave, onClose, onDiscard, saving, discarding }) 
           <div className="space-y-4 mt-3">
             <div>
               <label className="block text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-1.5">
-                Cost Price per Unit (₦)
+                {t("stock.costPricePerUnit")}
               </label>
               <input
                 type="number" inputMode="decimal" placeholder="0.00"
@@ -644,13 +669,13 @@ function CostingSheet({ prod, onSave, onClose, onDiscard, saving, discarding }) 
               />
               {m !== null && (
                 <p className={`text-[11px] mt-1 font-semibold ${m > 0 ? "text-green-600 dark:text-green-400" : "text-red-500"}`}>
-                  {m > 0 ? `${m}% margin on future sales` : "Selling below cost"}
+                  {m > 0 ? t("stock.marginFuture", { m }) : t("stock.sellingBelowCost")}
                 </p>
               )}
             </div>
             <div>
               <label className="block text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-1.5">
-                Current Stock on Hand
+                {t("stock.currentStockOnHand")}
               </label>
               <input
                 type="number" inputMode="numeric" placeholder="0"
@@ -661,18 +686,18 @@ function CostingSheet({ prod, onSave, onClose, onDiscard, saving, discarding }) 
           </div>
 
           <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-3 leading-relaxed">
-            Margin tracks on future sales only. Past sales without a cost price remain revenue-only — no retroactive adjustment.
+            {t("stock.costingNote")}
           </p>
 
           <div className="flex gap-3 mt-5">
             <button onClick={onClose}
               className="flex-1 h-11 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-semibold text-sm active:scale-95 transition">
-              Cancel
+              {t("common.cancel")}
             </button>
             <button onClick={() => onSave(costPrice, openQty)}
               disabled={!costPrice || saving}
               className="flex-1 h-11 rounded-xl bg-brand-500 text-white font-bold text-sm active:scale-95 transition disabled:opacity-40">
-              {saving ? "Saving…" : "Save"}
+              {saving ? t("common.saving") : t("common.save")}
             </button>
           </div>
 
@@ -680,23 +705,23 @@ function CostingSheet({ prod, onSave, onClose, onDiscard, saving, discarding }) 
             confirmingDiscard ? (
               <div className="mt-3 px-3 py-2.5 bg-red-50 dark:bg-red-900/20 rounded-xl">
                 <p className="text-[11px] text-red-600 dark:text-red-400 mb-2">
-                  Discard "{prod.product_name}"? This removes it from your product list — sales already recorded against it stay in your history as revenue-only.
+                  {t("stock.discardConfirm", { name: prod.product_name })}
                 </p>
                 <div className="flex gap-2">
                   <button onClick={() => setConfirmingDiscard(false)}
                     className="flex-1 h-9 rounded-lg text-xs font-semibold text-slate-500 dark:text-slate-400">
-                    Keep it
+                    {t("stock.keepIt")}
                   </button>
                   <button onClick={() => onDiscard(prod)} disabled={discarding}
                     className="flex-1 h-9 rounded-lg bg-red-500 text-white text-xs font-bold active:scale-95 transition disabled:opacity-40">
-                    {discarding ? "Discarding…" : "Yes, discard"}
+                    {discarding ? t("stock.discarding") : t("stock.yesDiscard")}
                   </button>
                 </div>
               </div>
             ) : (
               <button onClick={() => setConfirmingDiscard(true)}
                 className="w-full mt-3 h-9 text-xs font-semibold text-red-500 dark:text-red-400 active:opacity-70 transition">
-                Discard this item instead
+                {t("stock.discardInstead")}
               </button>
             )
           )}
@@ -753,13 +778,13 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
             <polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>
           </svg>
         </div>
-        <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-2">Inventory Management</h2>
+        <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-2">{t("stock.inventoryManagement")}</h2>
         <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 max-w-xs leading-relaxed">
-          Track stock, manage products, get low-stock alerts, and analyse your best sellers. {planAvailableText("inventory")}
+          {t("stock.gateBody")} {planAvailable(t, "inventory")}
         </p>
         {canSellPlans() && (
           <button onClick={onUpgrade} className="bg-brand-500 hover:bg-brand-600 text-white px-6 py-3 rounded-2xl font-bold text-sm active:scale-95 transition shadow-md">
-            {upgradeLabel("inventory")}
+            {planUpgradeLabel(t, "inventory")}
           </button>
         )}
       </div>
@@ -862,7 +887,7 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
         <div className="flex items-center justify-between gap-3 mb-3">
           <div>
             <h1 className="text-xl font-black text-slate-800 dark:text-white">{t("inv.title")}</h1>
-            <p className="text-xs text-slate-400 dark:text-slate-500">{products.length} product{products.length !== 1 ? "s" : ""}</p>
+            <p className="text-xs text-slate-400 dark:text-slate-500">{t(products.length !== 1 ? "stock.nProducts" : "stock.nProduct", { n: products.length })}</p>
           </div>
           <div className="flex items-center gap-2">
             <button onClick={() => setShowAnalytics(true)}
@@ -875,7 +900,7 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
               <button onClick={openAddForm}
                 className="flex items-center gap-1.5 px-3.5 py-2 bg-brand-500 text-white text-xs font-extrabold rounded-xl active:scale-95 transition shadow-sm">
                 <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
-                Add Stock
+                {t("stock.addStock")}
               </button>
             )}
           </div>
@@ -887,16 +912,16 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
             <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
           </svg>
           <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search by name or SKU…"
+            placeholder={t("stock.searchPh")}
             className="w-full bg-slate-100 dark:bg-slate-800 rounded-xl pl-9 pr-4 py-2.5 text-sm text-slate-800 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500/40"/>
         </div>
 
         {/* Category filters */}
         <div className="flex gap-2 overflow-x-auto no-scrollbar pb-0.5">
           {[
-            { id:"all",       label:`All (${products.length})` },
-            ...(lowStock.length > 0 ? [{ id:"low_stock", label:`Low (${lowStock.length})` }] : []),
-            ...categories.map(c => ({ id:c, label:c })),
+            { id:"all",       label:t("stock.filterAll", { n: products.length }) },
+            ...(lowStock.length > 0 ? [{ id:"low_stock", label:t("stock.filterLow", { n: lowStock.length }) }] : []),
+            ...categories.map(c => ({ id:c, label:catLabel(t, c) })),
           ].map(f => (
             <button key={f.id} onClick={() => setCatFilter(f.id)}
               className={`flex-shrink-0 text-xs font-bold px-3 py-1.5 rounded-full transition-all ${
@@ -915,15 +940,15 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
         {/* Stats row */}
         <div className="grid grid-cols-3 gap-2 mb-4">
           <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 p-3">
-            <p className="text-[9px] text-slate-400 uppercase font-bold tracking-wide">Stock Cost</p>
+            <p className="text-[9px] text-slate-400 uppercase font-bold tracking-wide">{t("stock.stockCost")}</p>
             <AmountDisplay amount={totalCost} size="row" align="left" className="text-slate-700 dark:text-slate-300 mt-0.5" />
           </div>
           <div className="bg-green-50 dark:bg-green-900/20 rounded-xl border border-green-100 dark:border-green-800 p-3">
-            <p className="text-[9px] text-green-700 dark:text-green-400 uppercase font-bold tracking-wide">Retail Value</p>
+            <p className="text-[9px] text-green-700 dark:text-green-400 uppercase font-bold tracking-wide">{t("stock.retailValue")}</p>
             <AmountDisplay amount={totalRetail} size="row" align="left" className="text-green-700 dark:text-green-400 mt-0.5" />
           </div>
           <div className={`rounded-xl border p-3 ${lowStock.length > 0 ? "bg-amber-50 dark:bg-amber-900/20 border-amber-100 dark:border-amber-800" : "bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700"}`}>
-            <p className={`text-[9px] uppercase font-bold tracking-wide ${lowStock.length > 0 ? "text-amber-600 dark:text-amber-400" : "text-slate-400"}`}>Low Stock</p>
+            <p className={`text-[9px] uppercase font-bold tracking-wide ${lowStock.length > 0 ? "text-amber-600 dark:text-amber-400" : "text-slate-400"}`}>{t("stock.lowStock")}</p>
             <p className={`text-sm font-extrabold mt-0.5 ${lowStock.length > 0 ? "text-amber-600 dark:text-amber-400" : "text-slate-500"}`}>{lowStock.length}</p>
           </div>
         </div>
@@ -937,7 +962,7 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
               <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
             </svg>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-amber-700 dark:text-amber-400">{lowStock.length} product{lowStock.length > 1 ? "s are" : " is"} low on stock</p>
+              <p className="text-sm font-bold text-amber-700 dark:text-amber-400">{t(lowStock.length > 1 ? "stock.lowBannerMany" : "stock.lowBannerOne", { n: lowStock.length })}</p>
               <p className="text-xs text-amber-600/70 dark:text-amber-500/70 mt-0.5 truncate">{lowStock.slice(0,3).map(p => p.product_name).join(", ")}{lowStock.length > 3 ? "…" : ""}</p>
             </div>
             <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="text-amber-500 flex-shrink-0"><path d="M9 18l6-6-6-6"/></svg>
@@ -962,14 +987,14 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
                 <polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>
               </svg>
             </div>
-            <p className="text-slate-600 dark:text-slate-300 font-bold text-sm mb-1">No products yet</p>
+            <p className="text-slate-600 dark:text-slate-300 font-bold text-sm mb-1">{t("stock.noProductsYet")}</p>
             <p className="text-xs text-slate-400 dark:text-slate-500 mb-5">
-              {canAddStock ? "Add your first product to start tracking stock" : "No products have been added yet"}
+              {canAddStock ? t("stock.addFirstHint") : t("stock.noneAddedYet")}
             </p>
             {canAddStock && (
               <button onClick={openAddForm}
                 className="px-5 py-2.5 bg-brand-500 text-white font-bold text-sm rounded-xl active:scale-95 transition">
-                Add First Product
+                {t("stock.addFirstProduct")}
               </button>
             )}
           </div>
@@ -978,8 +1003,8 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
         {/* No search results */}
         {!loading && products.length > 0 && filtered.length === 0 && (
           <div className="text-center py-10">
-            <p className="text-slate-500 dark:text-slate-400 text-sm">No products match your search</p>
-            <button onClick={() => { setSearch(""); setCatFilter("all"); }} className="mt-2 text-xs text-green-600 font-bold active:scale-95">Clear filters</button>
+            <p className="text-slate-500 dark:text-slate-400 text-sm">{t("stock.noMatch")}</p>
+            <button onClick={() => { setSearch(""); setCatFilter("all"); }} className="mt-2 text-xs text-green-600 font-bold active:scale-95">{t("stock.clearFilters")}</button>
           </div>
         )}
 
@@ -988,7 +1013,7 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
           <div className="mb-5">
             <div className="flex items-center gap-2 mb-2">
               <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest">
-                Needs Costing ({stubStats.length})
+                {t("stock.needsCosting", { n: stubStats.length })}
               </span>
               <div className="flex-1 h-px bg-blue-100 dark:bg-blue-800/40" />
             </div>
@@ -1000,15 +1025,15 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
                     <p className="text-sm font-bold text-slate-800 dark:text-white truncate">{p.product_name}</p>
                     <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                       {p.timesSold > 0
-                        ? `${p.timesSold} sale${p.timesSold !== 1 ? "s" : ""} · ₦${(p.totalRevenue || 0).toLocaleString("en-NG", { maximumFractionDigits: 0 })} revenue`
-                        : "No sales yet"}
+                        ? `${t(p.timesSold !== 1 ? "stock.nSales" : "stock.nSale", { n: p.timesSold })} · ${t("stock.revenueAmount", { amount: `₦${(p.totalRevenue || 0).toLocaleString("en-NG", { maximumFractionDigits: 0 })}` })}`
+                        : t("stock.noSalesYet")}
                     </p>
                   </div>
                   <div className="text-right flex-shrink-0 ml-2">
                     <p className="text-sm font-extrabold text-green-600 dark:text-green-400">
                       ₦{(p.selling_price || 0).toLocaleString("en-NG")}
                     </p>
-                    <p className="text-[10px] text-blue-600 dark:text-blue-400 font-bold mt-0.5">Set cost →</p>
+                    <p className="text-[10px] text-blue-600 dark:text-blue-400 font-bold mt-0.5">{t("stock.setCost")}</p>
                   </div>
                 </button>
               ))}
@@ -1043,14 +1068,14 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
           return (
             <div className="space-y-3">
               <div className="flex items-center gap-2 pt-1">
-                <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-widest">Low Stock</span>
+                <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-widest">{t("stock.lowStock")}</span>
                 <div className="flex-1 h-px bg-amber-200 dark:bg-amber-800/50"/>
               </div>
               {lowFiltered.map(renderCard)}
               {restFiltered.length > 0 && (
                 <>
                   <div className="flex items-center gap-2 pt-1">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">All Products</span>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{t("stock.allProducts")}</span>
                     <div className="flex-1 h-px bg-slate-100 dark:bg-slate-700"/>
                   </div>
                   {restFiltered.map(renderCard)}
@@ -1065,7 +1090,7 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
       {dbError && (
         <div className="fixed bottom-28 left-4 right-4 max-w-md mx-auto z-toast bg-red-600 text-white rounded-2xl px-4 py-3 shadow-lg flex items-start gap-3">
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold">Error</p>
+            <p className="text-sm font-semibold">{t("stock.error")}</p>
             <p className="text-xs opacity-80 mt-0.5 break-words">{dbError}</p>
           </div>
           <button onClick={clearDbError} className="text-white/70 hover:text-white flex-shrink-0">
@@ -1127,15 +1152,15 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
       {confirmDel && (
         <div className="fixed inset-0 z-modal bg-black/50 flex items-center justify-center px-6">
           <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 w-full max-w-xs shadow-2xl">
-            <p className="text-base font-extrabold text-slate-800 dark:text-white mb-1">Delete Product?</p>
+            <p className="text-base font-extrabold text-slate-800 dark:text-white mb-1">{t("stock.deleteProductQ")}</p>
             <p className="text-sm text-slate-500 dark:text-slate-400 mb-5">
-              <span className="font-bold text-slate-700 dark:text-slate-200">{confirmDel.product_name}</span> and all its movement history will be permanently deleted.
+              <span className="font-bold text-slate-700 dark:text-slate-200">{confirmDel.product_name}</span>{t("stock.deleteBody")}
             </p>
             <div className="flex gap-3">
-              <button onClick={() => setConfirmDel(null)} className="flex-1 py-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold text-sm active:scale-95">Cancel</button>
+              <button onClick={() => setConfirmDel(null)} className="flex-1 py-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold text-sm active:scale-95">{t("common.cancel")}</button>
               <button onClick={handleDelete} disabled={saving}
                 className="flex-1 py-3 rounded-xl bg-red-500 text-white font-bold text-sm active:scale-95 disabled:opacity-50">
-                {saving ? "Deleting…" : "Delete"}
+                {saving ? t("stock.deleting") : t("common.delete")}
               </button>
             </div>
           </div>

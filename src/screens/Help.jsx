@@ -4,6 +4,7 @@ import { supabase } from "../utils/supabase";
 import { friendlyError } from "../utils/errorMessage";
 import { askGemini } from "../utils/gemini";
 import { sanitizeHtml } from "../utils/sanitizeHtml";
+import { useT, tNow } from "../contexts/LanguageContext";
 
 // ── Icons ────────────────────────────────────────────────────────────────────
 const ArrowLeft   = () => <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>;
@@ -18,19 +19,28 @@ const ThumbDown   = () => <svg viewBox="0 0 24 24" fill="none" className="w-4 h-
 
 const TICKET_TYPES = ["general", "payment", "account", "invoice", "subscription", "technical", "ajo", "other"];
 const PRIORITIES   = ["low", "medium", "high"];
+// Shown labels only — the stored type/priority values above never change.
+const TYPE_LABEL_KEYS = {
+  general: "account.help.typeGeneral", payment: "account.help.typePayment", account: "account.help.typeAccount",
+  invoice: "account.help.typeInvoice", subscription: "account.help.typeSubscription", technical: "account.help.typeTechnical",
+  ajo: "account.help.typeAjo", other: "account.help.typeOther",
+};
+const PRIORITY_LABEL_KEYS = { low: "account.help.priorityLow", medium: "account.help.priorityMedium", high: "account.help.priorityHigh" };
+const capitalise = (v) => v.charAt(0).toUpperCase() + v.slice(1);
 
 const STATUS_META = {
-  open:              { label: "Open",           cls: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"           },
-  in_progress:       { label: "In Progress",    cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"       },
-  escalated:         { label: "Escalated",      cls: "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300"   },
-  awaiting_response: { label: "Awaiting Reply", cls: "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300"   },
-  resolved:          { label: "Resolved",       cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" },
-  closed:            { label: "Closed",         cls: "bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400"          },
+  open:              { labelKey: "account.help.statusOpen",           cls: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"           },
+  in_progress:       { labelKey: "account.help.statusInProgress",    cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"       },
+  escalated:         { labelKey: "account.help.statusEscalated",      cls: "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300"   },
+  awaiting_response: { labelKey: "account.help.statusAwaitingReply", cls: "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300"   },
+  resolved:          { labelKey: "account.help.statusResolved",       cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" },
+  closed:            { labelKey: "account.help.statusClosed",         cls: "bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400"          },
 };
 
 function StatusBadge({ status }) {
+  const t = useT();
   const m = STATUS_META[status] || STATUS_META.open;
-  return <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${m.cls}`}>{m.label}</span>;
+  return <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${m.cls}`}>{t(m.labelKey)}</span>;
 }
 
 function fmtDate(iso) {
@@ -80,6 +90,7 @@ function TypingDots() {
 
 // ── KudiAI answer card shown in FAQ search ────────────────────────────────────
 function KudiAICard({ loading, answer, onContactSupport }) {
+  const t = useT();
   if (!loading && !answer) return null;
   return (
     <div className="mb-4 rounded-2xl overflow-hidden border border-brand-200 dark:border-brand-700/50 shadow-sm">
@@ -87,14 +98,14 @@ function KudiAICard({ loading, answer, onContactSupport }) {
       <div className="flex items-center gap-2 px-4 py-2.5 bg-brand-600">
         <span className="text-sm">✨</span>
         <span className="text-xs font-extrabold tracking-widest text-white uppercase">KudiAI</span>
-        <span className="ml-auto text-[10px] text-brand-200 font-medium">AI answer</span>
+        <span className="ml-auto text-[10px] text-brand-200 font-medium">{t("account.help.aiAnswer")}</span>
       </div>
       {/* Body */}
       <div className="px-4 py-4 bg-brand-50 dark:bg-brand-900/20">
         {loading ? (
           <div className="flex items-center gap-3 text-sm text-slate-400 dark:text-slate-500">
             <TypingDots />
-            <span>KudiAI is thinking…</span>
+            <span>{t("account.help.aiThinking")}</span>
           </div>
         ) : (
           <>
@@ -103,7 +114,7 @@ function KudiAICard({ loading, answer, onContactSupport }) {
               onClick={onContactSupport}
               className="mt-3 text-xs font-semibold text-brand-600 dark:text-brand-400 hover:underline"
             >
-              Still need help? Open a support ticket →
+              {t("account.help.aiStillNeedHelp")}
             </button>
           </>
         )}
@@ -114,6 +125,7 @@ function KudiAICard({ loading, answer, onContactSupport }) {
 
 // ── FAQ Accordion Item ────────────────────────────────────────────────────────
 function FaqItem({ item, expanded, onToggle, feedback, onFeedback }) {
+  const t = useT();
   const fb = feedback[item.id];
   return (
     <div className="border border-slate-100 dark:border-slate-700 rounded-2xl overflow-hidden">
@@ -133,7 +145,7 @@ function FaqItem({ item, expanded, onToggle, feedback, onFeedback }) {
             dangerouslySetInnerHTML={{ __html: sanitizeHtml(item.answer) }}
           />
           <div className="flex items-center gap-3 mt-4 pt-3 border-t border-slate-100 dark:border-slate-700/50">
-            <span className="text-xs text-slate-400 dark:text-slate-500">Was this helpful?</span>
+            <span className="text-xs text-slate-400 dark:text-slate-500">{t("account.help.wasHelpful")}</span>
             <button
               onClick={() => onFeedback(item.id, true)}
               className={`flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-xl transition-colors ${
@@ -142,7 +154,7 @@ function FaqItem({ item, expanded, onToggle, feedback, onFeedback }) {
                   : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
               }`}
             >
-              <ThumbUp /> Yes
+              <ThumbUp /> {t("common.yes")}
             </button>
             <button
               onClick={() => onFeedback(item.id, false)}
@@ -152,7 +164,7 @@ function FaqItem({ item, expanded, onToggle, feedback, onFeedback }) {
                   : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-red-50 dark:hover:bg-red-900/20"
               }`}
             >
-              <ThumbDown /> No
+              <ThumbDown /> {t("common.no")}
             </button>
           </div>
         </div>
@@ -180,6 +192,7 @@ function StarRating({ value, onChange }) {
 
 // ── Ticket Detail View ────────────────────────────────────────────────────────
 function TicketDetail({ ticket, userId, profile, onBack, onUpdate }) {
+  const t = useT();
   const [messages,   setMessages]   = useState([]);
   const [adminMsgs,  setAdminMsgs]  = useState([]);
   const [reply,      setReply]      = useState("");
@@ -275,7 +288,7 @@ function TicketDetail({ ticket, userId, profile, onBack, onUpdate }) {
               <div className={`max-w-[82%] ${isAdmin ? "bg-slate-100 dark:bg-slate-800" : "bg-brand-600"} rounded-2xl ${isAdmin ? "rounded-tl-sm" : "rounded-tr-sm"} px-4 py-3`}>
                 {isAdmin && (
                   <p className="text-[10px] font-bold text-brand-600 dark:text-brand-400 mb-1">
-                    {item.admin_username || "Support Team"}
+                    {item.admin_username || t("account.help.supportTeam")}
                   </p>
                 )}
                 <p className={`text-sm leading-relaxed whitespace-pre-wrap ${isAdmin ? "text-slate-700 dark:text-slate-200" : "text-white"}`}>
@@ -291,26 +304,26 @@ function TicketDetail({ ticket, userId, profile, onBack, onUpdate }) {
 
         {ticket.status === "awaiting_response" && ticket.needs_info_message && (
           <div className="bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-700/40 rounded-2xl px-4 py-3 text-sm text-violet-700 dark:text-violet-300">
-            <p className="font-semibold text-xs uppercase tracking-wide mb-1">Additional info needed</p>
+            <p className="font-semibold text-xs uppercase tracking-wide mb-1">{t("account.help.infoNeeded")}</p>
             {ticket.needs_info_message}
           </div>
         )}
 
         {ticket.resolution && (ticket.status === "resolved" || ticket.status === "closed") && (
           <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700/40 rounded-2xl px-4 py-3">
-            <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 uppercase tracking-wide mb-1">Resolution</p>
+            <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 uppercase tracking-wide mb-1">{t("account.help.resolution")}</p>
             <p className="text-sm text-emerald-800 dark:text-emerald-200">{ticket.resolution}</p>
           </div>
         )}
 
         {canRate && !ratingDone && (
           <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 rounded-2xl px-4 py-4">
-            <p className="text-sm font-bold text-amber-800 dark:text-amber-300 mb-1">How was our support?</p>
-            <p className="text-xs text-amber-600 dark:text-amber-400 mb-3">Rate your experience (optional)</p>
+            <p className="text-sm font-bold text-amber-800 dark:text-amber-300 mb-1">{t("account.help.rateTitle")}</p>
+            <p className="text-xs text-amber-600 dark:text-amber-400 mb-3">{t("account.help.rateSub")}</p>
             <StarRating value={rating} onChange={setRating} />
             {rating > 0 && (
               <button onClick={submitRating} className="mt-3 text-xs font-bold text-amber-800 dark:text-amber-300 bg-amber-200 dark:bg-amber-800/40 px-4 py-2 rounded-xl active:scale-95 transition">
-                Submit Rating
+                {t("account.help.submitRating")}
               </button>
             )}
           </div>
@@ -318,7 +331,7 @@ function TicketDetail({ ticket, userId, profile, onBack, onUpdate }) {
 
         {ratingDone && (
           <p className="text-center text-xs text-emerald-600 dark:text-emerald-400 font-semibold">
-            Thanks for your rating! ⭐
+            {t("account.help.ratingThanks")}
           </p>
         )}
 
@@ -330,7 +343,7 @@ function TicketDetail({ ticket, userId, profile, onBack, onUpdate }) {
         {canReopen && (
           <button onClick={reopen} disabled={reopening}
             className="w-full py-2.5 rounded-2xl border border-brand-500 text-brand-600 dark:text-brand-400 text-sm font-bold active:scale-[0.98] transition disabled:opacity-50">
-            {reopening ? "Reopening…" : "Reopen Ticket"}
+            {reopening ? t("account.help.reopening") : t("account.help.reopen")}
           </button>
         )}
         {canReply && (
@@ -338,7 +351,7 @@ function TicketDetail({ ticket, userId, profile, onBack, onUpdate }) {
             <textarea
               value={reply}
               onChange={e => setReply(e.target.value)}
-              placeholder="Type a reply…"
+              placeholder={t("account.help.replyPlaceholder")}
               rows={2}
               className="flex-1 border border-slate-200 dark:border-slate-600 rounded-2xl px-3 py-2 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none"
               onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendReply(); } }}
@@ -351,7 +364,7 @@ function TicketDetail({ ticket, userId, profile, onBack, onUpdate }) {
         )}
         {!canReply && !canReopen && (
           <p className="text-center text-xs text-slate-400 dark:text-slate-500 py-1">
-            This ticket is {ticket.status}.
+            {t("account.help.ticketIs", { status: STATUS_META[ticket.status] ? t(STATUS_META[ticket.status].labelKey).toLowerCase() : ticket.status })}
           </p>
         )}
       </div>
@@ -361,13 +374,14 @@ function TicketDetail({ ticket, userId, profile, onBack, onUpdate }) {
 
 // ── Create Ticket Form ────────────────────────────────────────────────────────
 function CreateTicket({ userId, profile, session, onBack, onCreated }) {
+  const t = useT();
   const [form,   setForm]   = useState({ subject: "", description: "", type: "general", priority: "medium" });
   const [saving, setSaving] = useState(false);
   const [error,  setError]  = useState("");
 
   const submit = async () => {
     if (!form.subject.trim() || !form.description.trim()) {
-      setError("Subject and description are required.");
+      setError(t("account.help.requiredError"));
       return;
     }
     setSaving(true);
@@ -413,7 +427,7 @@ function CreateTicket({ userId, profile, session, onBack, onCreated }) {
         <button onClick={onBack} className="text-slate-600 dark:text-slate-300 active:scale-90 transition">
           <ArrowLeft />
         </button>
-        <h2 className="text-[17px] font-bold text-slate-900 dark:text-white">New Support Ticket</h2>
+        <h2 className="text-[17px] font-bold text-slate-900 dark:text-white">{t("account.help.newTicketTitle")}</h2>
       </div>
 
       {/* Form fields */}
@@ -425,47 +439,47 @@ function CreateTicket({ userId, profile, session, onBack, onCreated }) {
         )}
 
         <div>
-          <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">Subject *</label>
+          <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">{t("account.help.subjectLabel")}</label>
           <input
             value={form.subject}
             onChange={e => setForm(f => ({ ...f, subject: e.target.value }))}
-            placeholder="Brief description of your issue"
+            placeholder={t("account.help.subjectPlaceholder")}
             className={inputCls}
           />
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">Category</label>
+            <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">{t("account.help.category")}</label>
             <select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))} className={inputCls}>
-              {TICKET_TYPES.map(t => (
-                <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
+              {TICKET_TYPES.map(ty => (
+                <option key={ty} value={ty}>{TYPE_LABEL_KEYS[ty] ? t(TYPE_LABEL_KEYS[ty]) : capitalise(ty)}</option>
               ))}
             </select>
           </div>
           <div>
-            <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">Priority</label>
+            <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">{t("account.help.priority")}</label>
             <select value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value }))} className={inputCls}>
               {PRIORITIES.map(p => (
-                <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
+                <option key={p} value={p}>{PRIORITY_LABEL_KEYS[p] ? t(PRIORITY_LABEL_KEYS[p]) : capitalise(p)}</option>
               ))}
             </select>
           </div>
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">Description *</label>
+          <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">{t("account.help.descriptionLabel")}</label>
           <textarea
             value={form.description}
             onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-            placeholder="Describe your issue in detail. Include any error messages or steps to reproduce the problem."
+            placeholder={t("account.help.descriptionPlaceholder")}
             rows={6}
             className={`${inputCls} resize-none`}
           />
         </div>
 
         <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl px-4 py-3 text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-          Your ticket will be assigned a reference number and our support team will respond within 24 hours.
+          {t("account.help.createNote")}
         </div>
 
         {/* Submit button lives inside the scrollable area so it's always reachable */}
@@ -475,8 +489,8 @@ function CreateTicket({ userId, profile, session, onBack, onCreated }) {
           className="w-full py-3.5 rounded-2xl bg-brand-600 text-white font-bold text-sm active:scale-[0.98] transition disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg"
         >
           {saving
-            ? <><div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Submitting…</>
-            : <><TicketIcon /> Submit Ticket</>}
+            ? <><div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> {t("account.help.submitting")}</>
+            : <><TicketIcon /> {t("account.help.submitTicket")}</>}
         </button>
       </div>
     </div>
@@ -485,6 +499,7 @@ function CreateTicket({ userId, profile, session, onBack, onCreated }) {
 
 // ── Main Help Screen ──────────────────────────────────────────────────────────
 export default function Help({ store, session }) {
+  const t = useT();
   const navigate = useNavigate();
   const profile  = store?.profile || {};
   const userId   = session?.user?.id;
@@ -544,12 +559,12 @@ export default function Help({ store, session }) {
         const context = buildFaqContext(faqItems);
         const answer  = await askGemini({ message: search.trim(), context, timeout: 20000 });
         if (reqId === aiReqId.current) {
-          setAiAnswer(answer || "I couldn't find a specific answer. Please try rephrasing or open a support ticket.");
+          setAiAnswer(answer || tNow("account.help.aiNoAnswer"));
           setAiLoading(false);
         }
       } catch {
         if (reqId === aiReqId.current) {
-          setAiAnswer("I'm having trouble connecting right now. Try again or open a support ticket.");
+          setAiAnswer(tNow("account.help.aiOffline"));
           setAiLoading(false);
         }
       }
@@ -600,7 +615,7 @@ export default function Help({ store, session }) {
         session={session}
         onBack={() => setTicketView("list")}
         onCreated={(ticket) => {
-          setTickets(t => [ticket, ...t]);
+          setTickets(prev => [ticket, ...prev]);
           setSuccessTicket(ticket);
           setTicketView("list");
         }}
@@ -628,12 +643,12 @@ export default function Help({ store, session }) {
         <button onClick={() => navigate("/settings")} className="text-slate-600 dark:text-slate-300 active:scale-90 transition">
           <ArrowLeft />
         </button>
-        <h1 className="text-[22px] font-bold text-slate-900 dark:text-white flex-1">Help & Support</h1>
+        <h1 className="text-[22px] font-bold text-slate-900 dark:text-white flex-1">{t("account.help.title")}</h1>
       </div>
 
       {/* Tabs */}
       <div className="flex border-b border-slate-100 dark:border-slate-700/60 bg-white dark:bg-slate-900 px-4">
-        {[{ key: "faq", label: "FAQs" }, { key: "tickets", label: "My Tickets" }].map(({ key, label }) => (
+        {[{ key: "faq", label: t("account.help.tabFaqs") }, { key: "tickets", label: t("account.help.tabTickets") }].map(({ key, label }) => (
           <button
             key={key}
             onClick={() => setTab(key)}
@@ -659,7 +674,7 @@ export default function Help({ store, session }) {
             <input
               value={search}
               onChange={e => { setSearch(e.target.value); setActiveCategory(null); }}
-              placeholder="Ask KudiAI anything…"
+              placeholder={t("account.help.searchPlaceholder")}
               className="w-full pl-9 pr-4 py-2.5 border border-slate-200 dark:border-slate-600 rounded-2xl text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
             />
             {search.length > 0 && (
@@ -690,7 +705,7 @@ export default function Help({ store, session }) {
                     : "border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800"
                 }`}
               >
-                All
+                {t("account.help.all")}
               </button>
               {categories.map(cat => (
                 <button
@@ -718,12 +733,12 @@ export default function Help({ store, session }) {
           ) : filteredFAQ.length === 0 && !search ? (
             <div className="text-center py-12">
               <p className="text-4xl mb-3">📚</p>
-              <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">No FAQs available yet</p>
+              <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">{t("account.help.noFaqs")}</p>
             </div>
           ) : filteredFAQ.length === 0 && search ? (
             <div className="text-center py-8">
               <p className="text-sm text-slate-400 dark:text-slate-500">
-                No FAQ matches found — see KudiAI's answer above
+                {t("account.help.noMatches")}
               </p>
             </div>
           ) : (
@@ -769,15 +784,15 @@ export default function Help({ store, session }) {
 
           {/* Still need help? */}
           <div className="mt-6 mb-4 bg-gradient-to-br from-brand-600 to-brand-800 rounded-3xl px-5 py-5 text-white">
-            <p className="font-extrabold text-base mb-1">Still need help?</p>
+            <p className="font-extrabold text-base mb-1">{t("account.help.stillNeedHelp")}</p>
             <p className="text-sm text-white/75 mb-4 leading-relaxed">
-              Our support team is ready to help you. Create a ticket and we'll get back to you within 24 hours.
+              {t("account.help.stillNeedHelpBody")}
             </p>
             <button
               onClick={goToCreateTicket}
               className="flex items-center gap-2 bg-white text-brand-700 font-bold text-sm px-4 py-2.5 rounded-2xl active:scale-95 transition"
             >
-              <TicketIcon /> Contact Support
+              <TicketIcon /> {t("account.help.contactSupport")}
             </button>
           </div>
         </div>
@@ -790,9 +805,9 @@ export default function Help({ store, session }) {
             <div className="mb-4 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700/40 rounded-2xl px-4 py-3 flex items-start gap-3">
               <span className="text-emerald-600 dark:text-emerald-400 font-bold text-lg">✓</span>
               <div className="flex-1">
-                <p className="text-sm font-bold text-emerald-800 dark:text-emerald-300">Ticket submitted!</p>
+                <p className="text-sm font-bold text-emerald-800 dark:text-emerald-300">{t("account.help.ticketSubmitted")}</p>
                 <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-0.5">
-                  Reference: <span className="font-bold">{successTicket.ticket_no}</span>. We'll respond within 24 hours.
+                  {t("account.help.referenceLabel")} <span className="font-bold">{successTicket.ticket_no}</span>{t("account.help.referenceAfter")}
                 </p>
               </div>
               <button onClick={() => setSuccessTicket(null)} className="text-emerald-400 text-lg leading-none">×</button>
@@ -803,7 +818,7 @@ export default function Help({ store, session }) {
             onClick={() => setTicketView("create")}
             className="w-full flex items-center justify-center gap-2 py-3 mb-4 rounded-2xl border-2 border-dashed border-brand-300 dark:border-brand-700 text-brand-600 dark:text-brand-400 font-bold text-sm active:scale-[0.98] transition hover:bg-brand-50 dark:hover:bg-brand-900/10"
           >
-            <PlusIcon /> New Ticket
+            <PlusIcon /> {t("account.help.newTicket")}
           </button>
 
           {ticketLoading ? (
@@ -815,25 +830,25 @@ export default function Help({ store, session }) {
           ) : tickets.length === 0 ? (
             <div className="text-center py-16">
               <p className="text-5xl mb-4">🎟️</p>
-              <p className="text-base font-bold text-slate-700 dark:text-slate-200 mb-1">No tickets yet</p>
-              <p className="text-sm text-slate-400 dark:text-slate-500">Your support tickets will appear here.</p>
+              <p className="text-base font-bold text-slate-700 dark:text-slate-200 mb-1">{t("account.help.noTickets")}</p>
+              <p className="text-sm text-slate-400 dark:text-slate-500">{t("account.help.noTicketsSub")}</p>
             </div>
           ) : (
             <div className="space-y-3">
-              {tickets.map(t => (
+              {tickets.map(tk => (
                 <button
-                  key={t.id}
-                  onClick={() => { setSelectedTicket(t); setTicketView("detail"); }}
+                  key={tk.id}
+                  onClick={() => { setSelectedTicket(tk); setTicketView("detail"); }}
                   className="w-full bg-white dark:bg-slate-800 rounded-2xl px-4 py-4 border border-slate-100 dark:border-slate-700 shadow-card text-left active:scale-[0.98] transition hover:shadow-md"
                 >
                   <div className="flex items-start justify-between gap-3 mb-2">
-                    <span className="text-[11px] font-bold text-brand-600 dark:text-brand-400">{t.ticket_no}</span>
-                    <StatusBadge status={t.status} />
+                    <span className="text-[11px] font-bold text-brand-600 dark:text-brand-400">{tk.ticket_no}</span>
+                    <StatusBadge status={tk.status} />
                   </div>
-                  <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-1 line-clamp-2">{t.subject}</p>
-                  <p className="text-xs text-slate-400 dark:text-slate-500">{fmtDate(t.created_at)}</p>
-                  {t.rating && (
-                    <p className="text-xs text-amber-500 mt-1">{"★".repeat(t.rating)}{"☆".repeat(5 - t.rating)}</p>
+                  <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-1 line-clamp-2">{tk.subject}</p>
+                  <p className="text-xs text-slate-400 dark:text-slate-500">{fmtDate(tk.created_at)}</p>
+                  {tk.rating && (
+                    <p className="text-xs text-amber-500 mt-1">{"★".repeat(tk.rating)}{"☆".repeat(5 - tk.rating)}</p>
                   )}
                 </button>
               ))}

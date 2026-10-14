@@ -7,6 +7,59 @@ import { sendEmailTrigger } from "../utils/emailTrigger";
 import { useWallet } from "../hooks/useWallet";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
 import { canSellPlans } from "../utils/platform";
+import { useT, tNow } from "../contexts/LanguageContext";
+
+// Plan feature lines and descriptions come in English (from utils/plans.js or the
+// subscription_plans table, and the same English list is sent in the emails). Known
+// lines are shown in the chosen language; anything else (admin-written text) shows as is.
+function makeFeatureLabel(t) {
+  const known = {
+    "Credit management":                     t("account.plan.featCredit"),
+    "Ajo savings management":                t("account.plan.featAjo"),
+    "PDF export & reports":                  t("account.plan.featPdf"),
+    "Staff management":                      t("account.plan.featStaff"),
+    "Inventory tracking":                    t("account.plan.featInventory"),
+    "Loyalty program":                       t("account.plan.featLoyalty"),
+    "AI business insights":                  t("account.plan.featAiInsights"),
+    "AI chatbot":                            t("account.plan.featAiChatbot"),
+    "Branch management":                     t("account.plan.featBranches"),
+    "Organisation / Coop":                   t("account.plan.featOrganisation"),
+    "Organisation / Coop management":        t("account.plan.featOrganisationMgmt"),
+    "Invoice generation":                    t("account.plan.featInvoices"),
+    "Invoice generation & WhatsApp sending": t("account.plan.featInvoicesWhatsapp"),
+    "API access":                            t("account.plan.featApi"),
+    "Business loan access":                  t("account.plan.featLoan"),
+    "Print recharge & data wholesale":       t("account.plan.featPrintWholesale"),
+    "Print airtime wholesale":               t("account.plan.featPrintAirtime"),
+    "Print data wholesale":                  t("account.plan.featPrintData"),
+    "Priority support":                      t("account.plan.featPriority"),
+    "Unlimited transactions":                t("account.plan.featUnlimitedTx"),
+    "Basic dashboard":                       t("account.plan.featBasicDashboard"),
+    "1 organisation":                        t("account.plan.featOneOrg"),
+    "Free forever — get started at your own pace": t("account.plan.descFree"),
+    "Everything your business needs to grow":      t("account.plan.descGrow"),
+    "Maximum power for serious business owners":   t("account.plan.descMax"),
+  };
+  return (text) => {
+    if (typeof text !== "string") return text;
+    if (known[text]) return known[text];
+    let m;
+    if ((m = text.match(/^([\d,]+) transactions\/mo$/)))    return t("account.plan.featTxMo", { n: m[1] });
+    if ((m = text.match(/^([\d,]+) transactions\/month$/))) return t("account.plan.featTxMonth", { n: m[1] });
+    if ((m = text.match(/^([\d,]+) organizations$/)))       return t("account.plan.featOrgs", { n: m[1] });
+    if ((m = text.match(/^([\d,]+) team members$/)))        return t("account.plan.featTeamMembers", { n: m[1] });
+    if ((m = text.match(/^([\d,]+) members$/)))             return t("account.plan.featMembers", { n: m[1] });
+    if ((m = text.match(/^Everything in (.+)$/)))           return t("account.plan.featEverythingIn", { plan: m[1] });
+    return text;
+  };
+}
+
+// A billing cycle value ("monthly"/"yearly") shown in a sentence.
+function cycleLabel(t, cycle) {
+  if (cycle === "monthly") return t("account.plan.cycleMonthly");
+  if (cycle === "yearly")  return t("account.plan.cycleYearly");
+  return cycle;
+}
 
 function CheckIcon({ color = "green" }) {
   const cls = color === "violet" ? "text-violet-500" : color === "amber" ? "text-amber-500" : color === "blue" ? "text-blue-500" : color === "gray" ? "text-gray-400" : "text-green-500";
@@ -81,6 +134,7 @@ function isFreePlanSlug(slug, plans = []) {
 // onSelect, which shows a confirmation (or, when the balance is short, a
 // "fund your wallet" prompt) before anything is actually charged.
 function PaidButton({ plan, wallet, walletReady, disabled, yearly = false, appliedCoupon, onSelect, buttonLabel }) {
+  const t = useT();
   const chargeAmount = yearly && plan.price_yearly > 0 ? plan.price_yearly : plan.price_monthly;
   const billingCycle = yearly ? "yearly" : "monthly";
   const { applies: couponApplies, final: finalAmount } =
@@ -94,8 +148,10 @@ function PaidButton({ plan, wallet, walletReady, disabled, yearly = false, appli
   const walletShort = walletReady && wallet.balanceKobo < Math.round(finalAmount * 100);
 
   const defaultLabel = finalAmount === 0 && couponApplies
-    ? "Activate Free — Coupon Applied"
-    : `Subscribe — ₦${finalAmount.toLocaleString()}/${billingCycle === "yearly" ? "yr" : "mo"}`;
+    ? t("account.plan.activateFreeCoupon")
+    : (billingCycle === "yearly"
+      ? t("account.plan.subscribeYr", { amount: finalAmount.toLocaleString() })
+      : t("account.plan.subscribeMo", { amount: finalAmount.toLocaleString() }));
 
   const handleClick = () => {
     onSelect?.({
@@ -111,17 +167,17 @@ function PaidButton({ plan, wallet, walletReady, disabled, yearly = false, appli
         <div className="text-center">
           <span className="text-xs text-gray-400 line-through mr-1.5">₦{chargeAmount.toLocaleString()}</span>
           <span className="text-sm font-bold text-green-600 dark:text-green-400">
-            {finalAmount === 0 ? "FREE" : `₦${finalAmount.toLocaleString()}`}
+            {finalAmount === 0 ? t("account.plan.freeCaps") : `₦${finalAmount.toLocaleString()}`}
           </span>
-          {finalAmount > 0 && <span className="text-xs text-gray-400 ml-1">/{billingCycle === "yearly" ? "yr" : "mo"}</span>}
+          {finalAmount > 0 && <span className="text-xs text-gray-400 ml-1">{billingCycle === "yearly" ? t("account.plan.perYr") : t("account.plan.perMo")}</span>}
         </div>
       )}
       {finalAmount > 0 && !walletReady && (
-        <p className="text-[11px] font-bold text-amber-600 dark:text-amber-400 text-center">Activate your KudiAI Wallet to subscribe</p>
+        <p className="text-[11px] font-bold text-amber-600 dark:text-amber-400 text-center">{t("account.plan.activateWalletToSubscribe")}</p>
       )}
       {finalAmount > 0 && walletReady && walletShort && (
         <p className="text-[11px] font-bold text-red-500 text-center">
-          Balance too low — ₦{wallet.balanceNaira.toLocaleString()} available, ₦{finalAmount.toLocaleString()} needed
+          {t("account.plan.balanceTooLow", { balance: wallet.balanceNaira.toLocaleString(), needed: finalAmount.toLocaleString() })}
         </p>
       )}
       <button disabled={disabled || (finalAmount > 0 && !walletReady)} onClick={handleClick} className={cls}>
@@ -135,56 +191,57 @@ function PaidButton({ plan, wallet, walletReady, disabled, yearly = false, appli
 // (what's changing, what it costs) or, when the wallet balance is short, a
 // prompt to go fund it instead of a dead-end inline warning.
 function ConfirmChangeModal({ info, busy, error, onCancel, onConfirm, onFundWallet }) {
+  const t = useT();
   if (!info) return null;
   const { fromPlanName, toPlanName, billingCycle, finalAmount, isFree, insufficient, walletBalanceNaira } = info;
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="w-full sm:max-w-sm bg-white dark:bg-slate-800 rounded-t-3xl sm:rounded-3xl p-6 space-y-4 shadow-2xl">
         <h2 className="text-lg font-bold text-gray-800 dark:text-white text-center">
-          {insufficient ? "Insufficient wallet balance" : "Confirm plan change"}
+          {insufficient ? t("account.plan.insufficientTitle") : t("account.plan.confirmTitle")}
         </h2>
 
         {insufficient ? (
           <>
             <p className="text-sm text-gray-500 dark:text-slate-400 text-center leading-relaxed">
-              Switching to <span className="font-bold text-gray-700 dark:text-slate-200">{toPlanName}</span> costs{" "}
-              <span className="font-bold">₦{finalAmount.toLocaleString()}</span>, but your wallet only has{" "}
-              <span className="font-bold text-red-500">₦{walletBalanceNaira.toLocaleString()}</span> available. Fund your wallet to continue.
+              {t("account.plan.switchingTo")} <span className="font-bold text-gray-700 dark:text-slate-200">{toPlanName}</span> {t("account.plan.costs")}{" "}
+              <span className="font-bold">₦{finalAmount.toLocaleString()}</span>{t("account.plan.butWalletOnlyHas")}{" "}
+              <span className="font-bold text-red-500">₦{walletBalanceNaira.toLocaleString()}</span> {t("account.plan.availableFundToContinue")}
             </p>
             <button onClick={onFundWallet}
               className="w-full py-3 rounded-xl font-bold text-sm text-white bg-gradient-to-br from-blue-950 to-blue-800 active:scale-[0.98] transition-transform">
-              Fund Wallet
+              {t("account.plan.fundWallet")}
             </button>
             <button onClick={onCancel}
               className="w-full py-2.5 rounded-xl font-semibold text-sm text-gray-500 dark:text-slate-400">
-              Cancel
+              {t("common.cancel")}
             </button>
           </>
         ) : (
           <>
             <p className="text-sm text-gray-500 dark:text-slate-400 text-center leading-relaxed">
-              You&apos;re switching from <span className="font-bold text-gray-700 dark:text-slate-200">{fromPlanName}</span> to{" "}
+              {t("account.plan.switchingFrom")} <span className="font-bold text-gray-700 dark:text-slate-200">{fromPlanName}</span> {t("account.plan.switchingFromTo")}{" "}
               <span className="font-bold text-gray-700 dark:text-slate-200">{toPlanName}</span>
-              {billingCycle ? ` (${billingCycle})` : ""}.
+              {billingCycle ? ` (${cycleLabel(t, billingCycle)})` : ""}.
             </p>
             <div className="bg-gray-50 dark:bg-slate-700/40 rounded-xl px-4 py-3 text-center">
               {isFree ? (
-                <p className="text-sm font-bold text-gray-700 dark:text-slate-200">This plan is free — no charge</p>
+                <p className="text-sm font-bold text-gray-700 dark:text-slate-200">{t("account.plan.freeNoCharge")}</p>
               ) : (
                 <p className="text-sm text-gray-600 dark:text-slate-300">
                   <span className="font-extrabold text-gray-800 dark:text-white text-lg">₦{finalAmount.toLocaleString()}</span>{" "}
-                  will be charged instantly from your KudiAI Wallet
+                  {t("account.plan.chargedInstantly")}
                 </p>
               )}
             </div>
             {error && <p className="text-xs text-red-500 text-center">{error}</p>}
             <button disabled={busy} onClick={onConfirm}
               className="w-full py-3 rounded-xl font-bold text-sm text-white bg-gradient-to-br from-green-600 to-emerald-600 disabled:opacity-50 active:scale-[0.98] transition-transform">
-              {busy ? "Processing…" : "Confirm"}
+              {busy ? t("account.plan.processing") : t("common.confirm")}
             </button>
             <button disabled={busy} onClick={onCancel}
               className="w-full py-2.5 rounded-xl font-semibold text-sm text-gray-500 dark:text-slate-400 disabled:opacity-50">
-              Cancel
+              {t("common.cancel")}
             </button>
           </>
         )}
@@ -196,6 +253,8 @@ function ConfirmChangeModal({ info, busy, error, onCancel, onConfirm, onFundWall
 // The Android app does not sell plans (Google Play Billing rule — see utils/platform.js): a new account simply starts on the free plan,
 // with no prices, coupon box or payment options, and nothing that says where to pay. Existing paid plans are untouched.
 function FreePlanStart({ session, onComplete }) {
+  const t = useT();
+  const featureLabel = makeFeatureLabel(t);
   const [plans, setPlans] = useState(() => getActivePlans());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -221,7 +280,7 @@ function FreePlanStart({ session, onComplete }) {
       } catch { /* best-effort */ }
       onComplete(slug);
     } catch (e) {
-      setError(e?.message || "Could not start your account. Please try again.");
+      setError(e?.message || t("account.plan.couldNotStart"));
       setBusy(false);
     }
   };
@@ -230,19 +289,19 @@ function FreePlanStart({ session, onComplete }) {
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 dark:from-slate-900 dark:to-slate-800 flex items-center justify-center px-4 py-10">
       <div className="w-full max-w-sm text-center">
         <AppLogo className="h-14 w-auto mx-auto mb-4" />
-        <h1 className="text-2xl font-bold text-gray-800 dark:text-white">Welcome to KudiAI Track</h1>
-        <p className="text-sm text-gray-500 dark:text-slate-400 mt-1">Your account starts on the {free?.name || "Free"} plan.</p>
+        <h1 className="text-2xl font-bold text-gray-800 dark:text-white">{t("account.plan.welcome")}</h1>
+        <p className="text-sm text-gray-500 dark:text-slate-400 mt-1">{t("account.plan.startsOn", { plan: free?.name || t("account.plan.free") })}</p>
         {features.length > 0 && (
           <ul className="mt-5 bg-white dark:bg-slate-800 rounded-2xl p-5 text-left space-y-2 shadow-sm">
             {features.map(f => (
-              <li key={f} className="flex items-start gap-2 text-sm text-gray-700 dark:text-slate-200"><CheckIcon /><span>{f}</span></li>
+              <li key={f} className="flex items-start gap-2 text-sm text-gray-700 dark:text-slate-200"><CheckIcon /><span>{featureLabel(f)}</span></li>
             ))}
           </ul>
         )}
         {error && <p role="alert" className="mt-4 text-xs text-red-500">{error}</p>}
         <button disabled={busy} onClick={start}
           className="mt-6 w-full py-3.5 rounded-2xl font-bold text-sm text-white bg-gradient-to-br from-green-600 to-emerald-600 disabled:opacity-50 active:scale-[0.99] transition">
-          {busy ? "Setting up…" : "Continue"}
+          {busy ? t("account.plan.settingUp") : t("common.continue")}
         </button>
       </div>
     </div>
@@ -254,6 +313,8 @@ export default function SubscriptionPlan(props) {
 }
 
 function PlanPicker({ session, onComplete, onClose, isUpgrade = false, currentPlan = "kobo" }) {
+  const t = useT();
+  const featureLabel = makeFeatureLabel(t);
   const [plans, setPlans] = useState(() => getActivePlans());
   const [loadingPlans, setLoadingPlans] = useState(plans.length === 0);
   const [error,   setError]   = useState("");
@@ -336,7 +397,7 @@ function PlanPicker({ session, onComplete, onClose, isUpgrade = false, currentPl
       const { data, error: rpcErr } = await supabase.rpc("check_coupon", { p_code: code });
       if (rpcErr) throw rpcErr;
       if (!data?.valid) {
-        setCouponMsg({ text: data?.message || "Invalid coupon", ok: false });
+        setCouponMsg({ text: data?.message || tNow("account.plan.invalidCoupon"), ok: false });
         setAppliedCoupon(null);
       } else {
         setAppliedCoupon({
@@ -347,10 +408,10 @@ function PlanPicker({ session, onComplete, onClose, isUpgrade = false, currentPl
           billing_cycles: data.billing_cycles || [],
           min_amount:     data.min_amount  || 0,
         });
-        setCouponMsg({ text: data.message || "Coupon applied!", ok: true });
+        setCouponMsg({ text: data.message || tNow("account.plan.couponApplied"), ok: true });
       }
     } catch (e) {
-      setCouponMsg({ text: e.message || "Failed to apply coupon", ok: false });
+      setCouponMsg({ text: e.message || tNow("account.plan.couponFailed"), ok: false });
       setAppliedCoupon(null);
     } finally {
       setCouponLoading(false);
@@ -416,7 +477,7 @@ function PlanPicker({ session, onComplete, onClose, isUpgrade = false, currentPl
         .limit(1)
         .maybeSingle();
       if (data?.status === "pending") {
-        setPendingApproval({ plan: data.payload?.plan_slug || "your new plan", cycle: data.payload?.billing_cycle || "monthly" });
+        setPendingApproval({ plan: data.payload?.plan_slug || null, cycle: data.payload?.billing_cycle || "monthly" });
       }
       chan = supabase
         .channel(`sub_approval_${uid}`)
@@ -430,7 +491,7 @@ function PlanPicker({ session, onComplete, onClose, isUpgrade = false, currentPl
               onComplete(row.payload?.plan_slug || currentPlan);
             } else if (row.status === "rejected") {
               setPendingApproval(null);
-              setError(`Your subscription payment could not be approved.${row.decision_note ? ` Reason: ${row.decision_note}.` : ""} A full refund has been issued to your bank account (allow up to 10 working days).`);
+              setError(`${tNow("account.plan.paymentNotApproved")}${row.decision_note ? ` ${tNow("account.plan.rejectReason", { note: row.decision_note })}` : ""} ${tNow("account.plan.refundIssued")}`);
             }
           })
         .subscribe();
@@ -515,8 +576,8 @@ function PlanPicker({ session, onComplete, onClose, isUpgrade = false, currentPl
       }
     } catch (e) {
       setConfirmError(/insufficient/i.test(e.message || "")
-        ? "Insufficient wallet balance."
-        : (e.message || "Could not complete this change. Please try again."));
+        ? t("account.plan.insufficientBalance")
+        : (e.message || t("account.plan.couldNotComplete")));
     } finally {
       setConfirmBusy(false);
     }
@@ -527,7 +588,7 @@ function PlanPicker({ session, onComplete, onClose, isUpgrade = false, currentPl
       <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 dark:from-slate-900 dark:to-slate-800 flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <div className="w-10 h-10 border-[3px] border-green-500 border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-gray-500 dark:text-slate-400">Loading plans…</p>
+          <p className="text-sm text-gray-500 dark:text-slate-400">{t("account.plan.loadingPlans")}</p>
         </div>
       </div>
     );
@@ -541,17 +602,17 @@ function PlanPicker({ session, onComplete, onClose, isUpgrade = false, currentPl
           <div className="w-16 h-16 mx-auto rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mb-4">
             <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
           </div>
-          <h1 className="text-xl font-black text-gray-800 dark:text-white">Payment received</h1>
+          <h1 className="text-xl font-black text-gray-800 dark:text-white">{t("account.plan.paymentReceived")}</h1>
           <p className="text-sm text-gray-500 dark:text-slate-400 mt-2 leading-relaxed">
-            Your transfer for <span className="font-bold text-gray-700 dark:text-slate-200">{pendingApproval.plan}</span>{" "}
-            ({pendingApproval.cycle}) is being confirmed by our team. Your plan upgrades automatically once it&apos;s approved — usually within a few hours. We&apos;ll email you.
+            {t("account.plan.transferFor")} <span className="font-bold text-gray-700 dark:text-slate-200">{pendingApproval.plan || t("account.plan.yourNewPlan")}</span>{" "}
+            {t("account.plan.transferBeingConfirmed", { cycle: cycleLabel(t, pendingApproval.cycle) })}
           </p>
           <div className="mt-5 inline-flex items-center gap-2 text-xs font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-3 py-1.5 rounded-full">
-            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" /> Awaiting admin approval
+            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" /> {t("account.plan.awaitingApproval")}
           </div>
           {onClose && (
             <button onClick={onClose} className="mt-6 w-full py-3 rounded-xl text-sm font-bold text-white bg-gradient-to-br from-blue-950 to-blue-800 active:scale-[0.98] transition-transform">
-              Continue to app
+              {t("account.plan.continueToApp")}
             </button>
           )}
           {error && <p className="mt-3 text-xs text-red-500">{error}</p>}
@@ -569,24 +630,24 @@ function PlanPicker({ session, onComplete, onClose, isUpgrade = false, currentPl
           <div className="w-16 h-16 mx-auto rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mb-4">
             <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
           </div>
-          <h1 className="text-xl font-black text-gray-800 dark:text-white">You&apos;re on {resultInfo.planName} now</h1>
+          <h1 className="text-xl font-black text-gray-800 dark:text-white">{t("account.plan.youreOnNow", { plan: resultInfo.planName })}</h1>
           <p className="text-sm text-gray-500 dark:text-slate-400 mt-2 leading-relaxed">
             {resultInfo.isFree
-              ? "This plan is free — no charge was made."
-              : `₦${resultInfo.amountCharged.toLocaleString()} was charged from your KudiAI Wallet.`}
+              ? t("account.plan.freeNoChargeMade")
+              : t("account.plan.chargedFromWallet", { amount: resultInfo.amountCharged.toLocaleString() })}
           </p>
           {resultInfo.expiresAt && (
             <p className="text-xs text-gray-400 dark:text-slate-500 mt-1">
-              Renews {new Date(resultInfo.expiresAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+              {t("account.plan.renews", { date: new Date(resultInfo.expiresAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) })}
             </p>
           )}
           {resultInfo.features?.length > 0 && (
             <div className="mt-5 text-left bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800 rounded-xl px-4 py-3">
-              <p className="text-xs font-bold text-emerald-700 dark:text-emerald-300 mb-1.5">What&apos;s included now:</p>
+              <p className="text-xs font-bold text-emerald-700 dark:text-emerald-300 mb-1.5">{t("account.plan.includedNow")}</p>
               <ul className="space-y-1">
                 {resultInfo.features.slice(0, 6).map(f => (
                   <li key={f} className="text-xs text-emerald-700 dark:text-emerald-400 flex items-start gap-1.5">
-                    <CheckIcon color="green" /> <span>{f}</span>
+                    <CheckIcon color="green" /> <span>{featureLabel(f)}</span>
                   </li>
                 ))}
               </ul>
@@ -595,7 +656,7 @@ function PlanPicker({ session, onComplete, onClose, isUpgrade = false, currentPl
           <button
             onClick={() => { const slug = resultInfo.planSlug; setResultInfo(null); onComplete(slug); }}
             className="mt-6 w-full py-3 rounded-xl text-sm font-bold text-white bg-gradient-to-br from-blue-950 to-blue-800 active:scale-[0.98] transition-transform">
-            Continue
+            {t("common.continue")}
           </button>
         </div>
       </div>
@@ -623,15 +684,15 @@ function PlanPicker({ session, onComplete, onClose, isUpgrade = false, currentPl
           )}
           <AppLogo className="h-14 w-auto mx-auto mb-4" />
           <h1 className="text-2xl font-bold text-gray-800 dark:text-white">
-            {isUpgrade ? "Manage your plan" : "Choose your plan"}
+            {isUpgrade ? t("account.plan.manageTitle") : t("account.plan.chooseTitle")}
           </h1>
           <p className="text-sm text-gray-500 dark:text-slate-400 mt-1">
-            {isUpgrade ? "Change billing cycle, upgrade, or switch plans." : "Start free. Upgrade anytime. Cancel anytime."}
+            {isUpgrade ? t("account.plan.manageSubtitle") : t("account.plan.chooseSubtitle")}
           </p>
 
           {/* Billing toggle */}
           <div className="flex items-center justify-center gap-3 mt-4">
-            <span className={`text-sm font-medium ${!yearly ? "text-gray-800 dark:text-white" : "text-gray-400 dark:text-slate-500"}`}>Monthly</span>
+            <span className={`text-sm font-medium ${!yearly ? "text-gray-800 dark:text-white" : "text-gray-400 dark:text-slate-500"}`}>{t("account.plan.monthly")}</span>
             <button
               onClick={() => setYearly(v => !v)}
               className={`relative w-12 h-6 rounded-full transition-colors ${yearly ? "bg-green-500" : "bg-gray-300 dark:bg-slate-600"}`}
@@ -639,8 +700,8 @@ function PlanPicker({ session, onComplete, onClose, isUpgrade = false, currentPl
               <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${yearly ? "translate-x-6" : "translate-x-0"}`} />
             </button>
             <span className={`text-sm font-medium ${yearly ? "text-gray-800 dark:text-white" : "text-gray-400 dark:text-slate-500"}`}>
-              Yearly
-              <span className="ml-1.5 text-[10px] font-bold text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/30 px-1.5 py-0.5 rounded-full">Save 5–10%</span>
+              {t("account.plan.yearly")}
+              <span className="ml-1.5 text-[10px] font-bold text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/30 px-1.5 py-0.5 rounded-full">{t("account.plan.saveRange")}</span>
             </span>
           </div>
 
@@ -649,7 +710,7 @@ function PlanPicker({ session, onComplete, onClose, isUpgrade = false, currentPl
             <div className="flex gap-2">
               <input
                 type="text"
-                placeholder="Have a coupon code?"
+                placeholder={t("account.plan.couponPlaceholder")}
                 value={couponCode}
                 onChange={e => {
                   setCouponCode(e.target.value);
@@ -664,7 +725,7 @@ function PlanPicker({ session, onComplete, onClose, isUpgrade = false, currentPl
                 disabled={!couponCode.trim() || couponLoading}
                 className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-sm font-semibold transition-colors min-w-[70px]"
               >
-                {couponLoading ? "…" : appliedCoupon ? "Applied ✓" : "Apply"}
+                {couponLoading ? "…" : appliedCoupon ? t("account.plan.applied") : t("account.plan.apply")}
               </button>
             </div>
             {couponMsg && (
@@ -723,28 +784,28 @@ function PlanPicker({ session, onComplete, onClose, isUpgrade = false, currentPl
                 {/* Top badge */}
                 {isCurrent && (
                   <div className="absolute -top-4 left-1/2 -translate-x-1/2">
-                    <span className="bg-emerald-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow whitespace-nowrap">✓ Your Plan</span>
+                    <span className="bg-emerald-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow whitespace-nowrap">✓ {t("account.plan.yourPlan")}</span>
                   </div>
                 )}
                 {!isCurrent && isPopular && (
                   <div className="absolute -top-4 left-1/2 -translate-x-1/2">
-                    <span className="bg-green-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow whitespace-nowrap">Most Popular</span>
+                    <span className="bg-green-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow whitespace-nowrap">{t("account.plan.mostPopular")}</span>
                   </div>
                 )}
                 {!isCurrent && isBestValue && (
                   <div className="absolute -top-4 left-1/2 -translate-x-1/2">
-                    <span className="bg-violet-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow whitespace-nowrap">Best Value</span>
+                    <span className="bg-violet-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow whitespace-nowrap">{t("account.plan.bestValue")}</span>
                   </div>
                 )}
 
                 {/* Plan name + price */}
                 <div className="mb-4">
                   <h2 className="text-base font-bold text-gray-700 dark:text-slate-200 uppercase tracking-wide">{plan.name}</h2>
-                  {plan.description && <p className="text-xs text-gray-400 dark:text-slate-500 mt-0.5">{plan.description}</p>}
+                  {plan.description && <p className="text-xs text-gray-400 dark:text-slate-500 mt-0.5">{featureLabel(plan.description)}</p>}
 
                   <div className="mt-2 flex items-baseline gap-1 flex-wrap">
                     {plan.price_monthly === 0 ? (
-                      <span className="text-3xl font-extrabold text-gray-800 dark:text-white">Free</span>
+                      <span className="text-3xl font-extrabold text-gray-800 dark:text-white">{t("account.plan.free")}</span>
                     ) : couponApplies ? (
                       <>
                         <span className="text-lg font-bold text-gray-400 dark:text-slate-500 line-through">
@@ -753,39 +814,39 @@ function PlanPicker({ session, onComplete, onClose, isUpgrade = false, currentPl
                         <span className="text-3xl font-extrabold text-green-600 dark:text-green-400">
                           ₦{(yearly ? Math.round(couponFinal / 12) : couponFinal).toLocaleString()}
                         </span>
-                        <span className="text-sm text-gray-400">/mo</span>
+                        <span className="text-sm text-gray-400">{t("account.plan.perMo")}</span>
                       </>
                     ) : yearly && plan.price_yearly > 0 ? (
                       <>
                         <span className="text-3xl font-extrabold text-gray-800 dark:text-white">₦{Math.round(plan.price_yearly / 12).toLocaleString()}</span>
-                        <span className="text-sm text-gray-400">/mo</span>
+                        <span className="text-sm text-gray-400">{t("account.plan.perMo")}</span>
                       </>
                     ) : (
                       <>
                         <span className="text-3xl font-extrabold text-gray-800 dark:text-white">₦{plan.price_monthly.toLocaleString()}</span>
-                        <span className="text-sm text-gray-400">/mo</span>
+                        <span className="text-sm text-gray-400">{t("account.plan.perMo")}</span>
                       </>
                     )}
                   </div>
 
                   {plan.price_monthly === 0 && (
-                    <p className="text-xs text-gray-400 mt-0.5">Free forever</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{t("account.plan.freeForever")}</p>
                   )}
                   {couponApplies && plan.price_monthly > 0 && (
                     <p className="text-xs text-green-600 dark:text-green-400 mt-0.5 font-medium">
-                      Coupon saves ₦{couponDiscount.toLocaleString()}
-                      {yearly && plan.price_yearly > 0 ? ` — billed ₦${couponFinal.toLocaleString()}/yr` : ""}
+                      {t("account.plan.couponSaves", { amount: couponDiscount.toLocaleString() })}
+                      {yearly && plan.price_yearly > 0 ? ` ${t("account.plan.couponBilledYr", { amount: couponFinal.toLocaleString() })}` : ""}
                     </p>
                   )}
                   {!couponApplies && plan.price_yearly > 0 && yearly && (
                     <p className="text-xs text-green-600 dark:text-green-400 mt-0.5 font-medium">
-                      Billed ₦{plan.price_yearly.toLocaleString()}/yr
-                      <span className="ml-1 text-gray-400">(save {savingsPercent(plan)}%)</span>
+                      {t("account.plan.billedYr", { amount: plan.price_yearly.toLocaleString() })}
+                      <span className="ml-1 text-gray-400">{t("account.plan.saveParen", { pct: savingsPercent(plan) })}</span>
                     </p>
                   )}
                   {!couponApplies && plan.price_yearly > 0 && !yearly && (
                     <p className="text-xs text-green-600 dark:text-green-400 mt-0.5">
-                      Switch to yearly → save {savingsPercent(plan)}%
+                      {t("account.plan.switchYearlyHint", { pct: savingsPercent(plan) })}
                     </p>
                   )}
                 </div>
@@ -795,13 +856,13 @@ function PlanPicker({ session, onComplete, onClose, isUpgrade = false, currentPl
                   {displayFeatures.map((f) => (
                     <li key={f} className="flex items-start gap-2 text-sm text-gray-600 dark:text-slate-300">
                       <CheckIcon color={color} />
-                      <span className="leading-snug">{f}</span>
+                      <span className="leading-snug">{featureLabel(f)}</span>
                     </li>
                   ))}
                   {missingFeatures.map((f) => (
                     <li key={f} className="flex items-start gap-2 text-sm text-gray-400 line-through">
                       <XIcon />
-                      <span className="leading-snug">{f}</span>
+                      <span className="leading-snug">{featureLabel(f)}</span>
                     </li>
                   ))}
                 </ul>
@@ -816,7 +877,7 @@ function PlanPicker({ session, onComplete, onClose, isUpgrade = false, currentPl
                         <div className="flex items-center gap-2 min-w-0">
                           <span className="w-2 h-2 bg-emerald-500 rounded-full flex-shrink-0 animate-pulse" />
                           <span className="text-[13px] font-bold text-emerald-700 dark:text-emerald-300 truncate">
-                            Active subscription
+                            {t("account.plan.activeSubscription")}
                           </span>
                         </div>
                         {currentBillingCycle && (
@@ -825,13 +886,13 @@ function PlanPicker({ session, onComplete, onClose, isUpgrade = false, currentPl
                               ? "bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300"
                               : "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300"
                           }`}>
-                            {currentBillingCycle === "yearly" ? "📅 Yearly" : "🗓 Monthly"}
+                            {currentBillingCycle === "yearly" ? `📅 ${t("account.plan.yearly")}` : `🗓 ${t("account.plan.monthly")}`}
                           </span>
                         )}
                       </div>
                       {subExpiry && (
                         <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1.5">
-                          Renews {new Date(subExpiry).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                          {t("account.plan.renews", { date: new Date(subExpiry).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) })}
                         </p>
                       )}
                     </div>
@@ -846,7 +907,7 @@ function PlanPicker({ session, onComplete, onClose, isUpgrade = false, currentPl
                         yearly={true}
                         appliedCoupon={appliedCoupon}
                         onSelect={requestPaidChange}
-                        buttonLabel={`Switch to Yearly — Save ${savingsPercent(plan)}%`}
+                        buttonLabel={t("account.plan.switchToYearlySave", { pct: savingsPercent(plan) })}
                       />
                     )}
 
@@ -856,7 +917,7 @@ function PlanPicker({ session, onComplete, onClose, isUpgrade = false, currentPl
                         onClick={() => scrollToAndHighlight(nextPlan.slug)}
                         className="w-full py-2.5 rounded-xl font-semibold text-sm bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white shadow-sm active:scale-95 transition-all"
                       >
-                        Upgrade to {nextPlan.name} →
+                        {t("account.plan.upgradeTo", { plan: nextPlan.name })}
                       </button>
                     )}
                   </div>
@@ -868,7 +929,7 @@ function PlanPicker({ session, onComplete, onClose, isUpgrade = false, currentPl
                         onClick={() => requestFreeChange(plan)}
                         disabled={busy}
                         className="w-full py-2.5 rounded-xl font-semibold text-sm border-2 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 disabled:opacity-40 transition-colors">
-                        Downgrade to Free
+                        {t("account.plan.downgradeToFree")}
                       </button>
                     ) : (
                       <PaidButton
@@ -879,14 +940,13 @@ function PlanPicker({ session, onComplete, onClose, isUpgrade = false, currentPl
                         yearly={yearly}
                         appliedCoupon={appliedCoupon}
                         onSelect={requestPaidChange}
-                        buttonLabel={`Downgrade to ${plan.name}`}
+                        buttonLabel={t("account.plan.downgradeTo", { plan: plan.name })}
                       />
                     )
                   ) : (
                     <div className="text-center py-2.5 px-3 rounded-xl border-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
                       <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                        Downgrade available from{" "}
-                        {subExpiry ? new Date(subExpiry).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "your renewal date"}
+                        {t("account.plan.downgradeFrom", { date: subExpiry ? new Date(subExpiry).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : t("account.plan.yourRenewalDate") })}
                       </p>
                     </div>
                   )
@@ -894,7 +954,7 @@ function PlanPicker({ session, onComplete, onClose, isUpgrade = false, currentPl
                 ) : plan.price_monthly === 0 ? (
                   <button onClick={() => requestFreeChange(plan)} disabled={busy}
                     className="w-full py-2.5 rounded-xl font-semibold text-sm border-2 border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors">
-                    Start for Free
+                    {t("account.plan.startForFree")}
                   </button>
 
                 ) : (
@@ -914,7 +974,7 @@ function PlanPicker({ session, onComplete, onClose, isUpgrade = false, currentPl
         </div>
 
         <p className="text-center text-xs text-gray-400 dark:text-slate-500 mt-8">
-          Paid plans are charged instantly from your KudiAI Wallet balance · Cancel anytime
+          {t("account.plan.footer")}
         </p>
       </div>
 

@@ -1,11 +1,13 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../utils/supabase";
+import { useT } from "../contexts/LanguageContext";
 
 import { AmountDisplay } from "./shared/AmountDisplay";
 function fmt(n) { return "₦" + Number(n || 0).toLocaleString("en-NG"); }
 function fmtDate(d) { return new Date(d).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" }); }
 
 export default function CashbackCard({ userEmail }) {
+  const t = useT();
   const [balance,  setBalance]  = useState(0);
   const [history,  setHistory]  = useState([]);
   const [expanded, setExpanded] = useState(false);
@@ -41,7 +43,7 @@ export default function CashbackCard({ userEmail }) {
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center text-lg flex-shrink-0">🎁</div>
             <div>
-              <p className="text-[10px] font-bold text-green-100 uppercase tracking-widest leading-none">Cashback Balance</p>
+              <p className="text-[10px] font-bold text-green-100 uppercase tracking-widest leading-none">{t("bp.cashbackBalLabel")}</p>
               {loading
                 ? <div className="h-6 w-24 bg-white/20 rounded animate-pulse mt-1" />
                 : <AmountDisplay amount={balance} size="stat" align="left" className="text-white mt-0.5" />
@@ -49,7 +51,7 @@ export default function CashbackCard({ userEmail }) {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <p className="text-[10px] text-green-200 font-semibold">1% on bills</p>
+            <p className="text-[10px] text-green-200 font-semibold">{t("bills.cbOnBills")}</p>
             <svg className={`w-4 h-4 text-white/70 transition-transform ${expanded ? "rotate-180" : ""}`}
               fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
@@ -62,8 +64,8 @@ export default function CashbackCard({ userEmail }) {
           <div className="bg-white dark:bg-slate-800">
             {history.length === 0 ? (
               <div className="py-6 text-center">
-                <p className="text-sm text-slate-400 dark:text-slate-500 font-semibold">No cashback yet</p>
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Earn 1% on every bill payment</p>
+                <p className="text-sm text-slate-400 dark:text-slate-500 font-semibold">{t("bills.cbNoneYet")}</p>
+                <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{t("bills.cbEarnEvery")}</p>
               </div>
             ) : (
               <div className="divide-y divide-slate-50 dark:divide-slate-700/50">
@@ -75,7 +77,7 @@ export default function CashbackCard({ userEmail }) {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">
-                        {r.description || (r.type === "earned" ? "Cashback earned" : "Cashback used")}
+                        {r.description || (r.type === "earned" ? t("bills.cbEarned") : t("bills.cbUsed"))}
                       </p>
                       <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">{fmtDate(r.created_at)}</p>
                     </div>
@@ -89,7 +91,7 @@ export default function CashbackCard({ userEmail }) {
             )}
             <div className="px-4 py-2.5 bg-slate-50 dark:bg-slate-700/30 border-t border-slate-100 dark:border-slate-700/50">
               <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center">
-                Use cashback at checkout when buying airtime or data
+                {t("bills.cbUseAtCheckout")}
               </p>
             </div>
           </div>

@@ -14,6 +14,7 @@ import { shareFile }             from "../utils/shareFile";
 import InvoiceBuilder            from "../components/InvoiceBuilder";
 import { useInvoiceSettings }    from "../hooks/useInvoiceSettings";
 import InvoiceSettingsModal      from "../components/InvoiceSettingsModal";
+import { useT }                  from "../contexts/LanguageContext";
 
 const koboToNaira = (k) => (k || 0) / 100;
 const fmtK        = (k) => fmt(koboToNaira(k));
@@ -29,20 +30,20 @@ const GRAD = {
 };
 
 const STATUS_CONFIG = {
-  draft:          { label: "Draft",     color: "bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400" },
-  sent:           { label: "Sent",      color: "bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" },
-  partially_paid: { label: "Part Paid", color: "bg-indigo-50 text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-400" },
-  paid:           { label: "Paid",      color: "bg-brand-100 text-brand-700 dark:bg-brand-900/30 dark:text-brand-400" },
-  overdue:        { label: "Overdue",   color: "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400" },
-  cancelled:      { label: "Cancelled", color: "bg-slate-100 text-slate-400 dark:bg-slate-700 dark:text-slate-500" },
+  draft:          { label: "Draft",     labelKey: "invoices.status.draft",     color: "bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400" },
+  sent:           { label: "Sent",      labelKey: "invoices.status.sent",      color: "bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" },
+  partially_paid: { label: "Part Paid", labelKey: "invoices.status.partPaid",  color: "bg-indigo-50 text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-400" },
+  paid:           { label: "Paid",      labelKey: "invoices.status.paid",      color: "bg-brand-100 text-brand-700 dark:bg-brand-900/30 dark:text-brand-400" },
+  overdue:        { label: "Overdue",   labelKey: "invoices.status.overdue",   color: "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400" },
+  cancelled:      { label: "Cancelled", labelKey: "invoices.status.cancelled", color: "bg-slate-100 text-slate-400 dark:bg-slate-700 dark:text-slate-500" },
 };
 
 const METHODS = [
-  { value: "cash",         label: "Cash" },
-  { value: "transfer",     label: "Bank Transfer" },
-  { value: "pos",          label: "POS / Card" },
-  { value: "mobile_money", label: "Mobile Money" },
-  { value: "other",        label: "Other" },
+  { value: "cash",         label: "Cash",          labelKey: "invoices.method.cash" },
+  { value: "transfer",     label: "Bank Transfer", labelKey: "invoices.method.transfer" },
+  { value: "pos",          label: "POS / Card",    labelKey: "invoices.method.pos" },
+  { value: "mobile_money", label: "Mobile Money",  labelKey: "invoices.method.mobile" },
+  { value: "other",        label: "Other",         labelKey: "invoices.method.other" },
 ];
 
 // Card accent stripe — static Tailwind class strings (safe for JIT purge)
@@ -57,18 +58,22 @@ const CARD_ACCENT_CLS = {
 
 // iconColor values are mid-saturation so they read on both light and dark backgrounds
 const STATUS_TILES = [
-  { id: "all",       label: "All",       grad: GRAD.brand, iconColor: "#3DA829", icon: "M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" },
-  { id: "draft",     label: "Draft",     grad: GRAD.slate, iconColor: "#94a3b8", icon: "M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7|M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" },
-  { id: "sent",      label: "Sent",      grad: GRAD.blue,  iconColor: "#60a5fa", icon: "M22 2L11 13|M22 2l-7 20-4-9-9-4 20-7z" },
-  { id: "overdue",   label: "Overdue",   grad: GRAD.red,   iconColor: "#f87171", icon: "M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z|M12 9v4|M12 17h.01" },
-  { id: "paid",      label: "Paid",      grad: GRAD.paid,  iconColor: "#3DA829", icon: "M22 11.08V12a10 10 0 11-5.93-9.14|M22 4L12 14.01l-3-3" },
-  { id: "cancelled", label: "Cancelled", grad: GRAD.grey,  iconColor: "#94a3b8", icon: "M18 6L6 18|M6 6l12 12" },
+  { id: "all",       label: "All",       labelKey: "invoices.status.all",       grad: GRAD.brand, iconColor: "#3DA829", icon: "M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" },
+  { id: "draft",     label: "Draft",     labelKey: "invoices.status.draft",     grad: GRAD.slate, iconColor: "#94a3b8", icon: "M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7|M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" },
+  { id: "sent",      label: "Sent",      labelKey: "invoices.status.sent",      grad: GRAD.blue,  iconColor: "#60a5fa", icon: "M22 2L11 13|M22 2l-7 20-4-9-9-4 20-7z" },
+  { id: "overdue",   label: "Overdue",   labelKey: "invoices.status.overdue",   grad: GRAD.red,   iconColor: "#f87171", icon: "M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z|M12 9v4|M12 17h.01" },
+  { id: "paid",      label: "Paid",      labelKey: "invoices.status.paid",      grad: GRAD.paid,  iconColor: "#3DA829", icon: "M22 11.08V12a10 10 0 11-5.93-9.14|M22 4L12 14.01l-3-3" },
+  { id: "cancelled", label: "Cancelled", labelKey: "invoices.status.cancelled", grad: GRAD.grey,  iconColor: "#94a3b8", icon: "M18 6L6 18|M6 6l12 12" },
 ];
+
+// missingInvoiceFields entries (English, kept as data) → label keys
+const MISSING_FIELD_KEYS = { "business address": "invoices.hint.fieldAddress", "logo": "invoices.hint.fieldLogo" };
 
 // (Share helpers removed — all sharing now goes through sharePdfNow in InvoiceDetail)
 
 // ── Empty state ────────────────────────────────────────────────────────────
 function EmptyInvoices({ onNew }) {
+  const t = useT();
   return (
     <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
       <div className="w-16 h-16 rounded-2xl bg-brand-50 dark:bg-brand-900/20 flex items-center justify-center mb-4">
@@ -78,11 +83,11 @@ function EmptyInvoices({ onNew }) {
           <path d="M9 12h6M9 16h4"/>
         </svg>
       </div>
-      <p className="font-bold text-slate-700 dark:text-slate-200 text-base mb-1">No invoices yet</p>
-      <p className="text-sm text-slate-400 dark:text-slate-500 mb-6">Create your first invoice to start tracking payments from customers.</p>
+      <p className="font-bold text-slate-700 dark:text-slate-200 text-base mb-1">{t("invoices.empty.title")}</p>
+      <p className="text-sm text-slate-400 dark:text-slate-500 mb-6">{t("invoices.empty.body")}</p>
       <button onClick={onNew}
         className="bg-brand-600 hover:bg-brand-700 text-white font-bold px-6 py-3 rounded-2xl text-sm active:scale-95 transition">
-        Create Invoice
+        {t("invoices.empty.create")}
       </button>
     </div>
   );
@@ -104,6 +109,7 @@ function avatarColor(name) {
 
 // ── Invoice card ───────────────────────────────────────────────────────────
 function InvoiceCard({ inv, onTap }) {
+  const t         = useT();
   const sc        = STATUS_CONFIG[inv.status] || STATUS_CONFIG.draft;
   const accentCls = CARD_ACCENT_CLS[inv.status] || "bg-slate-300";
   const outstanding = inv.total_kobo - inv.amount_paid_kobo;
@@ -127,7 +133,7 @@ function InvoiceCard({ inv, onTap }) {
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
                 <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 tracking-wide">{inv.invoice_number}</span>
-                <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wide ${sc.color}`}>{sc.label}</span>
+                <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wide ${sc.color}`}>{t(sc.labelKey)}</span>
               </div>
               <p className="font-extrabold text-slate-800 dark:text-white text-[15px] truncate leading-tight">{inv.customer_name}</p>
               {inv.due_date && !["paid", "cancelled"].includes(inv.status) && (
@@ -138,18 +144,17 @@ function InvoiceCard({ inv, onTap }) {
                       <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
                     </svg>
                   )}
-                  {inv.status === "overdue" ? "Overdue · " : "Due "}
-                  {new Date(inv.due_date + "T00:00:00").toLocaleDateString("en-NG", { day: "numeric", month: "short" })}
+                  {t(inv.status === "overdue" ? "invoices.card.overdueOn" : "invoices.card.dueOn", { date: new Date(inv.due_date + "T00:00:00").toLocaleDateString("en-NG", { day: "numeric", month: "short" }) })}
                 </p>
               )}
               {inv.status === "paid" && (
-                <p className="text-[11px] mt-0.5 font-bold text-brand-600 dark:text-brand-400">Fully paid</p>
+                <p className="text-[11px] mt-0.5 font-bold text-brand-600 dark:text-brand-400">{t("invoices.card.fullyPaid")}</p>
               )}
             </div>
             <div className="text-right flex-shrink-0">
               <AmountDisplay amount={inv.total_kobo} fromKobo size="row" align="right" />
               {outstanding > 0 && !["draft", "cancelled"].includes(inv.status) && (
-                <p className="text-[11px] text-slate-400 mt-0.5 tabular-nums">{fmtK(outstanding)} left</p>
+                <p className="text-[11px] text-slate-400 mt-0.5 tabular-nums">{t("invoices.card.left", { amount: fmtK(outstanding) })}</p>
               )}
             </div>
           </div>
@@ -160,7 +165,7 @@ function InvoiceCard({ inv, onTap }) {
             <div className="h-1.5 rounded-full bg-slate-100 dark:bg-slate-700 overflow-hidden">
               <div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${paidPct}%` }} />
             </div>
-            <p className="text-[10px] text-slate-400 mt-0.5 tabular-nums">{Math.round(paidPct)}% paid</p>
+            <p className="text-[10px] text-slate-400 mt-0.5 tabular-nums">{t("invoices.card.pctPaid", { pct: Math.round(paidPct) })}</p>
           </div>
         )}
       </div>
@@ -182,15 +187,16 @@ function RecordPaymentModal({ inv, onClose, onSave }) {
   const [saving,    setSaving]    = useState(false);
   const [error,     setError]     = useState("");
   const toast = useToast();
+  const t = useT();
 
   const handleSave = async () => {
-    if (!amount || parseFloat(amount) <= 0) { setError("Enter a valid amount"); return; }
-    if (parseFloat(amount) > outstanding)   { setError(`Max payable is ${fmtK(inv.total_kobo - inv.amount_paid_kobo)}`); return; }
+    if (!amount || parseFloat(amount) <= 0) { setError(t("invoices.pay.err.amount")); return; }
+    if (parseFloat(amount) > outstanding)   { setError(t("invoices.pay.err.max", { amount: fmtK(inv.total_kobo - inv.amount_paid_kobo) })); return; }
     setSaving(true);
     const { error: err } = await onSave({ amount_naira: amount, method, reference, paidAt });
     setSaving(false);
-    if (err) { setError(err.message || "Failed to record payment"); return; }
-    toast({ type: "success", title: `Payment recorded — ${fmtK(Math.round(parseFloat(amount) * 100))}`, body: inv.invoice_number });
+    if (err) { setError(err.message || t("invoices.pay.err.failed")); return; }
+    toast({ type: "success", title: t("invoices.pay.recorded", { amount: fmtK(Math.round(parseFloat(amount) * 100)) }), body: inv.invoice_number });
     onClose();
   };
 
@@ -201,8 +207,8 @@ function RecordPaymentModal({ inv, onClose, onSave }) {
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex-shrink-0">
           <div>
-            <p className="font-extrabold text-slate-800 dark:text-white">Record Payment</p>
-            <p className="text-xs text-slate-400">{inv.invoice_number} · Outstanding {fmtK(inv.total_kobo - inv.amount_paid_kobo)}</p>
+            <p className="font-extrabold text-slate-800 dark:text-white">{t("invoices.recordPayment")}</p>
+            <p className="text-xs text-slate-400">{inv.invoice_number} · {t("invoices.pay.outstanding", { amount: fmtK(inv.total_kobo - inv.amount_paid_kobo) })}</p>
           </div>
           <button onClick={onClose} className="w-11 h-11 flex items-center justify-center rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 transition active:scale-95">
             <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M18 6L6 18M6 6l12 12"/></svg>
@@ -212,31 +218,31 @@ function RecordPaymentModal({ inv, onClose, onSave }) {
         {/* Scrollable form body */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
           <div>
-            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Amount (₦) *</label>
+            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">{t("invoices.pay.amount")}</label>
             <input type="number" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)}
               className="w-full border border-slate-200 dark:border-slate-600 rounded-xl px-3.5 py-3 text-base font-bold text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
               placeholder="0.00" />
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Payment Method</label>
+            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">{t("invoices.pay.method")}</label>
             <select value={method} onChange={e => setMethod(e.target.value)}
               className="w-full border border-slate-200 dark:border-slate-600 rounded-xl px-3.5 py-3 text-sm text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500">
-              {METHODS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+              {METHODS.map(m => <option key={m.value} value={m.value}>{t(m.labelKey)}</option>)}
             </select>
           </div>
 
           {method !== "cash" && (
             <div>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Reference (optional)</label>
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">{t("invoices.pay.reference")}</label>
               <input type="text" value={reference} onChange={e => setReference(e.target.value)}
                 className="w-full border border-slate-200 dark:border-slate-600 rounded-xl px-3.5 py-3 text-sm text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
-                placeholder="Transfer ref, POS ID…" />
+                placeholder={t("invoices.pay.referencePh")} />
             </div>
           )}
 
           <div>
-            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Date Paid</label>
+            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">{t("invoices.pay.datePaid")}</label>
             <input type="date" value={paidAt} onChange={e => setPaidAt(e.target.value)}
               className="w-full border border-slate-200 dark:border-slate-600 rounded-xl px-3.5 py-3 text-sm text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500" />
           </div>
@@ -248,7 +254,7 @@ function RecordPaymentModal({ inv, onClose, onSave }) {
         <div className="px-5 pb-5 pt-3 border-t border-slate-100 dark:border-slate-700 flex-shrink-0">
           <button onClick={handleSave} disabled={saving}
             className="w-full py-3.5 rounded-2xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-sm active:scale-95 transition">
-            {saving ? "Recording…" : "Record Payment"}
+            {saving ? t("invoices.pay.recording") : t("invoices.recordPayment")}
           </button>
         </div>
       </div>
@@ -264,6 +270,7 @@ function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCance
   const [confirmAction, setConfirmAction] = useState(null); // { type: "cancel"|"delete", label: string }
   const [actionError,   setActionError]   = useState("");
   const toast = useToast();
+  const t = useT();
 
   const sc          = STATUS_CONFIG[inv.status] || STATUS_CONFIG.draft;
   const outstanding = inv.total_kobo - inv.amount_paid_kobo;
@@ -272,21 +279,21 @@ function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCance
     setActing(true); setActionError("");
     try {
       await onSent(inv.id);
-      toast({ type: "success", title: "Invoice marked as sent", body: inv.invoice_number });
+      toast({ type: "success", title: t("invoices.toast.sent"), body: inv.invoice_number });
       onClose();
     } catch (e) {
-      setActionError(e?.message || "Couldn't update invoice — try again");
+      setActionError(e?.message || t("invoices.err.update"));
     } finally {
       setActing(false);
     }
   };
 
   const handleCancel = () => {
-    setConfirmAction({ type: "cancel", label: "Cancel this invoice?" });
+    setConfirmAction({ type: "cancel", label: t("invoices.confirm.cancel") });
   };
 
   const handleDelete = () => {
-    setConfirmAction({ type: "delete", label: `Delete ${inv.invoice_number} permanently?` });
+    setConfirmAction({ type: "delete", label: t("invoices.confirm.delete", { number: inv.invoice_number }) });
   };
 
   const executeConfirm = async () => {
@@ -296,10 +303,10 @@ function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCance
     try {
       if (ct === "cancel") await onCancel(inv.id);
       else await onDelete(inv.id);
-      toast({ type: "success", title: ct === "cancel" ? "Invoice cancelled" : "Invoice deleted", body: inv.invoice_number });
+      toast({ type: "success", title: ct === "cancel" ? t("invoices.toast.cancelled") : t("invoices.toast.deleted"), body: inv.invoice_number });
       onClose();
     } catch (e) {
-      setActionError(e?.message || "Couldn't complete action — try again");
+      setActionError(e?.message || t("invoices.err.action"));
     } finally {
       setActing(false);
     }
@@ -334,7 +341,7 @@ function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCance
         for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
         const file = new File([arr], fname, { type: "application/pdf" });
         // shared with its verify link (or downloaded where the browser can't share files)
-        await shareFile(file, { text: shareText, dialogTitle: isReceipt ? "Share receipt" : "Share invoice" });
+        await shareFile(file, { text: shareText, dialogTitle: isReceipt ? t("invoices.share.receipt") : t("invoices.share.invoice") });
       }
     } catch (e) { console.error("[PDF share]", e); }
     setPdfLoading(false);
@@ -354,25 +361,25 @@ function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCance
     { key:"pdf",      label: pdfLoading ? "…" : "PDF", disabled: pdfLoading, onClick: handlePdf,
       cls:"bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300",
       icon:<svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg> },
-    canReceipt && { key:"receipt", label:"Receipt", disabled: pdfLoading, onClick: handleReceipt,
+    canReceipt && { key:"receipt", label:t("invoices.action.receipt"), disabled: pdfLoading, onClick: handleReceipt,
       cls:"bg-brand-50 dark:bg-brand-900/20 text-brand-700 dark:text-brand-400",
       icon:<svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M9 14l2 2 4-4"/><rect x="3" y="3" width="18" height="18" rx="2"/></svg> },
-    inv.customer_email && { key:"email", label:"Email", onClick: handleEmail,
+    inv.customer_email && { key:"email", label:t("invoices.action.email"), onClick: handleEmail,
       cls:"bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400",
       icon:<svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg> },
-    { key:"share", label:"Share", onClick: handleShare,
+    { key:"share", label:t("invoices.action.share"), onClick: handleShare,
       cls:"bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400",
       icon:<svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg> },
     inv.customer_phone && { key:"whatsapp", label:"WhatsApp", onClick: handleWhatsApp,
       cls:"bg-brand-50 dark:bg-brand-900/20 text-brand-700 dark:text-brand-400",
       icon:<svg width={16} height={16} viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.025.502 3.935 1.385 5.608L0 24l6.585-1.328A11.946 11.946 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.85 0-3.596-.467-5.12-1.286l-.369-.213-3.811.97.997-3.701-.231-.381A9.972 9.972 0 012 12C2 6.478 6.478 2 12 2s10 4.478 10 10-4.478 10-10 10z"/></svg> },
-    ["sent","overdue"].includes(inv.status) && { key:"resend", label:"Resend", onClick: handleResend,
+    ["sent","overdue"].includes(inv.status) && { key:"resend", label:t("invoices.action.resend"), onClick: handleResend,
       cls:"bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400",
       icon:<svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg> },
-    { key:"edit", label:"Edit", onClick: handleEdit,
+    { key:"edit", label:t("common.edit"), onClick: handleEdit,
       cls:"bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300",
       icon:<svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> },
-    { key:"delete", label:"Delete", disabled: acting || !!confirmAction, onClick: handleDelete,
+    { key:"delete", label:t("common.delete"), disabled: acting || !!confirmAction, onClick: handleDelete,
       cls:"bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400",
       icon:<svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg> },
   ].filter(Boolean);
@@ -390,7 +397,7 @@ function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCance
               <p className="font-extrabold text-slate-800 dark:text-white">{inv.customer_name}</p>
             </div>
             <div className="flex items-center gap-2">
-              <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${sc.color}`}>{sc.label}</span>
+              <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${sc.color}`}>{t(sc.labelKey)}</span>
               <button onClick={onClose} className="w-11 h-11 flex items-center justify-center rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 transition active:scale-95">
                 <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M18 6L6 18M6 6l12 12"/></svg>
               </button>
@@ -413,34 +420,34 @@ function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCance
             {/* Amounts */}
             <div className="bg-slate-50 dark:bg-slate-700/50 rounded-2xl p-4 space-y-1.5">
               <div className="flex justify-between text-sm text-slate-500 dark:text-slate-400">
-                <span>Subtotal</span><span className="tabular-nums">{fmtK(inv.subtotal_kobo)}</span>
+                <span>{t("invoices.subtotal")}</span><span className="tabular-nums">{fmtK(inv.subtotal_kobo)}</span>
               </div>
               {inv.discount_kobo > 0 && (
                 <div className="flex justify-between text-sm text-red-500">
-                  <span>Discount</span><span className="tabular-nums">−{fmtK(inv.discount_kobo)}</span>
+                  <span>{t("invoices.discount")}</span><span className="tabular-nums">−{fmtK(inv.discount_kobo)}</span>
                 </div>
               )}
               {inv.vat_kobo > 0 && (
                 <div className="flex justify-between text-sm text-slate-500 dark:text-slate-400">
-                  <span>VAT (7.5%)</span><span className="tabular-nums">{fmtK(inv.vat_kobo)}</span>
+                  <span>{t("invoices.vat")}</span><span className="tabular-nums">{fmtK(inv.vat_kobo)}</span>
                 </div>
               )}
               {(inv.other_charges_kobo || 0) > 0 && (
                 <div className="flex justify-between text-sm text-slate-500 dark:text-slate-400">
-                  <span>{inv.other_charges_label || "Other Charges"}</span><span className="tabular-nums">{fmtK(inv.other_charges_kobo)}</span>
+                  <span>{inv.other_charges_label || t("invoices.otherCharges")}</span><span className="tabular-nums">{fmtK(inv.other_charges_kobo)}</span>
                 </div>
               )}
               <div className="flex justify-between font-extrabold text-slate-800 dark:text-white text-base pt-1.5 border-t border-slate-200 dark:border-slate-700">
-                <span>Total</span><span className="tabular-nums">{fmtK(inv.total_kobo)}</span>
+                <span>{t("common.total")}</span><span className="tabular-nums">{fmtK(inv.total_kobo)}</span>
               </div>
               {inv.amount_paid_kobo > 0 && (
                 <>
                   <div className="flex justify-between text-sm text-brand-600 dark:text-brand-400">
-                    <span>Paid</span><span className="tabular-nums">{fmtK(inv.amount_paid_kobo)}</span>
+                    <span>{t("invoices.paid")}</span><span className="tabular-nums">{fmtK(inv.amount_paid_kobo)}</span>
                   </div>
                   {outstanding > 0 && (
                     <div className="flex justify-between font-bold text-slate-600 dark:text-slate-300">
-                      <span>Outstanding</span><span className="tabular-nums">{fmtK(outstanding)}</span>
+                      <span>{t("invoices.outstanding")}</span><span className="tabular-nums">{fmtK(outstanding)}</span>
                     </div>
                   )}
                 </>
@@ -454,7 +461,7 @@ function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCance
               const children = allRows.filter(r => r.parent_item_id);
               return (
                 <div>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Items</p>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">{t("invoices.items")}</p>
                   {topRows.map(item => {
                     const subs = children.filter(c => c.parent_item_id === item.id).sort((a, b) => (a.sort_order||0) - (b.sort_order||0));
                     return (
@@ -464,7 +471,7 @@ function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCance
                             <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">{item.description}</p>
                             <p className="text-xs text-slate-400">
                               {item.pricing_mode === "auto"
-                                ? `${item.quantity}× bundle`
+                                ? t("invoices.bundle", { qty: item.quantity })
                                 : `${item.quantity} × ${fmtK(item.unit_price_kobo)}`}
                             </p>
                           </div>
@@ -499,7 +506,7 @@ function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCance
               {inv.due_date && (
                 <div className="flex items-center gap-2">
                   <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-                  Due {new Date(inv.due_date + "T00:00:00").toLocaleDateString("en-NG", { day:"numeric", month:"short", year:"numeric" })}
+                  {t("invoices.dueOn", { date: new Date(inv.due_date + "T00:00:00").toLocaleDateString("en-NG", { day:"numeric", month:"short", year:"numeric" }) })}
                 </div>
               )}
               {inv.customer_phone && (
@@ -513,7 +520,7 @@ function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCance
             {/* Payment instructions */}
             {inv.payment_instructions && (
               <div className="bg-slate-50 dark:bg-slate-700/50 rounded-2xl p-4">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Payment Instructions</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">{t("invoices.paymentInstructions")}</p>
                 <p className="text-sm text-slate-600 dark:text-slate-300 whitespace-pre-line">{inv.payment_instructions}</p>
               </div>
             )}
@@ -521,12 +528,12 @@ function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCance
             {/* Payment history */}
             {inv.invoice_payments?.length > 0 && (
               <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Payment History</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">{t("invoices.paymentHistory")}</p>
                 {inv.invoice_payments.map(p => (
                   <div key={p.id} className="flex items-center justify-between py-2 border-b border-slate-50 dark:border-slate-700 last:border-0">
                     <div>
                       <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                        {METHODS.find(m => m.value === p.method)?.label || p.method}
+                        {(() => { const m = METHODS.find(x => x.value === p.method); return m ? t(m.labelKey) : p.method; })()}
                       </p>
                       <p className="text-xs text-slate-400">{new Date(p.paid_at).toLocaleDateString("en-NG", { day:"numeric", month:"short" })}{p.reference ? ` · ${p.reference}` : ""}</p>
                     </div>
@@ -547,11 +554,11 @@ function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCance
               <p className="flex-1 text-sm text-red-700 dark:text-red-300 font-semibold leading-snug">{confirmAction.label}</p>
               <button onClick={() => setConfirmAction(null)}
                 className="w-11 h-11 flex items-center justify-center rounded-xl border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 font-bold text-sm flex-shrink-0 active:scale-95 transition">
-                No
+                {t("common.no")}
               </button>
               <button onClick={executeConfirm} disabled={acting}
                 className="w-11 h-11 flex items-center justify-center rounded-xl bg-red-600 text-white font-bold text-sm flex-shrink-0 active:scale-95 transition disabled:opacity-50">
-                Yes
+                {t("common.yes")}
               </button>
             </div>
           )}
@@ -569,18 +576,18 @@ function InvoiceDetail({ inv, profile, invoiceSettings, onClose, onSent, onCance
                 <>
                   <button onClick={handleCancel} disabled={acting || !!confirmAction}
                     className="flex-1 py-3 rounded-2xl border border-slate-200 dark:border-slate-600 text-sm font-bold text-slate-500 active:scale-95 transition disabled:opacity-40">
-                    Cancel Invoice
+                    {t("invoices.cancelInvoice")}
                   </button>
                   <button onClick={handleSent} disabled={acting}
                     className="flex-1 py-3 rounded-2xl bg-brand-600 text-white text-sm font-bold active:scale-95 transition disabled:opacity-50">
-                    {acting ? "Marking…" : "Mark as Sent"}
+                    {acting ? t("invoices.marking") : t("invoices.markSent")}
                   </button>
                 </>
               )}
               {canRecordPayment && (
                 <button onClick={() => setShowPayment(true)}
                   className="flex-1 py-3 rounded-2xl bg-brand-600 hover:bg-brand-700 text-white text-sm font-bold active:scale-95 transition">
-                  Record Payment
+                  {t("invoices.recordPayment")}
                 </button>
               )}
             </div>
@@ -615,6 +622,7 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
   const [detailInv,    setDetailInv]   = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const [txnPin,       setTxnPin]      = useState(null);
+  const t = useT();
 
   // Notification deep link ({ id }, handed down by Finance) → open that invoice.
   // Waits for the invoice to be in the list; gives up after a few seconds.
@@ -647,12 +655,12 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
             <path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.27 5.82 21 7 14.14 2 9.27l6.91-1.01L12 2z"/>
           </svg>
         </div>
-        <p className="font-bold text-slate-700 dark:text-slate-200 text-base mb-1">Invoice Generation</p>
+        <p className="font-bold text-slate-700 dark:text-slate-200 text-base mb-1">{t("invoices.locked.title")}</p>
         <p className="text-sm text-slate-400 mb-5">{planAvailableText("invoices")}</p>
         {canSellPlans() && (
           <button onClick={onUpgrade}
             className="bg-brand-600 text-white font-bold px-6 py-3 rounded-2xl text-sm active:scale-95 transition">
-            Upgrade Plan
+            {t("invoices.locked.upgrade")}
           </button>
         )}
       </div>
@@ -687,13 +695,13 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
   };
 
   const SUMMARY_AMT_CARDS = [
-    { label: "Outstanding", kobo: outstanding_total, grad: GRAD.brand },
-    { label: "Paid",        kobo: paid_total,        grad: GRAD.paid  },
+    { label: t("invoices.outstanding"), kobo: outstanding_total, grad: GRAD.brand },
+    { label: t("invoices.paid"),        kobo: paid_total,        grad: GRAD.paid  },
   ];
   const SUMMARY_CNT_CARDS = [
-    { label: "Overdue", value: String(counts.overdue), grad: GRAD.red   },
-    { label: "Sent",    value: String(counts.sent),    grad: GRAD.blue  },
-    { label: "Draft",   value: String(counts.draft),   grad: GRAD.slate },
+    { label: t("invoices.status.overdue"), value: String(counts.overdue), grad: GRAD.red   },
+    { label: t("invoices.status.sent"),    value: String(counts.sent),    grad: GRAD.blue  },
+    { label: t("invoices.status.draft"),   value: String(counts.draft),   grad: GRAD.slate },
   ];
 
   return (
@@ -727,7 +735,7 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
         <div className="mx-4 mb-3">
           <div className="bg-white dark:bg-slate-800 rounded-3xl p-4 shadow-card border border-slate-100 dark:border-slate-700/50">
             <div className="flex items-center justify-between mb-4">
-              <p className="text-[12px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Filter by Status</p>
+              <p className="text-[12px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">{t("invoices.filterByStatus")}</p>
               <button onClick={() => setShowSettings(true)}
                 className="w-11 h-11 flex items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-700 active:scale-90 transition">
                 <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-slate-500 dark:text-slate-400">
@@ -754,7 +762,7 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
                     <span className={`text-[11px] font-semibold text-center leading-tight ${
                       active ? "text-slate-900 dark:text-white" : "text-slate-500 dark:text-slate-400"
                     }`}>
-                      {s.label}
+                      {t(s.labelKey)}
                     </span>
                     {counts[s.id] > 0 && (
                       <span className="text-[11px] font-black tabular-nums leading-none"
@@ -782,13 +790,13 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
         <div className="mx-4 mb-3 flex items-start gap-3 px-3 py-2.5 rounded-2xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40">
           <span className="text-base leading-none mt-0.5">💡</span>
           <p className="flex-1 text-xs text-amber-800 dark:text-amber-300 leading-snug">
-            Your invoices are missing {missingInvoiceFields.join(" and ")}. Add them in{" "}
-            <strong>Settings → Profile</strong> to appear on all invoices.
+            {t("invoices.hint.missing", { fields: missingInvoiceFields.map(f => t(MISSING_FIELD_KEYS[f] || f)).join(t("invoices.hint.and")) })}{" "}
+            <strong>{t("invoices.hint.where")}</strong> {t("invoices.hint.toAppear")}
           </p>
           <button
             onClick={() => { localStorage.setItem(`kt_inv_hint_${userId}`, "1"); setInvHintDismissed(true); }}
             className="flex-shrink-0 text-amber-500 dark:text-amber-400 text-xs font-bold leading-none mt-0.5 hover:text-amber-700 dark:hover:text-amber-200"
-            aria-label="Dismiss tip"
+            aria-label={t("invoices.hint.dismiss")}
           >✕</button>
         </div>
       )}
@@ -803,7 +811,7 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
       ) : (
         <div className="px-4 mt-3">
           {filtered.length === 0
-            ? <p className="text-center text-slate-400 py-12 text-sm">No {filter} invoices</p>
+            ? <p className="text-center text-slate-400 py-12 text-sm">{t("invoices.emptyFilter", { status: (() => { const s = STATUS_TILES.find(x => x.id === filter); return s ? t(s.labelKey).toLowerCase() : filter; })() })}</p>
             : filtered.map(inv => <InvoiceCard key={inv.id} inv={inv} onTap={setDetailInv} />)
           }
         </div>
@@ -965,10 +973,10 @@ export default function Invoices({ invoiceHook, plan, onUpgrade, profile, invent
           onEdit={(inv) => { setDetailInv(null); setEditInv(inv); }}
           onPayment={(payData) => new Promise((resolve) => {
             setTxnPin({
-              title: "Record Invoice Payment",
+              title: t("invoices.pin.title"),
               amount: Math.round(parseFloat(payData.amount_naira || 0) * 100),
               recipient: detailInv?.customer_name,
-              description: `Invoice ${detailInv?.invoice_number}`,
+              description: t("invoices.pin.desc", { number: detailInv?.invoice_number }),
               onApprove: async () => {
                 setTxnPin(null);
                 const result = await recordInvoicePayment({ invoiceId: detailInv.id, ...payData });

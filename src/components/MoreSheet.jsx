@@ -11,7 +11,7 @@ const ITEMS = [
 export default function MoreSheet({ open, onClose, onNavigate, showWallet = false }) {
   const t = useT();
   const items = showWallet
-    ? [...ITEMS.slice(0, 2), { id: "wallet", icon: "wallet", label: "Wallet" }, ...ITEMS.slice(2)]
+    ? [...ITEMS.slice(0, 2), { id: "wallet", icon: "wallet", tkey: "settings.acct.more.wallet" }, ...ITEMS.slice(2)]
     : ITEMS;
   const [show, setShow] = useState(false);
   const [anim, setAnim] = useState(false);
@@ -71,7 +71,7 @@ export default function MoreSheet({ open, onClose, onNavigate, showWallet = fals
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="More options"
+        aria-label={t("settings.acct.more.options")}
         className={`fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md z-50 bg-white dark:bg-slate-900 rounded-t-3xl shadow-2xl border-t border-slate-100 dark:border-slate-800 px-4 pt-3 pb-[calc(84px+env(safe-area-inset-bottom,0px))] transition-transform duration-[280ms] ease-out ${anim ? "translate-y-0" : "translate-y-full"}`}
       >
         {/* Drag handle — functional, cursor:grab */}
@@ -82,7 +82,7 @@ export default function MoreSheet({ open, onClose, onNavigate, showWallet = fals
           onPointerUp={onHandlePointerUp}
         />
 
-        <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-3 px-1">More</p>
+        <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-3 px-1">{t("nav.more")}</p>
 
         <div className="space-y-1">
           {items.map(item => (

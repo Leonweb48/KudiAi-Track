@@ -2,6 +2,7 @@ import { useState, useCallback } from "react";
 import { supabase } from "../utils/supabase";
 import PinDots from "./PinDots";
 import { hapticSuccess, hapticError } from "../utils/haptics";
+import { useT, tNow } from "../contexts/LanguageContext";
 
 const shakeCSS = `
 @keyframes shake {
@@ -21,24 +22,25 @@ const BackspaceIcon = () => (
   </svg>
 );
 
-function computeLockedMsg(data) {
-  if (!data?.lockedUntil) return "Too many attempts. Try again later.";
+function computeLockedMsg(data, t) {
+  if (!data?.lockedUntil) return t("settings.pin.err.lockedLater");
   const ms = new Date(data.lockedUntil) - Date.now();
-  if (ms <= 0) return "Too many attempts. Try again shortly.";
+  if (ms <= 0) return t("settings.pin.err.lockedShortly");
   const mins = Math.ceil(ms / 60000);
-  return `Too many attempts. Try again in ${mins} minute${mins === 1 ? "" : "s"}.`;
+  return t(mins === 1 ? "settings.pin.err.lockedMinute" : "settings.pin.err.lockedMinutes", { n: mins });
 }
 
 const PAD = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 
 export default function TransactionPinModal({
-  title = "Confirm Payment",
+  title,
   amount,
   recipient,
   description,
   onApprove,
   onCancel,
 }) {
+  const t = useT();
   const [pin,       setPin]       = useState("");
   const [error,     setError]     = useState("");
   const [shake,     setShake]     = useState(false);
@@ -70,17 +72,19 @@ export default function TransactionPinModal({
       setVerifying(false);
 
       if (data?.locked) {
-        setError(computeLockedMsg(data));
+        setError(computeLockedMsg(data, tNow));
         return;
       }
       const left = data?.attemptsLeft ?? "";
-      setError(`Incorrect PIN.${left ? ` ${left} attempt${left === 1 ? "" : "s"} remaining.` : ""}`);
+      setError(left
+        ? tNow(left === 1 ? "settings.pin.err.incorrectOne" : "settings.pin.err.incorrectMany", { n: left })
+        : tNow("settings.pin.err.incorrect"));
     } catch {
       hapticError();
       triggerShake();
       setPin("");
       setVerifying(false);
-      setError("Something went wrong. Try again.");
+      setError(tNow("settings.pin.err.somethingWrong"));
     }
   }, [onApprove, triggerShake]);
 
@@ -132,7 +136,7 @@ export default function TransactionPinModal({
 
         {/* Title */}
         <p className="text-slate-900 dark:text-slate-100" style={{ textAlign: "center", fontWeight: 700, fontSize: 17, padding: "0 24px", marginBottom: 16 }}>
-          {title}
+          {title === undefined ? t("settings.pin.txn.confirmPayment") : title}
         </p>
 
         {/* Transaction summary */}
@@ -149,13 +153,13 @@ export default function TransactionPinModal({
             )}
             {recipient && (
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                <span className="text-slate-400" style={{ fontSize: 12 }}>To</span>
+                <span className="text-slate-400" style={{ fontSize: 12 }}>{t("settings.pin.txn.to")}</span>
                 <span className="text-slate-800 dark:text-slate-200" style={{ fontSize: 13, fontWeight: 600 }}>{recipient}</span>
               </div>
             )}
             {description && (
               <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span className="text-slate-400" style={{ fontSize: 12 }}>Note</span>
+                <span className="text-slate-400" style={{ fontSize: 12 }}>{t("common.note")}</span>
                 <span className="text-slate-600 dark:text-slate-400" style={{ fontSize: 13, maxWidth: 200, textAlign: "right" }}>{description}</span>
               </div>
             )}
@@ -165,7 +169,7 @@ export default function TransactionPinModal({
         {/* PIN entry area */}
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, padding: "0 24px" }}>
           <p className="text-slate-500" style={{ fontSize: 13, textAlign: "center" }}>
-            Enter your transaction PIN to confirm
+            {t("settings.pin.txn.enterPin")}
           </p>
 
           {/* Dots / verifying spinner */}
@@ -213,7 +217,7 @@ export default function TransactionPinModal({
           {/* Cancel */}
           <button onClick={onCancel}
             className="bg-transparent border-0 text-slate-400 text-sm cursor-pointer px-6 py-2 mb-1">
-            Cancel
+            {t("common.cancel")}
           </button>
         </div>
       </div>

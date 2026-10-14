@@ -3,6 +3,7 @@ import TransactionPinModal from "./TransactionPinModal";
 import ResultOverlay from "./ResultOverlay";
 import { fmtDate } from "../utils/helpers";
 import Badge from "./shared/Badge";
+import { useT } from "../contexts/LanguageContext";
 
 const fmtCur = (n) =>
   `₦${Number(n || 0).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
@@ -31,6 +32,7 @@ function Spin() {
 // ── Setup view ─────────────────────────────────────────────────────────────
 // Used before a round exists. Owner drags-to-order members and sets dates.
 function SetupView({ members = [], loading, onStart, contributionAmount = 0 }) {
+  const t = useT();
   const [order,   setOrder]   = useState(members.map(m => m.id));
   const [dates,   setDates]   = useState({});
   const [saving,  setSaving]  = useState(false);
@@ -71,9 +73,9 @@ function SetupView({ members = [], loading, onStart, contributionAmount = 0 }) {
   };
 
   const handleStart = async () => {
-    if (order.length === 0) { setErr("Add members to the group first"); return; }
+    if (order.length === 0) { setErr(t("ajo.rot.addMembersFirst")); return; }
     if (!divisible) {
-      setErr(`Member count (${memberCount}) must be an exact multiple of winners-per-round (${slots})`);
+      setErr(t("ajo.rot.memberCountMultiple", { members: memberCount, slots }));
       return;
     }
     setSaving(true); setErr("");
@@ -84,7 +86,7 @@ function SetupView({ members = [], loading, onStart, contributionAmount = 0 }) {
       }));
       await onStart(turns, slots);
     } catch (e) {
-      setErr(e.message || "Failed to start round");
+      setErr(e.message || t("ajo.rot.startFailed"));
     } finally {
       setSaving(false);
     }
@@ -100,8 +102,8 @@ function SetupView({ members = [], loading, onStart, contributionAmount = 0 }) {
             <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
           </svg>
         </div>
-        <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">No members assigned yet</p>
-        <p className="text-xs text-slate-400">Assign clients to this group first, then start a round.</p>
+        <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">{t("ajo.rot.noMembers")}</p>
+        <p className="text-xs text-slate-400">{t("ajo.rot.assignFirst")}</p>
       </div>
     );
   }
@@ -110,7 +112,7 @@ function SetupView({ members = [], loading, onStart, contributionAmount = 0 }) {
     <div className="space-y-4">
       <div className="bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800/40 rounded-2xl px-4 py-3">
         <p className="text-[11px] text-brand-600 dark:text-brand-300 font-medium leading-relaxed">
-          Set the rotation order below. Position 1 collects first. Once started, changes require your PIN.
+          {t("ajo.rot.setOrderHint")}
         </p>
       </div>
 
@@ -139,7 +141,7 @@ function SetupView({ members = [], loading, onStart, contributionAmount = 0 }) {
                   value={dates[id] || ""}
                   onChange={e => setDates(d => ({ ...d, [id]: e.target.value }))}
                   className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400 bg-transparent border-none outline-none w-full"
-                  placeholder="Expected payout date (optional)"
+                  placeholder={t("ajo.rot.expectedPayoutDatePh")}
                 />
               </div>
 
@@ -159,10 +161,10 @@ function SetupView({ members = [], loading, onStart, contributionAmount = 0 }) {
       </div>
 
       <div className="bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-3.5 space-y-2.5">
-        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Winners per round</p>
+        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t("ajo.rot.winnersPerRound")}</p>
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <label className="block text-[10px] text-slate-400 mb-1">Winners</label>
+            <label className="block text-[10px] text-slate-400 mb-1">{t("ajo.rot.winners")}</label>
             <input
               type="number" min={1} step={1} value={slots}
               onChange={e => handleSlotsChange(e.target.value)}
@@ -170,7 +172,7 @@ function SetupView({ members = [], loading, onStart, contributionAmount = 0 }) {
             />
           </div>
           <div>
-            <label className="block text-[10px] text-slate-400 mb-1">₦ per winner</label>
+            <label className="block text-[10px] text-slate-400 mb-1">{t("ajo.rot.perWinner")}</label>
             <input
               type="number" min={0} step="0.01"
               value={perWinner != null ? perWinner : ""}
@@ -182,11 +184,11 @@ function SetupView({ members = [], loading, onStart, contributionAmount = 0 }) {
         </div>
         {divisible ? (
           <p className="text-[11px] text-slate-500 dark:text-slate-400">
-            {memberCount} members ÷ {slots} winner{slots > 1 ? "s" : ""}/round = {fmtCur(totalPot)} pot → {fmtCur(perWinner)} each. The circle completes in {memberCount / slots} round{memberCount / slots > 1 ? "s" : ""}.
+            {t(slots > 1 ? "ajo.rot.splitMany" : "ajo.rot.splitOne", { members: memberCount, slots, pot: fmtCur(totalPot), each: fmtCur(perWinner) })} {t(memberCount / slots > 1 ? "ajo.rot.completesInMany" : "ajo.rot.completesInOne", { n: memberCount / slots })}
           </p>
         ) : (
           <p className="text-[11px] text-red-500">
-            {memberCount} members isn't an exact multiple of {slots} — adjust winners per round or the member list.
+            {t("ajo.rot.notMultiple", { members: memberCount, slots })}
           </p>
         )}
       </div>
@@ -196,7 +198,7 @@ function SetupView({ members = [], loading, onStart, contributionAmount = 0 }) {
         disabled={saving || members.length === 0 || !divisible}
         className="w-full py-3 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white rounded-2xl font-bold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2">
         {saving && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-        {saving ? "Starting Round…" : "Start Round 1"}
+        {saving ? t("ajo.rot.startingRound") : t("ajo.rot.startRound1")}
       </button>
     </div>
   );
@@ -249,6 +251,7 @@ export default function EsusuRotationDashboard({
   onReorderTurns,
   onCloseRound,
 }) {
+  const t = useT();
   const [pinFor,        setPinFor]       = useState(null); // { action, turnId?, roundId? }
   const [skipDialog,    setSkipDialog]   = useState(null); // { turnId }
   const [skipReason,    setSkipReason]   = useState("");
@@ -288,12 +291,12 @@ export default function EsusuRotationDashboard({
             ...result,
             _overlay: {
               type: "success",
-              title: "Payout Completed",
+              title: t("ajo.rot.payoutCompleted"),
               amount: winners.length > 1 ? perWinnerAmt : result.pot_amount,
               counterparty: winners.map(w => w.name).filter(Boolean).join(", ") || undefined,
               note: [
-                winners.length > 1 ? `${fmtCur(perWinnerAmt)} each × ${winners.length} winners` : null,
-                result.round_complete ? "Round complete — all members have been paid." : null,
+                winners.length > 1 ? t("ajo.rot.eachTimesWinners", { each: fmtCur(perWinnerAmt), n: winners.length }) : null,
+                result.round_complete ? t("ajo.rot.roundCompleteAllPaid") : null,
               ].filter(Boolean).join(" · ") || undefined,
             },
           });
@@ -301,21 +304,21 @@ export default function EsusuRotationDashboard({
         } else if (result?.blocked) {
           setPayoutBlocked(result);
         } else {
-          throw new Error(result?.error || "Payout failed");
+          throw new Error(result?.error || t("ajo.rot.payoutFailed"));
         }
       } else if (pinFor.action === "skip") {
         await onSkipTurn(pinFor.turnId, skipReason, skipToEnd, pin);
         setSkipDialog(null); setSkipReason("");
-        setActionSuccess("Turn skipped successfully.");
+        setActionSuccess(t("ajo.rot.turnSkipped"));
         onRefresh?.();
       } else if (pinFor.action === "reorder") {
         await onReorderTurns(round.id, reorderQueue, pin);
         setReorderMode(false); setReorderQueue(null);
-        setActionSuccess("Turn order updated.");
+        setActionSuccess(t("ajo.rot.orderUpdated"));
         onRefresh?.();
       }
     } catch (e) {
-      setActionErr(e.message || "Action failed");
+      setActionErr(e.message || t("ajo.rot.actionFailed"));
     } finally {
       setPinFor(null);
     }
@@ -329,7 +332,7 @@ export default function EsusuRotationDashboard({
       setCloseResult(result);
       onRefresh?.();
     } catch (e) {
-      setActionErr(e.message || "Failed to close round");
+      setActionErr(e.message || t("ajo.rot.closeFailed"));
     } finally {
       setClosingRound(false);
     }
@@ -370,19 +373,19 @@ export default function EsusuRotationDashboard({
         <div className="w-14 h-14 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
           <svg viewBox="0 0 24 24" fill="none" className="w-7 h-7 text-green-600" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M20 6L9 17l-5-5" /></svg>
         </div>
-        <p className="text-base font-black text-slate-800 dark:text-white">Round Closed</p>
+        <p className="text-base font-black text-slate-800 dark:text-white">{t("ajo.rot.roundClosed")}</p>
         <div className="bg-slate-50 dark:bg-slate-800 rounded-2xl p-4 w-full space-y-2">
           <div className="flex justify-between text-sm">
-            <span className="text-slate-500">Total paid out</span>
+            <span className="text-slate-500">{t("ajo.rot.totalPaidOut")}</span>
             <span className="font-bold text-slate-800 dark:text-white">{fmtCur(closeResult.total_paid)}</span>
           </div>
           <div className="flex justify-between text-sm">
-            <span className="text-slate-500">Turns skipped</span>
+            <span className="text-slate-500">{t("ajo.rot.turnsSkipped")}</span>
             <span className="font-bold text-slate-800 dark:text-white">{closeResult.skipped_count ?? 0}</span>
           </div>
         </div>
         <button onClick={onRefresh} className="w-full py-3 bg-brand-500 text-white rounded-2xl font-bold text-sm transition active:scale-[0.99]">
-          Done
+          {t("common.done")}
         </button>
       </div>
     );
@@ -393,8 +396,8 @@ export default function EsusuRotationDashboard({
     if (!isOwner) {
       return (
         <div className="flex flex-col items-center py-8 gap-2 text-center px-4">
-          <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">No active round</p>
-          <p className="text-xs text-slate-400">Your savings group doesn't have an active rotation round yet.</p>
+          <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">{t("ajo.rot.noActiveRound")}</p>
+          <p className="text-xs text-slate-400">{t("ajo.rot.noActiveRoundBody")}</p>
         </div>
       );
     }
@@ -410,31 +413,31 @@ export default function EsusuRotationDashboard({
 
   // ── Active round view ──────────────────────────────────────────────────
   // `turns` already includes the paid ones (get-rotation / circle detail return the whole round), so they are not added again
-  const roundProgress = `${paidCount} of ${turns.filter(t => t.status !== "skipped").length} paid`;
+  const roundProgress = t("ajo.rot.roundProgress", { paid: paidCount, total: turns.filter(x => x.status !== "skipped").length });
 
   return (
     <>
       {/* Round label */}
       <div className="flex items-center justify-between px-1">
         <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-          Round {round.round_number} · {roundProgress}{slots > 1 ? ` · ${slots} winners/round` : ""}
+          {t("ajo.rot.roundN", { n: round.round_number })} · {roundProgress}{slots > 1 ? ` · ${t("ajo.rot.nWinnersPerRound", { n: slots })}` : ""}
         </p>
         {isOwner && (
           <span className="text-[10px] text-brand-500 dark:text-brand-400 font-bold">
-            {round.status === "active" ? "Active" : "Closed"}
+            {round.status === "active" ? t("ajo.rot.active") : t("ajo.rot.closed")}
           </span>
         )}
       </div>
 
       {/* Navy hero stat — ERD-09 */}
       <div className="bg-[#16255A] rounded-2xl px-5 py-5 overflow-hidden">
-        <p className="text-[11px] font-bold text-white/50 uppercase tracking-widest mb-1">Current Pot</p>
+        <p className="text-[11px] font-bold text-white/50 uppercase tracking-widest mb-1">{t("ajo.rot.currentPot")}</p>
         <p className="text-[34px] font-black text-white leading-none tracking-tight" style={{ fontVariantNumeric: "tabular-nums", overflowWrap: "break-word" }}>{fmtCur(pot_size)}</p>
         {currentTurns.length > 0 && (
           <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between gap-3">
             <div className="min-w-0">
               <p className="text-[10px] text-white/50 font-semibold uppercase tracking-wider">
-                Collecting now{currentTurns.length > 1 ? ` (${currentTurns.length})` : ""}
+                {currentTurns.length > 1 ? t("ajo.rot.collectingNowN", { n: currentTurns.length }) : t("ajo.rot.collectingNow")}
               </p>
               <p className="text-sm font-extrabold text-white truncate">
                 {currentTurns.map(t => displayName(t.client_name, showNames)).join(", ")}
@@ -442,7 +445,7 @@ export default function EsusuRotationDashboard({
             </div>
             {currentTurns[0]?.expected_payout_date && (
               <div className="text-right flex-shrink-0">
-                <p className="text-[10px] text-white/50">Payout due</p>
+                <p className="text-[10px] text-white/50">{t("ajo.rot.payoutDue")}</p>
                 <p className="text-xs font-bold text-white/80">{fmtDate(currentTurns[0].expected_payout_date)}</p>
               </div>
             )}
@@ -453,7 +456,7 @@ export default function EsusuRotationDashboard({
       {/* Contribution ticks */}
       {Object.keys(contribution_ticks).length > 0 && (
         <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 px-4 py-3 space-y-2">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">This period</p>
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t("ajo.rot.thisPeriod")}</p>
           <div className="flex flex-wrap gap-2">
             {members.map(mb => {
               const hasPaid  = contribution_ticks[mb.id];
@@ -513,9 +516,9 @@ export default function EsusuRotationDashboard({
             </svg>
           </div>
           <div className="min-w-0">
-            <p className="text-xs font-extrabold text-amber-700 dark:text-amber-400">Your turn is next</p>
+            <p className="text-xs font-extrabold text-amber-700 dark:text-amber-400">{t("ajo.rot.yourTurnNext")}</p>
             <p className="text-[11px] text-amber-600 dark:text-amber-500 leading-relaxed">
-              Be ready — you collect after the current member{currentTurns.length > 1 ? "s" : ""}{nextTurns[0]?.expected_payout_date ? `. Expected ${fmtDate(nextTurns[0].expected_payout_date)}` : ""}.
+              {t(currentTurns.length > 1 ? "ajo.rot.beReadyMany" : "ajo.rot.beReadyOne")}{nextTurns[0]?.expected_payout_date ? t("ajo.rot.expectedSuffix", { date: fmtDate(nextTurns[0].expected_payout_date) }) : ""}.
             </p>
           </div>
         </div>
@@ -530,11 +533,11 @@ export default function EsusuRotationDashboard({
                 <path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
               </svg>
             </div>
-            <p className="font-extrabold text-red-700 dark:text-red-400 text-sm">Payout Blocked</p>
+            <p className="font-extrabold text-red-700 dark:text-red-400 text-sm">{t("ajo.rot.payoutBlocked")}</p>
           </div>
           <p className="text-xs text-slate-700 dark:text-slate-300">
-            {payoutBlocked.missing_count} member{payoutBlocked.missing_count > 1 ? "s have" : " has"} not completed {payoutBlocked.missing_count > 1 ? "their" : "their"} contribution for this period.
-            All contributions must be received before the payout can proceed.
+            {t(payoutBlocked.missing_count > 1 ? "ajo.rot.blockedMany" : "ajo.rot.blockedOne", { n: payoutBlocked.missing_count })}
+            {t("ajo.rot.allMustBeReceived")}
           </p>
           <div className="space-y-1">
             {(payoutBlocked.missing_contributors || []).map((m, i) => (
@@ -542,15 +545,15 @@ export default function EsusuRotationDashboard({
                 <span className="text-[11px] font-semibold text-red-800 dark:text-red-300">{m.client_name}</span>
                 <span className="text-[11px] text-red-700 dark:text-red-400">
                   {m.amount_paid > 0
-                    ? `Paid ${fmtCur(m.amount_paid)} of ${fmtCur(m.amount_due)}`
-                    : `Owes ${fmtCur(m.amount_due)}`}
+                    ? t("ajo.rot.paidOf", { paid: fmtCur(m.amount_paid), due: fmtCur(m.amount_due) })
+                    : t("ajo.rot.owes", { due: fmtCur(m.amount_due) })}
                 </span>
               </div>
             ))}
           </div>
           <button onClick={() => setPayoutBlocked(null)}
             className="text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 underline underline-offset-2">
-            Dismiss
+            {t("ajo.rot.dismiss")}
           </button>
         </div>
       )}
@@ -584,14 +587,14 @@ export default function EsusuRotationDashboard({
       {/* Reorder mode */}
       {isOwner && reorderMode && localOrder && (
         <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/40 rounded-2xl p-4 space-y-3">
-          <p className="text-xs font-bold text-amber-700 dark:text-amber-300">Reordering upcoming turns — requires PIN</p>
+          <p className="text-xs font-bold text-amber-700 dark:text-amber-300">{t("ajo.rot.reorderingHint")}</p>
           {localOrder.map((tid, idx) => {
-            const t = turns.find(x => x.id === tid);
-            if (!t) return null;
+            const turnRow = turns.find(x => x.id === tid);
+            if (!turnRow) return null;
             return (
               <div key={tid} className="flex items-center gap-2 bg-white dark:bg-slate-800 rounded-xl px-3 py-2.5">
                 <span className="text-[10px] font-black text-amber-600 w-4">{idx + 1}</span>
-                <p className="flex-1 text-xs font-semibold text-slate-700 dark:text-slate-200">{displayName(t.client_name, true)}</p>
+                <p className="flex-1 text-xs font-semibold text-slate-700 dark:text-slate-200">{displayName(turnRow.client_name, true)}</p>
                 <button onClick={() => moveLocal(idx, -1)} disabled={idx === 0}
                   className="w-6 h-6 rounded-lg bg-slate-100 dark:bg-slate-700 disabled:opacity-30 flex items-center justify-center transition active:scale-90">
                   <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M18 15l-6-6-6 6" /></svg>
@@ -606,11 +609,11 @@ export default function EsusuRotationDashboard({
           <div className="flex gap-2">
             <button onClick={() => { setReorderMode(false); setLocalOrder(null); }}
               className="flex-1 py-2 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-xs transition">
-              Cancel
+              {t("common.cancel")}
             </button>
             <button onClick={confirmReorder}
               className="flex-1 py-2 bg-amber-600 text-white rounded-xl font-bold text-xs transition active:scale-[0.99]">
-              Confirm (PIN required)
+              {t("ajo.rot.confirmPinRequired")}
             </button>
           </div>
         </div>
@@ -619,11 +622,11 @@ export default function EsusuRotationDashboard({
       {/* Turn list */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Rotation Order</p>
+          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">{t("ajo.rot.rotationOrder")}</p>
           {isOwner && upcomingCount > 1 && !reorderMode && (
             <button onClick={startReorder}
               className="text-[10px] font-bold text-brand-500 dark:text-brand-400 px-2 py-1 rounded-lg bg-brand-50 dark:bg-brand-900/20 transition active:scale-95">
-              Reorder Remaining
+              {t("ajo.rot.reorderRemaining")}
             </button>
           )}
         </div>
@@ -647,20 +650,20 @@ export default function EsusuRotationDashboard({
                   <div className="flex items-center gap-2 flex-wrap min-w-0">
                     <p className="text-sm font-bold text-slate-800 dark:text-white truncate min-w-0">
                       {displayName(turn.client_name, showNames)}
-                      {isMine && <span className="ml-1 text-[10px] font-semibold text-brand-500">(You)</span>}
+                      {isMine && <span className="ml-1 text-[10px] font-semibold text-brand-500">{t("ajo.rot.you")}</span>}
                     </p>
                     <Badge status={turn.status} />
                   </div>
                   {turn.expected_payout_date && (
                     <p className="text-[10px] text-slate-400 mt-0.5">
-                      Expected: {fmtDate(turn.expected_payout_date)}
+                      {t("ajo.rot.expectedDate", { date: fmtDate(turn.expected_payout_date) })}
                     </p>
                   )}
                   {turn.status === "paid" && turn.payout_contribution_id && (
-                    <p className="text-[10px] text-green-600 dark:text-green-400 mt-0.5 font-semibold">Pot paid out ✓</p>
+                    <p className="text-[10px] text-green-600 dark:text-green-400 mt-0.5 font-semibold">{t("ajo.rot.potPaidOut")}</p>
                   )}
                   {turn.status === "skipped" && turn.skip_reason && (
-                    <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">Skipped: {turn.skip_reason}</p>
+                    <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">{t("ajo.rot.skippedReason", { reason: turn.skip_reason })}</p>
                   )}
                 </div>
 
@@ -669,14 +672,14 @@ export default function EsusuRotationDashboard({
                   <button
                     onClick={() => { setActionErr(""); setPinFor({ action: "payout", turnId: turn.id }); }}
                     className="flex-shrink-0 px-3 py-1.5 bg-brand-500 hover:bg-brand-600 text-white rounded-xl font-bold text-[11px] transition active:scale-95 whitespace-nowrap">
-                    Pay Out
+                    {t("ajo.rot.payOut")}
                   </button>
                 )}
                 {isOwner && isUpcoming && onSkipTurn && (
                   <button
                     onClick={() => { setSkipDialog({ turnId: turn.id }); setSkipReason(""); setSkipToEnd(true); }}
                     className="flex-shrink-0 px-2.5 py-1.5 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40 rounded-xl font-bold text-[10px] transition active:scale-95">
-                    Skip
+                    {t("ajo.rot.skip")}
                   </button>
                 )}
               </div>
@@ -688,14 +691,14 @@ export default function EsusuRotationDashboard({
       {/* Skip dialog */}
       {skipDialog && (
         <div className="bg-white dark:bg-slate-800 rounded-2xl border border-amber-200 dark:border-amber-800/40 p-4 space-y-3">
-          <p className="text-sm font-bold text-slate-800 dark:text-white">Skip this turn?</p>
+          <p className="text-sm font-bold text-slate-800 dark:text-white">{t("ajo.rot.skipThisTurn")}</p>
           <div>
-            <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Reason *</label>
+            <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">{t("ajo.rot.reasonRequired")}</label>
             <input
               type="text"
               value={skipReason}
               onChange={e => setSkipReason(e.target.value)}
-              placeholder="e.g. Member could not participate"
+              placeholder={t("ajo.rot.reasonPh")}
               className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500/30"
             />
           </div>
@@ -703,24 +706,24 @@ export default function EsusuRotationDashboard({
             <button
               onClick={() => setSkipToEnd(true)}
               className={`flex-1 py-2 rounded-xl text-xs font-bold border transition ${skipToEnd ? "bg-amber-100 dark:bg-amber-900/40 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300" : "bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-500"}`}>
-              Move to end
+              {t("ajo.rot.moveToEnd")}
             </button>
             <button
               onClick={() => setSkipToEnd(false)}
               className={`flex-1 py-2 rounded-xl text-xs font-bold border transition ${!skipToEnd ? "bg-amber-100 dark:bg-amber-900/40 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300" : "bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-500"}`}>
-              Remove from round
+              {t("ajo.rot.removeFromRound")}
             </button>
           </div>
           <div className="flex gap-2">
             <button onClick={() => setSkipDialog(null)}
               className="flex-1 py-2 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-xs transition">
-              Cancel
+              {t("common.cancel")}
             </button>
             <button
               disabled={!skipReason.trim()}
               onClick={() => { if (!skipReason.trim()) return; setPinFor({ action: "skip", turnId: skipDialog.turnId }); }}
               className="flex-1 py-2 bg-amber-600 disabled:opacity-50 text-white rounded-xl font-bold text-xs transition active:scale-[0.99]">
-              Confirm (PIN)
+              {t("ajo.rot.confirmPin")}
             </button>
           </div>
         </div>
@@ -732,24 +735,24 @@ export default function EsusuRotationDashboard({
           onClick={() => setCloseConfirm(true)}
           disabled={closingRound}
           className="w-full py-3 border-2 border-dashed border-slate-200 dark:border-slate-600 text-slate-400 dark:text-slate-500 rounded-2xl font-bold text-sm transition hover:border-red-300 hover:text-red-500 dark:hover:border-red-700 dark:hover:text-red-400 active:scale-[0.99]">
-          Close Round
+          {t("ajo.rot.closeRound")}
         </button>
       )}
       {isOwner && onCloseRound && closeConfirm && (
         <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/40 rounded-2xl p-4 space-y-3">
-          <p className="text-sm font-extrabold text-amber-800 dark:text-amber-300">Close this round?</p>
+          <p className="text-sm font-extrabold text-amber-800 dark:text-amber-300">{t("ajo.rot.closeThisRound")}</p>
           <p className="text-xs text-amber-700 dark:text-amber-500 leading-relaxed">
-            Any unpaid turns will be marked as skipped. This action cannot be undone.
+            {t("ajo.rot.closeWarning")}
           </p>
           <div className="flex gap-2">
             <button onClick={() => setCloseConfirm(false)}
               className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-sm transition active:scale-[0.99]">
-              Cancel
+              {t("common.cancel")}
             </button>
             <button onClick={handleCloseRound} disabled={closingRound}
               className="flex-1 py-2.5 bg-amber-600 disabled:opacity-50 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2">
               {closingRound && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-              {closingRound ? "Closing…" : "Close Round"}
+              {closingRound ? t("ajo.rot.closing") : t("ajo.rot.closeRound")}
             </button>
           </div>
         </div>
@@ -759,9 +762,9 @@ export default function EsusuRotationDashboard({
       {pinFor && (
         <TransactionPinModal
           title={
-            pinFor.action === "payout"  ? "Confirm Payout" :
-            pinFor.action === "skip"    ? "Confirm Skip" :
-            "Confirm Reorder"
+            pinFor.action === "payout"  ? t("ajo.rot.confirmPayout") :
+            pinFor.action === "skip"    ? t("ajo.rot.confirmSkip") :
+            t("ajo.rot.confirmReorder")
           }
           onApprove={handlePin}
           onCancel={() => { setPinFor(null); setActionErr(""); }}

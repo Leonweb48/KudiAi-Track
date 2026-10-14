@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Fragment } from "react";
 import { canSellPlans } from "../utils/platform";
 import Icon   from "../components/Icon";
 import Modal  from "../components/shared/Modal";
@@ -50,22 +50,58 @@ const BLANK_GROUP = {
 
 const FREQ_DAYS = { daily: 1, weekly: 7, monthly: 30 };
 
-const TX_TYPE_LABEL = {
-  contribution:    "Contribution",
-  withdrawal:      "Withdrawal",
-  reversal:        "Reversal",
-  disbursement:    "Disbursement",
-  withdrawal_fee:  "Withdrawal Fee",
-  registration_fee:"Registration Fee",
-  commission:      "Commission",
+// Translation keys for the stored type / payment method (the stored values never change; text is looked up at render)
+const TX_TYPE_KEY = {
+  contribution:    "ajo.txContribution",
+  withdrawal:      "ajo.txWithdrawal",
+  reversal:        "ajo.txReversal",
+  disbursement:    "ajo.txDisbursement",
+  withdrawal_fee:  "ajo.txWithdrawalFee",
+  registration_fee:"ajo.txRegistrationFee",
+  commission:      "ajo.txCommission",
 };
-const METHOD_LABEL = {
-  cash:            "Cash",
-  manual_transfer: "Bank Transfer",
-  bank_transfer:   "Bank Transfer",
-  paystack:        "Paystack",
-  online:          "Online",
+const METHOD_KEY = {
+  cash:            "ajo.methodCash",
+  manual_transfer: "ajo.methodBankTransfer",
+  bank_transfer:   "ajo.methodBankTransfer",
+  paystack:        "ajo.methodPaystack",
+  online:          "ajo.methodOnline",
 };
+// Lower-case method names as shown on pending deposits (raw stored value with "_" → " "), translated at render
+const PM_LOWER_KEY = {
+  cash:            "ajo.pmCash",
+  wallet:          "ajo.pmWallet",
+  bank_transfer:   "ajo.pmBankTransfer",
+  online:          "ajo.pmOnline",
+  paystack:        "ajo.pmPaystack",
+};
+// Stored contribution_context → label key (staff collections queue)
+const CTX_KEY = {
+  group_savings:   "ajo.groupSavings",
+  esusu_rotation:  "ajo.esusuRotation",
+};
+// Stored contribution_frequency → label key
+const FREQ_KEY = {
+  daily:   "ajo.freqDaily",
+  weekly:  "ajo.freqWeekly",
+  monthly: "ajo.freqMonthly",
+};
+// Same, lower-case (where the stored value used to be shown as-is)
+const FREQ_LOWER_KEY = {
+  daily:   "ajo.freqDailyLower",
+  weekly:  "ajo.freqWeeklyLower",
+  monthly: "ajo.freqMonthlyLower",
+  custom:  "ajo.freqCustomLower",
+};
+
+// Fills {slot} markers in an already-translated sentence with React nodes (bold names / amounts), so each
+// language keeps its own word order around them.
+function fillNodes(text, nodes) {
+  return String(text).split(/(\{\w+\})/g).map((part, i) => {
+    const m = /^\{(\w+)\}$/.exec(part);
+    return <Fragment key={i}>{m && nodes[m[1]] !== undefined ? nodes[m[1]] : part}</Fragment>;
+  });
+}
 
 function SectionLabel({ children }) {
   return (
@@ -135,9 +171,10 @@ function isGroupAccount(c) {
 
 /* ── Per-client Ajo Contribution History Modal ─────────────────────────── */
 function AsoClientHistoryModal({ client, contributions, cycles = [], businessName, biz, staffMap = {}, onClose, onOpenCycle, onCloseCycle, onExecuteCommission, onReverseContrib }) {
+  const t = useT();
   // Derived from props — computed before state so they can seed initial values
   // Name map over ALL cycles (active + closed) — used to label history rows
-  const cycleNameMap = Object.fromEntries(cycles.map(c => [c.id, c.label || "Personal Savings"]));
+  const cycleNameMap = Object.fromEntries(cycles.map(c => [c.id, c.label || t("ajo.personalSavings")]));
   // Card tab renders active AND completed (matured) cycles — settled/closed go to history only
   const activeCycles = cycles.filter(c => c.status === "active" || c.status === "completed");
 
@@ -239,9 +276,9 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
   };
 
   const FILTERS = [
-    { id: "all", label: "All" },
-    { id: "contribution", label: "Contributions" },
-    { id: "withdrawal", label: "Withdrawals" },
+    { id: "all", label: t("ajo.filterAll") },
+    { id: "contribution", label: t("ajo.contributions") },
+    { id: "withdrawal", label: t("ajo.withdrawals") },
   ];
 
   return (
@@ -257,21 +294,20 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
       {reverseFor && reverseStep === "reason" && (
         <div className="fixed inset-0 z-sub-sheet bg-black/60 flex items-end justify-center">
           <div className="bg-white dark:bg-slate-900 rounded-t-2xl w-full max-w-lg p-5 pb-8">
-            <h3 className="text-base font-black text-slate-800 dark:text-white mb-1">Reverse Entry</h3>
+            <h3 className="text-base font-black text-slate-800 dark:text-white mb-1">{t("ajo.reverseEntryTitle")}</h3>
             <p className="text-xs text-slate-400 mb-4">
-              Reverse ₦{Number(reverseFor.amount || 0).toLocaleString("en-NG")} contribution
-              from {new Date(reverseFor.created_at).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })}
+              {t("ajo.reverseContribFrom", { amount: Number(reverseFor.amount || 0).toLocaleString("en-NG"), date: new Date(reverseFor.created_at).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" }) })}
             </p>
             {reverseFor.payment_method === "wallet" && (
               <div className="-mt-2 mb-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 px-3 py-2.5 text-xs text-amber-800 dark:text-amber-200 leading-relaxed">
-                This was paid from {client.full_name || "the client"}'s KudiAI wallet, so reversing it sends <b>₦{Number(reverseFor.amount || 0).toLocaleString("en-NG")}</b> back from your wallet to theirs. Your wallet needs enough balance.
+                {t("ajo.reverseWalletNoteA", { name: client.full_name || t("ajo.theClient") })} <b>₦{Number(reverseFor.amount || 0).toLocaleString("en-NG")}</b> {t("ajo.reverseWalletNoteB")}
               </div>
             )}
-            <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1.5">Reason (required)</label>
+            <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1.5">{t("ajo.reasonRequired")}</label>
             <textarea
               value={reverseReason}
               onChange={e => setReverseReason(e.target.value)}
-              placeholder="e.g. Entered by mistake, wrong amount, duplicate..."
+              placeholder={t("ajo.reverseReasonPlaceholder")}
               rows={3}
               className="w-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-white rounded-xl px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-amber-400"
             />
@@ -279,15 +315,15 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
             <div className="flex gap-3 mt-4">
               <button onClick={() => { setReverseFor(null); setReverseReason(""); setReverseError(""); }}
                 className="flex-1 py-3 rounded-xl font-bold text-sm text-slate-500 bg-slate-100 dark:bg-slate-800 active:scale-[0.98] transition">
-                Cancel
+                {t("common.cancel")}
               </button>
               <button onClick={() => {
-                if (reverseReason.trim().length < 5) { setReverseError("Please enter a reason (at least 5 characters)."); return; }
+                if (reverseReason.trim().length < 5) { setReverseError(t("ajo.reasonMin5")); return; }
                 setReverseError("");
                 setReverseStep("pin");
               }}
                 className="flex-1 py-3 rounded-xl font-bold text-sm text-white bg-amber-500 active:scale-[0.98] transition">
-                Continue
+                {t("common.continue")}
               </button>
             </div>
           </div>
@@ -297,10 +333,10 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
       {/* Reverse entry — PIN step */}
       {reverseFor && reverseStep === "pin" && (
         <TransactionPinModal
-          title="Confirm Reversal"
+          title={t("ajo.confirmReversal")}
           amount={Math.round((reverseFor.amount || 0) * 100)}
           recipient={client.full_name}
-          description={`Reverse ₦${Number(reverseFor.amount || 0).toLocaleString("en-NG")} · ${reverseReason}`}
+          description={t("ajo.reverseAmountDesc", { amount: Number(reverseFor.amount || 0).toLocaleString("en-NG"), reason: reverseReason })}
           onCancel={() => { setReverseStep("reason"); setReverseError(""); }}
           onApprove={async (pin) => {
             const amt  = reverseFor.amount;
@@ -316,8 +352,8 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
               setReverseError("");
               const refundKobo = Number(result?.data?.wallet_refund_kobo || 0);
               setHistoryResult({
-                type: "success", title: "Contribution Reversed", amount: amt, counterparty: name,
-                note: refundKobo > 0 ? `₦${(refundKobo / 100).toLocaleString("en-NG")} was returned to ${name}'s wallet.` : undefined,
+                type: "success", title: t("ajo.contributionReversed"), amount: amt, counterparty: name,
+                note: refundKobo > 0 ? t("ajo.refundReturnedToWallet", { amount: (refundKobo / 100).toLocaleString("en-NG"), name }) : undefined,
               });
             }
           }}
@@ -329,7 +365,7 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
         <div className="flex items-center justify-between px-4 pb-3 border-b border-slate-100 dark:border-slate-800" style={{ paddingTop: "max(16px, env(safe-area-inset-top, 16px))" }}>
           <div className="min-w-0 flex-1 mr-2">
             <h2 className="text-base font-black text-slate-800 dark:text-white truncate">{client.full_name}</h2>
-            <p className="text-xs text-slate-400 mt-0.5">{tab === "card" ? "Contribution Card" : "Ajo Transaction History"}</p>
+            <p className="text-xs text-slate-400 mt-0.5">{tab === "card" ? t("ajo.contributionCard") : t("ajo.ajoTxHistory")}</p>
           </div>
           <div className="flex items-center gap-2">
             {tab === "history" && contributions.length > 0 && (
@@ -341,7 +377,7 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
               </button>
             )}
             {tab === "history" && contributions.length > 0 && (
-              <button onClick={handleExportCsv} title="Export CSV"
+              <button onClick={handleExportCsv} title={t("ajo.exportCsv")}
                 className="w-11 h-11 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center active:scale-90 transition">
                 <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                   <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
@@ -363,13 +399,13 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
             onClick={() => setTab("card")}
             className={`pb-2 pt-2 text-xs font-bold transition-colors border-b-2 ${tab === "card" ? "border-brand-600 text-brand-600" : "border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"}`}
           >
-            Card
+            {t("ajo.tabCard")}
           </button>
           <button
             onClick={() => setTab("history")}
             className={`pb-2 pt-2 text-xs font-bold transition-colors border-b-2 ${tab === "history" ? "border-blue-600 text-blue-600" : "border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"}`}
           >
-            History
+            {t("ajo.tabHistory")}
           </button>
         </div>
 
@@ -404,14 +440,14 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
             {onOpenCycle && (
               showNewCycle ? (
                 <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-4 space-y-3">
-                  <p className="text-sm font-bold text-slate-700 dark:text-white">New Saving Cycle</p>
+                  <p className="text-sm font-bold text-slate-700 dark:text-white">{t("ajo.newSavingCycle")}</p>
 
                   {/* Purpose — required; must be unique among active cycles for this client */}
                   <div>
-                    <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Purpose <span className="text-red-500">*</span></label>
+                    <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">{t("ajo.purpose")} <span className="text-red-500">*</span></label>
                     <input
                       type="text"
-                      placeholder="e.g. House Fund, School Fees…"
+                      placeholder={t("ajo.purposePlaceholder")}
                       value={newCycleForm.purpose}
                       onChange={e => setNewCycleForm(f => ({ ...f, purpose: e.target.value }))}
                       className="w-full border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-900 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500"
@@ -421,7 +457,7 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
                   {/* Amount + Frequency */}
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Amount / period (₦)</label>
+                      <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">{t("ajo.amountPerPeriod")}</label>
                       <input
                         type="number"
                         min="1"
@@ -432,25 +468,25 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
                       />
                     </div>
                     <div>
-                      <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Frequency</label>
+                      <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">{t("ajo.frequency")}</label>
                       <select
                         value={newCycleForm.frequency}
                         onChange={e => setNewCycleForm(f => ({ ...f, frequency: e.target.value }))}
                         className="w-full border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-900 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500">
-                        <option value="daily">Daily</option>
-                        <option value="weekly">Weekly</option>
-                        <option value="monthly">Monthly</option>
+                        <option value="daily">{t("ajo.freqDaily")}</option>
+                        <option value="weekly">{t("ajo.freqWeekly")}</option>
+                        <option value="monthly">{t("ajo.freqMonthly")}</option>
                       </select>
                     </div>
                   </div>
 
                   {/* Length (optional) */}
                   <div>
-                    <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Length (periods) — optional</label>
+                    <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">{t("ajo.lengthPeriodsOptional")}</label>
                     <input
                       type="number"
                       min="1"
-                      placeholder="Leave blank for default"
+                      placeholder={t("ajo.leaveBlankDefault")}
                       value={newCycleForm.length}
                       onChange={e => setNewCycleForm(f => ({ ...f, length: e.target.value }))}
                       className="w-full border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-900 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500"
@@ -459,27 +495,27 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
 
                   {/* Fee model */}
                   <div>
-                    <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Fee model</label>
+                    <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">{t("ajo.feeModel")}</label>
                     <select
                       value={newCycleForm.model}
                       onChange={e => setNewCycleForm(f => ({ ...f, model: e.target.value }))}
                       className="w-full border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-900 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500">
-                      <option value="none">No withdrawal fee</option>
-                      <option value="percent">% on withdrawals</option>
-                      <option value="first_period">First deposit (collector&apos;s day 1)</option>
+                      <option value="none">{t("ajo.feeNone")}</option>
+                      <option value="percent">{t("ajo.feePercentOnWithdrawals")}</option>
+                      <option value="first_period">{t("ajo.feeFirstDepositDay1")}</option>
                     </select>
                   </div>
 
                   {/* Fee % — only when model is percent */}
                   {newCycleForm.model === "percent" && (
                     <div>
-                      <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Fee %</label>
+                      <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">{t("ajo.feePercent")}</label>
                       <input
                         type="number"
                         min="0"
                         max="100"
                         step="0.1"
-                        placeholder="e.g. 5"
+                        placeholder={t("ajo.egValue", { v: "5" })}
                         value={newCycleForm.percent}
                         onChange={e => setNewCycleForm(f => ({ ...f, percent: e.target.value }))}
                         className="w-full border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-900 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500"
@@ -491,7 +527,7 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
                     <button
                       onClick={() => { setShowNewCycle(false); setNewCycleForm(f => ({ ...f, purpose: "" })); }}
                       className="flex-1 py-2.5 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl text-sm font-bold">
-                      Cancel
+                      {t("common.cancel")}
                     </button>
                     <button
                       onClick={() => {
@@ -501,7 +537,7 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
                         setNewCycleForm(f => ({ ...f, purpose: "" }));
                       }}
                       className="flex-1 py-2.5 bg-brand-600 text-white rounded-xl text-sm font-bold">
-                      Open Cycle
+                      {t("ajo.openCycle")}
                     </button>
                   </div>
                 </div>
@@ -510,7 +546,7 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
                   onClick={() => setShowNewCycle(true)}
                   className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-brand-300 dark:border-brand-700 text-brand-600 dark:text-brand-400 rounded-2xl text-sm font-bold active:scale-[0.98] transition">
                   <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                  Open New Saving Cycle
+                  {t("ajo.openNewSavingCycle")}
                 </button>
               )
             )}
@@ -540,7 +576,7 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
         <div className="flex-1 overflow-y-auto px-4 pb-8 space-y-2">
           {filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
-              <p className="text-slate-400 text-sm font-semibold">No records found</p>
+              <p className="text-slate-400 text-sm font-semibold">{t("ajo.noRecordsFound")}</p>
             </div>
           ) : filtered.map(tx => {
             const isWithdraw = tx.type === "withdrawal";
@@ -565,13 +601,13 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
                       <Badge status={tx.status || "completed"} />
                     </div>
                     <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                      {TX_TYPE_LABEL[tx.type] ?? tx.type}
+                      {TX_TYPE_KEY[tx.type] ? t(TX_TYPE_KEY[tx.type]) : tx.type}
                       {tx.cycle_id && cycleNameMap[tx.cycle_id] ? ` — ${cycleNameMap[tx.cycle_id]}` : ""}
-                      {" · "}{METHOD_LABEL[tx.payment_method] ?? "Cash"}
+                      {" · "}{METHOD_KEY[tx.payment_method] ? t(METHOD_KEY[tx.payment_method]) : t("ajo.methodCash")}
                     </p>
                     <p className="text-[10px] text-slate-400 mt-0.5">{dateStr}</p>
                     {tx.recorded_by && staffMap[tx.recorded_by] && (
-                      <p className="text-[10px] text-brand-600 dark:text-brand-400 mt-0.5">by: {staffMap[tx.recorded_by]}</p>
+                      <p className="text-[10px] text-brand-600 dark:text-brand-400 mt-0.5">{t("ajo.byStaff", { name: staffMap[tx.recorded_by] })}</p>
                     )}
                     {tx.notes && <p className="text-[10px] text-slate-400 italic mt-0.5">"{tx.notes}"</p>}
                     {onReverseContrib && tx.type === "contribution" && (tx.status === "completed" || tx.status === "approved") && (
@@ -583,7 +619,7 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
                         setReverseError("");
                       }}
                         className="mt-1.5 text-[10px] font-bold text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 rounded-full active:scale-95 transition">
-                        Reverse entry
+                        {t("ajo.reverseEntry")}
                       </button>
                     )}
                     {tx.dispute_ticket_no && !clearedIds.has(tx.id) && (
@@ -599,7 +635,7 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
                           });
                           if (!error) setClearedIds(prev => new Set([...prev, tx.id]));
                         }} className="text-[10px] text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 underline ml-2 flex-shrink-0">
-                          Clear flag
+                          {t("ajo.clearFlag")}
                         </button>
                       </div>
                     )}
@@ -629,6 +665,7 @@ function AsoClientHistoryModal({ client, contributions, cycles = [], businessNam
 // Owner-only: the registration fee a new client sees on the signup page and is charged from their first deposit.
 // Self-contained (its own read/write of profiles.ajo_registration_fee) so a not-yet-migrated database just hides it.
 function RegistrationFeeSetting({ ownerId, onChange }) {
+  const t = useT();
   const [fee,     setFee]     = useState(null);   // null = loading, or the column isn't there yet
   const [editing, setEditing] = useState(false);
   const [draft,   setDraft]   = useState("");
@@ -652,12 +689,12 @@ function RegistrationFeeSetting({ ownerId, onChange }) {
   const save = async () => {
     const raw = draft.trim();
     const n = raw === "" ? 0 : Number(raw);
-    if (!Number.isFinite(n) || n < 0 || n > MAX_REG_FEE) { setErr(`Enter an amount from ₦0 to ₦${MAX_REG_FEE.toLocaleString("en-NG")}.`); return; }
+    if (!Number.isFinite(n) || n < 0 || n > MAX_REG_FEE) { setErr(t("ajo.regFeeRange", { max: MAX_REG_FEE.toLocaleString("en-NG") })); return; }
     setSaving(true); setErr("");
     const v = cleanRegFee(n);
     const { error } = await supabase.from("profiles").update({ ajo_registration_fee: v }).eq("id", ownerId);
     setSaving(false);
-    if (error) { setErr(friendlyError(error, "Couldn't save the fee. Try again.")); return; }
+    if (error) { setErr(friendlyError(error, t("ajo.regFeeSaveFailed"))); return; }
     setFee(v); onChange?.(v); setEditing(false);
   };
 
@@ -665,29 +702,29 @@ function RegistrationFeeSetting({ ownerId, onChange }) {
     <div className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3 mb-4 shadow-card border border-slate-100 dark:border-slate-700/60">
       {editing ? (
         <>
-          <p className="text-xs font-bold text-slate-700 dark:text-slate-200 mb-2">Registration fee for new clients</p>
+          <p className="text-xs font-bold text-slate-700 dark:text-slate-200 mb-2">{t("ajo.regFeeForNewClients")}</p>
           <div className="flex gap-2">
-            <input type="number" min="0" inputMode="decimal" value={draft} onChange={e => setDraft(e.target.value)} placeholder="0 for no fee"
+            <input type="number" min="0" inputMode="decimal" value={draft} onChange={e => setDraft(e.target.value)} placeholder={t("ajo.regFeeZeroForNone")}
               className="flex-1 min-w-0 px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-800 dark:text-slate-100" />
             <button onClick={save} disabled={saving}
-              className="px-4 rounded-xl bg-brand-600 text-white text-xs font-bold disabled:opacity-50 active:scale-95 transition-transform">{saving ? "…" : "Save"}</button>
+              className="px-4 rounded-xl bg-brand-600 text-white text-xs font-bold disabled:opacity-50 active:scale-95 transition-transform">{saving ? "…" : t("common.save")}</button>
             <button onClick={() => { setEditing(false); setErr(""); }} disabled={saving}
-              className="px-3 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold">Cancel</button>
+              className="px-3 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold">{t("common.cancel")}</button>
           </div>
           {err && <p className="text-[11px] text-red-500 mt-1.5">{err}</p>}
-          <p className="text-[10px] text-slate-400 mt-1.5 leading-snug">Shown to people registering with you. Applies to clients who register from now on; you can still change it per client when you approve them.</p>
+          <p className="text-[10px] text-slate-400 mt-1.5 leading-snug">{t("ajo.regFeeHelp")}</p>
         </>
       ) : (
         <div className="flex items-center gap-3">
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-bold text-slate-700 dark:text-slate-200">Registration fee for new clients</p>
+            <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{t("ajo.regFeeForNewClients")}</p>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-              {fee > 0 ? `${fmt(fee)} — taken once from a client's first deposit` : "None set — new clients register free"}
+              {fee > 0 ? t("ajo.regFeeTakenOnce", { amount: fmt(fee) }) : t("ajo.regFeeNoneSet")}
             </p>
           </div>
           <button onClick={() => { setDraft(fee > 0 ? String(fee) : ""); setErr(""); setEditing(true); }}
             className="text-xs font-bold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-900/20 px-3 py-1.5 rounded-lg flex-shrink-0 active:scale-95 transition-transform">
-            {fee > 0 ? "Change" : "Set fee"}
+            {fee > 0 ? t("ajo.change") : t("ajo.setFee")}
           </button>
         </div>
       )}
@@ -998,12 +1035,12 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     setClientBankResolving(true); setClientBankErr(""); setClientResolvedName("");
     try {
       const { data, error } = await bankLookup("resolve-account", { account_number: f.account_number, bank_code: f.bank_code });
-      if (error || !data?.status) throw new Error(data?.message || "Could not verify account");
+      if (error || !data?.status) throw new Error(data?.message || t("ajo.couldNotVerifyAccount"));
       const name = data.data?.account_name || "";
       setClientResolvedName(name);
       set("account_name", name);
     } catch (e) {
-      setClientBankErr(e.message || "Account verification failed");
+      setClientBankErr(e.message || t("ajo.accountVerificationFailed"));
     } finally {
       setClientBankResolving(false);
     }
@@ -1020,7 +1057,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       setWithdrawalRequests(data || []);
       setWdError(null);
     } catch {
-      setWdError("Couldn't refresh — tap to retry");
+      setWdError(t("ajo.couldntRefreshTapRetry"));
     }
   };
 
@@ -1050,10 +1087,10 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       const { data, error } = await supabase.functions.invoke("ajo-write", {
         body: { action: "retry_wallet_payout", payout_id: payoutId },
       });
-      if (error || !data?.ok) throw new Error(data?.error || "Retry failed — try again");
+      if (error || !data?.ok) throw new Error(data?.error || t("ajo.retryFailedTryAgain"));
       await reloadStuckPayouts();
     } catch (e) {
-      setApproveError({ id: payoutId, text: e.message || "Retry failed — try again" });
+      setApproveError({ id: payoutId, text: e.message || t("ajo.retryFailedTryAgain") });
     } finally {
       setRetryingPayoutId(null);
     }
@@ -1073,7 +1110,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       setPendingDeposits(data || []);
       setDepError(null);
     } catch {
-      setDepError("Couldn't refresh — tap to retry");
+      setDepError(t("ajo.couldntRefreshTapRetry"));
     }
   };
 
@@ -1178,12 +1215,12 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         p_reason:    groupApprReason.trim(),
       });
       if (error) throw error;
-      setGroupApprMsg({ id: grp.id, text: "Request submitted. You'll be notified by email when an admin decides.", ok: true });
+      setGroupApprMsg({ id: grp.id, text: t("ajo.requestSubmittedEmail"), ok: true });
       setEditingGroup(null);
       setGroupApprReason("");
       loadGroupApprovals();
     } catch (e) {
-      setGroupApprMsg({ id: grp.id, text: e?.message || "Failed to submit request", ok: false });
+      setGroupApprMsg({ id: grp.id, text: e?.message || t("ajo.failedSubmitRequest"), ok: false });
     } finally {
       setGroupApprSubmitting(false);
     }
@@ -1209,12 +1246,12 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         p_reason:    groupApprReason.trim(),
       });
       if (error) throw error;
-      setGroupApprMsg({ id: grp.id, text: "Archive request submitted. You'll be notified by email when an admin decides.", ok: true });
+      setGroupApprMsg({ id: grp.id, text: t("ajo.archiveRequestSubmittedEmail"), ok: true });
       setDeletingGroup(null);
       setGroupApprReason("");
       loadGroupApprovals();
     } catch (e) {
-      setGroupApprMsg({ id: grp.id, text: e?.message || "Failed to submit request", ok: false });
+      setGroupApprMsg({ id: grp.id, text: e?.message || t("ajo.failedSubmitRequest"), ok: false });
     } finally {
       setGroupApprSubmitting(false);
     }
@@ -1224,10 +1261,10 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     try {
       const { error } = await supabase.rpc("cancel_approval_request", { p_request_id: requestId });
       if (error) throw error;
-      setGroupApprMsg({ id: grpId, text: "Request cancelled.", ok: true });
+      setGroupApprMsg({ id: grpId, text: t("ajo.requestCancelled"), ok: true });
       loadGroupApprovals();
     } catch (e) {
-      setGroupApprMsg({ id: grpId, text: e?.message || "Failed to cancel", ok: false });
+      setGroupApprMsg({ id: grpId, text: e?.message || t("ajo.failedToCancel"), ok: false });
     }
   };
 
@@ -1246,11 +1283,11 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         })
         .eq("id", grp.id);
       if (error) throw error;
-      setDirectEditMsg({ id: grp.id, text: "Group details updated.", ok: true });
+      setDirectEditMsg({ id: grp.id, text: t("ajo.groupDetailsUpdated"), ok: true });
       setDirectEditGroup(null);
       loadGroups();
     } catch (e) {
-      setDirectEditMsg({ id: grp.id, text: e?.message || "Failed to save", ok: false });
+      setDirectEditMsg({ id: grp.id, text: e?.message || t("ajo.failedToSave"), ok: false });
     } finally {
       setDirectEditSaving(false);
     }
@@ -1337,15 +1374,15 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const handleStartSavingsRound = async (grpId) => {
     const target   = parseFloat(startRoundTarget);
     const deadline = startRoundDeadline;
-    if (!target || target <= 0) { setStartRoundMsg({ id: grpId, text: "Enter a valid target amount", ok: false }); return; }
-    if (!deadline)              { setStartRoundMsg({ id: grpId, text: "Select a deadline date", ok: false }); return; }
+    if (!target || target <= 0) { setStartRoundMsg({ id: grpId, text: t("ajo.enterValidTarget"), ok: false }); return; }
+    if (!deadline)              { setStartRoundMsg({ id: grpId, text: t("ajo.selectDeadlineDate"), ok: false }); return; }
     setStartRoundSaving(true);
     const { data, error } = await supabase.functions.invoke("ajo-write", {
       body: { action: "start_savings_round", group_id: grpId, target_amount: target, target_deadline: deadline },
     });
     setStartRoundSaving(false);
     if (error || !data?.ok) {
-      let msg = data?.error || error?.message || "Failed to start round";
+      let msg = data?.error || error?.message || t("ajo.failedStartRound");
       if (!data?.error && error?.context) {
         try { const b = await error.context.json(); msg = b?.error || msg; } catch {}
       }
@@ -1354,7 +1391,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     }
     setStartRoundGid(null);
     setStartRoundTarget(""); setStartRoundDeadline("");
-    setStartRoundMsg({ id: grpId, text: "Savings round started!", ok: true });
+    setStartRoundMsg({ id: grpId, text: t("ajo.savingsRoundStarted"), ok: true });
     setTimeout(() => setStartRoundMsg({ id: null, text: "", ok: false }), 4000);
     await loadGroups();
     loadSavingsDetails(grpId, data?.started_at);
@@ -1363,18 +1400,18 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const handleCloseSavingsRound = (grpId) => {
     setClosingRoundGid(null);
     setTxnPin({
-      title: "Confirm Group Close",
-      description: "Enter your PIN to close this savings round and release all member funds.",
+      title: t("ajo.confirmGroupClose"),
+      description: t("ajo.confirmGroupCloseDesc"),
       onApprove: async (pin) => {
         const { data, error } = await supabase.functions.invoke("ajo-write", {
           body: { action: "close_savings_round", group_id: grpId, pin },
         });
         setTxnPin(null);
         if (error || !data?.ok) {
-          setActionResult({ type: "failure", title: "Close Round Failed", reason: data?.error || error?.message || "Couldn't close round — try again" });
+          setActionResult({ type: "failure", title: t("ajo.closeRoundFailed"), reason: data?.error || error?.message || t("ajo.couldntCloseRound") });
           return;
         }
-        setActionResult({ type: "success", title: "Savings Round Closed" });
+        setActionResult({ type: "success", title: t("ajo.savingsRoundClosed") });
         await loadGroups();
         setSavingsDetails(p => ({ ...p, [grpId]: undefined }));
       },
@@ -1383,18 +1420,18 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
   const handleReleaseSavingsMember = (grpId, clientId, clientName) => {
     setTxnPin({
-      title: "Release Member",
-      description: `Release ${clientName} from the savings group? Their contributions will unlock into their withdrawable balance.`,
+      title: t("ajo.releaseMember"),
+      description: t("ajo.releaseMemberDesc", { name: clientName }),
       onApprove: async (pin) => {
         const { data, error } = await supabase.functions.invoke("ajo-write", {
           body: { action: "release_savings_member", group_id: grpId, client_id: clientId, pin },
         });
         setTxnPin(null);
         if (error || !data?.ok) {
-          setActionResult({ type: "failure", title: "Release Failed", counterparty: clientName, reason: data?.error || error?.message || "Couldn't release member — try again" });
+          setActionResult({ type: "failure", title: t("ajo.releaseFailed"), counterparty: clientName, reason: data?.error || error?.message || t("ajo.couldntReleaseMember") });
           return;
         }
-        setActionResult({ type: "success", title: "Member Released", counterparty: clientName });
+        setActionResult({ type: "success", title: t("ajo.memberReleased"), counterparty: clientName });
         const grp = groups.find(g => g.id === grpId);
         loadSavingsDetails(grpId, grp?.started_at);
       },
@@ -1405,7 +1442,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     const { data, error } = await supabase.functions.invoke("ajo-write", {
       body: { action: "start_round", group_id: showRotation.id, turns, payout_slots_per_round: payoutSlotsPerRound || 1 },
     });
-    if (error || !data?.ok) throw new Error(data?.error || error?.message || "Failed to start round");
+    if (error || !data?.ok) throw new Error(data?.error || error?.message || t("ajo.failedStartRound"));
     await loadRotation(showRotation.id);
   };
 
@@ -1414,7 +1451,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       body: { action: "execute_payout", turn_id: turnId, pin },
     });
     if (error) {
-      let msg = error?.message || "Payout failed";
+      let msg = error?.message || t("ajo.payoutFailed");
       if (error?.context) { try { const b = await error.context.json(); msg = b?.error || msg; } catch {} }
       throw new Error(msg);
     }
@@ -1425,34 +1462,34 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     const { data, error } = await supabase.functions.invoke("ajo-write", {
       body: { action: "skip_turn", turn_id: turnId, reason, move_to_end: moveToEnd, pin },
     });
-    if (error || !data?.ok) throw new Error(data?.error || error?.message || "Skip failed");
+    if (error || !data?.ok) throw new Error(data?.error || error?.message || t("ajo.skipFailed"));
   };
 
   const handleReorderTurns = async (roundId, newOrder, pin) => {
     const { data, error } = await supabase.functions.invoke("ajo-write", {
       body: { action: "reorder_turns", round_id: roundId, new_order: newOrder, pin },
     });
-    if (error || !data?.ok) throw new Error(data?.error || error?.message || "Reorder failed");
+    if (error || !data?.ok) throw new Error(data?.error || error?.message || t("ajo.reorderFailed"));
   };
 
   const handleCloseRound = async (roundId) => {
     const { data, error } = await supabase.functions.invoke("ajo-write", {
       body: { action: "close_round", round_id: roundId },
     });
-    if (error || !data?.ok) throw new Error(data?.error || error?.message || "Failed to close round");
+    if (error || !data?.ok) throw new Error(data?.error || error?.message || t("ajo.failedCloseRound"));
     return data;
   };
 
   const saveGroup = async () => {
-    if (!gf.name) { setGroupError("Group name is required"); return; }
+    if (!gf.name) { setGroupError(t("ajo.groupNameRequired")); return; }
     if (gf.contribution_frequency === "custom" && !(Number(gf.custom_interval_days) > 0)) {
-      setGroupError("Enter how many days between contributions");
+      setGroupError(t("ajo.enterDaysBetween"));
       return;
     }
     if (!profile?.id) return;
     const asoLimit = featureLimit(plan, "aso");
     if (asoLimit !== Infinity && groups.length >= asoLimit) {
-      setGroupError(`Your plan allows up to ${asoLimit} Ajo group${asoLimit !== 1 ? "s" : ""}.${canSellPlans() ? " Upgrade to create more." : ""}`);
+      setGroupError(`${t(asoLimit !== 1 ? "ajo.planGroupLimitMany" : "ajo.planGroupLimitOne", { n: asoLimit })}${canSellPlans() ? " " + t("ajo.upgradeCreateMore") : ""}`);
       onUpgrade?.();
       return;
     }
@@ -1473,7 +1510,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         },
       });
       if (error || data?.error) {
-        let msg = data?.error || error?.message || "Failed to create group";
+        let msg = data?.error || error?.message || t("ajo.failedCreateGroup");
         if (!data?.error && error?.context) {
           try { const b = await error.context.json(); msg = b?.error || msg; } catch {}
         }
@@ -1485,11 +1522,11 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       } else {
         loadGroups(); // edge fn returned no row — fetch from DB to recover
       }
-      toast({ type: "success", title: "Group created", body: gf.name.trim() });
+      toast({ type: "success", title: t("ajo.groupCreated"), body: gf.name.trim() });
       setShowGroupAdd(false);
       setGf(BLANK_GROUP);
     } catch (e) {
-      setGroupError(e.message || "Failed to save group");
+      setGroupError(e.message || t("ajo.failedSaveGroup"));
     } finally {
       setGroupSaving(false);
     }
@@ -1611,12 +1648,12 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const pendingRegList = asoClients.filter(c => c.status === "pending_approval");
 
   const CHIPS = [
-    { key: "all",      label: "All",      count: asoClients.length },
-    { key: "pending",  label: "New",      count: pendingRegList.length },
-    { key: "active",   label: "Active",   count: asoClients.filter(c => c.status === "active" && !isOverdue(c)).length },
-    { key: "overdue",  label: "Overdue",  count: overdueList.length },
-    { key: "inactive", label: "Inactive", count: asoClients.filter(c => c.status !== "active" && c.status !== "pending_approval").length },
-    { key: "groups",   label: "Groups",   count: groupClients.length },
+    { key: "all",      label: t("ajo.filterAll"),      count: asoClients.length },
+    { key: "pending",  label: t("ajo.chipNew"),        count: pendingRegList.length },
+    { key: "active",   label: t("ajo.chipActive"),     count: asoClients.filter(c => c.status === "active" && !isOverdue(c)).length },
+    { key: "overdue",  label: t("ajo.chipOverdue"),    count: overdueList.length },
+    { key: "inactive", label: t("ajo.chipInactive"),   count: asoClients.filter(c => c.status !== "active" && c.status !== "pending_approval").length },
+    { key: "groups",   label: t("ajo.groups"),         count: groupClients.length },
   ].filter(ch => ch.key === "all" || ch.count > 0);
 
   const handlePhotoChange = (e) => {
@@ -1697,8 +1734,8 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   };
 
   const handleAdd = async () => {
-    if (!f.full_name) { setAddError("Full name is required"); return; }
-    if (!f.email)     { setAddError("Email is required for portal access"); return; }
+    if (!f.full_name) { setAddError(t("ajo.fullNameRequired")); return; }
+    if (!f.email)     { setAddError(t("ajo.emailRequiredPortal")); return; }
     setAddError("");
     setAdding(true);
     const { data, error } = await addAsoClient({
@@ -1716,7 +1753,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         const url = await uploadPhoto(photoFile, data.id);
         await updateAsoClient(data.id, { profile_image_url: url });
       } catch {
-        setClientSubAcctErr("Client created. Profile photo upload failed — edit the client's profile to retry.");
+        setClientSubAcctErr(t("ajo.clientCreatedPhotoFailed"));
       }
     }
     if (!error && data) {
@@ -1726,10 +1763,10 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         setAddedClientEmail(data.email);
       } catch (provErr) {
         await supabase.from("aso_clients").delete().eq("id", data.id);
-        setAddError(provErr.message || "Failed to create client login account. Please try again.");
+        setAddError(provErr.message || t("ajo.failedCreateClientLogin"));
       }
     } else {
-      setAddError(error?.message || "Failed to add client. Please try again.");
+      setAddError(error?.message || t("ajo.failedAddClient"));
     }
     setAdding(false);
   };
@@ -1759,7 +1796,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       setCreatedClient({ ...clientRecord, _password: newPwd, _isReset: true });
       return {};
     } catch (err) {
-      return { error: err.message || "Failed to reset password" };
+      return { error: err.message || t("ajo.failedResetPassword") };
     }
   };
 
@@ -1787,23 +1824,23 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       });
       if (isFetchTimeout(writeErr)) {
         setApproveError({ id: null, text: "" });
-        onResult?.({ type: "success", title: "Withdrawal Approved", amount: req.net_amount || req.amount, counterparty: clientName, note: "Verifying — confirm with client shortly." });
+        onResult?.({ type: "success", title: t("ajo.withdrawalApproved"), amount: req.net_amount || req.amount, counterparty: clientName, note: t("ajo.verifyingConfirmWithClient") });
         return;
       }
       if (writeErr || !writeData?.ok) {
-        const errMsg = writeData?.error || writeErr?.message || "Approval failed";
+        const errMsg = writeData?.error || writeErr?.message || t("ajo.approvalFailedMsg");
         setApproveError({ id: req.id, text: errMsg });
-        onResult?.({ type: "failure", title: "Approval Failed", reason: errMsg });
+        onResult?.({ type: "failure", title: t("ajo.approvalFailed"), reason: errMsg });
         return;
       }
       setApproveError({ id: null, text: "" });
-      onResult?.({ type: "success", title: "Withdrawal Approved", amount: req.net_amount || req.amount, counterparty: clientName });
+      onResult?.({ type: "success", title: t("ajo.withdrawalApproved"), amount: req.net_amount || req.amount, counterparty: clientName });
     } catch (e) {
       if (isFetchTimeout(e)) {
-        onResult?.({ type: "success", title: "Withdrawal Approved", amount: req.net_amount || req.amount, counterparty: clientName, note: "Verifying — confirm with client shortly." });
+        onResult?.({ type: "success", title: t("ajo.withdrawalApproved"), amount: req.net_amount || req.amount, counterparty: clientName, note: t("ajo.verifyingConfirmWithClient") });
       } else {
-        setApproveError({ id: req.id, text: e?.message || "Approval failed" });
-        onResult?.({ type: "failure", title: "Approval Failed", reason: e?.message || "Approval failed — try again" });
+        setApproveError({ id: req.id, text: e?.message || t("ajo.approvalFailedMsg") });
+        onResult?.({ type: "failure", title: t("ajo.approvalFailed"), reason: e?.message || t("ajo.approvalFailedTryAgain") });
       }
     } finally {
       reloadWithdrawalRequests();
@@ -1818,18 +1855,18 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         body: { action: "reject_withdrawal_request", request_id: req.id, reason: reason || undefined },
       });
       if (!isFetchTimeout(rwErr) && (rwErr || !rwData?.ok)) {
-        const msg = rwData?.error || rwErr?.message || "Rejection failed — please try again";
+        const msg = rwData?.error || rwErr?.message || t("ajo.rejectionFailedTryAgain");
         console.error("Reject failed:", msg);
         flashDeposit("err", msg);
       } else {
-        flashDeposit("ok", "Withdrawal request rejected — client has been notified.");
+        flashDeposit("ok", t("ajo.withdrawalRejectedNotified"));
       }
     } catch (e) {
       if (isFetchTimeout(e)) {
-        flashDeposit("ok", "Rejected — reloading to verify…");
+        flashDeposit("ok", t("ajo.rejectedReloading"));
       } else {
         console.error("Reject failed:", e);
-        flashDeposit("err", e?.message || "Rejection failed — please try again");
+        flashDeposit("err", e?.message || t("ajo.rejectionFailedTryAgain"));
       }
     } finally {
       reloadWithdrawalRequests();
@@ -1851,16 +1888,16 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       });
       const amt = data?.amount || claim.amount;
       if (isFetchTimeout(error)) {
-        onResult?.({ type: "success", title: "Deposit Confirmed", amount: amt, counterparty: clientName, note: "Verifying — balance updating shortly." });
+        onResult?.({ type: "success", title: t("ajo.depositConfirmed"), amount: amt, counterparty: clientName, note: t("ajo.verifyingBalanceUpdating") });
         return;
       }
-      if (error || !data?.ok) throw new Error(data?.error || error?.message || "Confirm failed");
-      onResult?.({ type: "success", title: "Deposit Confirmed", amount: amt, counterparty: clientName });
+      if (error || !data?.ok) throw new Error(data?.error || error?.message || t("ajo.confirmFailedMsg"));
+      onResult?.({ type: "success", title: t("ajo.depositConfirmed"), amount: amt, counterparty: clientName });
     } catch (e) {
       if (isFetchTimeout(e)) {
-        onResult?.({ type: "success", title: "Deposit Confirmed", counterparty: clientName, note: "Verifying — balance updating shortly." });
+        onResult?.({ type: "success", title: t("ajo.depositConfirmed"), counterparty: clientName, note: t("ajo.verifyingBalanceUpdating") });
       } else {
-        onResult?.({ type: "failure", title: "Confirm Failed", reason: e.message || "Couldn't confirm deposit — try again" });
+        onResult?.({ type: "failure", title: t("ajo.confirmFailed"), reason: e.message || t("ajo.couldntConfirmDeposit") });
       }
     } finally {
       reloadPendingDeposits();
@@ -1877,16 +1914,16 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       if (isFetchTimeout(error)) {
         setRejectingDeposit(null);
         setRejectReason("");
-        flashDeposit("ok", "Rejected — reloading to verify…");
+        flashDeposit("ok", t("ajo.rejectedReloading"));
         return;
       }
-      if (error || !data?.ok) throw new Error(data?.error || error?.message || "Reject failed");
+      if (error || !data?.ok) throw new Error(data?.error || error?.message || t("ajo.rejectFailed"));
       setRejectingDeposit(null);
       setRejectReason("");
-      flashDeposit("ok", "Deposit claim rejected — client has been notified.");
+      flashDeposit("ok", t("ajo.depositClaimRejectedNotified"));
     } catch (e) {
-      if (isFetchTimeout(e)) { setRejectingDeposit(null); setRejectReason(""); flashDeposit("ok", "Rejected — reloading to verify…"); }
-      else flashDeposit("err", e.message || "Reject failed");
+      if (isFetchTimeout(e)) { setRejectingDeposit(null); setRejectReason(""); flashDeposit("ok", t("ajo.rejectedReloading")); }
+      else flashDeposit("err", e.message || t("ajo.rejectFailed"));
     } finally {
       reloadPendingDeposits();
       setProcessingDepositId(null);
@@ -1902,16 +1939,16 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       });
       const amt = data?.amount || dep.amount;
       if (isFetchTimeout(error)) {
-        onResult?.({ type: "success", title: "Contribution Approved", amount: amt, counterparty: clientName, note: "Verifying — balance updating shortly." });
+        onResult?.({ type: "success", title: t("ajo.contributionApproved"), amount: amt, counterparty: clientName, note: t("ajo.verifyingBalanceUpdating") });
         return;
       }
-      if (error || !data?.ok) throw new Error(data?.error || error?.message || "Approve failed");
-      onResult?.({ type: "success", title: "Contribution Approved", amount: amt, counterparty: clientName });
+      if (error || !data?.ok) throw new Error(data?.error || error?.message || t("ajo.approveFailedMsg"));
+      onResult?.({ type: "success", title: t("ajo.contributionApproved"), amount: amt, counterparty: clientName });
     } catch (e) {
       if (isFetchTimeout(e)) {
-        onResult?.({ type: "success", title: "Contribution Approved", counterparty: clientName, note: "Verifying — balance updating shortly." });
+        onResult?.({ type: "success", title: t("ajo.contributionApproved"), counterparty: clientName, note: t("ajo.verifyingBalanceUpdating") });
       } else {
-        onResult?.({ type: "failure", title: "Approve Failed", reason: e.message || "Couldn't approve — try again" });
+        onResult?.({ type: "failure", title: t("ajo.approveFailed"), reason: e.message || t("ajo.couldntApprove") });
       }
     } finally {
       reloadPendingDeposits();
@@ -1934,9 +1971,9 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         </div>
         <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-2">{planRequiredLabel("aso")}</h2>
         <p className="text-sm text-slate-500 dark:text-slate-400 mb-2 max-w-xs leading-relaxed">
-          Aso savings management is {planAvailableText("aso")}
+          {t("ajo.planLockedIntro", { text: planAvailableText("aso") })}
         </p>
-        <p className="text-xs text-slate-400 dark:text-slate-500 mb-6">Manage client contributions, withdrawals & statements.</p>
+        <p className="text-xs text-slate-400 dark:text-slate-500 mb-6">{t("ajo.planLockedSub")}</p>
         {canSellPlans() && (
           <button onClick={onUpgrade}
             className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-2xl font-bold text-sm active:scale-95 transition-all shadow-md">
@@ -1964,7 +2001,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           {/* Today's Collection */}
           <button
             onClick={() => { if (!showCollection) loadGroups(); setShowCollection(v => !v); }}
-            title="Today's Collection"
+            title={t("ajo.todaysCollection")}
             className={`w-11 h-11 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-all ${
               showCollection
                 ? "bg-brand-600 text-white"
@@ -1977,7 +2014,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           {isOwner && (
             <button
               onClick={() => { loadGroups(); setShowGroups(true); }}
-              title="Manage Ajo Groups"
+              title={t("ajo.manageAjoGroups")}
               className="w-11 h-11 bg-slate-100 dark:bg-slate-700 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-transform">
               <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                 <rect x="2" y="5" width="20" height="14" rx="2" /><line x1="2" y1="10" x2="22" y2="10" />
@@ -1998,15 +2035,15 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         <div className="absolute -top-10 -right-10 w-36 h-36 rounded-full bg-white/5 pointer-events-none" />
         <div className="absolute -bottom-12 -left-8 w-44 h-44 rounded-full bg-white/5 pointer-events-none" />
         <div className="relative">
-          <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-0.5">Total Balance</p>
+          <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-0.5">{t("ajo.totalBalance")}</p>
           <AmountDisplay amount={totalBal} size="hero" align="left" className="text-white mb-4" />
           <div className="grid grid-cols-3 divide-x divide-white/20">
             <div className="pr-3 min-w-0">
-              <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">Total Saved</p>
+              <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">{t("ajo.totalSaved")}</p>
               <AmountDisplay amount={totalSaved} size="small" align="left" className="text-green-200" />
             </div>
             <div className="px-3">
-              <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">Clients</p>
+              <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">{t("ajo.clients")}</p>
               <p className="text-sm font-extrabold tabular">
                 {asoClients.length}
                 {overdueList.length > 0 && (
@@ -2017,8 +2054,8 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
               </p>
             </div>
             <div className="pl-3">
-              <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">Groups</p>
-              <p className="text-sm font-extrabold tabular">{groupClients.length} <span className="text-white/40 font-normal text-[10px]">/ {indivClients.length} ind.</span></p>
+              <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">{t("ajo.groups")}</p>
+              <p className="text-sm font-extrabold tabular">{groupClients.length} <span className="text-white/40 font-normal text-[10px]">{t("ajo.nIndividualShort", { n: indivClients.length })}</span></p>
             </div>
           </div>
         </div>
@@ -2028,28 +2065,28 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       {stuckPayouts.length > 0 && (
         <div id="aso-payouts" className="mb-3 rounded-2xl border border-red-200 dark:border-red-800/50 bg-red-50 dark:bg-red-900/20 px-4 py-3.5">
           <p className="text-xs font-bold text-red-700 dark:text-red-400 mb-2">
-            {stuckPayouts.length} payout{stuckPayouts.length !== 1 ? "s" : ""} approved but not yet paid
+            {t(stuckPayouts.length !== 1 ? "ajo.stuckPayoutsMany" : "ajo.stuckPayoutsOne", { n: stuckPayouts.length })}
           </p>
           <div className="space-y-2">
             {stuckPayouts.map(p => (
               <div key={p.id} className="flex items-center justify-between gap-2 bg-white dark:bg-slate-800 rounded-xl px-3 py-2.5">
                 <div className="min-w-0">
                   <p className="text-[13px] font-semibold text-slate-700 dark:text-slate-200 truncate">
-                    {p.aso_clients?.full_name || "Client"} · ₦{(p.amount_kobo / 100).toLocaleString("en-NG")}
+                    {p.aso_clients?.full_name || t("ajo.client")} · ₦{(p.amount_kobo / 100).toLocaleString("en-NG")}
                   </p>
                   <p className="text-[10px] text-red-500 dark:text-red-400 mt-0.5">
-                    {p.status === "failed" ? (p.failure_reason || "Failed at settlement") : `Was due ${p.scheduled_date} — never settled`}
+                    {p.status === "failed" ? (p.failure_reason || t("ajo.failedAtSettlement")) : t("ajo.wasDueNeverSettled", { date: p.scheduled_date })}
                   </p>
                 </div>
                 <button onClick={() => handleRetryPayout(p.id)} disabled={retryingPayoutId === p.id}
                   className="flex-shrink-0 px-3 py-1.5 rounded-lg bg-red-600 text-white text-[11px] font-bold disabled:opacity-50 active:scale-95 transition">
-                  {retryingPayoutId === p.id ? "Retrying…" : "Retry"}
+                  {retryingPayoutId === p.id ? t("ajo.retrying") : t("ajo.retry")}
                 </button>
               </div>
             ))}
           </div>
           <p className="text-[10px] text-red-500/80 dark:text-red-400/70 mt-2">
-            Usually means your wallet balance was too low when this was due — top up, then retry.
+            {t("ajo.stuckPayoutsHint")}
           </p>
         </div>
       )}
@@ -2071,7 +2108,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           const cl       = req.aso_clients || {};
           const isProc   = processingId === req.id;
           const effectivePct = req.fee_amount > 0 && req.amount > 0 ? ((req.fee_amount / req.amount) * 100).toFixed(1) : null;
-          const feeLabel = req.fee_type === "registration_fee" ? "Reg fee" : effectivePct ? `${effectivePct}% fee` : "fee";
+          const feeLabel = req.fee_type === "registration_fee" ? t("ajo.regFeeShort") : effectivePct ? t("ajo.pctFee", { pct: effectivePct }) : t("ajo.feeWord");
           return (
             <div key={req.id} className={`bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 border shadow-sm ${isHeld ? "border-orange-300 dark:border-orange-700/60" : "border-amber-200 dark:border-amber-800/60"}`}>
               {isHeld && (
@@ -2079,7 +2116,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                   <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400 flex-shrink-0" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
                   </svg>
-                  <p className="text-[10px] font-bold text-orange-700 dark:text-orange-400">Security hold — PIN recently changed</p>
+                  <p className="text-[10px] font-bold text-orange-700 dark:text-orange-400">{t("ajo.securityHoldPinChanged")}</p>
                 </div>
               )}
               <div className="flex items-start gap-3">
@@ -2093,7 +2130,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                   <p className="text-[10px] text-slate-400 font-mono">{cl.membership_number || ""}</p>
                   <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                     <span className={`text-xs font-bold ${isHeld ? "text-orange-700 dark:text-orange-300" : "text-amber-700 dark:text-amber-300"}`}>
-                      Requests {fmt(req.amount)}
+                      {t("ajo.requestsAmount", { amount: fmt(req.amount) })}
                     </span>
                     {req.fee_amount > 0 && (
                       <span className="text-[10px] text-slate-400">
@@ -2104,9 +2141,9 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                   <p className="text-[10px] text-slate-400 mt-0.5">{req.requested_at ? new Date(req.requested_at).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" }) : ""}</p>
                   {(req.ajo_cycles?.label || req.ajo_groups?.name) && (
                     <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 mt-0.5">
-                      From: {req.ajo_cycles?.label
+                      {t("ajo.fromLabel", { label: req.ajo_cycles?.label
                         ? req.ajo_cycles.label
-                        : `${req.ajo_groups?.group_mode === "rotating" ? "Esusu" : "Savings Group"} — ${req.ajo_groups?.name}`}
+                        : `${req.ajo_groups?.group_mode === "rotating" ? "Esusu" : t("ajo.savingsGroup")} — ${req.ajo_groups?.name}` })}
                     </p>
                   )}
                   {req.fee_type !== "registration_fee" && req.fee_amount > 0 && cl.commission_model === "percent" &&
@@ -2114,9 +2151,9 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                    Math.abs(parseFloat(effectivePct) - (cl.commission_percent || 0)) > 0.05 && (
                     <div className="mt-1.5 flex items-center gap-1.5 text-[10px] bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 px-2 py-1 rounded-lg">
                       <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3 flex-shrink-0" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
-                      <span>Fee at request: {effectivePct}%</span>
+                      <span>{t("ajo.feeAtRequest", { pct: effectivePct })}</span>
                       <span>·</span>
-                      <span className="font-bold">Current fee: {cl.commission_percent}%</span>
+                      <span className="font-bold">{t("ajo.currentFee", { pct: cl.commission_percent })}</span>
                     </div>
                   )}
                 </div>
@@ -2126,21 +2163,21 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                   <path d="M20 12V8H6a2 2 0 01-2-2c0-1.1.9-2 2-2h12v4M4 6v12a2 2 0 002 2h14v-4M18 12a2 2 0 00-2 2c0 1.1.9 2 2 2h4v-4h-4z" />
                 </svg>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                  Auto-pays to their <strong className="text-slate-700 dark:text-slate-200">KudiAI Wallet</strong> from yours, next business working day — no manual transfer needed.
+                  {t("ajo.autoPaysA")} <strong className="text-slate-700 dark:text-slate-200">KudiAI Wallet</strong> {t("ajo.autoPaysB")}
                 </p>
               </div>
               <div className="flex gap-2 mt-3">
                 <button
                   onClick={() => setTxnPin({
-                    title: isHeld ? "Release & Approve Withdrawal" : "Approve Withdrawal",
+                    title: isHeld ? t("ajo.releaseApproveWithdrawal") : t("ajo.approveWithdrawal"),
                     amount: Math.round((req.net_amount || 0) * 100),
                     recipient: cl.full_name,
-                    description: isHeld ? "Security hold release — savings withdrawal" : "Savings withdrawal approval",
+                    description: isHeld ? t("ajo.securityHoldReleaseDesc") : t("ajo.savingsWithdrawalApproval"),
                     onApprove: (pin) => { setTxnPin(null); handleApproveRequest(req, pin, r => setActionResult(r)); },
                   })}
                   disabled={isProc}
                   className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold text-xs transition active:scale-[0.99] disabled:opacity-50">
-                  {isProc ? "…" : isHeld ? "Release & Approve" : "Approve"}
+                  {isProc ? "…" : isHeld ? t("ajo.releaseApprove") : t("ajo.approve")}
                 </button>
                 <button
                   onClick={() => isHeld
@@ -2148,7 +2185,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                     : handleRejectRequest(req)}
                   disabled={isProc}
                   className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-700 hover:bg-red-50 dark:hover:bg-red-900/20 text-slate-600 dark:text-slate-300 hover:text-red-600 dark:hover:text-red-400 rounded-xl font-bold text-xs transition active:scale-[0.99] disabled:opacity-50 border border-slate-200 dark:border-slate-600">
-                  {isProc ? "…" : "Reject"}
+                  {isProc ? "…" : t("ajo.reject")}
                 </button>
               </div>
               {approveError.id === req.id && (
@@ -2165,7 +2202,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
               <div>
                 <p className="text-[11px] font-bold text-orange-600 dark:text-orange-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
                   <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                  Security Holds
+                  {t("ajo.securityHolds")}
                   <span className="ml-1 bg-orange-500 text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded-full">{heldReqs.length}</span>
                 </p>
                 <div className="space-y-2">{heldReqs.map(r => <WithdrawCard key={r.id} req={r} isHeld />)}</div>
@@ -2174,7 +2211,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             {pendingReqs.length > 0 && (
               <div>
                 <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2">
-                  Withdrawal Requests
+                  {t("ajo.withdrawalRequests")}
                   <span className="ml-2 bg-brand-500 text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded-full">{pendingReqs.length}</span>
                 </p>
                 <div className="space-y-2">{pendingReqs.map(r => <WithdrawCard key={r.id} req={r} isHeld={false} />)}</div>
@@ -2207,7 +2244,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       {reactivationRequests.length > 0 && !staffId && (
         <div className="mb-4">
           <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2">
-            Reactivation Requests
+            {t("ajo.reactivationRequests")}
             <span className="ml-2 bg-brand-500 text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded-full">{reactivationRequests.length}</span>
           </p>
           <div className="space-y-3">
@@ -2219,9 +2256,9 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                 <div key={req.id} className={`border rounded-xl p-3 ${isOwnerApproved ? "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800/40" : "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800/40"}`}>
                   <div className="flex items-start justify-between gap-2 mb-1">
                     <div>
-                      <p className="text-sm font-bold text-slate-800 dark:text-white">{req.client_name || "Client"}</p>
+                      <p className="text-sm font-bold text-slate-800 dark:text-white">{req.client_name || t("ajo.client")}</p>
                       <p className={`text-[10px] font-semibold ${isOwnerApproved ? "text-blue-600 dark:text-blue-400" : "text-amber-700 dark:text-amber-400"}`}>
-                        {isOwnerApproved ? "Forwarded to Admin" : "Account Reactivation Request"}
+                        {isOwnerApproved ? t("ajo.forwardedToAdmin") : t("ajo.accountReactivationRequest")}
                       </p>
                     </div>
                     <p className="text-[10px] text-slate-400 whitespace-nowrap">{new Date(req.created_at).toLocaleDateString("en-NG", { day: "numeric", month: "short" })}</p>
@@ -2236,7 +2273,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                   )}
                   {isOwnerApproved ? (
                     <div>
-                      <p className="text-[10px] text-blue-600 dark:text-blue-400 font-medium mb-2">Awaiting admin review. If it hasn&apos;t appeared in the admin portal, tap Resend.</p>
+                      <p className="text-[10px] text-blue-600 dark:text-blue-400 font-medium mb-2">{t("ajo.awaitingAdminReviewResend")}</p>
                       <button
                         disabled={isBusy}
                         className="w-full py-1.5 text-xs font-bold rounded-lg bg-blue-600 text-white disabled:opacity-50"
@@ -2247,13 +2284,13 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                           });
                           setReactivationBusy(null);
                           if (data?.ok) {
-                            setReactivationMsg({ id: req.id, text: data.note || "Sent to admin.", ok: true });
+                            setReactivationMsg({ id: req.id, text: data.note || t("ajo.sentToAdmin"), ok: true });
                           } else {
-                            setReactivationMsg({ id: req.id, text: data?.error || "Failed to resend", ok: false });
+                            setReactivationMsg({ id: req.id, text: data?.error || t("ajo.failedToResend"), ok: false });
                           }
                         }}
                       >
-                        {isBusy ? "…" : "Resend to Admin"}
+                        {isBusy ? "…" : t("ajo.resendToAdmin")}
                       </button>
                     </div>
                   ) : rejectingReactivation === req.id ? (
@@ -2262,7 +2299,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                         autoFocus
                         value={rejectReactivationNote}
                         onChange={e => setRejectReactivationNote(e.target.value)}
-                        placeholder="Reason for rejection (required)"
+                        placeholder={t("ajo.rejectionReasonRequired")}
                         className="w-full text-xs bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg px-2 py-1.5"
                       />
                       <div className="flex gap-2">
@@ -2275,23 +2312,23 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                             });
                             setReactivationBusy(null);
                             if (data?.ok) {
-                              setReactivationMsg({ id: req.id, text: "Request rejected.", ok: true });
+                              setReactivationMsg({ id: req.id, text: t("ajo.requestRejected"), ok: true });
                               setRejectingReactivation(null);
                               setRejectReactivationNote("");
                               setReactivationRequests(p => p.filter(r => r.id !== req.id));
                             } else {
-                              setReactivationMsg({ id: req.id, text: data?.error || "Failed", ok: false });
+                              setReactivationMsg({ id: req.id, text: data?.error || t("ajo.failed"), ok: false });
                             }
                           }}
                           className="flex-1 py-1.5 text-xs font-bold rounded-lg bg-red-500 text-white disabled:opacity-50"
                         >
-                          {isBusy ? "…" : "Confirm Reject"}
+                          {isBusy ? "…" : t("ajo.confirmReject")}
                         </button>
                         <button
                           onClick={() => { setRejectingReactivation(null); setRejectReactivationNote(""); }}
                           className="flex-1 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300"
                         >
-                          Cancel
+                          {t("common.cancel")}
                         </button>
                       </div>
                     </div>
@@ -2301,8 +2338,8 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                         disabled={isBusy}
                         className="flex-1 py-1.5 text-xs font-bold rounded-lg bg-green-600 text-white disabled:opacity-50"
                         onClick={() => setTxnPin({
-                          title: "Approve Reactivation",
-                          description: `Approve reactivation for ${req.client_name || "client"}`,
+                          title: t("ajo.approveReactivation"),
+                          description: t("ajo.approveReactivationFor", { name: req.client_name || t("ajo.clientLower") }),
                           onApprove: async (pin) => {
                             setTxnPin(null);
                             setReactivationBusy(req.id);
@@ -2311,22 +2348,22 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                             });
                             setReactivationBusy(null);
                             if (data?.ok) {
-                              setReactivationMsg({ id: req.id, text: "Approved — admin will finalise the reactivation.", ok: true });
+                              setReactivationMsg({ id: req.id, text: t("ajo.approvedAdminWillFinalise"), ok: true });
                               setReactivationRequests(p => p.map(r => r.id === req.id ? { ...r, status: "owner_approved" } : r));
                             } else {
-                              setReactivationMsg({ id: req.id, text: data?.error || "Failed to approve", ok: false });
+                              setReactivationMsg({ id: req.id, text: data?.error || t("ajo.failedToApprove"), ok: false });
                             }
                           },
                         })}
                       >
-                        {isBusy ? "…" : "Approve & Send to Admin"}
+                        {isBusy ? "…" : t("ajo.approveSendToAdmin")}
                       </button>
                       <button
                         disabled={isBusy}
                         onClick={() => { setRejectingReactivation(req.id); setRejectReactivationNote(""); }}
                         className="flex-1 py-1.5 text-xs font-bold rounded-lg border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 disabled:opacity-50"
                       >
-                        Reject
+                        {t("ajo.reject")}
                       </button>
                     </div>
                   )}
@@ -2342,31 +2379,31 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         <div id="aso-collections" className="mb-4">
           <div className="flex items-center justify-between mb-2">
             <p className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-2">
-              Staff Collections
+              {t("ajo.staffCollections")}
               <span className="bg-orange-500 text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded-full">{pendingStaffContribs.length}</span>
             </p>
             <button
               onClick={() => setTxnPin({
-                title: `Approve All ${pendingStaffContribs.length} Collections`,
+                title: t("ajo.approveAllNCollections", { n: pendingStaffContribs.length }),
                 amount: pendingStaffContribs.reduce((s, c) => s + (c.amount || 0), 0) * 100,
-                recipient: "Staff Collections",
-                description: "Batch approve all pending staff-recorded contributions",
+                recipient: t("ajo.staffCollections"),
+                description: t("ajo.batchApproveDesc"),
                 onApprove: async (pin) => {
                   setTxnPin(null);
                   const { data, error } = await supabase.functions.invoke("ajo-write", {
                     body: { action: "batch_approve_contributions", pin, contribution_ids: pendingStaffContribs.map(c => c.id) },
                   });
                   if (error || !data?.ok) {
-                    setStaffContribFeedback({ ok: false, msg: `Partial: ${data?.failed || 0} failed` });
+                    setStaffContribFeedback({ ok: false, msg: t("ajo.partialNFailed", { n: data?.failed || 0 }) });
                   } else {
-                    setStaffContribFeedback({ ok: true, msg: `All ${data.approved} approved` });
+                    setStaffContribFeedback({ ok: true, msg: t("ajo.allNApproved", { n: data.approved }) });
                   }
                   reloadPendingStaffContribs();
                   setTimeout(() => setStaffContribFeedback(null), 3000);
                 },
               })}
               className="text-[10px] font-bold text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2.5 py-1 rounded-lg active:scale-95 transition">
-              Approve All
+              {t("ajo.approveAll")}
             </button>
           </div>
           {staffContribFeedback && (
@@ -2393,9 +2430,9 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                       <div className="flex items-center gap-2 mt-1 flex-wrap">
                         <span className="text-xs font-bold text-indigo-700 dark:text-indigo-300">{fmt(item.amount)}</span>
                         {item.contribution_context && item.contribution_context !== "personal_savings" && (
-                          <span className="text-[10px] text-slate-400 capitalize">{item.contribution_context.replace(/_/g, " ")}</span>
+                          <span className="text-[10px] text-slate-400 capitalize">{CTX_KEY[item.contribution_context] ? t(CTX_KEY[item.contribution_context]) : item.contribution_context.replace(/_/g, " ")}</span>
                         )}
-                        {isStale && <span className="text-[10px] font-bold text-orange-600 dark:text-orange-400">Stale &gt;48h</span>}
+                        {isStale && <span className="text-[10px] font-bold text-orange-600 dark:text-orange-400">{t("ajo.stale48h")}</span>}
                       </div>
                       <p className="text-[10px] text-slate-400 mt-0.5">{item.created_at ? new Date(item.created_at).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" }) : ""}</p>
                     </div>
@@ -2406,7 +2443,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                         autoFocus
                         value={staffContribRejectReason}
                         onChange={e => setStaffContribRejectReason(e.target.value)}
-                        placeholder="Rejection reason…"
+                        placeholder={t("ajo.rejectionReasonPlaceholder")}
                         className="w-full text-xs rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-slate-800 dark:text-white mb-2 outline-none"
                       />
                       <div className="flex gap-2">
@@ -2420,11 +2457,11 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                             reloadPendingStaffContribs();
                           }}
                           className="flex-1 py-2 bg-red-600 text-white rounded-xl font-bold text-xs disabled:opacity-50 active:scale-[0.99] transition">
-                          {isProc ? "…" : "Confirm Reject"}
+                          {isProc ? "…" : t("ajo.confirmReject")}
                         </button>
                         <button onClick={() => { setRejectingStaffContrib(null); setStaffContribRejectReason(""); }}
                           className="flex-1 py-2 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl font-bold text-xs active:scale-[0.99] transition">
-                          Cancel
+                          {t("common.cancel")}
                         </button>
                       </div>
                     </div>
@@ -2433,10 +2470,10 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                       <button
                         disabled={isProc}
                         onClick={() => setTxnPin({
-                          title: "Approve Collection",
+                          title: t("ajo.approveCollection"),
                           amount: Math.round((item.amount || 0) * 100),
-                          recipient: cl.full_name || "Client",
-                          description: "Staff-recorded savings contribution",
+                          recipient: cl.full_name || t("ajo.client"),
+                          description: t("ajo.staffRecordedContribution"),
                           onApprove: async (pin) => {
                             setTxnPin(null);
                             setProcessingStaffContribId(item.id);
@@ -2444,21 +2481,21 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                             setProcessingStaffContribId(null);
                             reloadPendingStaffContribs();
                             if (!data?.ok) {
-                              setStaffContribFeedback({ ok: false, msg: data?.error || "Approve failed" });
-                              setActionResult({ type: "failure", title: "Approve Failed", reason: data?.error || "Couldn't approve — try again" });
+                              setStaffContribFeedback({ ok: false, msg: data?.error || t("ajo.approveFailedMsg") });
+                              setActionResult({ type: "failure", title: t("ajo.approveFailed"), reason: data?.error || t("ajo.couldntApprove") });
                             } else {
-                              setActionResult({ type: "success", title: "Collection Approved", amount: item.amount, counterparty: cl.full_name || "Client" });
+                              setActionResult({ type: "success", title: t("ajo.collectionApproved"), amount: item.amount, counterparty: cl.full_name || t("ajo.client") });
                             }
                           },
                         })}
                         className="flex-1 py-2.5 bg-green-600 text-white rounded-xl font-bold text-xs disabled:opacity-50 active:scale-[0.99] transition">
-                        {isProc ? "…" : "Approve"}
+                        {isProc ? "…" : t("ajo.approve")}
                       </button>
                       <button
                         disabled={isProc}
                         onClick={() => { setRejectingStaffContrib(item.id); setStaffContribRejectReason(""); }}
                         className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl font-bold text-xs active:scale-[0.99] transition">
-                        Reject
+                        {t("ajo.reject")}
                       </button>
                     </div>
                   )}
@@ -2472,7 +2509,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       {pendingDeposits.length > 0 && (
         <div id="aso-deposits" className="mb-4">
           <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2">
-            Pending Deposits
+            {t("ajo.pendingDeposits")}
             <span className="ml-2 bg-brand-600 text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded-full">{pendingDeposits.length}</span>
           </p>
           <div className="space-y-2">
@@ -2485,14 +2522,15 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
               const dateStr        = dep.created_at
                 ? new Date(dep.created_at).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })
                 : "";
-              const methodLabel    = isManualClaim ? "Bank Transfer" : (dep.payment_method || "cash").replace(/_/g, " ");
+              const pmRaw          = dep.payment_method || "cash";
+              const methodLabel    = isManualClaim ? t("ajo.methodBankTransfer") : (PM_LOWER_KEY[pmRaw] ? t(PM_LOWER_KEY[pmRaw]) : pmRaw.replace(/_/g, " "));
               const ctxLabel       = dep.contribution_context === "esusu_rotation" ? "Esusu"
-                                   : dep.contribution_context === "group_savings"  ? "Group Savings"
-                                   : "Personal Savings";
+                                   : dep.contribution_context === "group_savings"  ? t("ajo.groupSavings")
+                                   : t("ajo.personalSavings");
               return (
                 <div key={dep.id} className={`bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 border shadow-sm ${isStale ? "border-red-200 dark:border-red-800/60" : "border-brand-200 dark:border-brand-800/60"}`}>
                   {isStale && (
-                    <p className="text-[10px] font-bold text-red-500 dark:text-red-400 mb-2">Awaiting confirmation for {daysOld}+ days</p>
+                    <p className="text-[10px] font-bold text-red-500 dark:text-red-400 mb-2">{t("ajo.awaitingConfirmationDays", { n: daysOld })}</p>
                   )}
                   <div className="flex items-start gap-3">
                     <div className="w-10 h-10 rounded-xl bg-brand-50 dark:bg-brand-900/30 flex items-center justify-center flex-shrink-0">
@@ -2504,10 +2542,10 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                       <p className="text-sm font-extrabold text-slate-800 dark:text-white truncate">{cl.full_name || "—"}</p>
                       <p className="text-[10px] text-slate-400 font-mono">{cl.membership_number || ""}</p>
                       <p className="text-xs font-bold text-brand-700 dark:text-brand-300 mt-1">
-                        {isManualClaim ? "Claims" : "Recorded"} ₦{Number(dep.amount).toLocaleString("en-NG")}
+                        {t(isManualClaim ? "ajo.claimsAmount" : "ajo.recordedAmount", { amount: Number(dep.amount).toLocaleString("en-NG") })}
                         <span className="ml-1.5 font-normal text-slate-400 text-[10px]">{methodLabel} · {ctxLabel}</span>
                       </p>
-                      {dep.payer_name  && <p className="text-[10px] text-slate-400 mt-0.5">Paid by: {dep.payer_name}</p>}
+                      {dep.payer_name  && <p className="text-[10px] text-slate-400 mt-0.5">{t("ajo.paidBy", { name: dep.payer_name })}</p>}
                       {dep.claim_notes && <p className="text-[10px] text-slate-400 italic mt-0.5">"{dep.claim_notes}"</p>}
                       {dep.notes       && !isManualClaim && <p className="text-[10px] text-slate-400 italic mt-0.5">"{dep.notes}"</p>}
                       <p className="text-[10px] text-slate-400 mt-0.5">{dateStr}</p>
@@ -2521,7 +2559,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                             InAppBrowser.openWebView({
                               url: proofHref,
                               toolbarType: ToolBarType.COMPACT,
-                              title: "Payment Proof",
+                              title: t("ajo.paymentProof"),
                             }).catch(() => window.open(proofHref, "_blank"));
                           } else {
                             window.open(proofHref, "_blank");
@@ -2531,7 +2569,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                           <button onClick={openProof} className="mt-2 block w-full active:opacity-75 transition rounded-xl overflow-hidden border border-slate-200 dark:border-slate-600">
                             <img
                               src={proofHref}
-                              alt="Payment proof"
+                              alt={t("ajo.paymentProofAlt")}
                               className="w-full max-h-36 object-cover"
                               onError={e => { e.currentTarget.style.display = "none"; e.currentTarget.nextElementSibling.style.display = "flex"; }}
                             />
@@ -2539,7 +2577,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                               <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3 flex-shrink-0" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                                 <path d="M14.5 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7.5L14.5 2z" /><polyline points="14 2 14 8 20 8" />
                               </svg>
-                              View Proof
+                              {t("ajo.viewProof")}
                             </span>
                           </button>
                         );
@@ -2550,10 +2588,10 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                     <div className="flex gap-2 mt-3">
                       <button
                         onClick={() => setTxnPin({
-                          title:       isManualClaim ? "Confirm Deposit" : "Approve Contribution",
+                          title:       isManualClaim ? t("ajo.confirmDeposit") : t("ajo.approveContribution"),
                           amount:      Math.round((dep.amount || 0) * 100),
-                          recipient:   cl.full_name || "client",
-                          description: `${isManualClaim ? "Bank transfer claim" : "Recorded contribution"} · ₦${Number(dep.amount).toLocaleString("en-NG")}`,
+                          recipient:   cl.full_name || t("ajo.clientLower"),
+                          description: `${isManualClaim ? t("ajo.bankTransferClaim") : t("ajo.recordedContribution")} · ₦${Number(dep.amount).toLocaleString("en-NG")}`,
                           onApprove:   (pin) => {
                             setTxnPin(null);
                             const onR = r => setActionResult(r);
@@ -2563,17 +2601,17 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                         })}
                         disabled={isProc}
                         className="flex-1 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-bold text-xs transition active:scale-[0.99] disabled:opacity-50">
-                        {isProc && processingDepositId === dep.id && !rejectingDeposit ? "…" : isManualClaim ? "Confirm" : "Approve"}
+                        {isProc && processingDepositId === dep.id && !rejectingDeposit ? "…" : isManualClaim ? t("common.confirm") : t("ajo.approve")}
                       </button>
                       <button
                         onClick={() => { setRejectingDeposit(dep); setRejectReason(""); }}
                         disabled={isProc}
                         className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-700 hover:bg-red-50 dark:hover:bg-red-900/20 text-slate-600 dark:text-slate-300 hover:text-red-600 dark:hover:text-red-400 rounded-xl font-bold text-xs transition active:scale-[0.99] disabled:opacity-50 border border-slate-200 dark:border-slate-600">
-                        Reject
+                        {t("ajo.reject")}
                       </button>
                     </div>
                   ) : (
-                    <p className="text-[10px] text-slate-400 mt-3 text-center">Contact your manager to confirm or reject deposits</p>
+                    <p className="text-[10px] text-slate-400 mt-3 text-center">{t("ajo.contactManagerDeposits")}</p>
                   )}
                 </div>
               );
@@ -2594,13 +2632,13 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-bold text-red-700 dark:text-red-400">
-              {overdueList.length} overdue {overdueList.length === 1 ? "account" : "accounts"}
+              {t(overdueList.length === 1 ? "ajo.nOverdueAccountOne" : "ajo.nOverdueAccountsMany", { n: overdueList.length })}
             </p>
-            <p className="text-xs text-red-500 dark:text-red-400 mt-0.5">Contributions past due date</p>
+            <p className="text-xs text-red-500 dark:text-red-400 mt-0.5">{t("ajo.contributionsPastDue")}</p>
           </div>
           <button onClick={() => setFilter("overdue")}
             className="text-xs font-bold text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/40 px-3 py-1.5 rounded-lg flex-shrink-0 active:scale-95 transition-transform">
-            View All
+            {t("ajo.viewAll")}
           </button>
         </div>
       )}
@@ -2613,7 +2651,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           </svg>
         </div>
         <input type="text" value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="Search by name or phone…"
+          placeholder={t("ajo.searchNamePhone")}
           className="w-full pl-9 pr-9 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500/60 transition" />
         {search && (
           <button onClick={() => setSearch("")}
@@ -2649,7 +2687,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
             <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
           </svg>
-          {dueBefore || "Date"}
+          {dueBefore || t("common.date")}
         </button>
       </div>
 
@@ -2657,14 +2695,14 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       {showDateFilter && (
         <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-3 mb-2 flex items-center gap-3">
           <div className="flex-1">
-            <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1">Next payment due on or before</p>
+            <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1">{t("ajo.nextDueOnOrBefore")}</p>
             <input type="date" value={dueBefore} onChange={e => setDueBefore(e.target.value)}
               className="w-full text-sm text-slate-800 dark:text-slate-100 bg-transparent focus:outline-none" />
           </div>
           {dueBefore && (
             <button onClick={() => setDueBefore("")}
               className="text-xs font-bold text-red-400 hover:text-red-600 transition">
-              Clear
+              {t("ajo.clear")}
             </button>
           )}
         </div>
@@ -2673,8 +2711,8 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       {/* Result count */}
       {(search || filter !== "all" || dueBefore) && asoClients.length > 0 && (
         <p className="text-xs text-slate-400 dark:text-slate-500 mb-3 font-medium">
-          {filtered.length} {filtered.length === 1 ? "result" : "results"}
-          {search && ` for "${search}"`}
+          {t(filtered.length === 1 ? "ajo.nResultOne" : "ajo.nResultsMany", { n: filtered.length })}
+          {search && t("ajo.forSearch", { q: search })}
         </p>
       )}
 
@@ -2686,13 +2724,13 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
               <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" /><polyline points="9 22 9 12 15 12 15 22" />
             </svg>
           </div>
-          <p className="text-slate-500 dark:text-slate-400 text-sm font-semibold">No savings clients yet</p>
-          <p className="text-slate-400 dark:text-slate-500 text-xs mt-1">Tap + to enroll your first client</p>
+          <p className="text-slate-500 dark:text-slate-400 text-sm font-semibold">{t("ajo.noSavingsClientsYet")}</p>
+          <p className="text-slate-400 dark:text-slate-500 text-xs mt-1">{t("ajo.tapPlusEnroll")}</p>
         </div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-10 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700/50">
-          <p className="text-slate-500 dark:text-slate-400 text-sm font-semibold">No matches found</p>
-          <p className="text-slate-400 dark:text-slate-500 text-xs mt-1">Try a different search or filter</p>
+          <p className="text-slate-500 dark:text-slate-400 text-sm font-semibold">{t("aso.noMatches")}</p>
+          <p className="text-slate-400 dark:text-slate-500 text-xs mt-1">{t("ajo.tryDifferentSearch")}</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -2720,7 +2758,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                     className="w-full flex items-center justify-between mb-3 px-2.5 py-1.5 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-200 dark:border-blue-700/40 text-left">
                     <div className="flex items-center gap-2">
                       <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse flex-shrink-0" />
-                      <p className="text-[10px] font-bold text-blue-700 dark:text-blue-400">New registration — set terms &amp; approve</p>
+                      <p className="text-[10px] font-bold text-blue-700 dark:text-blue-400">{t("ajo.newRegistrationSetTerms")}</p>
                     </div>
                     <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
                   </button>
@@ -2733,7 +2771,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                       <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                         <circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>
                       </svg>
-                      <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400">Archive pending admin approval</p>
+                      <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400">{t("ajo.archivePendingAdmin")}</p>
                     </div>
                     <button
                       disabled={cancellingArchiveId === c.id}
@@ -2743,7 +2781,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                         setCancellingArchiveId(null);
                       }}
                       className="text-[10px] font-bold text-amber-700 dark:text-amber-400 underline underline-offset-2 flex-shrink-0 ml-2 disabled:opacity-40">
-                      {cancellingArchiveId === c.id ? "…" : "Cancel"}
+                      {cancellingArchiveId === c.id ? "…" : t("common.cancel")}
                     </button>
                   </div>
                 )}
@@ -2762,13 +2800,13 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <p className="font-bold text-slate-800 dark:text-slate-100 truncate">{c.full_name}</p>
                       {isGroup && (
-                        <span className="text-[9px] font-bold bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded-full uppercase tracking-wide">Group</span>
+                        <span className="text-[9px] font-bold bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded-full uppercase tracking-wide">{t("ajo.groupBadge")}</span>
                       )}
                     </div>
                     <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                       {c.phone && <span className="text-xs text-slate-400 dark:text-slate-500">{c.phone}</span>}
                       {c.phone && <span className="text-slate-300 dark:text-slate-600 text-xs">·</span>}
-                      <span className="text-xs text-slate-400 dark:text-slate-500 capitalize">{c.contribution_frequency} · {fmt(c.contribution_amount)}</span>
+                      <span className="text-xs text-slate-400 dark:text-slate-500 capitalize">{FREQ_KEY[c.contribution_frequency] ? t(FREQ_KEY[c.contribution_frequency]) : c.contribution_frequency} · {fmt(c.contribution_amount)}</span>
                     </div>
                     {staffMap[c.staff_id] && (
                       <span className="inline-block text-[10px] bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 px-2 py-0.5 rounded-full font-semibold mt-1">
@@ -2803,17 +2841,17 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                     <Badge status={overdue ? "overdue" : c.status} />
                     {missed > 0 && (
                       <span className="text-[10px] font-bold text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-1.5 py-0.5 rounded-full">
-                        {missed} missed
+                        {t("ajo.nMissed", { n: missed })}
                       </span>
                     )}
                     {overdue && nextDaysDiff >= 7 && (
                       <span className="text-[10px] font-bold text-white bg-red-500 px-1.5 py-0.5 rounded-full">
-                        {nextDaysDiff}d overdue
+                        {t("ajo.nDaysOverdue", { n: nextDaysDiff })}
                       </span>
                     )}
                     {overdue && nextDaysDiff >= 3 && nextDaysDiff < 7 && (
                       <span className="text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/30 px-1.5 py-0.5 rounded-full">
-                        {nextDaysDiff}d overdue
+                        {t("ajo.nDaysOverdue", { n: nextDaysDiff })}
                       </span>
                     )}
                   </div>
@@ -2822,9 +2860,9 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                 {/* Stats */}
                 <div className="flex gap-2 mb-3">
                   {[
-                    { label: "Balance",   value: c.current_balance, color: "text-brand-700 dark:text-brand-400", bg: "bg-brand-50 dark:bg-brand-900/20" },
-                    { label: "Deposited", value: c.total_saved,     color: "text-green-700 dark:text-green-400",  bg: "bg-green-50 dark:bg-green-900/20"   },
-                    { label: "Withdrawn", value: c.total_withdrawn,  color: "text-red-600 dark:text-red-400",      bg: "bg-red-50 dark:bg-red-900/20"       },
+                    { label: t("ajo.balance"),   value: c.current_balance, color: "text-brand-700 dark:text-brand-400", bg: "bg-brand-50 dark:bg-brand-900/20" },
+                    { label: t("ajo.deposited"), value: c.total_saved,     color: "text-green-700 dark:text-green-400",  bg: "bg-green-50 dark:bg-green-900/20"   },
+                    { label: t("ajo.withdrawn"), value: c.total_withdrawn,  color: "text-red-600 dark:text-red-400",      bg: "bg-red-50 dark:bg-red-900/20"       },
                   ].map(({ label, value, color, bg }) => (
                     <div key={label} className={`flex-1 ${bg} rounded-xl p-2.5`}>
                       <p className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold mb-0.5">{label}</p>
@@ -2836,7 +2874,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                 {/* Contribution tracking row */}
                 <div className="bg-slate-50 dark:bg-slate-700/40 rounded-xl px-3 py-2.5 mb-3 flex items-center gap-3">
                   <div className="flex-1 min-w-0">
-                    <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1">Contribution Tracking</p>
+                    <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1">{t("ajo.contributionTracking")}</p>
                     <div className="flex items-center gap-2">
                       <div className="flex-1 h-1.5 bg-slate-200 dark:bg-slate-600 rounded-full overflow-hidden">
                         <div
@@ -2849,20 +2887,20 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                       </span>
                     </div>
                     {missed > 0 && (
-                      <p className="text-[10px] font-bold text-red-500 dark:text-red-400 mt-1">{missed} payment{missed !== 1 ? "s" : ""} overdue</p>
+                      <p className="text-[10px] font-bold text-red-500 dark:text-red-400 mt-1">{t(missed !== 1 ? "ajo.nPaymentsOverdueMany" : "ajo.nPaymentOverdueOne", { n: missed })}</p>
                     )}
                   </div>
                   <div className="text-right flex-shrink-0">
-                    <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Next Due</p>
+                    <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">{t("ajo.nextDue")}</p>
                     <p className={`text-xs font-extrabold mt-0.5 ${
                       overdue ? "text-red-500 dark:text-red-400"
                         : nextIsToday || nextIsSoon ? "text-amber-500 dark:text-amber-400"
                         : "text-slate-700 dark:text-slate-200"
                     }`}>
-                      {nextDue || (isCounting(c) ? "—" : "Not started")}
+                      {nextDue || (isCounting(c) ? "—" : t("ajo.notStarted"))}
                     </p>
-                    {nextIsToday && <p className="text-[9px] text-amber-500 font-bold">Today!</p>}
-                    {overdue && <p className="text-[9px] text-red-500 font-bold">{nextDaysDiff}d late</p>}
+                    {nextIsToday && <p className="text-[9px] text-amber-500 font-bold">{t("ajo.todayExclaim")}</p>}
+                    {overdue && <p className="text-[9px] text-red-500 font-bold">{t("ajo.nDaysLate", { n: nextDaysDiff })}</p>}
                   </div>
                 </div>
 
@@ -2875,11 +2913,11 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                   {canContribute && !c.pending_archive && (
                     <button onClick={() => { setSelected(c); setAction("contribute"); }}
                       className="flex-1 flex flex-col items-center gap-1 py-2.5 bg-green-50 dark:bg-green-900/20 rounded-xl border border-green-200 dark:border-green-800 active:scale-95 transition"
-                      title="Contribute">
+                      title={t("ajo.contribute")}>
                       <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-green-600 dark:text-green-400" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
                         <circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
                       </svg>
-                      <span className="text-[9px] font-black text-green-700 dark:text-green-400 uppercase tracking-wide leading-none">Fund</span>
+                      <span className="text-[9px] font-black text-green-700 dark:text-green-400 uppercase tracking-wide leading-none">{t("ajo.fund")}</span>
                     </button>
                   )}
 
@@ -2887,11 +2925,11 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                   {canWithdraw && !c.pending_archive && (
                     <button onClick={() => { setSelected(c); setAction("withdraw"); }}
                       className="flex-1 flex flex-col items-center gap-1 py-2.5 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-800 active:scale-95 transition"
-                      title="Withdraw">
+                      title={t("ajo.withdraw")}>
                       <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-red-600 dark:text-red-400" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
                         <circle cx="12" cy="12" r="9"/><line x1="8" y1="12" x2="16" y2="12"/>
                       </svg>
-                      <span className="text-[9px] font-black text-red-600 dark:text-red-400 uppercase tracking-wide leading-none">Pay</span>
+                      <span className="text-[9px] font-black text-red-600 dark:text-red-400 uppercase tracking-wide leading-none">{t("ajo.pay")}</span>
                     </button>
                   )}
 
@@ -2902,21 +2940,21 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                         ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
                         : "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800"
                     }`}
-                    title="Send Reminder">
+                    title={t("ajo.sendReminder")}>
                     <svg viewBox="0 0 24 24" fill="none" className={`w-5 h-5 ${overdue || missed > 0 ? "text-red-500 dark:text-red-400" : "text-amber-500 dark:text-amber-400"}`} stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
                       <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0"/>
                     </svg>
-                    <span className={`text-[9px] font-black uppercase tracking-wide leading-none ${overdue || missed > 0 ? "text-red-500 dark:text-red-400" : "text-amber-600 dark:text-amber-400"}`}>Alert</span>
+                    <span className={`text-[9px] font-black uppercase tracking-wide leading-none ${overdue || missed > 0 ? "text-red-500 dark:text-red-400" : "text-amber-600 dark:text-amber-400"}`}>{t("ajo.alert")}</span>
                   </button>
 
                   {/* Statement */}
                   <button onClick={() => setReceipt(c)}
                     className="flex-1 flex flex-col items-center gap-1 py-2.5 bg-brand-50 dark:bg-brand-900/20 rounded-xl border border-brand-200 dark:border-brand-800 active:scale-95 transition"
-                    title="View Statement">
+                    title={t("ajo.viewStatement")}>
                     <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-brand-600 dark:text-brand-400" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
                       <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
                     </svg>
-                    <span className="text-[9px] font-black text-brand-600 dark:text-brand-400 uppercase tracking-wide leading-none">Stmt</span>
+                    <span className="text-[9px] font-black text-brand-600 dark:text-brand-400 uppercase tracking-wide leading-none">{t("ajo.stmtShort")}</span>
                   </button>
 
                   {/* History + Card */}
@@ -2938,7 +2976,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                     setHistLoading(false);
                   }}
                     className="flex-1 flex flex-col items-center gap-1 py-2.5 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-200 dark:border-blue-800 active:scale-95 transition"
-                    title="View History">
+                    title={t("ajo.viewHistory")}>
                     {histLoading ? (
                       <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
                     ) : (
@@ -2947,28 +2985,28 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                         <polyline points="3 3 3 7 7 7"/>
                       </svg>
                     )}
-                    <span className="text-[9px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-wide leading-none">Hist</span>
+                    <span className="text-[9px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-wide leading-none">{t("ajo.histShort")}</span>
                   </button>
 
                   {/* Edit */}
                   <button onClick={() => setClientProf(c)}
                     className="flex-1 flex flex-col items-center gap-1 py-2.5 bg-slate-50 dark:bg-slate-700/60 rounded-xl border border-slate-200 dark:border-slate-600 active:scale-95 transition"
-                    title="Edit Profile">
+                    title={t("ajo.editProfile")}>
                     <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
                       <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
                     </svg>
-                    <span className="text-[9px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wide leading-none">Edit</span>
+                    <span className="text-[9px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wide leading-none">{t("common.edit")}</span>
                   </button>
 
                   {/* Assign — owner only */}
                   {!staffAjoPerms && (
                     <button onClick={() => setAssigningClient(c)}
                       className="flex-1 flex flex-col items-center gap-1 py-2.5 bg-violet-50 dark:bg-violet-900/20 rounded-xl border border-violet-200 dark:border-violet-800 active:scale-95 transition"
-                      title="Assign to branch/staff">
+                      title={t("ajo.assignToBranchStaff")}>
                       <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-violet-600 dark:text-violet-400" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
                         <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
                       </svg>
-                      <span className="text-[9px] font-black text-violet-600 dark:text-violet-400 uppercase tracking-wide leading-none">Assign</span>
+                      <span className="text-[9px] font-black text-violet-600 dark:text-violet-400 uppercase tracking-wide leading-none">{t("ajo.assign")}</span>
                     </button>
                   )}
 
@@ -2984,7 +3022,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
         <div className="fixed inset-0 z-sheet flex flex-col justify-end bg-black/40">
           <div className="bg-white dark:bg-slate-900 rounded-t-3xl max-h-[92dvh] flex flex-col">
             <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-800">
-              <h2 className="text-base font-bold text-slate-800 dark:text-white">New Ajo Client</h2>
+              <h2 className="text-base font-bold text-slate-800 dark:text-white">{t("ajo.newAjoClient")}</h2>
               <button onClick={resetAdd} className="w-11 h-11 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
                 <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-500" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
                   <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -2997,7 +3035,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             <div className="relative">
               <div className="w-24 h-24 rounded-2xl overflow-hidden border-2 border-dashed border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 flex items-center justify-center shadow-sm">
                 {photoPreview
-                  ? <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
+                  ? <img src={photoPreview} alt={t("ajo.preview")} className="w-full h-full object-cover" />
                   : <svg viewBox="0 0 24 24" fill="none" className="w-9 h-9 text-slate-300 dark:text-slate-500" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round">
                       <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 11a4 4 0 100-8 4 4 0 000 8" />
                     </svg>
@@ -3010,46 +3048,46 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                 <input type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />
               </label>
             </div>
-            <p className="text-xs text-slate-400 dark:text-slate-500 mt-3">Tap camera to add photo</p>
+            <p className="text-xs text-slate-400 dark:text-slate-500 mt-3">{t("ajo.tapCameraAddPhoto")}</p>
           </div>
 
-          <SectionLabel>Savings Settings</SectionLabel>
-          <Field label="Full Name / Group Name *" value={f.full_name}
-            onChange={e => set("full_name", e.target.value)} placeholder="e.g. Mama Ngozi Cooperative" />
-          <Field label="Contribution Frequency" as="select" value={f.contribution_frequency}
+          <SectionLabel>{t("ajo.savingsSettings")}</SectionLabel>
+          <Field label={t("ajo.fullNameGroupNameReq")} value={f.full_name}
+            onChange={e => set("full_name", e.target.value)} placeholder={t("ajo.fullNamePlaceholder")} />
+          <Field label={t("ajo.contributionFrequency")} as="select" value={f.contribution_frequency}
             onChange={e => set("contribution_frequency", e.target.value)}>
             {["daily", "weekly", "monthly"].map(o => (
-              <option key={o} value={o}>{o.charAt(0).toUpperCase() + o.slice(1)}</option>
+              <option key={o} value={o}>{t(FREQ_KEY[o])}</option>
             ))}
           </Field>
           <div className="grid grid-cols-2 gap-2">
-            <Field label="Contribution (₦)" type="number" value={f.contribution_amount}
+            <Field label={t("ajo.contributionNaira")} type="number" value={f.contribution_amount}
               onChange={e => set("contribution_amount", e.target.value)} placeholder="0.00" />
-            <Field label="Reg. Fee (₦)" type="number" value={f.registration_charge}
+            <Field label={t("ajo.regFeeNaira")} type="number" value={f.registration_charge}
               onChange={e => set("registration_charge", e.target.value)} placeholder="0.00" />
           </div>
           <div>
-            <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">Withdrawal Fee / Commission</p>
+            <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">{t("ajo.withdrawalFeeCommission")}</p>
             <select value={f.commission_model}
               onChange={e => set("commission_model", e.target.value)}
               className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm text-slate-800 dark:text-white">
-              <option value="none">No fee</option>
-              {!f.ajo_group_id && <option value="first_period">First period — owner keeps first cycle contribution</option>}
-              <option value="percent">Percentage of each withdrawal</option>
+              <option value="none">{t("ajo.noFee")}</option>
+              {!f.ajo_group_id && <option value="first_period">{t("ajo.firstPeriodOwnerKeeps")}</option>}
+              <option value="percent">{t("ajo.percentOfEachWithdrawal")}</option>
             </select>
             {f.commission_model === "percent" && (
               <div className="mt-2">
-                <Field label="Fee %" type="number" value={f.commission_percent}
-                  onChange={e => set("commission_percent", e.target.value)} placeholder="e.g. 5" />
+                <Field label={t("ajo.feePercent")} type="number" value={f.commission_percent}
+                  onChange={e => set("commission_percent", e.target.value)} placeholder={t("ajo.egValue", { v: "5" })} />
               </div>
             )}
           </div>
 
-          <SectionLabel>Contact & Identity</SectionLabel>
+          <SectionLabel>{t("ajo.contactIdentity")}</SectionLabel>
           <div className="grid grid-cols-2 gap-2">
-            <Field label="Phone" type="tel" value={f.phone}
+            <Field label={t("ajo.phone")} type="tel" value={f.phone}
               onChange={e => set("phone", e.target.value)} placeholder="08012345678" />
-            <Field label="Email *" type="email" value={f.email}
+            <Field label={t("ajo.emailReq")} type="email" value={f.email}
               onChange={e => set("email", e.target.value)} placeholder="client@email.com" />
           </div>
 
@@ -3057,19 +3095,18 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             <div className="rounded-2xl bg-blue-50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/30 px-3.5 py-3 mt-2 flex items-start gap-2.5">
               <span className="text-base flex-shrink-0">🏦</span>
               <p className="text-[11px] text-blue-800 dark:text-blue-300 leading-relaxed">
-                This client will open their own KudiAI Wallet (BVN, NIN, address, and next of kin) themselves the
-                first time they log in — nothing to fill in here.
+                {t("ajo.clientOpensOwnWallet")}
               </p>
             </div>
           )}
 
           {!staffId && (
             <>
-              <SectionLabel>Payout Account (Optional)</SectionLabel>
+              <SectionLabel>{t("ajo.payoutAccountOptional")}</SectionLabel>
               <p className="text-[10px] text-slate-400 dark:text-slate-500 -mt-1 mb-1">
-                Where money is sent when this client withdraws. Can be added later — required only when processing a withdrawal.
+                {t("ajo.payoutAccountHelp")}
               </p>
-              <Field label="Bank" as="select" value={f.bank_code}
+              <Field label={t("ajo.bank")} as="select" value={f.bank_code}
                 onChange={e => {
                   const b = banks.find(bk => bk.code === e.target.value);
                   set("bank_code", e.target.value);
@@ -3077,19 +3114,19 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                   set("account_name", "");
                   setClientResolvedName(""); setClientBankErr("");
                 }}>
-                <option value="">Select bank…</option>
+                <option value="">{t("ajo.selectBank")}</option>
                 {banks.map(b => <option key={b.code} value={b.code}>{b.name}</option>)}
               </Field>
               <div className="flex gap-2 items-end">
                 <div className="flex-1">
-                  <Field label="Account Number" inputMode="numeric" value={f.account_number}
+                  <Field label={t("ajo.accountNumber")} inputMode="numeric" value={f.account_number}
                     onChange={e => { set("account_number", e.target.value.replace(/\D/g, "").slice(0, 10)); set("account_name", ""); setClientResolvedName(""); setClientBankErr(""); }}
-                    placeholder="10-digit NUBAN" />
+                    placeholder={t("ajo.tenDigitNuban")} />
                 </div>
                 <button type="button" onClick={resolveClientAccount}
                   disabled={clientBankResolving || f.account_number.length < 10 || !f.bank_code}
                   className="mb-0.5 px-3 py-2.5 rounded-xl bg-brand-100 dark:bg-brand-900/30 text-brand-700 dark:text-brand-300 text-xs font-bold disabled:opacity-40 transition whitespace-nowrap active:scale-95">
-                  {clientBankResolving ? "Checking…" : "Verify"}
+                  {clientBankResolving ? t("ajo.checking") : t("ajo.verify")}
                 </button>
               </div>
               {clientResolvedName && (
@@ -3106,10 +3143,10 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
           {staffOptions.length > 0 && (
             <>
-              <SectionLabel>Staff Assignment</SectionLabel>
-              <Field label="Assign Staff" as="select" value={f.staff_id}
+              <SectionLabel>{t("ajo.staffAssignment")}</SectionLabel>
+              <Field label={t("ajo.assignStaff")} as="select" value={f.staff_id}
                 onChange={e => set("staff_id", e.target.value)}>
-                <option value="">No staff assigned</option>
+                <option value="">{t("ajo.noStaffAssigned")}</option>
                 {staffOptions.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
               </Field>
             </>
@@ -3117,22 +3154,22 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
           {groups.length > 0 && (
             <>
-              <SectionLabel>Group Membership</SectionLabel>
-              <Field label="Ajo Group" as="select" value={f.ajo_group_id || ""}
+              <SectionLabel>{t("ajo.groupMembership")}</SectionLabel>
+              <Field label={t("ajo.ajoGroup")} as="select" value={f.ajo_group_id || ""}
                 onChange={e => set("ajo_group_id", e.target.value || null)}>
-                <option value="">No group</option>
+                <option value="">{t("ajo.noGroup")}</option>
                 {groups.map(g => (
                   <option key={g.id} value={g.id}>
-                    {g.name}{g.group_mode === "rotating" ? " (Rotating)" : ""}
+                    {g.name}{g.group_mode === "rotating" ? t("ajo.rotatingSuffix") : ""}
                   </option>
                 ))}
               </Field>
             </>
           )}
 
-          <SectionLabel>Notes</SectionLabel>
+          <SectionLabel>{t("ajo.notes")}</SectionLabel>
           <Field as="textarea" value={f.notes}
-            onChange={e => set("notes", e.target.value)} placeholder="Optional notes about this client…" />
+            onChange={e => set("notes", e.target.value)} placeholder={t("ajo.optionalNotesClient")} />
 
           {addError && (
             <p className="text-xs text-red-500 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/40 rounded-xl px-3 py-2">{addError}</p>
@@ -3142,7 +3179,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                 <button onClick={handleAdd}
                   disabled={!f.full_name || adding}
                   className="w-full py-3.5 bg-brand-600 hover:bg-brand-700 disabled:opacity-60 text-white rounded-2xl font-bold text-sm transition active:scale-[0.99]">
-                  {adding ? "Creating account…" : "Add Ajo Client"}
+                  {adding ? t("ajo.creatingAccount") : t("ajo.addAjoClient")}
                 </button>
               </div>
 
@@ -3154,11 +3191,11 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       {/* Contribute / Withdraw modal */}
       {selected && action && (
         <Modal
-          title={`${action === "contribute" ? "Record Contribution" : "Process Withdrawal"} — ${selected.full_name}`}
+          title={`${action === "contribute" ? t("ajo.recordContribution") : t("ajo.processWithdrawal")} — ${selected.full_name}`}
           onClose={() => { setSelected(null); setAction(null); setAmt(""); setContributeCtx("personal_savings"); setFundPayErr(""); }}>
 
           <div className="bg-brand-50 dark:bg-brand-900/20 rounded-xl px-4 py-3 mb-3 border border-brand-100 dark:border-brand-800/60">
-            <p className="text-xs text-slate-500 dark:text-slate-400">Current balance</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">{t("ajo.currentBalance")}</p>
             <AmountDisplay amount={selected.current_balance} size="stat" align="left" className="text-brand-700 dark:text-brand-400" />
           </div>
 
@@ -3166,9 +3203,9 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           {action === "contribute" && contributeCtx !== "wallet" && (
             <div className="grid grid-cols-3 gap-2 mb-3">
               {[
-                { label: "Made",     value: getContribsMade(selected),    color: "text-green-600 dark:text-green-400" },
-                { label: "Expected", value: getExpectedContribs(selected), color: "text-slate-700 dark:text-slate-200" },
-                { label: "Missed",   value: getMissedPayments(selected),   color: getMissedPayments(selected) > 0 ? "text-red-500 dark:text-red-400" : "text-green-600 dark:text-green-400" },
+                { label: t("ajo.made"),     value: getContribsMade(selected),    color: "text-green-600 dark:text-green-400" },
+                { label: t("ajo.expected"), value: getExpectedContribs(selected), color: "text-slate-700 dark:text-slate-200" },
+                { label: t("ajo.missed"),   value: getMissedPayments(selected),   color: getMissedPayments(selected) > 0 ? "text-red-500 dark:text-red-400" : "text-green-600 dark:text-green-400" },
               ].map(({ label, value, color }) => (
                 <div key={label} className="bg-slate-50 dark:bg-slate-700/60 rounded-xl p-2.5 text-center">
                   <p className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold mb-0.5">{label}</p>
@@ -3188,7 +3225,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             if (minReq <= 0 || (regCharge === 0 && selected.commission_model !== "first_period")) return null;
             return (
               <p className="text-xs text-blue-600 dark:text-blue-400 mb-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/60 rounded-xl px-3 py-2">
-                First deposit: {fmt(minReq)} = {fmt(expected)} contribution + {fmt(regCharge)} registration
+                {t("ajo.firstDepositBreakdown", { total: fmt(minReq), contribution: fmt(expected), registration: fmt(regCharge) })}
               </p>
             );
           })()}
@@ -3200,7 +3237,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
               // Withdraw mode only offers Personal Savings as a target once a cycle actually exists —
               // there's nothing to pick from otherwise (prompt below handles that case).
               ...(!isWithdraw || hasCycles
-                ? [{ key: "personal_savings", label: "Personal Savings", desc: isWithdraw ? "Withdraw from client's personal savings" : "Add to client's personal savings", gid: null }]
+                ? [{ key: "personal_savings", label: t("ajo.personalSavings"), desc: isWithdraw ? t("ajo.withdrawFromPersonalSavings") : t("ajo.addToPersonalSavings"), gid: null }]
                 : []),
               // A group with nothing actionable right now — an esusu group with no
               // active rotation round, or a savings group that's never been
@@ -3210,20 +3247,20 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                 if (!sg) return null;
                 if (sg.group_mode === "rotating") {
                   if (!activeEsusuRoundIds.has(sg.id)) return null;
-                  return { key: "esusu_rotation", label: sg.name, desc: isWithdraw ? "Esusu Rotation" : "Esusu Rotation — add to the pot", gid: sg.id };
+                  return { key: "esusu_rotation", label: sg.name, desc: isWithdraw ? t("ajo.esusuRotation") : t("ajo.esusuRotationAddPot"), gid: sg.id };
                 }
                 if (sg.round_status === "not_started") return null;
-                return { key: "group_savings", label: sg.name || "Savings Group", desc: isWithdraw ? "Savings Group" : "Savings Group — add to group pool", gid: sg.id };
+                return { key: "group_savings", label: sg.name || t("ajo.savingsGroup"), desc: isWithdraw ? t("ajo.savingsGroup") : t("ajo.savingsGroupAddPool"), gid: sg.id };
               }).filter(Boolean),
               ...(!isWithdraw && selected.client_user_id
-                ? [{ key: "wallet", label: "KudiAI Wallet", desc: "Credit the client's wallet directly", gid: null }]
+                ? [{ key: "wallet", label: "KudiAI Wallet", desc: t("ajo.creditWalletDirectly"), gid: null }]
                 : []),
             ];
             if (opts.length === 0) return null;
             return (
               <div className="mb-3">
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-                  {isWithdraw ? "Withdraw from" : "Fund"}
+                  {isWithdraw ? t("ajo.withdrawFrom") : t("ajo.fund")}
                 </p>
                 <div className="space-y-1.5">
                   {opts.map(opt => (
@@ -3261,7 +3298,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
              return sg.group_mode === "rotating" ? activeEsusuRoundIds.has(sg.id) : sg.round_status !== "not_started";
            }) && (
             <div className="mb-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/60 rounded-xl px-3 py-3 text-center">
-              <p className="text-xs text-amber-700 dark:text-amber-400 font-semibold mb-2">This client has no savings card yet.</p>
+              <p className="text-xs text-amber-700 dark:text-amber-400 font-semibold mb-2">{t("ajo.noSavingsCardYet")}</p>
               <button
                 type="button"
                 onClick={async () => {
@@ -3280,14 +3317,14 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                   setHistLoading(false);
                 }}
                 className="text-xs font-bold text-brand-600 dark:text-brand-400 underline underline-offset-2">
-                Create a Savings Card
+                {t("ajo.createSavingsCard")}
               </button>
             </div>
           )}
 
           {contributeCtx === "personal_savings" && selectedCycles.length > 1 && (
             <div className="mb-3">
-              <p className="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">Which savings cycle?</p>
+              <p className="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">{t("ajo.whichSavingsCycle")}</p>
               <div className="space-y-1.5">
                 {selectedCycles.map(cyc => (
                   <button key={cyc.id} type="button"
@@ -3297,7 +3334,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                         ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20 text-brand-700 dark:text-brand-300"
                         : "border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200"
                     }`}>
-                    <span>{cyc.label || "Savings"}{cyc.status === "completed" ? " (Complete)" : ""}</span>
+                    <span>{cyc.label || t("ajo.savings")}{cyc.status === "completed" ? t("ajo.completeSuffix") : ""}</span>
                     {contributeCycleId === cyc.id && <div className="w-3.5 h-3.5 rounded-full bg-brand-500 flex-shrink-0" />}
                   </button>
                 ))}
@@ -3309,15 +3346,15 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           {(contributeCycleId || contributeGroupId) && (
             <div className="mb-3 bg-slate-50 dark:bg-slate-800 rounded-xl p-3">
               {targetStatsLoading ? (
-                <p className="text-[11px] text-slate-400 text-center py-1">Loading…</p>
+                <p className="text-[11px] text-slate-400 text-center py-1">{t("common.loading")}</p>
               ) : targetStats ? (
                 <div className="grid grid-cols-2 gap-2">
                   {[
-                    { label: "Total Saved",     value: targetStats.total_saved },
-                    ...(targetStats.total_received > 0 ? [{ label: "Payout Received", value: targetStats.total_received }] : []),
-                    { label: "Total Withdrawn", value: targetStats.total_withdrawn },
-                    { label: "Available",       value: targetStats.available, bold: true },
-                    ...(targetStats.locked > 0 ? [{ label: "Locked", value: targetStats.locked, amber: true }] : []),
+                    { label: t("ajo.totalSaved"),     value: targetStats.total_saved },
+                    ...(targetStats.total_received > 0 ? [{ label: t("ajo.payoutReceived"), value: targetStats.total_received }] : []),
+                    { label: t("ajo.totalWithdrawn"), value: targetStats.total_withdrawn },
+                    { label: t("ajo.available"),       value: targetStats.available, bold: true },
+                    ...(targetStats.locked > 0 ? [{ label: t("ajo.locked"), value: targetStats.locked, amber: true }] : []),
                   ].map(({ label, value, bold, amber }) => (
                     <div key={label}>
                       <p className="text-[10px] text-slate-400 dark:text-slate-500">{label}</p>
@@ -3337,25 +3374,25 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
               <div className="mb-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/60 rounded-xl px-3 py-2 space-y-0.5">
                 <p className="text-xs text-amber-600 dark:text-amber-400 font-semibold flex items-center gap-1.5">
                   <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 flex-shrink-0" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                  {wFeePercent > 0 ? `Withdrawal fee: ${wFeePercent}% will be deducted from balance` : "No withdrawal fee"}
+                  {wFeePercent > 0 ? t("ajo.withdrawalFeeDeducted", { pct: wFeePercent }) : t("ajo.feeNone")}
                 </p>
                 {wFeePercent > 0 && amt && parseFloat(amt) > 0 && (
                   <p className="text-xs text-amber-500 dark:text-amber-400">
-                    Fee: {fmt(parseFloat(amt) * (wFeePercent / 100))} · Client receives: {fmt(parseFloat(amt) * (1 - wFeePercent / 100))}
+                    {t("ajo.feeClientReceives", { fee: fmt(parseFloat(amt) * (wFeePercent / 100)), net: fmt(parseFloat(amt) * (1 - wFeePercent / 100)) })}
                   </p>
                 )}
               </div>
             );
           })()}
 
-          <Field label={`Amount (₦) — suggested: ${fmt(selected.contribution_amount)}`}
+          <Field label={t("ajo.amountSuggested", { amount: fmt(selected.contribution_amount) })}
             type="number" inputMode="decimal" value={amt}
-            onChange={e => setAmt(e.target.value)} placeholder="Enter amount" />
+            onChange={e => setAmt(e.target.value)} placeholder={t("ajo.enterAmount")} />
 
           {action === "contribute" && selected.contribution_amount > 0 && (
             <button onClick={() => setAmt(String(selected.contribution_amount))}
               className="text-xs text-brand-600 dark:text-brand-400 font-bold mb-3 -mt-1 block hover:underline">
-              Use contribution amount ({fmt(selected.contribution_amount)})
+              {t("ajo.useContributionAmount", { amount: fmt(selected.contribution_amount) })}
             </button>
           )}
 
@@ -3373,19 +3410,19 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                 const savedClient = selected;
                 setSelected(null); setAction(null); setAmt(""); setContributeCtx("personal_savings");
                 setTxnPin({
-                  title: "Confirm Wallet Funding",
+                  title: t("ajo.confirmWalletFunding"),
                   amount: Math.round(a * 100),
                   recipient: savedClient.full_name,
-                  description: "Credits the client's KudiAI Wallet directly",
+                  description: t("ajo.creditsKudiWalletDirectly"),
                   onApprove: async (pin) => {
                     setTxnPin(null);
                     const result = await asoFundWallet(savedClient.id, a, pin);
                     if (result?.error) {
-                      const msg = typeof result.error === "string" ? result.error : (result.error?.message || "Couldn't fund wallet — try again");
-                      setActionResult({ type: "failure", title: "Wallet Funding Failed", amount: a, counterparty: savedClient.full_name, reason: msg });
+                      const msg = typeof result.error === "string" ? result.error : (result.error?.message || t("ajo.couldntFundWallet"));
+                      setActionResult({ type: "failure", title: t("ajo.walletFundingFailed"), amount: a, counterparty: savedClient.full_name, reason: msg });
                     } else {
                       speakConfirmation("ajoDeposit", getLang());
-                      setActionResult({ type: "success", title: "Wallet Funded", amount: a, counterparty: savedClient.full_name });
+                      setActionResult({ type: "success", title: t("ajo.walletFunded"), amount: a, counterparty: savedClient.full_name });
                     }
                   },
                 });
@@ -3421,7 +3458,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                 // own available balance (ajo_entity_stats) before ever opening the
                 // PIN sheet.
                 if ((contributeCycleId || contributeGroupId) && targetStats && a > Number(targetStats.available || 0)) {
-                  setFundPayErr(`Only ${fmt(targetStats.available)} is available for withdrawal from this ${contributeCycleId ? "savings card" : "group"}.`);
+                  setFundPayErr(t(contributeCycleId ? "ajo.onlyAvailableFromCard" : "ajo.onlyAvailableFromGroup", { amount: fmt(targetStats.available) }));
                   return;
                 }
                 // Clear modal first so it unmounts before PIN sheet opens
@@ -3431,19 +3468,19 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                 const savedGroupId = contributeCtx !== "personal_savings" ? contributeGroupId : null;
                 setSelected(null); setAction(null); setAmt(""); setContributeCtx("personal_savings");
                 setTxnPin({
-                  title: "Confirm Withdrawal",
+                  title: t("ajo.confirmWithdrawal"),
                   amount: Math.round(savedAmt * 100),
                   recipient: savedClient.full_name,
-                  description: `Gross withdrawal · balance after: ${savedClient.current_balance - savedAmt >= 0 ? `₦${(savedClient.current_balance - savedAmt).toLocaleString()}` : "pending"}`,
+                  description: t("ajo.grossWithdrawalBalanceAfter", { balance: savedClient.current_balance - savedAmt >= 0 ? `₦${(savedClient.current_balance - savedAmt).toLocaleString()}` : t("ajo.pendingLower") }),
                   onApprove: async (pin) => {
                     setTxnPin(null);
                     const result = await asoWithdraw(savedClient.id, savedAmt, pin, savedCycleId, savedGroupId);
                     if (result?.error) {
-                      const msg = typeof result.error === "string" ? result.error : (result.error?.message || "Couldn't complete withdrawal — try again");
-                      setActionResult({ type: "failure", title: "Withdrawal Failed", amount: savedAmt, counterparty: savedClient.full_name, reason: msg });
+                      const msg = typeof result.error === "string" ? result.error : (result.error?.message || t("ajo.couldntCompleteWithdrawal"));
+                      setActionResult({ type: "failure", title: t("ajo.withdrawalFailed"), amount: savedAmt, counterparty: savedClient.full_name, reason: msg });
                     } else {
                       speakConfirmation("ajoWithdraw", getLang());
-                      setActionResult({ type: "success", title: "Withdrawal Recorded", amount: savedAmt, counterparty: savedClient.full_name });
+                      setActionResult({ type: "success", title: t("ajo.withdrawalRecorded"), amount: savedAmt, counterparty: savedClient.full_name });
                     }
                   },
                 });
@@ -3452,14 +3489,14 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             className={`w-full py-3.5 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] shadow-sm ${
               action === "contribute" ? "bg-green-600 hover:bg-green-700" : "bg-red-500 hover:bg-red-600"
             }`}>
-            Confirm {action === "contribute" ? (contributeCtx === "wallet" ? "Wallet Funding" : "Contribution") : "Withdrawal"}
+            {action === "contribute" ? (contributeCtx === "wallet" ? t("ajo.confirmWalletFunding") : t("ajo.confirmContribution")) : t("ajo.confirmWithdrawal")}
           </button>
         </Modal>
       )}
 
       {/* Reminder modal */}
       {reminderFor && (
-        <Modal title="Send Payment Reminder" onClose={() => setReminderFor(null)}>
+        <Modal title={t("ajo.sendPaymentReminder")} onClose={() => setReminderFor(null)}>
           <div className="flex items-center gap-3 mb-4 p-3 bg-brand-50 dark:bg-brand-900/20 rounded-xl border border-brand-200 dark:border-brand-800/60">
             <div className="w-10 h-10 rounded-xl overflow-hidden flex-shrink-0">
               {reminderFor.profile_image_url
@@ -3471,16 +3508,16 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             </div>
             <div className="flex-1 min-w-0">
               <p className="font-bold text-slate-800 dark:text-white text-sm truncate">{reminderFor.full_name}</p>
-              <p className="text-xs text-brand-600 dark:text-brand-400 font-semibold capitalize">{reminderFor.contribution_frequency} · {fmt(reminderFor.contribution_amount)}</p>
+              <p className="text-xs text-brand-600 dark:text-brand-400 font-semibold capitalize">{FREQ_KEY[reminderFor.contribution_frequency] ? t(FREQ_KEY[reminderFor.contribution_frequency]) : reminderFor.contribution_frequency} · {fmt(reminderFor.contribution_amount)}</p>
             </div>
             {getMissedPayments(reminderFor) > 0 && (
               <span className="text-[10px] font-bold text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/40 px-2 py-1 rounded-full flex-shrink-0">
-                {getMissedPayments(reminderFor)} missed
+                {t("ajo.nMissed", { n: getMissedPayments(reminderFor) })}
               </span>
             )}
           </div>
 
-          <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">Message Preview</p>
+          <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">{t("ajo.messagePreview")}</p>
           <div className="bg-slate-50 dark:bg-slate-700/60 rounded-xl p-4 mb-4 border border-slate-200 dark:border-slate-600 max-h-52 overflow-y-auto">
             <pre className="text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap font-sans leading-relaxed">{reminderMsg}</pre>
           </div>
@@ -3497,14 +3534,14 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                   <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
                     <path d="M20 6L9 17l-5-5" />
                   </svg>
-                  Copied!
+                  {t("ajo.copied")}
                 </>
               ) : (
                 <>
                   <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                     <rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
                   </svg>
-                  Copy
+                  {t("ajo.copy")}
                 </>
               )}
             </button>
@@ -3562,12 +3599,12 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                   <path d="M20 6L9 17l-5-5" />
                 </svg>
               </div>
-              <p className="text-[10px] font-bold text-green-500 uppercase tracking-widest mb-1">Contribution Recorded</p>
+              <p className="text-[10px] font-bold text-green-500 uppercase tracking-widest mb-1">{t("ajo.contributionRecorded")}</p>
               <p className="text-3xl font-black text-slate-800 dark:text-white mb-1">
                 ₦{Number(contribSuccess.amount).toLocaleString("en-NG")}
               </p>
               <p className="text-sm text-slate-500 dark:text-slate-400">
-                {contribSuccess.client?.full_name} · Cash
+                {contribSuccess.client?.full_name} · {t("ajo.methodCash")}
               </p>
             </div>
             <div className="flex-none px-5 pb-10 pt-3 space-y-3">
@@ -3577,12 +3614,12 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                 <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                   <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8" /><polyline points="16 6 12 2 8 6" /><line x1="12" y1="2" x2="12" y2="15" />
                 </svg>
-                Share Receipt
+                {t("ajo.shareReceipt")}
               </button>
               <button
                 onClick={() => setContribSuccess(null)}
                 className="w-full py-3.5 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-2xl font-bold text-sm transition active:scale-[0.99]">
-                Done
+                {t("common.done")}
               </button>
             </div>
           </div>
@@ -3599,14 +3636,14 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                 <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
               </svg>
             </div>
-            <p className="text-[10px] font-bold text-red-500 uppercase tracking-widest mb-2">Contribution Failed</p>
+            <p className="text-[10px] font-bold text-red-500 uppercase tracking-widest mb-2">{t("ajo.contributionFailed")}</p>
             <p className="text-sm text-slate-600 dark:text-slate-300 max-w-xs">{contribError}</p>
           </div>
           <div className="flex-none px-5 pb-10 pt-3">
             <button
               onClick={() => setContribError(null)}
               className="w-full py-3.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-2xl font-bold text-sm transition active:scale-[0.99]">
-              OK
+              {t("ajo.ok")}
             </button>
           </div>
         </div>
@@ -3631,34 +3668,31 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             force: false,
           };
           const { data, error } = await supabase.functions.invoke("ajo-write", { body });
-          if (error) { setHistoryErr(friendlyError(error, "Failed to open cycle.")); return; }
+          if (error) { setHistoryErr(friendlyError(error, t("ajo.failedOpenCycle"))); return; }
 
-          if (!data?.ok) { setHistoryErr(data?.error || "Failed to open cycle. Please try again."); return; }
+          if (!data?.ok) { setHistoryErr(data?.error || t("ajo.failedOpenCycleTryAgain")); return; }
           const { data: newCycle } = await supabase.from("ajo_cycles").select("*").eq("id", data.cycle_id).maybeSingle();
           if (newCycle) setHistoryFor(prev => ({ ...prev, cycles: [...(prev.cycles || []), newCycle] }));
 
           // Informational notice: first_period + reg fee both apply — client will carry both on day 1.
           // This is allowed by design; no action required from the owner.
           if (data?.conflict_notice === "REG_FEE_AND_FIRST_PERIOD") {
-            setHistoryNote(
-              "Cycle opened. Note: this client has a registration fee + first-period commission — " +
-              "their first deposit covers both. Savings start from deposit 2."
-            );
+            setHistoryNote(t("ajo.cycleOpenedRegFeeFirstPeriod"));
           }
         };
 
         const handleCloseCycle = (cyc) => {
           if (!cyc) return;
           setCycleConfirm({
-            title: "Close Cycle",
-            msg: `Mark "${cyc.label || "this cycle"}" as completed?`,
-            confirmLabel: "Complete Cycle",
+            title: t("ajo.closeCycle"),
+            msg: t("ajo.markCycleCompleted", { label: cyc.label || t("ajo.thisCycle") }),
+            confirmLabel: t("ajo.completeCycle"),
             onConfirm: async () => {
               const { data, error } = await supabase.functions.invoke("ajo-write", {
                 body: { action: "close_cycle", cycle_id: cyc.id, status: "completed" },
               });
               if (error || !data?.ok) {
-                setHistoryErr(data?.error || friendlyError(error, "Failed to close cycle."));
+                setHistoryErr(data?.error || friendlyError(error, t("ajo.failedCloseCycle")));
                 return;
               }
               const { data: updatedCycle } = await supabase.from("ajo_cycles").select("*").eq("id", cyc.id).maybeSingle();
@@ -3677,7 +3711,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           });
           if (error || !data?.ok) {
             // Throw so ContributionCard's try/catch shows failure, not the unconditional success path.
-            throw new Error(data?.error || friendlyError(error, "Commission execution failed."));
+            throw new Error(data?.error || friendlyError(error, t("ajo.commissionExecutionFailed")));
           }
           const { data: freshContribs } = await supabase
             .from("ajo_contributions")
@@ -3763,14 +3797,13 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                 </svg>
               </div>
               <div>
-                <p className="text-sm font-extrabold text-slate-800 dark:text-white">Client Account Created</p>
-                <p className="text-xs text-slate-400 dark:text-slate-500">Login credentials sent automatically</p>
+                <p className="text-sm font-extrabold text-slate-800 dark:text-white">{t("ajo.clientAccountCreated")}</p>
+                <p className="text-xs text-slate-400 dark:text-slate-500">{t("ajo.loginCredentialsSentAuto")}</p>
               </div>
             </div>
             <div className="bg-brand-50 dark:bg-brand-950/20 border border-brand-200 dark:border-brand-900/40 rounded-2xl px-4 py-3 mb-5">
               <p className="text-[11px] text-brand-800 dark:text-brand-300 font-medium leading-relaxed">
-                An email with login credentials has been sent to{" "}
-                <span className="font-bold">{addedClientEmail}</span>. The client can log in at kudiai.app and will set a permanent password on first login.
+                {fillNodes(t("ajo.loginEmailSentTo"), { email: <span className="font-bold">{addedClientEmail}</span> })}
               </p>
             </div>
             {clientSubAcctErr && (
@@ -3784,7 +3817,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             <button
               onClick={() => { setAddedClientEmail(""); setClientSubAcctErr(""); }}
               className="w-full bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-2xl py-3.5 text-sm transition-colors">
-              Done
+              {t("common.done")}
             </button>
           </div>
         </div>
@@ -3804,44 +3837,44 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                   </svg>
                 </div>
                 <div>
-                  <p className="text-sm font-extrabold text-slate-800 dark:text-white">Password Reset</p>
-                  <p className="text-xs text-slate-400 dark:text-slate-500">New credentials for {createdClient.full_name.split(" ")[0]}</p>
+                  <p className="text-sm font-extrabold text-slate-800 dark:text-white">{t("ajo.passwordReset")}</p>
+                  <p className="text-xs text-slate-400 dark:text-slate-500">{t("ajo.newCredentialsFor", { name: createdClient.full_name.split(" ")[0] })}</p>
                 </div>
               </div>
 
               {/* Credential cards */}
               <div className="space-y-3 mb-5">
                 <div className="bg-slate-50 dark:bg-slate-800 rounded-2xl px-4 py-3">
-                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">Email (Login)</p>
+                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">{t("ajo.emailLogin")}</p>
                   <p className="text-sm font-bold text-slate-800 dark:text-white">{createdClient.email}</p>
                 </div>
                 <div className="bg-slate-50 dark:bg-slate-800 rounded-2xl px-4 py-3">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">Temporary Password</p>
+                      <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">{t("ajo.temporaryPassword")}</p>
                       <p className="text-sm font-bold text-slate-800 dark:text-white font-mono">{createdClient._password}</p>
                     </div>
                     <button onClick={() => copyField(createdClient._password, "password")}
                       className="ml-3 text-[11px] font-bold text-brand-600 bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-800 px-2.5 py-1.5 rounded-lg flex-shrink-0">
-                      {copiedField === "password" ? "Copied!" : "Copy"}
+                      {copiedField === "password" ? t("ajo.copied") : t("ajo.copy")}
                     </button>
                   </div>
                 </div>
                 <div className="bg-slate-50 dark:bg-slate-800 rounded-2xl px-4 py-3">
-                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">Membership No.</p>
+                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-0.5">{t("ajo.membershipNo")}</p>
                   <p className="text-sm font-bold text-slate-800 dark:text-white font-mono">{createdClient.membership_number}</p>
                 </div>
               </div>
 
               <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-xl px-4 py-3 mb-4">
                 <p className="text-[11px] text-amber-700 dark:text-amber-300 font-medium leading-relaxed">
-                  Share these new credentials with the client. They can log in at kudiai.app and will set a permanent password on first login.
+                  {t("ajo.shareNewCredentials")}
                 </p>
               </div>
 
               <button onClick={closeClientCredentials}
                 className="w-full bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-2xl py-3.5 text-sm transition">
-                Done
+                {t("common.done")}
               </button>
             </div>
           </div>
@@ -3850,15 +3883,16 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
       {/* ── Security Hold Reject Modal ──────────────────────────────────── */}
       {rejectingHeld && (
-        <Modal title="Reject Security-Held Withdrawal" onClose={() => { setRejectingHeld(null); setHeldRejectReason(""); }}>
+        <Modal title={t("ajo.rejectSecurityHeldWithdrawal")} onClose={() => { setRejectingHeld(null); setHeldRejectReason(""); }}>
           <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
-            Rejecting <strong className="text-slate-700 dark:text-slate-200">{rejectingHeld.aso_clients?.full_name || "client"}</strong>&apos;s request of{" "}
-            <strong className="text-orange-700 dark:text-orange-300">{fmt(rejectingHeld.amount)}</strong>.
-            The client will be notified with your reason.
+            {fillNodes(t("ajo.rejectingRequestOf"), {
+              name: <strong className="text-slate-700 dark:text-slate-200">{rejectingHeld.aso_clients?.full_name || t("ajo.clientLower")}</strong>,
+              amount: <strong className="text-orange-700 dark:text-orange-300">{fmt(rejectingHeld.amount)}</strong>,
+            })}
           </p>
-          <Field as="textarea" label="Reason (required)" value={heldRejectReason}
+          <Field as="textarea" label={t("ajo.reasonRequired")} value={heldRejectReason}
             onChange={e => setHeldRejectReason(e.target.value)}
-            placeholder="e.g. Security review period has not elapsed — please retry in 24h…" />
+            placeholder={t("ajo.heldRejectPlaceholder")} />
           <button
             onClick={async () => {
               setHeldRejectBusy(true);
@@ -3869,27 +3903,28 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             }}
             disabled={!heldRejectReason.trim() || heldRejectBusy}
             className="w-full py-3.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] mt-1">
-            {heldRejectBusy ? "Rejecting…" : "Reject & Notify Client"}
+            {heldRejectBusy ? t("ajo.rejecting") : t("ajo.rejectNotifyClient")}
           </button>
         </Modal>
       )}
 
       {/* ── Manual Deposit Reject Reason Modal ──────────────────────────── */}
       {rejectingDeposit && (
-        <Modal title="Reject Deposit Claim" onClose={() => { setRejectingDeposit(null); setRejectReason(""); }}>
+        <Modal title={t("ajo.rejectDepositClaim")} onClose={() => { setRejectingDeposit(null); setRejectReason(""); }}>
           <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
-            Rejecting <strong className="text-slate-700 dark:text-slate-200">{rejectingDeposit.aso_clients?.full_name || "client"}</strong>'s claim of{" "}
-            <strong className="text-brand-700 dark:text-brand-300">₦{Number(rejectingDeposit.amount).toLocaleString("en-NG")}</strong>.
-            The client will be notified with your reason.
+            {fillNodes(t("ajo.rejectingClaimOf"), {
+              name: <strong className="text-slate-700 dark:text-slate-200">{rejectingDeposit.aso_clients?.full_name || t("ajo.clientLower")}</strong>,
+              amount: <strong className="text-brand-700 dark:text-brand-300">₦{Number(rejectingDeposit.amount).toLocaleString("en-NG")}</strong>,
+            })}
           </p>
-          <Field as="textarea" label="Reason (required)" value={rejectReason}
+          <Field as="textarea" label={t("ajo.reasonRequired")} value={rejectReason}
             onChange={e => setRejectReason(e.target.value)}
-            placeholder="e.g. We did not receive this transfer in our account…" />
+            placeholder={t("ajo.depositRejectPlaceholder")} />
           <button
             onClick={() => handleRejectDeposit(rejectingDeposit, rejectReason)}
             disabled={!rejectReason.trim() || processingDepositId === rejectingDeposit.id}
             className="w-full py-3.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] mt-1">
-            {processingDepositId === rejectingDeposit.id ? "Rejecting…" : "Reject & Notify Client"}
+            {processingDepositId === rejectingDeposit.id ? t("ajo.rejecting") : t("ajo.rejectNotifyClient")}
           </button>
         </Modal>
       )}
@@ -3907,9 +3942,9 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
               </svg>
             </button>
             <div className="flex-1">
-              <p className="font-extrabold text-slate-800 dark:text-white text-base">Today's Collection</p>
+              <p className="font-extrabold text-slate-800 dark:text-white text-base">{t("ajo.todaysCollection")}</p>
               <p className="text-[10px] text-slate-400 dark:text-slate-500">
-                {asoClients.filter(c => { const due = effectiveNextDue(c); return c.status === "active" && !!due && due <= today(); }).length} clients due
+                {t("ajo.nClientsDue", { n: asoClients.filter(c => { const due = effectiveNextDue(c); return c.status === "active" && !!due && due <= today(); }).length })}
               </p>
             </div>
           </div>
@@ -3947,14 +3982,14 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                     <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
                   </button>
                   <div className="flex-1 min-w-0">
-                    <p className="font-extrabold text-slate-800 dark:text-white text-sm truncate">{dhGrp?.name || "Savings Group"}</p>
+                    <p className="font-extrabold text-slate-800 dark:text-white text-sm truncate">{dhGrp?.name || t("ajo.savingsGroup")}</p>
                     <span className={`inline-block text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wide mt-0.5 ${
                       dhRs === "active" ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400"
                       : dhRs === "target_met" ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300"
                       : dhRs === "closed" ? "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
                       : "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400"
                     }`}>
-                      {dhRs === "not_started" ? "Not Started" : dhRs === "target_met" ? "Target Met ✓" : dhRs === "closed" ? "Closed" : "Active"}
+                      {dhRs === "not_started" ? t("ajo.statusNotStarted") : dhRs === "target_met" ? t("ajo.statusTargetMet") : dhRs === "closed" ? t("ajo.statusClosed") : t("ajo.chipActive")}
                     </span>
                   </div>
                   <button onClick={() => { setSavingsDashGid(null); setShowGroups(false); }} className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-500">
@@ -3972,8 +4007,8 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                   </svg>
                 </div>
                 <div className="flex-1">
-                  <p className="font-extrabold text-slate-800 dark:text-white text-sm">Ajo Groups</p>
-                  <p className="text-[10px] text-slate-400">Manage savings groups</p>
+                  <p className="font-extrabold text-slate-800 dark:text-white text-sm">{t("ajo.ajoGroups")}</p>
+                  <p className="text-[10px] text-slate-400">{t("ajo.manageSavingsGroups")}</p>
                 </div>
                 <button onClick={() => setShowGroups(false)} className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-500">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="w-3.5 h-3.5">
@@ -4011,21 +4046,21 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                       <>
                         {/* Hero */}
                         <div className="bg-gradient-to-br from-slate-800 to-slate-900 dark:from-slate-700 dark:to-slate-800 rounded-2xl p-5 text-white">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total Saved</p>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">{t("ajo.totalSaved")}</p>
                           <p className="text-3xl font-extrabold tabular-nums leading-none">{fmt(pot)}</p>
                           {target > 0 && (
-                            <p className="text-[11px] text-slate-400 mt-1">of {fmt(target)} target · <span className="text-white font-bold">{Math.round(pct)}%</span></p>
+                            <p className="text-[11px] text-slate-400 mt-1">{fillNodes(t("ajo.ofTargetPct"), { target: fmt(target), pct: <span className="text-white font-bold">{Math.round(pct)}%</span> })}</p>
                           )}
                           {rs === "active" && daysLeft !== null && daysLeft >= 0 && (
                             <div className="flex items-center gap-1.5 mt-2">
                               <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                              <span className="text-[10px] text-green-400 font-bold">{daysLeft} days remaining</span>
+                              <span className="text-[10px] text-green-400 font-bold">{t("ajo.nDaysRemaining", { n: daysLeft })}</span>
                             </div>
                           )}
                           {daysLeft !== null && daysLeft < 0 && isActive && (
                             <div className="flex items-center gap-1.5 mt-2">
                               <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                              <span className="text-[10px] text-amber-400 font-bold">Deadline passed — ready to close</span>
+                              <span className="text-[10px] text-amber-400 font-bold">{t("ajo.deadlinePassedReadyClose")}</span>
                             </div>
                           )}
                         </div>
@@ -4040,8 +4075,8 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                               />
                             </div>
                             <div className="flex items-center justify-between mt-1">
-                              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold">{fmt(pot)} raised</span>
-                              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold">{fmt(Math.max(0, target - pot))} to go</span>
+                              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold">{t("ajo.amountRaised", { amount: fmt(pot) })}</span>
+                              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold">{t("ajo.amountToGo", { amount: fmt(Math.max(0, target - pot)) })}</span>
                             </div>
                           </div>
                         )}
@@ -4049,10 +4084,10 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                         {/* Stats grid */}
                         <div className="grid grid-cols-2 gap-2">
                           {[
-                            { label: "Members", value: String((det.members || []).length) },
-                            { label: "Days Left", value: daysLeft !== null ? (daysLeft >= 0 ? `${daysLeft}d` : "Overdue") : "—" },
-                            { label: "Contribution", value: dashGrp.contribution_amount ? fmt(dashGrp.contribution_amount) : "—" },
-                            { label: "Frequency", value: dashGrp.contribution_frequency || "—" },
+                            { label: t("ajo.members"), value: String((det.members || []).length) },
+                            { label: t("ajo.daysLeft"), value: daysLeft !== null ? (daysLeft >= 0 ? t("ajo.nDaysShort", { n: daysLeft }) : t("ajo.chipOverdue")) : "—" },
+                            { label: t("ajo.txContribution"), value: dashGrp.contribution_amount ? fmt(dashGrp.contribution_amount) : "—" },
+                            { label: t("ajo.frequency"), value: FREQ_LOWER_KEY[dashGrp.contribution_frequency] ? t(FREQ_LOWER_KEY[dashGrp.contribution_frequency]) : (dashGrp.contribution_frequency || "—") },
                           ].map(({ label, value }) => (
                             <div key={label} className="bg-slate-50 dark:bg-slate-800/60 rounded-xl px-3 py-2.5 border border-slate-100 dark:border-slate-700">
                               <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide">{label}</p>
@@ -4063,11 +4098,11 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
                         {/* Saving strength */}
                         <div>
-                          <p className="text-[10px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2">Saving Strength</p>
+                          <p className="text-[10px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2">{t("ajo.savingStrength")}</p>
                           {sortedMembers.length === 0 ? (
                             <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-4 text-center border border-slate-100 dark:border-slate-700">
-                              <p className="text-[11px] text-slate-400">No contributions recorded yet</p>
-                              {rs === "not_started" && <p className="text-[10px] text-slate-400 mt-0.5">Start a round to begin tracking</p>}
+                              <p className="text-[11px] text-slate-400">{t("ajo.noContributionsYet")}</p>
+                              {rs === "not_started" && <p className="text-[10px] text-slate-400 mt-0.5">{t("ajo.startRoundToTrack")}</p>}
                             </div>
                           ) : (
                             <div className="space-y-2">
@@ -4094,7 +4129,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                                             type="button"
                                             onClick={() => handleReleaseSavingsMember(dashGrp.id, m.client_id, m.full_name)}
                                             className="text-[9px] font-bold text-red-500 dark:text-red-400 hover:underline ml-0.5">
-                                            Release
+                                            {t("ajo.release")}
                                           </button>
                                         )}
                                       </div>
@@ -4118,19 +4153,19 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                                 onClick={() => { setStartRoundGid(dashGrp.id); setStartRoundTarget(""); setStartRoundDeadline(""); setStartRoundMsg({ id: null, text: "", ok: false }); }}
                                 className="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2">
                                 <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="10 8 16 12 10 16"/></svg>
-                                Start Savings Round
+                                {t("ajo.startSavingsRound")}
                               </button>
                             )}
                             {startRoundGid === dashGrp.id && (
                               <div className="bg-slate-50 dark:bg-slate-700/40 rounded-xl p-3 space-y-2.5 border border-slate-200 dark:border-slate-600">
-                                <p className="text-xs font-bold text-slate-700 dark:text-slate-200">Configure Round</p>
+                                <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{t("ajo.configureRound")}</p>
                                 <div>
-                                  <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-0.5">Target Amount (₦)</p>
-                                  <input type="number" min="1" placeholder="e.g. 500000" value={startRoundTarget} onChange={e => setStartRoundTarget(e.target.value)}
+                                  <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-0.5">{t("ajo.targetAmountNaira")}</p>
+                                  <input type="number" min="1" placeholder={t("ajo.egValue", { v: "500000" })} value={startRoundTarget} onChange={e => setStartRoundTarget(e.target.value)}
                                     className="w-full text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 text-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-slate-400" />
                                 </div>
                                 <div>
-                                  <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-0.5">Target Deadline</p>
+                                  <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-0.5">{t("ajo.targetDeadline")}</p>
                                   <input type="date" min={new Date(Date.now() + 86400000).toISOString().split("T")[0]} value={startRoundDeadline} onChange={e => setStartRoundDeadline(e.target.value)}
                                     className="w-full text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 text-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-slate-400" />
                                 </div>
@@ -4138,9 +4173,9 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                                   <p className={`text-[10px] font-semibold ${startRoundMsg.ok ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}>{startRoundMsg.text}</p>
                                 )}
                                 <div className="flex gap-2">
-                                  <button type="button" onClick={() => setStartRoundGid(null)} className="flex-1 py-2 text-xs font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-600 transition">Cancel</button>
+                                  <button type="button" onClick={() => setStartRoundGid(null)} className="flex-1 py-2 text-xs font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-600 transition">{t("common.cancel")}</button>
                                   <button type="button" onClick={() => handleStartSavingsRound(dashGrp.id)} disabled={startRoundSaving} className="flex-1 py-2 text-xs font-bold text-white bg-green-600 hover:bg-green-700 disabled:opacity-60 rounded-xl transition flex items-center justify-center gap-1">
-                                    {startRoundSaving ? <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /> : "Start Round"}
+                                    {startRoundSaving ? <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /> : t("ajo.startRound")}
                                   </button>
                                 </div>
                               </div>
@@ -4150,7 +4185,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                                 type="button"
                                 onClick={() => handleCloseSavingsRound(dashGrp.id)}
                                 className="w-full py-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl font-bold text-sm border border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/30 transition active:scale-[0.99]">
-                                Close Group &amp; Release All Funds
+                                {t("ajo.closeGroupReleaseAll")}
                               </button>
                             )}
                           </div>
@@ -4158,7 +4193,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
                         {dashGrp.started_at && (
                           <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center">
-                            Round started {new Date(dashGrp.started_at).toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" })}
+                            {t("ajo.roundStartedOn", { date: new Date(dashGrp.started_at).toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" }) })}
                           </p>
                         )}
                         <div className="h-6" />
@@ -4176,7 +4211,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                 </div>
               ) : groups.length === 0 ? (
                 <div className="text-center py-8">
-                  <p className="text-sm text-slate-500 dark:text-slate-400">No groups yet. Create your first group below.</p>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">{t("ajo.noGroupsYetCreate")}</p>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -4202,10 +4237,10 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-extrabold text-slate-800 dark:text-white truncate">{grp.name}</p>
                             <div className="flex flex-wrap gap-1.5 mt-1">
-                              <span className="text-[10px] text-slate-400">{clientCount} client{clientCount !== 1 ? "s" : ""}</span>
-                              {grp.contribution_frequency && <span className="text-[10px] text-slate-400">· {grp.contribution_frequency}</span>}
+                              <span className="text-[10px] text-slate-400">{t(clientCount !== 1 ? "ajo.nClientsLowerMany" : "ajo.nClientLowerOne", { n: clientCount })}</span>
+                              {grp.contribution_frequency && <span className="text-[10px] text-slate-400">· {FREQ_LOWER_KEY[grp.contribution_frequency] ? t(FREQ_LOWER_KEY[grp.contribution_frequency]) : grp.contribution_frequency}</span>}
                               {grp.contribution_amount   && <span className="text-[10px] text-slate-400">· {fmt(grp.contribution_amount)}</span>}
-                              {isRotating && <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-brand-100 dark:bg-brand-900/40 text-brand-700 dark:text-brand-300">Rotating</span>}
+                              {isRotating && <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-brand-100 dark:bg-brand-900/40 text-brand-700 dark:text-brand-300">{t("ajo.rotating")}</span>}
                             </div>
                           </div>
                         </div>
@@ -4216,7 +4251,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                             <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                               <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
                             </svg>
-                            Manage Rotation
+                            {t("ajo.manageRotation")}
                           </button>
                         )}
 
@@ -4233,7 +4268,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                             <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                               <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>
                             </svg>
-                            Savings Dashboard
+                            {t("ajo.savingsDashboard")}
                           </button>
                         )}
 
@@ -4259,7 +4294,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                                   : rs === "closed"   ? "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
                                   : "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400"
                                 }`}>
-                                  {rs === "not_started" ? "Not started" : rs === "target_met" ? "Target met ✓" : rs === "closed" ? "Closed" : "Active"}
+                                  {rs === "not_started" ? t("ajo.notStarted") : rs === "target_met" ? t("ajo.targetMetLower") : rs === "closed" ? t("ajo.statusClosed") : t("ajo.chipActive")}
                                 </span>
                                 {(rs === "active" || rs === "target_met") && target > 0 && (
                                   <span className="text-[10px] text-slate-500 dark:text-slate-400 tabular-nums font-semibold">
@@ -4272,7 +4307,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                               {deadlinePassed && (rs === "active" || rs === "target_met") && (
                                 <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 rounded-xl px-3 py-2">
                                   <p className="text-[10px] font-bold text-amber-700 dark:text-amber-300">
-                                    Target deadline reached — {fmt(pot)} of {fmt(target)} saved. Close group and release funds?
+                                    {t("ajo.targetDeadlineReached", { pot: fmt(pot), target: fmt(target) })}
                                   </p>
                                 </div>
                               )}
@@ -4287,9 +4322,9 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                                     />
                                   </div>
                                   <div className="flex items-center justify-between mt-0.5">
-                                    <span className="text-[10px] text-slate-400 dark:text-slate-500">{pct}% of target</span>
+                                    <span className="text-[10px] text-slate-400 dark:text-slate-500">{t("ajo.pctOfTarget", { pct })}</span>
                                     {daysLeft !== null && daysLeft >= 0 && (
-                                      <span className="text-[10px] text-slate-400 dark:text-slate-500">{daysLeft}d left</span>
+                                      <span className="text-[10px] text-slate-400 dark:text-slate-500">{t("ajo.nDaysLeft", { n: daysLeft })}</span>
                                     )}
                                   </div>
                                 </div>
@@ -4308,7 +4343,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                                     }
                                   }}
                                   className="w-full flex items-center justify-between px-2.5 py-1.5 bg-slate-50 dark:bg-slate-700/40 rounded-xl border border-slate-200 dark:border-slate-600 text-[10px] font-bold text-slate-600 dark:text-slate-300">
-                                  <span>Member breakdown</span>
+                                  <span>{t("ajo.memberBreakdown")}</span>
                                   <svg viewBox="0 0 24 24" fill="none" className={`w-3 h-3 transition-transform ${expandedSavingsGid === grp.id ? "rotate-180" : ""}`} stroke="currentColor" strokeWidth={2.5}><polyline points="6 9 12 15 18 9"/></svg>
                                 </button>
                               )}
@@ -4329,12 +4364,12 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                                         type="button"
                                         onClick={() => handleReleaseSavingsMember(grp.id, m.client_id, m.full_name)}
                                         className="text-[9px] font-bold text-red-500 dark:text-red-400 hover:underline flex-shrink-0 ml-1">
-                                        Release
+                                        {t("ajo.release")}
                                       </button>
                                     </div>
                                   ))}
                                   {!det?.loading && (det?.members || []).length === 0 && (
-                                    <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center py-1">No active members</p>
+                                    <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center py-1">{t("ajo.noActiveMembers")}</p>
                                   )}
                                 </div>
                               )}
@@ -4345,21 +4380,21 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                                   type="button"
                                   onClick={() => { setStartRoundGid(grp.id); setStartRoundTarget(""); setStartRoundDeadline(""); setStartRoundMsg({ id: null, text: "", ok: false }); }}
                                   className="w-full py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold text-xs transition active:scale-[0.99] flex items-center justify-center gap-1.5">
-                                  Start savings round
+                                  {t("ajo.startSavingsRoundLower")}
                                 </button>
                               )}
 
                               {/* Start round modal */}
                               {startRoundGid === grp.id && (
                                 <div className="bg-slate-50 dark:bg-slate-700/40 rounded-xl p-3 space-y-2.5 border border-slate-200 dark:border-slate-600">
-                                  <p className="text-xs font-bold text-slate-700 dark:text-slate-200">Start Savings Round</p>
+                                  <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{t("ajo.startSavingsRound")}</p>
                                   <div>
-                                    <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-0.5">Target Amount (₦)</p>
-                                    <input type="number" min="1" placeholder="e.g. 500000" value={startRoundTarget} onChange={e => setStartRoundTarget(e.target.value)}
+                                    <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-0.5">{t("ajo.targetAmountNaira")}</p>
+                                    <input type="number" min="1" placeholder={t("ajo.egValue", { v: "500000" })} value={startRoundTarget} onChange={e => setStartRoundTarget(e.target.value)}
                                       className="w-full text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 text-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-slate-400" />
                                   </div>
                                   <div>
-                                    <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-0.5">Target Deadline</p>
+                                    <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-0.5">{t("ajo.targetDeadline")}</p>
                                     <input type="date" min={new Date(Date.now() + 86400000).toISOString().split("T")[0]} value={startRoundDeadline} onChange={e => setStartRoundDeadline(e.target.value)}
                                       className="w-full text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 text-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-slate-400" />
                                   </div>
@@ -4367,9 +4402,9 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                                     <p className={`text-[10px] font-semibold ${startRoundMsg.ok ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}>{startRoundMsg.text}</p>
                                   )}
                                   <div className="flex gap-2">
-                                    <button type="button" onClick={() => setStartRoundGid(null)} className="flex-1 py-2 text-xs font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-600 transition">Cancel</button>
+                                    <button type="button" onClick={() => setStartRoundGid(null)} className="flex-1 py-2 text-xs font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-600 transition">{t("common.cancel")}</button>
                                     <button type="button" onClick={() => handleStartSavingsRound(grp.id)} disabled={startRoundSaving} className="flex-1 py-2 text-xs font-bold text-white bg-green-600 hover:bg-green-700 disabled:opacity-60 rounded-xl transition flex items-center justify-center gap-1">
-                                      {startRoundSaving ? <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /> : "Start Round"}
+                                      {startRoundSaving ? <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /> : t("ajo.startRound")}
                                     </button>
                                   </div>
                                 </div>
@@ -4381,7 +4416,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                                   type="button"
                                   onClick={() => handleCloseSavingsRound(grp.id)}
                                   className="w-full py-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl font-bold text-xs border border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/30 transition active:scale-[0.99]">
-                                  Close group &amp; release funds
+                                  {t("ajo.closeGroupReleaseFunds")}
                                 </button>
                               )}
                             </div>
@@ -4396,13 +4431,13 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                                 <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
                               </svg>
                               <p className="text-[10px] font-bold text-amber-700 dark:text-amber-300">
-                                Pending admin approval — {isPendingEdit ? "edit" : "archive"} request
+                                {t(isPendingEdit ? "ajo.pendingAdminEditRequest" : "ajo.pendingAdminArchiveRequest")}
                               </p>
                             </div>
                             <button
                               onClick={() => cancelGroupRequest(pendingAppr.id, grp.id)}
                               className="text-[10px] font-bold text-amber-600 dark:text-amber-400 hover:underline flex-shrink-0">
-                              Cancel
+                              {t("common.cancel")}
                             </button>
                           </div>
                         )}
@@ -4427,17 +4462,17 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                             <button
                               onClick={() => { setDirectEditGroup(grp.id); setDirectEditGf({ name: grp.name, description: grp.description || "", privacy_show_names: grp.privacy_show_names, privacy_show_amounts: grp.privacy_show_amounts }); setDirectEditMsg({ id: null, text: "", ok: false }); }}
                               className="py-2 bg-slate-50 dark:bg-slate-700/50 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-[10px] border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 transition active:scale-[0.99]">
-                              Edit Details
+                              {t("ajo.editDetails")}
                             </button>
                             <button
                               onClick={() => { setEditingGroup(grp.id); setEditGf({ contribution_amount: grp.contribution_amount ?? "", contribution_frequency: grp.contribution_frequency || "monthly", group_mode: grp.group_mode || "savings", percentage_charge: grp.percentage_charge ?? 100 }); setGroupApprReason(""); setGroupApprMsg({ id: null, text: "", ok: false }); }}
                               className="py-2 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 rounded-xl font-bold text-[10px] border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition active:scale-[0.99]">
-                              Settings
+                              {t("ajo.settings")}
                             </button>
                             <button
                               onClick={() => openArchiveRequest(grp)}
                               className="py-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl font-bold text-[10px] border border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/30 transition active:scale-[0.99]">
-                              Archive
+                              {t("ajo.archive")}
                             </button>
                           </div>
                         )}
@@ -4445,11 +4480,11 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                         {/* ── Direct-edit panel — name, description, privacy (no approval needed) ── */}
                         {isDirectEditOpen && (
                           <div className="mt-3 bg-slate-50 dark:bg-slate-700/40 rounded-xl p-3 space-y-2.5 border border-slate-200 dark:border-slate-600">
-                            <p className="text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider">Edit Group Details</p>
-                            <p className="text-[10px] text-slate-500 dark:text-slate-400">Name and description changes apply immediately without admin approval.</p>
+                            <p className="text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider">{t("ajo.editGroupDetails")}</p>
+                            <p className="text-[10px] text-slate-500 dark:text-slate-400">{t("ajo.nameDescApplyImmediately")}</p>
                             {[
-                              { label: "Group Name", key: "name", type: "text" },
-                              { label: "Description", key: "description", type: "text" },
+                              { label: t("ajo.groupName"), key: "name", type: "text" },
+                              { label: t("ajo.description"), key: "description", type: "text" },
                             ].map(({ label, key, type }) => (
                               <div key={key}>
                                 <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-0.5">{label}</p>
@@ -4458,11 +4493,11 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                               </div>
                             ))}
                             <div>
-                              <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1">Privacy</p>
+                              <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1">{t("ajo.privacy")}</p>
                               <div className="flex flex-col gap-1.5">
                                 {[
-                                  { label: "Show member names to other members", key: "privacy_show_names" },
-                                  { label: "Show contribution amounts to members", key: "privacy_show_amounts" },
+                                  { label: t("ajo.showMemberNamesToMembers"), key: "privacy_show_names" },
+                                  { label: t("ajo.showContribAmountsToMembers"), key: "privacy_show_amounts" },
                                 ].map(({ label, key }) => (
                                   <button key={key} type="button"
                                     onClick={() => setDEG(key, !(directEditGf[key] ?? false))}
@@ -4478,11 +4513,11 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                                 onClick={() => submitDirectEdit(grp)}
                                 disabled={directEditSaving}
                                 className="flex-1 py-2 bg-slate-700 hover:bg-slate-800 dark:bg-slate-600 dark:hover:bg-slate-500 disabled:opacity-40 text-white rounded-xl font-bold text-xs transition active:scale-[0.99] flex items-center justify-center gap-1.5">
-                                {directEditSaving ? <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />Saving…</> : "Save Changes"}
+                                {directEditSaving ? <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />{t("common.saving")}</> : t("ajo.saveChanges")}
                               </button>
                               <button onClick={() => setDirectEditGroup(null)}
                                 className="px-4 py-2 bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 rounded-xl font-bold text-xs border border-slate-200 dark:border-slate-600 transition active:scale-[0.99]">
-                                Cancel
+                                {t("common.cancel")}
                               </button>
                             </div>
                           </div>
@@ -4491,10 +4526,10 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                         {/* ── Settings change panel — financial fields (approval required) ── */}
                         {isEditOpen && (
                           <div className="mt-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl p-3 space-y-2.5 border border-blue-200 dark:border-blue-800">
-                            <p className="text-xs font-bold text-blue-700 dark:text-blue-300 uppercase tracking-wider">Request Settings Change</p>
-                            <p className="text-[10px] text-blue-600 dark:text-blue-400">Financial changes require admin approval and apply only after a decision.</p>
+                            <p className="text-xs font-bold text-blue-700 dark:text-blue-300 uppercase tracking-wider">{t("ajo.requestSettingsChange")}</p>
+                            <p className="text-[10px] text-blue-600 dark:text-blue-400">{t("ajo.financialChangesNeedApproval")}</p>
                             {[
-                              { label: "Contribution Amount (₦)", key: "contribution_amount", type: "number" },
+                              { label: t("ajo.contributionAmountNaira"), key: "contribution_amount", type: "number" },
                             ].map(({ label, key, type }) => (
                               <div key={key}>
                                 <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-0.5">{label}</p>
@@ -4503,23 +4538,23 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                               </div>
                             ))}
                             <div>
-                              <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-0.5">Frequency</p>
+                              <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-0.5">{t("ajo.frequency")}</p>
                               <select value={editGf.contribution_frequency || "monthly"} onChange={e => setEG("contribution_frequency", e.target.value)}
                                 className="w-full text-sm bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-700 rounded-lg px-3 py-2 text-slate-800 dark:text-white focus:outline-none">
-                                {["daily","weekly","monthly"].map(fr => <option key={fr} value={fr}>{fr.charAt(0).toUpperCase() + fr.slice(1)}</option>)}
+                                {["daily","weekly","monthly"].map(fr => <option key={fr} value={fr}>{t(FREQ_KEY[fr])}</option>)}
                               </select>
                             </div>
                             <div>
-                              <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-0.5">Group Mode</p>
+                              <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-0.5">{t("ajo.groupMode")}</p>
                               <select value={editGf.group_mode || "savings"} onChange={e => setEG("group_mode", e.target.value)}
                                 className="w-full text-sm bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-700 rounded-lg px-3 py-2 text-slate-800 dark:text-white focus:outline-none">
-                                <option value="savings">Savings</option>
-                                <option value="rotating">Rotating (Esusu)</option>
+                                <option value="savings">{t("ajo.savings")}</option>
+                                <option value="rotating">{t("ajo.rotatingEsusu")}</option>
                               </select>
                             </div>
                             <div>
-                              <p className="text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-wide mb-0.5">Reason for change *</p>
-                              <textarea rows={2} value={groupApprReason} onChange={e => setGroupApprReason(e.target.value)} placeholder="Why do you need to change these settings?"
+                              <p className="text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-wide mb-0.5">{t("ajo.reasonForChangeReq")}</p>
+                              <textarea rows={2} value={groupApprReason} onChange={e => setGroupApprReason(e.target.value)} placeholder={t("ajo.whyChangeSettings")}
                                 className="w-full text-sm bg-white dark:bg-slate-800 border border-red-200 dark:border-red-700 rounded-lg px-3 py-2 text-slate-800 dark:text-white focus:outline-none resize-none" />
                             </div>
                             <div className="flex gap-2 pt-1">
@@ -4527,11 +4562,11 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                                 onClick={() => submitGroupEditRequest(grp)}
                                 disabled={groupApprSubmitting || !groupApprReason.trim()}
                                 className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded-xl font-bold text-xs transition active:scale-[0.99] flex items-center justify-center gap-1.5">
-                                {groupApprSubmitting ? <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />Submitting…</> : "Submit Request"}
+                                {groupApprSubmitting ? <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />{t("ajo.submitting")}</> : t("ajo.submitRequest")}
                               </button>
                               <button onClick={() => { setEditingGroup(null); setGroupApprReason(""); }}
                                 className="px-4 py-2 bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 rounded-xl font-bold text-xs border border-slate-200 dark:border-slate-600 transition active:scale-[0.99]">
-                                Cancel
+                                {t("common.cancel")}
                               </button>
                             </div>
                           </div>
@@ -4540,21 +4575,21 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                         {/* ── Archive panel — safety-gated ── */}
                         {isDeleteOpen && (
                           <div className="mt-3 bg-red-50 dark:bg-red-900/20 rounded-xl p-3 space-y-2.5 border border-red-200 dark:border-red-800">
-                            <p className="text-xs font-bold text-red-700 dark:text-red-300 uppercase tracking-wider">Request Group Archive</p>
+                            <p className="text-xs font-bold text-red-700 dark:text-red-300 uppercase tracking-wider">{t("ajo.requestGroupArchive")}</p>
                             {archiveSafetyLoading === grp.id ? (
                               <div className="flex items-center gap-2 py-1">
                                 <div className="w-4 h-4 border-2 border-red-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
-                                <p className="text-[10px] text-red-600 dark:text-red-400">Checking group status…</p>
+                                <p className="text-[10px] text-red-600 dark:text-red-400">{t("ajo.checkingGroupStatus")}</p>
                               </div>
                             ) : archiveSafety[grp.id] ? (
                               archiveSafety[grp.id].safe ? (
                                 <div className="space-y-2.5">
                                   <p className="text-[10px] text-red-600 dark:text-red-400 leading-relaxed">
-                                    Archiving <strong>{grp.name}</strong> will remove it from active use and detach all {clientCount} member{clientCount !== 1 ? "s" : ""}. This requires admin approval and cannot be reversed through the portal. All contribution records, rounds, and payout history are preserved.
+                                    {fillNodes(t(clientCount !== 1 ? "ajo.archivingGroupWarnMany" : "ajo.archivingGroupWarnOne", { n: clientCount }), { name: <strong>{grp.name}</strong> })}
                                   </p>
                                   <div>
-                                    <p className="text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-wide mb-0.5">Reason for archive *</p>
-                                    <textarea rows={2} value={groupApprReason} onChange={e => setGroupApprReason(e.target.value)} placeholder="Why do you need to archive this group?"
+                                    <p className="text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-wide mb-0.5">{t("ajo.reasonForArchiveReq")}</p>
+                                    <textarea rows={2} value={groupApprReason} onChange={e => setGroupApprReason(e.target.value)} placeholder={t("ajo.whyArchiveGroup")}
                                       className="w-full text-sm bg-white dark:bg-slate-800 border border-red-200 dark:border-red-700 rounded-lg px-3 py-2 text-slate-800 dark:text-white focus:outline-none resize-none" />
                                   </div>
                                   <div className="flex gap-2 pt-1">
@@ -4562,27 +4597,27 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                                       onClick={() => submitGroupDeleteRequest(grp)}
                                       disabled={groupApprSubmitting || !groupApprReason.trim()}
                                       className="flex-1 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white rounded-xl font-bold text-xs transition active:scale-[0.99] flex items-center justify-center gap-1.5">
-                                      {groupApprSubmitting ? <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />Submitting…</> : "Submit Archive Request"}
+                                      {groupApprSubmitting ? <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />{t("ajo.submitting")}</> : t("ajo.submitArchiveRequest")}
                                     </button>
                                     <button onClick={() => { setDeletingGroup(null); setGroupApprReason(""); }}
                                       className="px-4 py-2 bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 rounded-xl font-bold text-xs border border-slate-200 dark:border-slate-600 transition active:scale-[0.99]">
-                                      Cancel
+                                      {t("common.cancel")}
                                     </button>
                                   </div>
                                 </div>
                               ) : (
                                 <div className="space-y-2">
-                                  <p className="text-[10px] font-semibold text-red-700 dark:text-red-300">This group cannot be archived yet:</p>
+                                  <p className="text-[10px] font-semibold text-red-700 dark:text-red-300">{t("ajo.groupCannotArchiveYet")}</p>
                                   {archiveSafety[grp.id].activeRound && (
                                     <div className="bg-red-100 dark:bg-red-900/30 rounded-lg px-3 py-2">
-                                      <p className="text-[10px] font-bold text-red-700 dark:text-red-300">Active rotation round in progress</p>
-                                      <p className="text-[10px] text-red-600 dark:text-red-400 mt-0.5">Close the current round in the Rotation Dashboard before requesting archive.</p>
+                                      <p className="text-[10px] font-bold text-red-700 dark:text-red-300">{t("ajo.activeRotationInProgress")}</p>
+                                      <p className="text-[10px] text-red-600 dark:text-red-400 mt-0.5">{t("ajo.closeRoundBeforeArchive")}</p>
                                     </div>
                                   )}
                                   {archiveSafety[grp.id].unsettledMembers.length > 0 && (
                                     <div className="bg-red-100 dark:bg-red-900/30 rounded-lg px-3 py-2 space-y-1">
                                       <p className="text-[10px] font-bold text-red-700 dark:text-red-300">
-                                        {archiveSafety[grp.id].unsettledMembers.length} member{archiveSafety[grp.id].unsettledMembers.length !== 1 ? "s" : ""} with unsettled balance
+                                        {t(archiveSafety[grp.id].unsettledMembers.length !== 1 ? "ajo.nMembersUnsettledMany" : "ajo.nMemberUnsettledOne", { n: archiveSafety[grp.id].unsettledMembers.length })}
                                       </p>
                                       <ul className="space-y-0.5">
                                         {archiveSafety[grp.id].unsettledMembers.map(m => (
@@ -4592,13 +4627,13 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                                           </li>
                                         ))}
                                       </ul>
-                                      <p className="text-[10px] text-red-600 dark:text-red-400">All member balances must be withdrawn before archiving.</p>
+                                      <p className="text-[10px] text-red-600 dark:text-red-400">{t("ajo.allBalancesWithdrawnFirst")}</p>
                                     </div>
                                   )}
                                   <button
                                     onClick={() => { setDeletingGroup(null); setArchiveSafety(prev => { const n = { ...prev }; delete n[grp.id]; return n; }); }}
                                     className="w-full mt-1 py-2 bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 rounded-xl font-bold text-xs border border-slate-200 dark:border-slate-600 transition active:scale-[0.99]">
-                                    Close
+                                    {t("common.close")}
                                   </button>
                                 </div>
                               )
@@ -4614,15 +4649,15 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
               {/* Add group form */}
               {showGroupAdd ? (
                 <div className="bg-slate-50 dark:bg-slate-800 rounded-2xl p-4 space-y-3 border border-slate-200 dark:border-slate-700">
-                  <p className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">New Ajo Group</p>
+                  <p className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">{t("ajo.newAjoGroup")}</p>
                   {groupError && <p className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-xl">{groupError}</p>}
-                  <Field label="Group Name *" value={gf.name} onChange={e => setG("name", e.target.value)} placeholder="e.g. Monday Women Ajo" />
+                  <Field label={t("ajo.groupNameReq")} value={gf.name} onChange={e => setG("name", e.target.value)} placeholder={t("ajo.groupNamePlaceholder")} />
 
                   {/* Group mode toggle */}
                   <div>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Group Type</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">{t("ajo.groupType")}</p>
                     <div className="grid grid-cols-2 gap-2">
-                      {[["savings", "Savings Group"], ["rotating", "Rotating (Esusu)"]].map(([val, label]) => (
+                      {[["savings", t("ajo.savingsGroup")], ["rotating", t("ajo.rotatingEsusu")]].map(([val, label]) => (
                         <button key={val} type="button" onClick={() => setG("group_mode", val)}
                           className={`py-2.5 rounded-xl text-xs font-bold border transition
                             ${gf.group_mode === val
@@ -4637,10 +4672,10 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                   {/* Privacy toggles for rotating groups */}
                   {gf.group_mode === "rotating" && (
                     <div className="bg-brand-50 dark:bg-brand-900/20 rounded-2xl p-3 space-y-2.5">
-                      <p className="text-[10px] font-bold text-brand-600 dark:text-brand-400 uppercase tracking-wider">Member Privacy</p>
+                      <p className="text-[10px] font-bold text-brand-600 dark:text-brand-400 uppercase tracking-wider">{t("ajo.memberPrivacy")}</p>
                       {[
-                        { key: "privacy_show_names",   label: "Show full names to members" },
-                        { key: "privacy_show_amounts", label: "Show others' amounts to members" },
+                        { key: "privacy_show_names",   label: t("ajo.showFullNamesToMembers") },
+                        { key: "privacy_show_amounts", label: t("ajo.showOthersAmountsToMembers") },
                       ].map(({ key, label }) => (
                         <label key={key} className="flex items-center gap-3 cursor-pointer">
                           <div className={`w-9 h-5 rounded-full transition-colors flex-shrink-0 relative ${gf[key] ? "bg-brand-600" : "bg-slate-300 dark:bg-slate-600"}`}
@@ -4654,28 +4689,28 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                   )}
 
                   <div className="grid grid-cols-2 gap-2">
-                    <Field label="Monthly Amount (₦)" type="number" value={gf.contribution_amount} onChange={e => setG("contribution_amount", e.target.value)} placeholder="0" />
-                    <Field label="Frequency" as="select" value={gf.contribution_frequency} onChange={e => setG("contribution_frequency", e.target.value)}>
-                      <option value="daily">Daily</option>
-                      <option value="weekly">Weekly</option>
-                      <option value="monthly">Monthly</option>
-                      <option value="custom">Custom (days)</option>
+                    <Field label={t("ajo.monthlyAmountNaira")} type="number" value={gf.contribution_amount} onChange={e => setG("contribution_amount", e.target.value)} placeholder="0" />
+                    <Field label={t("ajo.frequency")} as="select" value={gf.contribution_frequency} onChange={e => setG("contribution_frequency", e.target.value)}>
+                      <option value="daily">{t("ajo.freqDaily")}</option>
+                      <option value="weekly">{t("ajo.freqWeekly")}</option>
+                      <option value="monthly">{t("ajo.freqMonthly")}</option>
+                      <option value="custom">{t("ajo.customDays")}</option>
                     </Field>
                   </div>
 
                   {gf.contribution_frequency === "custom" && (
-                    <Field label="Every how many days? *" type="number" min={1} value={gf.custom_interval_days}
-                      onChange={e => setG("custom_interval_days", e.target.value)} placeholder="e.g. 3" />
+                    <Field label={t("ajo.everyHowManyDaysReq")} type="number" min={1} value={gf.custom_interval_days}
+                      onChange={e => setG("custom_interval_days", e.target.value)} placeholder={t("ajo.egValue", { v: "3" })} />
                   )}
 
                   <div className="flex gap-2 pt-1">
                     <button onClick={() => { setShowGroupAdd(false); setGf(BLANK_GROUP); setGroupError(""); }}
                       className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-xs transition">
-                      Cancel
+                      {t("common.cancel")}
                     </button>
                     <button onClick={saveGroup} disabled={groupSaving || !gf.name}
                       className="flex-1 py-2.5 bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white rounded-xl font-bold text-xs transition active:scale-[0.99]">
-                      {groupSaving ? "Saving…" : "Create Group"}
+                      {groupSaving ? t("common.saving") : t("ajo.createGroup")}
                     </button>
                   </div>
                 </div>
@@ -4683,7 +4718,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                 <button
                   onClick={() => { setShowGroupAdd(true); setGroupError(""); setGf(BLANK_GROUP); }}
                   className="w-full py-3.5 border-2 border-dashed border-brand-200 dark:border-brand-800 text-brand-600 dark:text-brand-400 rounded-2xl font-bold text-sm transition hover:bg-brand-50 dark:hover:bg-brand-900/20 active:scale-[0.99]">
-                  + Create New Group
+                  {t("ajo.createNewGroupPlus")}
                 </button>
               )}
 
@@ -4716,7 +4751,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
               <button
                 onClick={() => setCycleConfirm(null)}
                 className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl font-bold text-xs transition active:scale-95">
-                Cancel
+                {t("common.cancel")}
               </button>
               <button
                 onClick={async () => { const fn = cycleConfirm.onConfirm; setCycleConfirm(null); await fn(); }}
@@ -4741,7 +4776,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
               </div>
               <div className="flex-1">
                 <p className="font-extrabold text-slate-800 dark:text-white text-sm">{showRotation.name}</p>
-                <p className="text-[10px] text-slate-400">Esusu Rotation</p>
+                <p className="text-[10px] text-slate-400">{t("ajo.esusuRotation")}</p>
               </div>
               <button onClick={() => setShowRotation(null)} className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-500">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="w-3.5 h-3.5">

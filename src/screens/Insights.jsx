@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { canSellPlans } from "../utils/platform";
 import { filterByPeriod, fmt, isBillPayment } from "../utils/helpers";
 import { AmountDisplay } from "../components/shared/AmountDisplay";
-import { canDo, upgradeLabel, planRequiredLabel, getLowestPlanWithFeature } from "../utils/plans";
+import { canDo, getLowestPlanWithFeature } from "../utils/plans";
 import { useT, useLanguage } from "../contexts/LanguageContext";
 import { getSalesPrediction, getRestockData, getSlowMovers } from "../utils/predictions";
 import { buildContext } from "../utils/buildContext";
@@ -11,13 +11,28 @@ import { speakText } from "../utils/tts";
 import { useCampaigns } from "../hooks/useCampaigns";
 import AnnouncementBarSlot from "../components/slots/AnnouncementBarSlot";
 
+// label = translation key for the chip; q = the question sent to the AI (kept English — the AI answers in the chosen language)
 const AI_QUICK = [
-  { label: "Today's Sales",      q: "How were today's sales?"    },
-  { label: "Total Profit",       q: "What is my total profit?"   },
-  { label: "Outstanding Credit", q: "Show my outstanding credit" },
-  { label: "Top Customers",      q: "Who are my top customers?"  },
-  { label: "Stock Status",       q: "What is my stock status?"   },
+  { label: "finance.aiQuickTodaySales",  q: "How were today's sales?"    },
+  { label: "finance.aiQuickTotalProfit", q: "What is my total profit?"   },
+  { label: "finance.aiQuickCredit",      q: "Show my outstanding credit" },
+  { label: "finance.aiQuickTopCustomers", q: "Who are my top customers?"  },
+  { label: "finance.aiQuickStock",       q: "What is my stock status?"   },
 ];
+
+// utils/plans.js upgradeLabel / planRequiredLabel, with the words in the chosen language
+function planUpgradeLabel(t, featureKey) {
+  if (!canSellPlans()) return "";
+  const p = getLowestPlanWithFeature(featureKey);
+  if (!p) return t("finance.planUpgradePlan");
+  const price = p.price_monthly ? t("finance.planPricePerMonth", { amount: Number(p.price_monthly).toLocaleString() }) : t("finance.planFree");
+  return t("finance.planUpgradeTo", { plan: p.name, price });
+}
+function planRequired(t, featureKey) {
+  if (!canSellPlans()) return t("finance.planNotIncluded");
+  const p = getLowestPlanWithFeature(featureKey);
+  return p ? t("finance.planRequired", { plan: p.name }) : t("finance.planUpgradeRequired");
+}
 
 /* ── Sales Prediction section ────────────────────────────────────── */
 function SalesPredictionSection({ pred, t }) {
@@ -64,7 +79,7 @@ function SalesPredictionSection({ pred, t }) {
         </div>
       </div>
       <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-2 text-center">
-        {t("pred.avgDaily")}: {fmt(pred.avgDaily)}/day · based on 28-day data
+        {t("pred.avgDaily")}: {t("finance.perDayBased28", { amount: fmt(pred.avgDaily) })}
       </p>
     </div>
   );
@@ -125,7 +140,7 @@ function RestockSection({ data, t }) {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate">{p.product_name || p.name}</p>
                       <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
-                        {p.quantity} left
+                        {t("finance.qtyLeft", { n: p.quantity })}
                         {p.daysLeft !== null && ` · ~${p.daysLeft} ${t("restock.daysLeft")}`}
                         {p.monthlyQty > 0 && ` · ${p.monthlyQty} ${t("restock.soldMonth")}`}
                       </p>
@@ -144,12 +159,12 @@ function RestockSection({ data, t }) {
           {tab === "fast" && (
             <div className="space-y-2">
               {fastMoving.length === 0 ? (
-                <p className="text-sm text-slate-400 text-center py-4">No fast-moving products yet</p>
+                <p className="text-sm text-slate-400 text-center py-4">{t("finance.noFastMoving")}</p>
               ) : fastMoving.map(p => (
                 <div key={p.id} className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3 border border-green-100 dark:border-green-900/40 shadow-card flex items-center justify-between">
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate">{p.product_name || p.name}</p>
-                    <p className="text-[11px] text-slate-400 mt-0.5">{p.quantity} in stock</p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">{t("finance.qtyInStock", { n: p.quantity })}</p>
                   </div>
                   <div className="flex-shrink-0 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-xl px-2.5 py-1.5 text-right">
                     <p className="text-[10px] text-green-600 dark:text-green-400 font-semibold">{t("restock.fast")}</p>
@@ -169,13 +184,13 @@ function RestockSection({ data, t }) {
                 <div key={p.id} className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-3 border border-red-100 dark:border-red-900/40 shadow-card flex items-center justify-between">
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate">{p.product_name || p.name}</p>
-                    <p className="text-[11px] text-slate-400 mt-0.5">Threshold: {p.low_stock_threshold || 5} units</p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">{t("finance.thresholdUnits", { n: p.low_stock_threshold || 5 })}</p>
                   </div>
                   <div className="flex-shrink-0 text-right">
                     <p className={`text-lg font-extrabold tabular ${p.quantity === 0 ? "text-red-600" : "text-amber-500"}`}>
                       {p.quantity}
                     </p>
-                    <p className="text-[10px] text-slate-400">{t("restock.units")} left</p>
+                    <p className="text-[10px] text-slate-400">{t("finance.unitsLeft")}</p>
                   </div>
                 </div>
               ))}
@@ -309,7 +324,7 @@ Use real figures from my data. Each point: 1-2 sentences max. Complete every sec
       });
       setAiInsight(text || "");
     } catch {
-      setAiError("Could not generate insights. Please check your connection and try again.");
+      setAiError(t("finance.aiInsightsFailed"));
     } finally {
       setAiLoading(false);
     }
@@ -325,7 +340,7 @@ Use real figures from my data. Each point: 1-2 sentences max. Complete every sec
             {isStaffView ? t("insights.myPerf") : t("insights.title")}
           </h1>
           <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
-            {isStaffView ? `${staffName} · personal stats` : "Smart analytics · AI insights · Reports"}
+            {isStaffView ? t("finance.personalStats", { name: staffName }) : t("finance.insightsSubtitle")}
           </p>
         </div>
         {onReports && !isStaffView && (
@@ -334,7 +349,7 @@ Use real figures from my data. Each point: 1-2 sentences max. Complete every sec
             <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
               <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>
             </svg>
-            Reports
+            {t("nav.reports")}
           </button>
         )}
       </div>
@@ -350,11 +365,11 @@ Use real figures from my data. Each point: 1-2 sentences max. Complete every sec
               <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center">
                 <span className="text-[11px] leading-none">✨</span>
               </div>
-              <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">KudiAI Business Assistant</p>
+              <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">{t("finance.aiAssistantName")}</p>
             </div>
             <button onClick={() => onAIOpen("")}
               className="text-[11px] font-bold text-brand-600 dark:text-brand-400 flex items-center gap-1 min-h-[44px] px-2 -mr-2">
-              Open Chat
+              {t("finance.openChat")}
               <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <path d="M9 18l6-6-6-6"/>
               </svg>
@@ -365,7 +380,7 @@ Use real figures from my data. Each point: 1-2 sentences max. Complete every sec
               <button key={label} onClick={() => onAIOpen(q)}
                 className="flex-shrink-0 flex items-center gap-1.5 text-[11px] font-bold px-3.5 min-h-[44px] rounded-2xl whitespace-nowrap transition-all active:scale-95 shadow-sm bg-slate-800 dark:bg-slate-700 text-white">
                 <span className="opacity-60">✦</span>
-                {label}
+                {t(label)}
               </button>
             ))}
           </div>
@@ -427,7 +442,7 @@ Use real figures from my data. Each point: 1-2 sentences max. Complete every sec
                       <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center flex-shrink-0">
                         <span className="text-xs leading-none">✨</span>
                       </div>
-                      <p className="text-sm font-bold text-white">Gemini AI Insight</p>
+                      <p className="text-sm font-bold text-white">{t("finance.geminiInsight")}</p>
                     </div>
                     <button
                       onClick={() => speakText(aiInsight, lang)}
@@ -436,7 +451,7 @@ Use real figures from my data. Each point: 1-2 sentences max. Complete every sec
                         <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" stroke="none" />
                         <path d="M15.54 8.46a5 5 0 0 1 0 7.07" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
                       </svg>
-                      Listen
+                      {t("finance.listen")}
                     </button>
                   </div>
                   {/* Insight body */}
@@ -460,13 +475,13 @@ Use real figures from my data. Each point: 1-2 sentences max. Complete every sec
             <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-700 rounded-2xl p-4 flex items-center gap-3 mb-5">
               <span className="text-2xl flex-shrink-0">✨</span>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-purple-800 dark:text-purple-300">{planRequiredLabel("aiInsights")}</p>
-                <p className="text-xs text-purple-600 dark:text-purple-400 mt-0.5">AI-powered business insights are available on the {getLowestPlanWithFeature("aiInsights")?.name ?? "higher"} plan.</p>
+                <p className="text-sm font-bold text-purple-800 dark:text-purple-300">{planRequired(t, "aiInsights")}</p>
+                <p className="text-xs text-purple-600 dark:text-purple-400 mt-0.5">{t("finance.aiPlanNote", { plan: getLowestPlanWithFeature("aiInsights")?.name ?? t("finance.higherPlan") })}</p>
               </div>
               {canSellPlans() && (
                 <button onClick={onUpgrade}
                   className="flex-shrink-0 bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 rounded-xl font-bold text-xs active:scale-95 transition-all">
-                  {upgradeLabel("aiInsights")}
+                  {planUpgradeLabel(t, "aiInsights")}
                 </button>
               )}
             </div>

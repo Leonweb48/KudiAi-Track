@@ -17,9 +17,12 @@ import business from "./business";
 import account from "./account";
 import client from "./client";
 import circles from "./circles";
+import walletpanel from "./walletpanel";
+import auth2 from "./auth";
+import messages from "./messages";
 
 export const ALL_TRANSLATIONS = Object.assign({}, BASE, common, home, sales, credit, ajo, stock, finance, bills, wallet,
-  invoices, settings, business, account, client, circles);
+  invoices, settings, business, account, client, circles, walletpanel, auth2, messages);
 
 const fill = (text, vars) => (vars && typeof text === "string")
   ? text.replace(/\{(\w+)\}/g, (m, k) => (vars[k] !== undefined && vars[k] !== null ? String(vars[k]) : m))

@@ -4,6 +4,7 @@ import { HistoryAvatar, StatusPill } from "./HistoryRow";
 import { fmt } from "../../utils/helpers";
 import { txEntry } from "../../utils/historyEntries";
 import { formatWATStamp } from "../../utils/wat";
+import { useT } from "../../contexts/LanguageContext";
 
 /* ── Tiny SVG renderer ──────────────────────────────────────────────── */
 function Svg({ d, size = 18, color = "currentColor", sw = 2 }) {
@@ -18,19 +19,46 @@ function Svg({ d, size = 18, color = "currentColor", sw = 2 }) {
 /* ── Capitalise first character ─────────────────────────────────────── */
 function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ""; }
 
-/* ── Format payment_type enum → human label (e.g. bill_payment → Bill Payment) ── */
-function fmtPT(pt) { return pt ? pt.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()) : ""; }
-
-/* ── Sensible title when item_name is absent ─────────────────────────── */
-const CAT_LABEL = {
-  sale:             "Sale",
-  expense:          "Expense",
-  stock:            "Stock Purchase",
-  "credit sale":    "Credit Sale",
-  "debt repayment": "Debt Repayment",
-  other:            "Other",
+/* ── Category value → its short label, translated (unknown values: capitalised as stored) ── */
+const CAT_SHORT_KEY = {
+  sale:             "sales.catShortSale",
+  expense:          "sales.catShortExpense",
+  stock:            "sales.catShortStock",
+  "credit sale":    "sales.catShortCreditSale",
+  "debt repayment": "sales.catShortDebtRepayment",
+  other:            "sales.catShortOther",
+  refund:           "sales.catShortRefund",
+  airtime:          "bill.airtime",
+  data:             "bill.data",
+  electricity:      "bill.electricity",
+  betting:          "bill.betting",
 };
-function catTitle(tx) { return tx.item_name || CAT_LABEL[tx.category] || "Transaction"; }
+function catShort(t, c) { return CAT_SHORT_KEY[c] ? t(CAT_SHORT_KEY[c]) : cap(c); }
+
+/* ── Format payment_type enum → human label (e.g. bill_payment → Bill Payment), translated when known ── */
+const PT_KEY = {
+  cash:            "sales.pmCash",
+  transfer:        "sales.pmTransfer",
+  "mobile money":  "sales.pmMobileMoney",
+  bill_payment:    "sales.pmBillPayment",
+  bank_transfer:   "sales.pmBankTransfer",
+  wallet:          "sales.pmWallet",
+};
+function fmtPT(t, pt) {
+  if (!pt) return "";
+  return PT_KEY[pt] ? t(PT_KEY[pt]) : pt.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+}
+
+/* ── Sensible title when item_name is absent (translation keys) ──────── */
+const CAT_LABEL = {
+  sale:             "sales.catSale",
+  expense:          "sales.catExpense",
+  stock:            "sales.catStockPurchase",
+  "credit sale":    "sales.catCreditSale",
+  "debt repayment": "sales.catDebtRepayment",
+  other:            "sales.catOther",
+};
+function catTitle(tx, t) { return tx.item_name || (CAT_LABEL[tx.category] ? t(CAT_LABEL[tx.category]) : t("sales.catTransaction")); }
 
 /* ── The row's leading circle: a bill payment shows its provider's real logo (or a bulb / phone / tv icon); everything else keeps
       its tinted arrow / category icon ── */
@@ -95,6 +123,7 @@ const REFUND_ICON  = "M9 14L4 9l5-5|M4 9h10a6 6 0 010 12h-3";
    Home variant — compact, no swipe
    ═══════════════════════════════════════════════════════════════════════ */
 function TxRowHome({ tx, hidden, onClick }) {
+  const t = useT();
   const isIn     = tx.type === "in";
   const entry    = txEntry(tx);
   const isFailed = entry.status.key === "failed";
@@ -105,7 +134,7 @@ function TxRowHome({ tx, hidden, onClick }) {
       className="w-full text-left flex items-center gap-3 bg-white dark:bg-slate-800 rounded-2xl px-4 py-3.5 shadow-card border border-slate-100 dark:border-slate-700/50 active:scale-[0.98] transition-transform">
       <RowAvatar tx={tx} entry={entry} style={style} />
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{catTitle(tx)}</p>
+        <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{catTitle(tx, t)}</p>
         <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5 truncate">{stampOf(tx)}</p>
       </div>
       <div className="text-right flex-shrink-0">
@@ -127,6 +156,7 @@ function TxRowHome({ tx, hidden, onClick }) {
    Transactions variant — richer subtitle, swipe-to-reveal Receipt+Delete
    ═══════════════════════════════════════════════════════════════════════ */
 function TxRowTransactions({ tx, hidden, onClick, staffName, onSwipeReceipt, onSwipeDelete, onSwipeRefund }) {
+  const t = useT();
   const isIn     = tx.type === "in";
   const entry    = txEntry(tx);
   const isFailed = entry.status.key === "failed";
@@ -148,15 +178,15 @@ function TxRowTransactions({ tx, hidden, onClick, staffName, onSwipeReceipt, onS
     if (!el) return;
 
     const onStart = (e) => {
-      const t = e.touches[0];
-      touchRef.current = { startX: t.clientX, startY: t.clientY, intent: null, base: offsetRef.current };
+      const touch = e.touches[0];
+      touchRef.current = { startX: touch.clientX, startY: touch.clientY, intent: null, base: offsetRef.current };
       didSwipe.current = false;
     };
 
     const onMove = (e) => {
-      const t  = e.touches[0];
-      const dx = t.clientX - touchRef.current.startX;
-      const dy = t.clientY - touchRef.current.startY;
+      const touch = e.touches[0];
+      const dx = touch.clientX - touchRef.current.startX;
+      const dy = touch.clientY - touchRef.current.startY;
       if (touchRef.current.intent === null) {
         const ax = Math.abs(dx), ay = Math.abs(dy);
         if (ax > ay * 1.5 && ax > 8)     touchRef.current.intent = "h";
@@ -194,7 +224,7 @@ function TxRowTransactions({ tx, hidden, onClick, staffName, onSwipeReceipt, onS
     onClick?.();
   };
 
-  const parts = [tx.customer_name, cap(tx.category), fmtPT(tx.payment_type)].filter(Boolean);
+  const parts = [tx.customer_name, catShort(t, tx.category), fmtPT(t, tx.payment_type)].filter(Boolean);
 
   return (
     <div
@@ -208,21 +238,21 @@ function TxRowTransactions({ tx, hidden, onClick, staffName, onSwipeReceipt, onS
           onClick={() => { close(); onSwipeReceipt?.(); }}
           className="flex-1 flex flex-col items-center justify-center gap-0.5 bg-slate-700 dark:bg-slate-600 active:opacity-70 min-h-[44px]">
           <Svg d={RECEIPT_ICON} size={16} color="white" sw={2} />
-          <span className="text-[9px] font-bold text-white">Receipt</span>
+          <span className="text-[9px] font-bold text-white">{t("sales.receipt")}</span>
         </button>
         {onSwipeRefund && (
           <button
             onClick={() => { close(); onSwipeRefund(tx); }}
             className="flex-1 flex flex-col items-center justify-center gap-0.5 bg-amber-500 active:opacity-70 min-h-[44px]">
             <Svg d={REFUND_ICON} size={16} color="white" sw={2} />
-            <span className="text-[9px] font-bold text-white">Refund</span>
+            <span className="text-[9px] font-bold text-white">{t("sales.refund")}</span>
           </button>
         )}
         <button
           onClick={() => { onSwipeDelete?.(tx.id); close(); }}
           className="flex-1 flex flex-col items-center justify-center gap-0.5 bg-red-500 active:opacity-70 min-h-[44px]">
           <Svg d={TRASH_ICON} size={16} color="white" sw={2} />
-          <span className="text-[9px] font-bold text-white">Delete</span>
+          <span className="text-[9px] font-bold text-white">{t("common.delete")}</span>
         </button>
       </div>
 
@@ -243,7 +273,7 @@ function TxRowTransactions({ tx, hidden, onClick, staffName, onSwipeReceipt, onS
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
             <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate flex-1">
-              {catTitle(tx)}
+              {catTitle(tx, t)}
             </p>
             <div className="text-right flex-shrink-0 ml-2">
               <AmountDisplay
@@ -295,9 +325,10 @@ const STOCK_MOV_STYLE = {
   adjustment: { bg: "bg-slate-100 dark:bg-slate-700/60",  color: "#475569",
                 icon: "M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7|M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 8.5-8.5z" },
 };
-const STOCK_TYPE_LABEL = { sale: "Sale", restock: "Restock", adjustment: "Adjustment" };
+const STOCK_TYPE_LABEL = { sale: "sales.catSale", restock: "sales.movRestock", adjustment: "sales.movAdjustment" };
 
 function TxRowStock({ tx }) {
+  const t = useT();
   const style = STOCK_MOV_STYLE[tx.type] || STOCK_MOV_STYLE.adjustment;
   const qty = Number(tx.quantity || 0);
   const qtyStr = `${qty > 0 ? "+" : ""}${qty}`;
@@ -316,7 +347,7 @@ function TxRowStock({ tx }) {
         <Svg d={style.icon} size={14} color={style.color} sw={2.5} />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-bold text-slate-800 dark:text-slate-100">{STOCK_TYPE_LABEL[tx.type] || "Movement"}</p>
+        <p className="text-sm font-bold text-slate-800 dark:text-slate-100">{t(STOCK_TYPE_LABEL[tx.type] || "sales.movMovement")}</p>
         <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 truncate">
           {dateStr}{tx.notes ? ` · ${tx.notes}` : ""}
         </p>
@@ -324,7 +355,7 @@ function TxRowStock({ tx }) {
       <div className="text-right flex-shrink-0">
         <p className={`text-sm font-extrabold tabular-nums ${qtyColor}`}>{qtyStr}</p>
         {tx.unit_price > 0 && (
-          <p className="text-[10px] text-slate-300 dark:text-slate-600 mt-0.5">{fmt(tx.unit_price)}/unit</p>
+          <p className="text-[10px] text-slate-300 dark:text-slate-600 mt-0.5">{t("sales.perUnit", { amount: fmt(tx.unit_price) })}</p>
         )}
       </div>
     </div>

@@ -25,9 +25,9 @@ function makeModules(t) {
     { id: "aso",          label: t("staff.ajoSavings")    },
     { id: "inventory",    label: t("staff.stockInventory")},
     { id: "insights",     label: t("staff.insights")      },
-    { id: "invoices",     label: "Invoices"                },
-    { id: "refunds",      label: "Refunds"                 },
-    { id: "discounts",    label: "Discounts"               },
+    { id: "invoices",     label: t("business.staff.moduleInvoices")  },
+    { id: "refunds",      label: t("business.staff.moduleRefunds")   },
+    { id: "discounts",    label: t("business.staff.moduleDiscounts") },
   ];
 }
 
@@ -45,6 +45,26 @@ const ROLE_COLOR_MAP = {
   credit_officer: "bg-amber-100  text-amber-700",
   aso_collector:  "bg-purple-100 text-purple-700",
   manager:        "bg-red-100    text-red-700",
+};
+
+// Display-label keys for stored values (the values themselves never change).
+const REQUEST_TYPE_KEYS = {
+  refund:   "business.staff.requestRefund",
+  discount: "business.staff.requestDiscount",
+  expense:  "business.staff.requestExpense",
+};
+const APPROVAL_STATUS_KEYS = {
+  pending:  "business.staff.statusPending",
+  approved: "business.staff.statusApproved",
+  rejected: "business.staff.statusRejected",
+  expired:  "business.staff.statusExpired",
+};
+const PAY_TYPE_KEYS = {
+  salary:     "business.staff.paySalary",
+  commission: "business.staff.payCommission",
+  allowance:  "business.staff.payAllowance",
+  bonus:      "business.staff.payBonus",
+  other:      "business.staff.payOther",
 };
 
 function roleColor(roleId) {
@@ -197,7 +217,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
   const submitDisbursement = async () => {
     if (!disburseTarget || !disburseForm.amount) return;
     if (!disbursePin || disbursePin.length !== 4) {
-      setDisburseMsg("Enter your 4-digit transaction PIN to confirm.");
+      setDisburseMsg(t("business.staff.errPinRequired"));
       return;
     }
     setDisburseSaving(true);
@@ -213,9 +233,9 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
       },
     });
     if (error || data?.error) {
-      setDisburseMsg(data?.error || error?.message || "Failed to record payment.");
+      setDisburseMsg(data?.error || error?.message || t("business.staff.errRecordPayment"));
     } else {
-      setDisburseMsg("Payment recorded successfully!");
+      setDisburseMsg(t("business.staff.paymentRecorded"));
       setDisburseForm({ type: "salary", amount: "", notes: "" });
       setDisbursePin("");
       setTimeout(() => { setDisburseTarget(null); setDisburseMsg(""); }, 1500);
@@ -286,7 +306,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
     // Get a fresh access token — auto-injection can use a stale one, causing 401
     const { data: sessData } = await supabase.auth.getSession();
     const token = sessData?.session?.access_token;
-    if (!token) throw new Error("Session expired. Please log out and log in again.");
+    if (!token) throw new Error(t("business.staff.errSessionExpired"));
 
     const { data, error: functionError } = await supabase.functions.invoke(
       "manage-staff-account",
@@ -317,12 +337,11 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
       (functionError.message || "").toLowerCase().includes("failed to send") ||
       (functionError.message || "").toLowerCase().includes("unreachable");
 
-    if (!notDeployed) throw new Error(functionError.message || "Edge Function error");
+    if (!notDeployed) throw new Error(functionError.message || t("business.staff.errEdgeFunction"));
 
     if (staffRecord.user_id) {
       throw new Error(
-        "Cannot reset staff password: Edge Function not deployed. " +
-        "Run: npx supabase functions deploy manage-staff-account --project-ref eztohcuzbxxxvnondxfz",
+        t("business.staff.errResetNotDeployed", { cmd: "npx supabase functions deploy manage-staff-account --project-ref eztohcuzbxxxvnondxfz" }),
       );
     }
 
@@ -344,8 +363,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
     if (signUpErr) {
       if (signUpErr.message.toLowerCase().includes("already registered")) {
         throw new Error(
-          "This email is already registered. Deploy the Edge Function to reset the password: " +
-          "npx supabase functions deploy manage-staff-account --project-ref eztohcuzbxxxvnondxfz",
+          t("business.staff.errEmailRegistered", { cmd: "npx supabase functions deploy manage-staff-account --project-ref eztohcuzbxxxvnondxfz" }),
         );
       }
       throw signUpErr;
@@ -372,12 +390,12 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
 
   const saveStaff = async () => {
     setError("");
-    if (!form.full_name.trim()) { setError("Full name is required"); return; }
-    if (!form.email.trim())     { setError("Email is required"); return; }
+    if (!form.full_name.trim()) { setError(t("business.staff.errFullNameRequired")); return; }
+    if (!form.email.trim())     { setError(t("business.staff.errEmailRequired")); return; }
 
     const staffLimit = featureLimit(plan, "staffManagement");
     if (staffLimit !== Infinity && staffList.length >= staffLimit) {
-      setError(`Your plan allows up to ${staffLimit} staff member${staffLimit !== 1 ? "s" : ""}.${canSellPlans() ? " Upgrade to add more." : ""}`);
+      setError((staffLimit !== 1 ? t("business.staff.errPlanLimitMany", { n: staffLimit }) : t("business.staff.errPlanLimitOne", { n: staffLimit })) + (canSellPlans() ? " " + t("business.staff.upgradeToAddMore") : ""));
       return;
     }
 
@@ -431,7 +449,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
         await supabase.from("staff_permissions").delete().eq("staff_id", staffRow.id);
         await supabase.from("staff").delete().eq("id", staffRow.id);
       }
-      setError(e.message || "Failed to add staff");
+      setError(e.message || t("business.staff.errAddStaff"));
     } finally {
       setSaving(false);
     }
@@ -454,10 +472,10 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
 
     // Delete then re-insert — works without a unique constraint and surfaces errors
     const { error: delErr } = await supabase.from("staff_permissions").delete().eq("staff_id", staffId);
-    if (delErr) throw new Error(`Failed to update permissions: ${delErr.message}`);
+    if (delErr) throw new Error(t("business.staff.errUpdatePerms", { msg: delErr.message }));
 
     const { error: insErr } = await supabase.from("staff_permissions").insert(permRows);
-    if (insErr) throw new Error(`Failed to save permissions: ${insErr.message}`);
+    if (insErr) throw new Error(t("business.staff.errSavePerms", { msg: insErr.message }));
 
     // Instant push to staff portal — subscribe() is NOT async, no await
     const _bch = supabase.channel(`perms_${userId}`);
@@ -500,7 +518,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
       setSelected(null);
       await loadStaff();
     } catch (e) {
-      setError(e.message || "Failed to update staff");
+      setError(e.message || t("business.staff.errUpdateStaff"));
     } finally {
       setSaving(false);
     }
@@ -511,7 +529,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
     setError("");
     setAccountMessage("");
     if (selected.status !== "active") {
-      setError("Activate this staff member before enabling login");
+      setError(t("business.staff.errActivateFirst"));
       return;
     }
 
@@ -519,7 +537,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
     try {
       // Auto-generate temp password — manage-staff-account sends staff_otp email with credentials
       const result = await provisionLogin(selected, genTempPassword());
-      setAccountMessage(result?.message || "Login credentials sent to staff email");
+      setAccountMessage(result?.message || t("business.staff.loginCredsSent"));
       await loadStaff();
       const { data: refreshed } = await supabase
         .from("staff")
@@ -528,7 +546,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
         .single();
       if (refreshed) setSelected(refreshed);
     } catch (e) {
-      setError(e.message || "Failed to update login access");
+      setError(e.message || t("business.staff.errLoginAccess"));
     } finally {
       setSaving(false);
     }
@@ -537,7 +555,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
 
 
   const deleteStaff = async (id) => {
-    if (!window.confirm("Remove this staff member? This cannot be undone.")) return;
+    if (!window.confirm(t("business.staff.confirmRemove"))) return;
     const staffMember = staffList.find(s => s.id === id);
     if (staffMember?.user_id) {
       // Keep the auth link blocked so the removed login cannot be mistaken for
@@ -596,7 +614,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
           </div>
           <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-2">{planRequiredLabel("staffManagement")}</h2>
           <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 max-w-xs leading-relaxed">
-            Add team members, assign roles and permissions, and track performance. {planAvailableText("staffManagement")}
+            {t("business.staff.lockedDesc")} {planAvailableText("staffManagement")}
           </p>
           {canSellPlans() && (
             <button onClick={onUpgrade} className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-2xl font-bold text-sm active:scale-95 transition shadow-md">
@@ -620,20 +638,20 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
         </button>
         <div className="flex-1">
           <h1 className="text-lg font-bold text-slate-800 dark:text-white">{t("staff.title")}</h1>
-          <p className="text-xs text-slate-500 dark:text-slate-400">{staffList.length} staff member{staffList.length !== 1 ? "s" : ""}</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">{staffList.length !== 1 ? t("business.staff.countMany", { n: staffList.length }) : t("business.staff.countOne", { n: staffList.length })}</p>
         </div>
         <button onClick={openAdd}
           className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-3 py-2 rounded-xl transition-colors">
           <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
             <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
           </svg>
-          Add Staff
+          {t("staff.addStaff")}
         </button>
       </div>
 
       {/* Tab Bar */}
       <div className="flex bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 px-4">
-        {[["staff","Staff"],["logs","Audit Logs"],["approvals","Approvals"]].map(([id, label]) => (
+        {[["staff",t("business.staff.tabStaff")],["logs",t("business.staff.tabAuditLogs")],["approvals",t("business.staff.tabApprovals")]].map(([id, label]) => (
           <button key={id} onClick={() => setActiveTab(id)}
             className={`relative py-2.5 px-4 text-sm font-semibold border-b-2 transition-colors ${activeTab === id ? "border-green-500 text-green-600" : "border-transparent text-slate-400"}`}>
             {label}
@@ -660,8 +678,8 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
                   <path strokeLinecap="round" d="M17 20h5v-2a4 4 0 00-4-4h-1M9 20H4v-2a4 4 0 014-4h1m4 6v-2m0-4a4 4 0 100-8 4 4 0 000 8z" />
                 </svg>
               </div>
-              <p className="text-slate-500 dark:text-slate-400 font-medium text-sm">No staff members yet</p>
-              <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Tap "Add Staff" to get started</p>
+              <p className="text-slate-500 dark:text-slate-400 font-medium text-sm">{t("business.staff.emptyTitle")}</p>
+              <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">{t("business.staff.emptyHint")}</p>
             </div>
           ) : staffList.map(s => (
             <div key={s.id} className="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-sm border border-slate-100 dark:border-slate-700">
@@ -679,7 +697,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
                     {roleLabel(s.role, ROLES)}
                   </span>
                   <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${s.status === "active" ? "bg-green-50 text-green-600" : "bg-red-50 text-red-500"}`}>
-                    {s.status === "active" ? "Active" : "Suspended"}
+                    {s.status === "active" ? t("business.staff.statusActive") : t("business.staff.statusSuspended")}
                   </span>
                 </div>
               </button>
@@ -688,7 +706,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
                 <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
                   <path d="M18 20V10M12 20V4M6 20v-6" />
                 </svg>
-                Performance Report
+                {t("business.staff.performanceReport")}
               </button>
             </div>
           ))}
@@ -703,7 +721,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
               <div className="w-8 h-8 border-2 border-green-500 border-t-transparent rounded-full animate-spin" />
             </div>
           ) : logs.length === 0 ? (
-            <div className="text-center py-20 text-slate-400 dark:text-slate-500 text-sm">No activity logged yet.</div>
+            <div className="text-center py-20 text-slate-400 dark:text-slate-500 text-sm">{t("business.staff.noActivity")}</div>
           ) : (
             <div className="space-y-2">
               {logs.map(l => (
@@ -717,7 +735,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
                     <div className="text-right shrink-0">
                       {l.module && (
                         <span className="text-[10px] font-bold px-1.5 py-0.5 bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 rounded-md capitalize">
-                          {l.module}
+                          {MODULES.find(m => m.id === l.module)?.label || l.module}
                         </span>
                       )}
                       <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">{fmtDate(l.created_at)}</p>
@@ -738,7 +756,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
               <div className="w-8 h-8 border-2 border-green-500 border-t-transparent rounded-full animate-spin" />
             </div>
           ) : approvals.length === 0 ? (
-            <div className="text-center py-20 text-slate-400 dark:text-slate-500 text-sm">No approval requests yet.</div>
+            <div className="text-center py-20 text-slate-400 dark:text-slate-500 text-sm">{t("business.staff.noApprovals")}</div>
           ) : (
             <div className="space-y-3">
               {approvals.map(req => {
@@ -748,21 +766,21 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
                   <div key={req.id} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 overflow-hidden">
                     <div className="px-4 pt-3 pb-2 flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-bold text-slate-800 dark:text-white capitalize">{req.type} Request</p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{req.staff?.full_name || "Staff"} · {req.staff?.role?.replace(/_/g, " ") || ""}</p>
+                        <p className="text-sm font-bold text-slate-800 dark:text-white capitalize">{REQUEST_TYPE_KEYS[req.type] ? t(REQUEST_TYPE_KEYS[req.type]) : t("business.staff.requestGeneric", { type: req.type })}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{req.staff?.full_name || t("business.staff.staffWord")} · {req.staff?.role ? (ROLES.find(r => r.id === req.staff.role)?.label || req.staff.role.replace(/_/g, " ")) : ""}</p>
                         {req.amount && <p className="text-sm font-bold text-slate-700 dark:text-slate-200 mt-1">₦{Number(req.amount).toLocaleString()}</p>}
-                        {req.discount_pct && <p className="text-sm font-bold text-slate-700 dark:text-slate-200 mt-1">{req.discount_pct}% discount</p>}
+                        {req.discount_pct && <p className="text-sm font-bold text-slate-700 dark:text-slate-200 mt-1">{t("business.staff.discountPct", { pct: req.discount_pct })}</p>}
                         {req.reason && <p className="text-xs text-slate-400 mt-1 italic">{req.reason}</p>}
                       </div>
                       <div className="flex flex-col items-end gap-1 shrink-0">
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border capitalize ${statusColor}`}>{req.status}</span>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border capitalize ${statusColor}`}>{APPROVAL_STATUS_KEYS[req.status] ? t(APPROVAL_STATUS_KEYS[req.status]) : req.status}</span>
                         <p className="text-[10px] text-slate-400">{fmtDate(req.created_at)}</p>
                       </div>
                     </div>
                     {isPending && (
                       <div className="px-4 pb-3 space-y-2">
                         <input
-                          placeholder="Note (optional)"
+                          placeholder={t("business.staff.noteOptional")}
                           value={actionNote}
                           onChange={e => setActionNote(e.target.value)}
                           className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-green-500"
@@ -770,11 +788,11 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
                         <div className="flex gap-2">
                           <button onClick={() => approveRequest(req.id)}
                             className="flex-1 py-2 rounded-xl bg-green-600 text-white text-xs font-bold hover:bg-green-700 transition-colors">
-                            Approve
+                            {t("business.staff.approve")}
                           </button>
                           <button onClick={() => rejectRequest(req.id)}
                             className="flex-1 py-2 rounded-xl border-2 border-red-200 text-red-500 text-xs font-semibold hover:bg-red-50 transition-colors">
-                            Reject
+                            {t("business.staff.reject")}
                           </button>
                         </div>
                       </div>
@@ -797,7 +815,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
         <div className="fixed inset-0 z-sheet flex flex-col justify-end bg-black/40">
           <div className="bg-white dark:bg-slate-900 rounded-t-3xl max-h-[92dvh] flex flex-col">
             <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-800">
-              <h2 className="text-base font-bold text-slate-800 dark:text-white">Add Staff Member</h2>
+              <h2 className="text-base font-bold text-slate-800 dark:text-white">{t("business.staff.addStaffMember")}</h2>
               <button onClick={() => setShowAdd(false)} className="w-11 h-11 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
                 <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-500" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
                   <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -821,14 +839,14 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
                   </span>
                   <input type="file" accept="image/*" className="hidden" onChange={handlePhoto} />
                 </label>
-                <p className="text-xs text-slate-400 mt-2">Profile Photo (optional)</p>
+                <p className="text-xs text-slate-400 mt-2">{t("business.staff.profilePhotoOptional")}</p>
               </div>
 
               {/* Fields */}
               {[
-                { label: "Full Name *", key: "full_name", type: "text", placeholder: "e.g. Amaka Johnson" },
-                { label: "Email Address *", key: "email", type: "email", placeholder: "staff@example.com" },
-                { label: "Phone Number", key: "phone", type: "tel", placeholder: "08012345678" },
+                { label: t("business.staff.fullNameReq"), key: "full_name", type: "text", placeholder: t("business.staff.namePlaceholder") },
+                { label: t("business.staff.emailReq"), key: "email", type: "email", placeholder: "staff@example.com" },
+                { label: t("business.staff.phoneNumber"), key: "phone", type: "tel", placeholder: "08012345678" },
               ].map(f => (
                 <div key={f.key}>
                   <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">{f.label}</label>
@@ -840,7 +858,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
 
               {/* Role */}
               <div>
-                <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">Role *</label>
+                <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">{t("business.staff.roleReq")}</label>
                 <div className="grid grid-cols-2 gap-2">
                   {ROLES.map(r => (
                     <button key={r.id} onClick={() => handleRoleChange(r.id)}
@@ -855,11 +873,11 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
               {branches.length > 0 && (
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">
-                    Assign to Branch {form.role === "manager" && <span className="text-violet-600 font-bold">(Manager will get branch access)</span>}
+                    {t("business.staff.assignBranch")} {form.role === "manager" && <span className="text-violet-600 font-bold">{t("business.staff.managerBranchAccess")}</span>}
                   </label>
                   <select value={form.branch_id || ""} onChange={e => setForm(p => ({ ...p, branch_id: e.target.value }))}
                     className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500">
-                    <option value="">— No branch (Head Office) —</option>
+                    <option value="">{t("business.staff.noBranch")}</option>
                     {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                   </select>
                 </div>
@@ -867,7 +885,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
 
               {/* Permissions */}
               <div>
-                <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">Module Permissions</label>
+                <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">{t("business.staff.modulePermissions")}</label>
                 <div className="bg-slate-50 dark:bg-slate-800 rounded-xl p-3 space-y-3">
                   {MODULES.map(m => (
                     <div key={m.id}>
@@ -882,49 +900,49 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
                             },
                             ...(m.id === "bills" && !v ? { "print-airtime": { can_view: false, can_create: false }, "print-data": { can_view: false, can_create: false } } : {}),
                           }))}
-                          label="View"
+                          label={t("business.staff.permView")}
                         />
                         {m.id !== "aso" && (
                           <PermToggle
                             checked={perms[m.id]?.can_create || false}
                             onChange={v => setPerms(p => ({ ...p, [m.id]: { ...p[m.id], can_create: v, can_view: v ? true : p[m.id]?.can_view } }))}
-                            label="Create"
+                            label={t("business.staff.permCreate")}
                           />
                         )}
                       </div>
                       {m.id === "aso" && perms["aso"]?.can_view && (
                         <div className="mt-2 ml-1 pl-3 border-l-2 border-violet-200 dark:border-violet-800 space-y-2">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Ajo Capabilities</p>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">{t("business.staff.ajoCapabilities")}</p>
                           <PermToggle
                             checked={perms["aso"]?.can_create || false}
                             onChange={v => setPerms(p => ({ ...p, aso: { ...p.aso, can_create: v } }))}
-                            label="Record Contributions"
+                            label={t("business.staff.recordContributions")}
                           />
                           <PermToggle
                             checked={perms["aso"]?.ajo_manage_clients || false}
                             onChange={v => setPerms(p => ({ ...p, aso: { ...p.aso, ajo_manage_clients: v } }))}
-                            label="Manage Clients"
+                            label={t("business.staff.manageClients")}
                           />
                         </div>
                       )}
                       {m.id === "bills" && perms["bills"]?.can_view && (
                         <div className="mt-2 ml-1 pl-3 border-l-2 border-slate-200 dark:border-slate-700 space-y-2">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Print Features</p>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">{t("business.staff.printFeatures")}</p>
                           {canDo(plan, "printWholesale") ? (
                             <>
                               <PermToggle
                                 checked={perms["print-airtime"]?.can_view || false}
                                 onChange={v => setPerms(p => ({ ...p, "print-airtime": { can_view: v, can_create: false } }))}
-                                label="Print Airtime"
+                                label={t("business.staff.printAirtime")}
                               />
                               <PermToggle
                                 checked={perms["print-data"]?.can_view || false}
                                 onChange={v => setPerms(p => ({ ...p, "print-data": { can_view: v, can_create: false } }))}
-                                label="Print Data"
+                                label={t("business.staff.printData")}
                               />
                             </>
                           ) : (
-                            <p className="text-[10px] text-amber-500 font-semibold">{planRequiredLabel("printWholesale")} to enable print features</p>
+                            <p className="text-[10px] text-amber-500 font-semibold">{t("business.staff.toEnablePrint", { label: planRequiredLabel("printWholesale") })}</p>
                           )}
                         </div>
                       )}
@@ -938,7 +956,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
               <div className="pb-6">
                 <button onClick={saveStaff} disabled={saving}
                   className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white font-bold rounded-xl py-3.5 text-sm transition-colors">
-                  {saving ? "Adding staff…" : "Add Staff Member"}
+                  {saving ? t("business.staff.addingStaff") : t("business.staff.addStaffMember")}
                 </button>
               </div>
             </div>
@@ -957,21 +975,21 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
                 </svg>
               </div>
               <div>
-                <p className="text-sm font-extrabold text-slate-800 dark:text-white">Staff Account Created</p>
-                <p className="text-xs text-slate-400 dark:text-slate-500">Login credentials sent automatically</p>
+                <p className="text-sm font-extrabold text-slate-800 dark:text-white">{t("business.staff.accountCreated")}</p>
+                <p className="text-xs text-slate-400 dark:text-slate-500">{t("business.staff.credsSentAuto")}</p>
               </div>
             </div>
             <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900/40 rounded-2xl px-4 py-3 mb-5">
               <p className="text-[11px] text-green-800 dark:text-green-300 font-medium leading-relaxed">
-                An email with login credentials and a one-time verification code has been sent to{" "}
-                <span className="font-bold">{addedStaffEmail}</span>. The staff member will verify their email and set a new password on first login.
+                {t("business.staff.emailSentPre")}{" "}
+                <span className="font-bold">{addedStaffEmail}</span>{t("business.staff.emailSentPost")}
               </p>
             </div>
             <button
               onClick={() => setAddedStaffEmail("")}
               className="w-full bg-green-600 hover:bg-green-700 text-white font-bold rounded-2xl py-3.5 text-sm transition-colors"
             >
-              Done
+              {t("common.done")}
             </button>
           </div>
         </div>
@@ -982,7 +1000,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
         <div className="fixed inset-0 z-sheet flex flex-col justify-end bg-black/40">
           <div className="bg-white dark:bg-slate-900 rounded-t-3xl max-h-[92dvh] flex flex-col">
             <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-800">
-              <h2 className="text-base font-bold text-slate-800 dark:text-white">Staff Details</h2>
+              <h2 className="text-base font-bold text-slate-800 dark:text-white">{t("business.staff.staffDetails")}</h2>
               <button onClick={() => { setSelected(null); setPhotoFile(null); setPhotoPreview(null); }}
                 className="w-11 h-11 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
                 <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-500" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
@@ -1013,8 +1031,8 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
 
               {/* Editable fields */}
               {[
-                { label: "Full Name", key: "full_name" },
-                { label: "Phone",     key: "phone"     },
+                { label: t("business.staff.fullName"), key: "full_name" },
+                { label: t("business.staff.phone"),     key: "phone"     },
               ].map(f => (
                 <div key={f.key}>
                   <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">{f.label}</label>
@@ -1026,14 +1044,14 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
 
               {/* Email (read-only) */}
               <div>
-                <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Email</label>
+                <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">{t("business.staff.email")}</label>
                 <input readOnly value={selected.email}
                   className="w-full border border-slate-100 rounded-xl px-3 py-2.5 text-sm bg-slate-50 text-slate-400 cursor-not-allowed" />
               </div>
 
               {/* Role */}
               <div>
-                <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">Role</label>
+                <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">{t("business.staff.role")}</label>
                 <div className="grid grid-cols-2 gap-2">
                   {ROLES.map(r => (
                     <button key={r.id} onClick={() => { setSelected(s => ({ ...s, role: r.id })); initPermsForRole(r.id); }}
@@ -1048,11 +1066,11 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
               {branches.length > 0 && (
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">
-                    Assign to Branch {selected.role === "manager" && <span className="text-violet-600 font-bold">(Gets branch manager access)</span>}
+                    {t("business.staff.assignBranch")} {selected.role === "manager" && <span className="text-violet-600 font-bold">{t("business.staff.getsBranchManagerAccess")}</span>}
                   </label>
                   <select value={selected.branch_id || ""} onChange={e => setSelected(s => ({ ...s, branch_id: e.target.value || null }))}
                     className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500">
-                    <option value="">— No branch (Head Office) —</option>
+                    <option value="">{t("business.staff.noBranch")}</option>
                     {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                   </select>
                 </div>
@@ -1061,12 +1079,12 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
               {/* Status toggle */}
               <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-800 rounded-xl px-4 py-3">
                 <div>
-                  <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">Account Status</p>
-                  <p className="text-xs text-slate-400 mt-0.5">Suspended staff cannot log in</p>
+                  <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">{t("business.staff.accountStatus")}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">{t("business.staff.suspendedCannotLogin")}</p>
                 </div>
                 <button onClick={() => setSelected(s => ({ ...s, status: s.status === "active" ? "suspended" : "active" }))}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${selected.status === "active" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"}`}>
-                  {selected.status === "active" ? "Active" : "Suspended"}
+                  {selected.status === "active" ? t("business.staff.statusActive") : t("business.staff.statusSuspended")}
                 </button>
               </div>
 
@@ -1074,11 +1092,11 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
               <div className="border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-3">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm font-bold text-slate-800 dark:text-white">Login Access</p>
+                    <p className="text-sm font-bold text-slate-800 dark:text-white">{t("business.staff.loginAccess")}</p>
                     <p className="text-[11px] text-slate-400 mt-0.5">
                       {selected.user_id
-                        ? "An authentication account is linked to this staff member."
-                        : "No login account has been created yet."}
+                        ? t("business.staff.authLinked")
+                        : t("business.staff.noLoginYet")}
                     </p>
                   </div>
                   <span className={`shrink-0 text-[10px] font-bold px-2 py-1 rounded-full ${
@@ -1086,13 +1104,13 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
                       ? "bg-green-100 text-green-700"
                       : "bg-amber-100 text-amber-700"
                   }`}>
-                    {selected.user_id ? "Login enabled" : "Setup required"}
+                    {selected.user_id ? t("business.staff.loginEnabled") : t("business.staff.setupRequired")}
                   </span>
                 </div>
 
                 <button type="button" onClick={saveLoginAccess} disabled={saving || selected.status !== "active"}
                   className="w-full border-2 border-green-200 dark:border-green-800 text-green-700 dark:text-green-300 disabled:opacity-50 font-bold rounded-xl py-2.5 text-sm hover:bg-green-50 dark:hover:bg-green-950/20 transition-colors">
-                  {selected.user_id ? "Resend Login Credentials" : "Create Login Account"}
+                  {selected.user_id ? t("business.staff.resendCreds") : t("business.staff.createLogin")}
                 </button>
                 {accountMessage && (
                   <p className="text-xs text-green-700 bg-green-50 border border-green-200 rounded-xl px-3 py-2">
@@ -1103,7 +1121,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
 
               {/* Permissions */}
               <div>
-                <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">Permissions</label>
+                <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">{t("staff.permissions")}</label>
                 <div className="bg-slate-50 dark:bg-slate-800 rounded-xl p-3 space-y-3">
                   {MODULES.map(m => (
                     <div key={m.id}>
@@ -1118,49 +1136,49 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
                             },
                             ...(m.id === "bills" && !v ? { "print-airtime": { can_view: false, can_create: false }, "print-data": { can_view: false, can_create: false } } : {}),
                           }))}
-                          label="View"
+                          label={t("business.staff.permView")}
                         />
                         {m.id !== "aso" && (
                           <PermToggle
                             checked={perms[m.id]?.can_create || false}
                             onChange={v => setPerms(p => ({ ...p, [m.id]: { ...p[m.id], can_create: v, can_view: v ? true : p[m.id]?.can_view } }))}
-                            label="Create"
+                            label={t("business.staff.permCreate")}
                           />
                         )}
                       </div>
                       {m.id === "aso" && perms["aso"]?.can_view && (
                         <div className="mt-2 ml-1 pl-3 border-l-2 border-violet-200 dark:border-violet-800 space-y-2">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Ajo Capabilities</p>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">{t("business.staff.ajoCapabilities")}</p>
                           <PermToggle
                             checked={perms["aso"]?.can_create || false}
                             onChange={v => setPerms(p => ({ ...p, aso: { ...p.aso, can_create: v } }))}
-                            label="Record Contributions"
+                            label={t("business.staff.recordContributions")}
                           />
                           <PermToggle
                             checked={perms["aso"]?.ajo_manage_clients || false}
                             onChange={v => setPerms(p => ({ ...p, aso: { ...p.aso, ajo_manage_clients: v } }))}
-                            label="Manage Clients"
+                            label={t("business.staff.manageClients")}
                           />
                         </div>
                       )}
                       {m.id === "bills" && perms["bills"]?.can_view && (
                         <div className="mt-2 ml-1 pl-3 border-l-2 border-slate-200 dark:border-slate-700 space-y-2">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Print Features</p>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">{t("business.staff.printFeatures")}</p>
                           {canDo(plan, "printWholesale") ? (
                             <>
                               <PermToggle
                                 checked={perms["print-airtime"]?.can_view || false}
                                 onChange={v => setPerms(p => ({ ...p, "print-airtime": { can_view: v, can_create: false } }))}
-                                label="Print Airtime"
+                                label={t("business.staff.printAirtime")}
                               />
                               <PermToggle
                                 checked={perms["print-data"]?.can_view || false}
                                 onChange={v => setPerms(p => ({ ...p, "print-data": { can_view: v, can_create: false } }))}
-                                label="Print Data"
+                                label={t("business.staff.printData")}
                               />
                             </>
                           ) : (
-                            <p className="text-[10px] text-amber-500 font-semibold">{planRequiredLabel("printWholesale")} to enable print features</p>
+                            <p className="text-[10px] text-amber-500 font-semibold">{t("business.staff.toEnablePrint", { label: planRequiredLabel("printWholesale") })}</p>
                           )}
                         </div>
                       )}
@@ -1174,16 +1192,16 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
               <div className="space-y-2 pb-6">
                 <button onClick={saveDetail} disabled={saving}
                   className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white font-bold rounded-xl py-3.5 text-sm transition-colors">
-                  {saving ? "Saving…" : "Save Changes"}
+                  {saving ? t("common.saving") : t("business.staff.saveChanges")}
                 </button>
                 {/* D6: Disburse payment */}
                 <button onClick={() => { setDisburseTarget(selected); setDisburseForm({ type: "salary", amount: "", notes: "" }); setDisburseMsg(""); setDisbursePin(""); }}
                   className="w-full border-2 border-green-200 dark:border-green-800 text-green-700 dark:text-green-300 font-semibold rounded-xl py-3 text-sm hover:bg-green-50 dark:hover:bg-green-950/20 transition-colors">
-                  Disburse Payment
+                  {t("business.staff.disbursePayment")}
                 </button>
                 <button onClick={() => deleteStaff(selected.id)}
                   className="w-full border-2 border-red-200 text-red-500 font-semibold rounded-xl py-3 text-sm hover:bg-red-50 transition-colors">
-                  Remove Staff Member
+                  {t("business.staff.removeStaff")}
                 </button>
               </div>
             </div>
@@ -1203,7 +1221,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
             </button>
             <div className="flex-1 min-w-0">
               <p className="text-lg font-bold text-slate-800 dark:text-white truncate">{reportStaff.full_name}</p>
-              <p className="text-xs text-slate-400 dark:text-slate-500 capitalize">{reportStaff.role?.replace(/_/g, " ")} · Performance Report</p>
+              <p className="text-xs text-slate-400 dark:text-slate-500 capitalize">{reportStaff.role ? (ROLES.find(r => r.id === reportStaff.role)?.label || reportStaff.role.replace(/_/g, " ")) : ""} · {t("business.staff.performanceReport")}</p>
             </div>
           </div>
 
@@ -1216,13 +1234,13 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
                 <>
                   {/* Transaction summary */}
                   <div>
-                    <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">Transactions</p>
+                    <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">{t("staff.transactions")}</p>
                     <div className="grid grid-cols-2 gap-2">
                       {[
-                        { label: "Total Sales",    value: `₦${reportData.totalIn.toLocaleString()}`,   color: "text-green-600 bg-green-50 dark:bg-green-900/20" },
-                        { label: "Total Expenses", value: `₦${reportData.totalOut.toLocaleString()}`,  color: "text-red-500 bg-red-50 dark:bg-red-900/20" },
-                        { label: "All Transactions", value: reportData.tx.length,                       color: "text-blue-600 bg-blue-50 dark:bg-blue-900/20" },
-                        { label: "This Month",     value: reportData.txThisMonth.length,                color: "text-purple-600 bg-purple-50 dark:bg-purple-900/20" },
+                        { label: t("business.staff.totalSales"),    value: `₦${reportData.totalIn.toLocaleString()}`,   color: "text-green-600 bg-green-50 dark:bg-green-900/20" },
+                        { label: t("business.staff.totalExpenses"), value: `₦${reportData.totalOut.toLocaleString()}`,  color: "text-red-500 bg-red-50 dark:bg-red-900/20" },
+                        { label: t("business.staff.allTransactions"), value: reportData.tx.length,                       color: "text-blue-600 bg-blue-50 dark:bg-blue-900/20" },
+                        { label: t("business.staff.thisMonth"),     value: reportData.txThisMonth.length,                color: "text-purple-600 bg-purple-50 dark:bg-purple-900/20" },
                       ].map(stat => (
                         <div key={stat.label} className={`${stat.color} rounded-2xl p-3`}>
                           <p className="text-[10px] font-bold opacity-70 uppercase">{stat.label}</p>
@@ -1234,11 +1252,11 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
 
                   {/* Credit summary */}
                   <div>
-                    <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">Credit Sales</p>
+                    <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">{t("staff.creditSales")}</p>
                     <div className="grid grid-cols-2 gap-2">
                       {[
-                        { label: "Clients",     value: reportData.cr.length },
-                        { label: "Outstanding", value: `₦${reportData.cr.reduce((s, c) => s + Number(c.outstanding || 0), 0).toLocaleString()}` },
+                        { label: t("business.staff.clients"),     value: reportData.cr.length },
+                        { label: t("business.staff.outstanding"), value: `₦${reportData.cr.reduce((s, c) => s + Number(c.outstanding || 0), 0).toLocaleString()}` },
                       ].map(stat => (
                         <div key={stat.label} className="bg-amber-50 dark:bg-amber-900/20 rounded-2xl p-3">
                           <p className="text-[10px] font-bold text-amber-600 dark:text-amber-400 opacity-70 uppercase">{stat.label}</p>
@@ -1250,11 +1268,11 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
 
                   {/* Aso summary */}
                   <div>
-                    <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">Aso Savings</p>
+                    <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">{t("business.staff.asoSavings")}</p>
                     <div className="grid grid-cols-2 gap-2">
                       {[
-                        { label: "Clients",       value: reportData.aso.length },
-                        { label: "Total Deposited", value: `₦${reportData.aso.reduce((s, c) => s + Number(c.total_saved || 0), 0).toLocaleString()}` },
+                        { label: t("business.staff.clients"),       value: reportData.aso.length },
+                        { label: t("business.staff.totalDeposited"), value: `₦${reportData.aso.reduce((s, c) => s + Number(c.total_saved || 0), 0).toLocaleString()}` },
                       ].map(stat => (
                         <div key={stat.label} className="bg-violet-50 dark:bg-violet-900/20 rounded-2xl p-3">
                           <p className="text-[10px] font-bold text-violet-600 dark:text-violet-400 opacity-70 uppercase">{stat.label}</p>
@@ -1265,7 +1283,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
                   </div>
 
                   {reportData.tx.length === 0 && reportData.cr.length === 0 && reportData.aso.length === 0 && (
-                    <p className="text-center text-sm text-slate-400 dark:text-slate-500 py-8">No activity recorded yet for this staff member.</p>
+                    <p className="text-center text-sm text-slate-400 dark:text-slate-500 py-8">{t("business.staff.noStaffActivity")}</p>
                   )}
                 </>
               ) : null}
@@ -1279,7 +1297,7 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
           <div className="bg-white dark:bg-slate-900 rounded-t-3xl w-full max-w-md px-6 pt-6 space-y-4" style={{ paddingBottom: "max(24px, env(safe-area-inset-bottom, 24px))" }}>
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-base font-bold text-slate-800 dark:text-white">
-                Pay {disburseTarget.full_name}
+                {t("business.staff.payName", { name: disburseTarget.full_name })}
               </h3>
               <button onClick={() => { setDisburseTarget(null); setDisbursePin(""); }} className="w-11 h-11 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
                 <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-500" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
@@ -1288,32 +1306,32 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
               </button>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-500 mb-1.5">Payment Type</label>
+              <label className="block text-xs font-semibold text-slate-500 mb-1.5">{t("business.staff.paymentType")}</label>
               <div className="grid grid-cols-3 gap-2">
                 {["salary","commission","allowance","bonus","other"].map(type => (
                   <button key={type} onClick={() => setDisburseForm(f => ({ ...f, type }))}
                     className={`py-2 px-2 rounded-xl text-xs font-semibold border-2 capitalize transition-colors ${disburseForm.type === type ? "border-green-500 bg-green-50 text-green-700" : "border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400"}`}>
-                    {type}
+                    {t(PAY_TYPE_KEYS[type])}
                   </button>
                 ))}
               </div>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-500 mb-1.5">Amount (₦)</label>
+              <label className="block text-xs font-semibold text-slate-500 mb-1.5">{t("business.staff.amountNaira")}</label>
               <input type="number" min="0" placeholder="0.00"
                 value={disburseForm.amount}
                 onChange={e => setDisburseForm(f => ({ ...f, amount: e.target.value }))}
                 className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500" />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-500 mb-1.5">Note (optional)</label>
-              <input type="text" placeholder="e.g. July salary"
+              <label className="block text-xs font-semibold text-slate-500 mb-1.5">{t("business.staff.noteOptional")}</label>
+              <input type="text" placeholder={t("business.staff.julyPlaceholder")}
                 value={disburseForm.notes}
                 onChange={e => setDisburseForm(f => ({ ...f, notes: e.target.value }))}
                 className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500" />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-500 mb-1.5">Transaction PIN</label>
+              <label className="block text-xs font-semibold text-slate-500 mb-1.5">{t("business.staff.transactionPin")}</label>
               <input
                 type="password"
                 inputMode="numeric"
@@ -1325,13 +1343,13 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
               />
             </div>
             {disburseMsg && (
-              <p className={`text-xs px-3 py-2 rounded-xl border ${disburseMsg.includes("success") ? "bg-green-50 border-green-200 text-green-700" : "bg-red-50 border-red-200 text-red-600"}`}>
+              <p className={`text-xs px-3 py-2 rounded-xl border ${disburseMsg === t("business.staff.paymentRecorded") ? "bg-green-50 border-green-200 text-green-700" : "bg-red-50 border-red-200 text-red-600"}`}>
                 {disburseMsg}
               </p>
             )}
             <button onClick={submitDisbursement} disabled={disburseSaving || !disburseForm.amount || disbursePin.length !== 4}
               className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white font-bold rounded-xl py-3.5 text-sm transition-colors">
-              {disburseSaving ? "Recording…" : "Record Payment"}
+              {disburseSaving ? t("business.staff.recording") : t("business.staff.recordPayment")}
             </button>
           </div>
         </div>

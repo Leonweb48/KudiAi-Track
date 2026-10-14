@@ -1,38 +1,40 @@
 import { useState, useEffect } from "react";
 import Icon from "./Icon";
 import { formatSyncTime } from "../utils/offlineCache";
+import { useT } from "../contexts/LanguageContext";
 
 export default function SyncBar({ isOnline, fromCache, dbError, loadError, lastSyncTime, syncing, syncResult, syncFailed = false, pendingCount = 0, onRetry }) {
+  const t = useT();
   const [showResult, setShowResult] = useState(false);
 
   useEffect(() => {
     if (!syncResult) { setShowResult(false); return; }
     setShowResult(true);
-    const t = setTimeout(() => setShowResult(false), 4000);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setShowResult(false), 4000);
+    return () => clearTimeout(timer);
   }, [syncResult]);
 
   if (dbError) return (
     <div className="flex-none flex items-center gap-2 px-4 py-2 bg-red-50 dark:bg-red-900/20 border-b border-red-100 dark:border-red-800/30">
       <Icon name="warn" size={13} className="text-red-500 flex-shrink-0" />
-      <span className="text-[11px] font-semibold text-red-700 dark:text-red-300">Save failed — {dbError}</span>
+      <span className="text-[11px] font-semibold text-red-700 dark:text-red-300">{t("settings.notif.sync.saveFailed", { error: dbError })}</span>
     </div>
   );
   if (loadError) return (
     <button type="button" onClick={onRetry}
       className="flex-none w-full flex items-center gap-2 px-4 py-2 bg-orange-50 dark:bg-orange-900/20 border-b border-orange-100 dark:border-orange-800/30 text-left">
       <Icon name="warn" size={13} className="text-orange-500 flex-shrink-0" />
-      <span className="text-[11px] font-semibold text-orange-700 dark:text-orange-300">Data couldn't be loaded — tap to retry</span>
+      <span className="text-[11px] font-semibold text-orange-700 dark:text-orange-300">{t("settings.notif.sync.loadFailed")}</span>
     </button>
   );
   if (!isOnline && fromCache) return (
     <div className="flex-none flex items-center gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-100 dark:border-amber-800/30">
       <span className="inline-block w-2 h-2 rounded-full bg-amber-500 animate-pulse flex-shrink-0" />
       <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-300">
-        No network — showing your data{lastSyncTime ? ` from ${formatSyncTime(lastSyncTime)}` : ""}.{" "}
+        {lastSyncTime ? t("settings.notif.sync.noNetworkFrom", { time: formatSyncTime(lastSyncTime) }) : t("settings.notif.sync.noNetwork")}{" "}
         {pendingCount > 0
-          ? <><strong>{pendingCount} unsynced</strong> — will upload on reconnect.</>
-          : "Sales and expenses you record now will sync when you reconnect. Other changes need a connection."}
+          ? <><strong>{t("settings.notif.sync.unsynced", { n: pendingCount })}</strong> {t("settings.notif.sync.willUpload")}</>
+          : t("settings.notif.sync.offlineHint")}
       </span>
     </div>
   );
@@ -40,7 +42,7 @@ export default function SyncBar({ isOnline, fromCache, dbError, loadError, lastS
     <div className="flex-none flex items-center justify-center gap-2 py-1.5 px-3 bg-amber-500 text-white text-xs font-semibold">
       <span className="inline-block w-2 h-2 rounded-full bg-white/70 animate-pulse flex-shrink-0" />
       <span>
-        Offline{pendingCount > 0 ? ` — ${pendingCount} queued` : ""} — will sync when connection returns
+        {pendingCount > 0 ? t("settings.notif.sync.offlineQueued", { n: pendingCount }) : t("settings.notif.sync.offline")}
       </span>
     </div>
   );
@@ -50,7 +52,7 @@ export default function SyncBar({ isOnline, fromCache, dbError, loadError, lastS
         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
       </svg>
-      <span className="text-[11px] font-semibold text-blue-700 dark:text-blue-300">Back online — syncing…</span>
+      <span className="text-[11px] font-semibold text-blue-700 dark:text-blue-300">{t("settings.notif.sync.syncing")}</span>
     </div>
   );
   if (showResult && syncResult && syncFailed) return (

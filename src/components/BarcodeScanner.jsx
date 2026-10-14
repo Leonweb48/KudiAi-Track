@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useT } from "../contexts/LanguageContext";
 
 // Live camera QR scanner for the public /verify page — anyone holding a printed receipt (no KudiAI
 // app, no login) can scan its QR instead of typing the reference by hand. Web only: getUserMedia +
@@ -11,7 +12,8 @@ const SCAN_MS = 220;   // how often a frame is pulled and decoded — fast enoug
  * onScan(text): the raw string jsQR decoded — a bare reference or a full verify URL, whichever the
  * QR encoded. Making sense of that text is the caller's job (see refFromScan in VerifyReceipt.jsx).
  */
-export default function BarcodeScanner({ onScan, label = "Scan a QR code instead" }) {
+export default function BarcodeScanner({ onScan, label }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -60,7 +62,7 @@ export default function BarcodeScanner({ onScan, label = "Scan a QR code instead
       timerRef.current = setInterval(scanTick, SCAN_MS);
     } catch (e) {
       stopStream(); setOpen(false);
-      setError(e?.name === "NotAllowedError" ? "Camera access was blocked. Allow camera access and try again." : "Couldn't reach your camera. Try again, or type the reference instead.");
+      setError(e?.name === "NotAllowedError" ? t("stock.scanCameraBlocked") : t("stock.scanCameraUnreachable"));
     } finally { setBusy(false); }
   };
 
@@ -70,7 +72,7 @@ export default function BarcodeScanner({ onScan, label = "Scan a QR code instead
     <>
       <button type="button" onClick={start} disabled={busy}
         style={{ marginTop: 10, width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "11px 14px", fontSize: 13.5, fontWeight: 700, color: "#0f1c45", background: "#f0f4ff", border: "1px solid #dbe4ff", borderRadius: 10, cursor: busy ? "default" : "pointer", opacity: busy ? 0.6 : 1 }}>
-        <ScanGlyph /> {busy && !open ? "Opening camera…" : label}
+        <ScanGlyph /> {busy && !open ? t("stock.scanOpeningCamera") : (label ?? t("stock.scanQrInstead"))}
       </button>
       {error && <p role="alert" style={{ margin: "8px 0 0", fontSize: 13, color: "#b45309" }}>{error}</p>}
       {open && (
@@ -80,10 +82,10 @@ export default function BarcodeScanner({ onScan, label = "Scan a QR code instead
             <div style={{ position: "absolute", inset: 32, borderRadius: 18, border: "2px solid rgba(255,255,255,.7)", pointerEvents: "none" }} />
           </div>
           <p style={{ color: "rgba(255,255,255,.8)", fontSize: 13, marginTop: 20, padding: "0 24px", textAlign: "center" }}>
-            Point your camera at the QR code printed on the receipt
+            {t("stock.scanPointCamera")}
           </p>
           <button type="button" onClick={cancel} style={{ color: "rgba(255,255,255,.7)", fontSize: 13, fontWeight: 700, padding: "8px 16px", marginTop: 16, background: "none", border: 0, cursor: "pointer" }}>
-            Cancel
+            {t("common.cancel")}
           </button>
         </div>
       )}

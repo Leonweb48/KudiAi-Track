@@ -4,6 +4,7 @@ import PinDots from "./PinDots";
 import SelfieCapture from "./SelfieCapture";
 import { submitSecuritySelfie } from "../utils/securitySelfie";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
+import { useT, tNow } from "../contexts/LanguageContext";
 
 const BackspaceIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor"
@@ -25,16 +26,17 @@ function isWeakPin(pin) {
 }
 
 const STEP_META = {
-  verify:          { title: "Enter Verification Code", desc: "Check your email for the 6-digit code", len: 6 },
-  new_app:         { title: "New App Lock PIN",        desc: "Choose a new 6-digit app lock PIN",     len: 6 },
-  new_app_confirm: { title: "Confirm App Lock PIN",    desc: "Re-enter your new 6-digit PIN",         len: 6 },
-  new_txn:         { title: "New Transaction PIN",     desc: "Choose a new 4-digit payment PIN",      len: 4 },
-  new_txn_confirm: { title: "Confirm Transaction PIN", desc: "Re-enter your new 4-digit PIN",         len: 4 },
+  verify:          { titleKey: "settings.pin.title.verifyCode", descKey: "settings.pin.forgot.verifyDesc",        len: 6 },
+  new_app:         { titleKey: "settings.pin.title.newApp",     descKey: "settings.pin.forgot.newAppDesc",        len: 6 },
+  new_app_confirm: { titleKey: "settings.pin.title.confirmApp", descKey: "settings.pin.forgot.newAppConfirmDesc", len: 6 },
+  new_txn:         { titleKey: "settings.pin.title.newTxn",     descKey: "settings.pin.forgot.newTxnDesc",        len: 4 },
+  new_txn_confirm: { titleKey: "settings.pin.title.confirmTxn", descKey: "settings.pin.forgot.newTxnConfirmDesc", len: 4 },
 };
 
 const PAD = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 
 export default function ForgotPinFlow({ pinLock, onCancel }) {
+  const t = useT();
   const { securitySelfieEnabled } = usePlatformConfig();
   const [email,      setEmail]      = useState("");
   const [step,       setStep]       = useState("send");
@@ -69,7 +71,7 @@ export default function ForgotPinFlow({ pinLock, onCancel }) {
       if (sendErr) throw sendErr;
       setStep("verify");
     } catch (err) {
-      setError(err.message || "Failed to send code. Try again.");
+      setError(err.message || tNow("settings.pin.forgot.sendFailed"));
     } finally {
       setLoading(false);
     }
@@ -97,14 +99,14 @@ export default function ForgotPinFlow({ pinLock, onCancel }) {
           if (vErr) throw vErr;
           // Issue a short-lived server-side token that gates both reset calls
           const { data: authData } = await pinLock.authorizeReset();
-          if (!authData?.reset_token) throw new Error("Could not authorise PIN reset — please try again.");
+          if (!authData?.reset_token) throw new Error(tNow("settings.pin.forgot.authFailed"));
           setResetToken(authData.reset_token);
           setPin("");
           // The security selfie step only runs while it's switched on (platform_config.security_selfie_enabled).
           setStep(securitySelfieEnabled ? "selfie" : "new_app");
         } catch (err) {
           setPin("");
-          setError(err.message || "Invalid or expired code.");
+          setError(err.message || tNow("settings.pin.forgot.invalidCode"));
         } finally {
           setLoading(false);
         }
@@ -112,20 +114,20 @@ export default function ForgotPinFlow({ pinLock, onCancel }) {
       }
 
       if (step === "new_app") {
-        if (isWeakPin(next)) { setPin(""); setError("PIN is too easy to guess."); return; }
+        if (isWeakPin(next)) { setPin(""); setError(tNow("settings.pin.forgot.weak")); return; }
         setNewAppPin(next); setPin(""); setStep("new_app_confirm");
         return;
       }
 
       if (step === "new_app_confirm") {
         if (next !== newAppPin) {
-          setPin(""); setError("PINs don't match."); setStep("new_app"); setNewAppPin(""); return;
+          setPin(""); setError(tNow("settings.pin.forgot.mismatch")); setStep("new_app"); setNewAppPin(""); return;
         }
         setLoading(true);
         try {
           await pinLock.resetAppPin(newAppPin, resetToken);
         } catch (err) {
-          setPin(""); setError(err.message || "Failed to save. Try again.");
+          setPin(""); setError(err.message || tNow("settings.pin.forgot.saveFailed"));
           setStep("new_app"); setNewAppPin(""); setLoading(false); return;
         }
         setLoading(false); setPin(""); setStep("new_txn");
@@ -133,14 +135,14 @@ export default function ForgotPinFlow({ pinLock, onCancel }) {
       }
 
       if (step === "new_txn") {
-        if (isWeakPin(next)) { setPin(""); setError("PIN is too easy to guess."); return; }
+        if (isWeakPin(next)) { setPin(""); setError(tNow("settings.pin.forgot.weak")); return; }
         setNewTxnPin(next); setPin(""); setStep("new_txn_confirm");
         return;
       }
 
       if (step === "new_txn_confirm") {
         if (next !== newTxnPin) {
-          setPin(""); setError("PINs don't match."); setStep("new_txn"); setNewTxnPin(""); return;
+          setPin(""); setError(tNow("settings.pin.forgot.mismatch")); setStep("new_txn"); setNewTxnPin(""); return;
         }
         setLoading(true);
         try {
@@ -148,7 +150,7 @@ export default function ForgotPinFlow({ pinLock, onCancel }) {
           await pinLock.refetch();
           pinLock.unlock();
         } catch (err) {
-          setPin(""); setError(err.message || "Failed to save. Try again.");
+          setPin(""); setError(err.message || tNow("settings.pin.forgot.saveFailed"));
           setStep("new_txn"); setNewTxnPin(""); setLoading(false);
         }
       }
@@ -176,11 +178,11 @@ export default function ForgotPinFlow({ pinLock, onCancel }) {
         </div>
 
         <div className="text-center">
-          <p className="text-xl font-extrabold text-white">Forgot your PIN?</p>
+          <p className="text-xl font-extrabold text-white">{t("settings.pin.forgot.title")}</p>
           <p className="text-sm text-white/60 mt-2 leading-relaxed max-w-xs">
-            We'll send a one-time code to
+            {t("settings.pin.forgot.sendTo")}
             <br />
-            <span className="text-white/90 font-semibold">{email || "your registered email"}</span>
+            <span className="text-white/90 font-semibold">{email || t("settings.pin.forgot.yourEmail")}</span>
           </p>
         </div>
 
@@ -191,12 +193,12 @@ export default function ForgotPinFlow({ pinLock, onCancel }) {
           disabled={loading || !email}
           className="w-full max-w-[280px] py-4 rounded-2xl bg-brand-500 hover:bg-brand-600 active:scale-95 text-white font-bold text-base transition-all disabled:opacity-50"
         >
-          {loading ? "Sending…" : "Send Verification Code"}
+          {loading ? t("settings.pin.forgot.sending") : t("settings.pin.forgot.sendCode")}
         </button>
 
         <button onClick={onCancel}
           className="py-3 px-4 text-sm text-white/40 underline underline-offset-2">
-          Back to lock screen
+          {t("settings.pin.forgot.backToLock")}
         </button>
       </div>
     );
@@ -225,18 +227,18 @@ export default function ForgotPinFlow({ pinLock, onCancel }) {
           </svg>
         </div>
         <div className="text-center">
-          <p className="text-xl font-extrabold text-white">One more step</p>
+          <p className="text-xl font-extrabold text-white">{t("settings.pin.forgot.selfieTitle")}</p>
           <p className="text-sm text-white/60 mt-2 leading-relaxed max-w-xs">
-            For your security, we keep a quick photo against every PIN reset. It's just a record — take it to continue.
+            {t("settings.pin.forgot.selfieBody")}
           </p>
         </div>
         {error && <p className="text-xs font-semibold text-red-400 text-center">{error}</p>}
         <div className="w-full max-w-[280px]">
-          <SelfieCapture value={selfie} onCapture={submitSelfie} onClear={() => setSelfie("")} label="Take a selfie to continue" />
+          <SelfieCapture value={selfie} onCapture={submitSelfie} onClear={() => setSelfie("")} label={t("settings.pin.forgot.selfieLabel")} />
         </div>
-        {selfieBusy && <p className="text-xs text-white/40">Saving…</p>}
+        {selfieBusy && <p className="text-xs text-white/40">{t("common.saving")}</p>}
         <button onClick={onCancel} className="py-3 px-4 text-sm text-white/40 underline underline-offset-2">
-          Cancel
+          {t("common.cancel")}
         </button>
       </div>
     );
@@ -249,8 +251,8 @@ export default function ForgotPinFlow({ pinLock, onCancel }) {
 
       {/* Header */}
       <div className="flex flex-col items-center gap-3 pt-14 w-full px-6">
-        <p className="text-xl font-extrabold text-white text-center">{meta.title}</p>
-        <p className="text-sm text-white/60 text-center">{meta.desc}</p>
+        <p className="text-xl font-extrabold text-white text-center">{t(meta.titleKey)}</p>
+        <p className="text-sm text-white/60 text-center">{t(meta.descKey)}</p>
       </div>
 
       {/* Middle */}
@@ -261,7 +263,7 @@ export default function ForgotPinFlow({ pinLock, onCancel }) {
 
         <div style={{ height: 18, marginTop: -20 }}>
           {error && <p className="text-xs font-semibold text-red-400 text-center">{error}</p>}
-          {loading && <p className="text-xs text-white/40 text-center">Verifying…</p>}
+          {loading && <p className="text-xs text-white/40 text-center">{t("settings.pin.forgot.verifying")}</p>}
         </div>
 
         {loading && (
@@ -327,11 +329,11 @@ export default function ForgotPinFlow({ pinLock, onCancel }) {
             disabled={loading}
             className="py-3 px-4 text-xs text-white/40 underline underline-offset-2"
           >
-            Didn't receive it? Resend code
+            {t("settings.pin.forgot.resend")}
           </button>
         )}
         <button onClick={onCancel} className="py-3 px-4 text-xs text-white/30 underline underline-offset-2">
-          Cancel
+          {t("common.cancel")}
         </button>
       </div>
     </div>

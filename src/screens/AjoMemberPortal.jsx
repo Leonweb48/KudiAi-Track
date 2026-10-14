@@ -28,7 +28,7 @@ import AIChatWidget from "../components/AIChatWidget";
 import DailyVoice  from "../components/DailyVoice";
 import { buildAjoMemberContext } from "../utils/buildContext";
 import AppLogo from "../components/AppLogo";
-import { useT, useLanguage } from "../contexts/LanguageContext";
+import { useT, useLanguage, tNow } from "../contexts/LanguageContext";
 import { LANGUAGES, markLangChosen } from "../utils/i18n";
 import NotificationCenter from "../components/NotificationCenter";
 import NotificationPreferences from "../components/NotificationPreferences";
@@ -43,7 +43,7 @@ import { useWallet } from "../hooks/useWallet";
 import WalletMigrationCard from "../components/WalletMigrationCard";
 import WalletIdFields from "../components/WalletIdFields";
 import WalletTierCard from "../components/WalletTierCard";
-import { withdrawalStage, STAGE_CLS } from "../utils/withdrawalStage";
+import { withdrawalStage, STAGE_CLS, expectedDay } from "../utils/withdrawalStage";
 import { ProcessingWithdrawalCard, PendingPayoutNotice, pendingPayoutRow } from "../components/WithdrawalStatus";
 import { walletIdError } from "../utils/walletId";
 import { useBvnVerification } from "../hooks/useBvnVerification";
@@ -61,7 +61,7 @@ async function ajoFn(action, body = {}) {
     body: { action, ...body },
   });
   if (error) {
-    let msg = error.message || "Portal request failed";
+    let msg = error.message || tNow("client.portalRequestFailed");
     try {
       const errBody = await error.context?.json?.();
       if (errBody?.error) msg = errBody.error;
@@ -90,7 +90,7 @@ function makeNav(t) {
   return [
     { id: "home",    icon: "home",  label: t("nav.home")     },
     { id: "bills",   icon: "bills", label: t("nav.bills")    },
-    { id: "circles", icon: "aso",   label: "Circles"         },
+    { id: "circles", icon: "aso",   label: t("client.navCircles") },
     { id: "history", icon: "txn",   label: t("nav.history")  },
     { id: "me",      icon: "user",  label: t("settings.title") },
   ];
@@ -99,6 +99,64 @@ function makeNav(t) {
 function greetingText(t) {
   const h = new Date().getHours();
   return h < 12 ? t("greet.morning") : h < 17 ? t("greet.afternoon") : t("greet.evening");
+}
+// Stored contribution frequency ("daily"/"weekly"/"monthly") shown in the chosen language; unknown values show as stored.
+function freqWord(t, f) {
+  const map = { daily: t("client.freqDaily"), weekly: t("client.freqWeekly"), monthly: t("client.freqMonthly") };
+  return map[f] || f || t("client.freqPeriod");
+}
+// Staff role shown on the savings-officer card; unknown roles show as stored.
+function roleWord(t, r) {
+  const map = { staff: t("client.roleStaff"), manager: t("client.roleManager"), agent: t("client.roleAgent"), admin: t("client.roleAdmin"), owner: t("client.roleOwner") };
+  return map[r || "staff"] || r;
+}
+// Ledger type labels in the chosen language — mirrors helpers.ledgerTypeLabel (which stays English for receipts).
+const LEDGER_KEYS = {
+  contribution: "client.lgContribution", withdrawal: "client.lgWithdrawal", withdrawal_fee: "client.lgWithdrawalFee",
+  registration_fee: "client.lgRegistrationFee", commission: "client.lgCommission", esusu_payout: "client.lgEsusuPayout",
+  esusu_pot_sweep: "client.lgEsusuPotSweep",
+};
+function ledgerLabelT(t, typeOrRow) {
+  if (!typeOrRow) return t("client.lgTransaction");
+  let type = typeOrRow;
+  if (typeof typeOrRow === "object") {
+    type = typeOrRow.type;
+    if (type === "commission" && typeOrRow.cycle_id) return t("client.lgCycleCommission");
+  }
+  if (!type) return ledgerTypeLabel(typeOrRow);
+  if (LEDGER_KEYS[type]) return t(LEDGER_KEYS[type]);
+  if (type.startsWith("reversal_")) {
+    const base = LEDGER_KEYS[type.slice(9)];
+    return base ? t("client.lgReversalOf", { base: t(base) }) : t("client.lgReversal");
+  }
+  return ledgerTypeLabel(typeOrRow);
+}
+// Stored payment method ("cash", "wallet", "bank_transfer"…) in the chosen language; unknown values show as stored.
+function methodWord(t, m) {
+  const map = {
+    cash: t("client.mCash"), wallet: t("client.mWallet"), bank_transfer: t("client.mBankTransfer"), manual_transfer: t("client.mBankTransfer"),
+    transfer: t("client.mTransfer"), card: t("client.mCard"), paystack: t("client.mCard"), withdrawal: t("client.mWithdrawal"),
+  };
+  return map[m] || String(m || "").replace(/_/g, " ");
+}
+// withdrawalStage() wording in the chosen language (utils/withdrawalStage keeps the English originals).
+const STAGE_KEYS = { processing: "client.stProcessing", paid: "client.stPaid", delayed: "client.stDelayed", approved: "client.stApproved" };
+function stageText(t, r) {
+  const st = withdrawalStage(r);
+  if (!st) return null;
+  let detail = "";
+  if (st.key === "processing") { const day = expectedDay(r.payout_date); detail = day ? t("client.stExpectedDay", { day }) : t("client.stBeingPaid"); }
+  else if (st.key === "delayed") detail = t("client.stDelayedDetail");
+  return { ...st, label: STAGE_KEYS[st.key] ? t(STAGE_KEYS[st.key]) : st.label, detail };
+}
+// Stored row status shown in the chosen language; unknown values show as stored.
+function statusWord(t, s) {
+  const map = {
+    completed: t("client.sCompleted"), approved: t("client.stApproved"), rejected: t("client.sRejected"), pending: t("client.pending"),
+    held_24h: t("client.sHeld"), failed: t("client.sFailed"), reversed: t("client.sReversed"), success: t("client.sSuccessful"),
+    successful: t("client.sSuccessful"), processing: t("client.sProcessing"), cancelled: t("client.sCancelled"),
+  };
+  return map[s] || s;
 }
 function fmtLocaleDate(lang) {
   const locale = lang === "ha" ? "ha" : lang === "yo" ? "yo" : lang === "ig" ? "ig" : "en-NG";
@@ -116,9 +174,9 @@ async function uploadAjoAvatar(file, clientId) {
   const { data, error } = await supabase.functions.invoke("ajo-portal", {
     body: { action: "upload-avatar", client_id: clientId, ext, base64, mime: file.type },
   });
-  if (error) throw new Error(`Photo upload failed: ${error.message}`);
-  if (data?.error) throw new Error(`Photo upload failed: ${data.error}`);
-  if (!data?.url) throw new Error("Photo upload failed: no URL returned");
+  if (error) throw new Error(tNow("client.photoUploadFailed", { msg: error.message }));
+  if (data?.error) throw new Error(tNow("client.photoUploadFailed", { msg: data.error }));
+  if (!data?.url) throw new Error(tNow("client.photoUploadNoUrl"));
   return data.url;
 }
 
@@ -133,12 +191,12 @@ function Svg({ d, size = 18, color = "currentColor", sw = 2 }) {
 }
 
 const AUTO_LOCK_OPTIONS = [
-  { label: "30 seconds",  secs: 30   },
-  { label: "1 minute",    secs: 60   },
-  { label: "5 minutes",   secs: 300  },
-  { label: "15 minutes",  secs: 900  },
-  { label: "30 minutes",  secs: 1800 },
-  { label: "Never",       secs: 0    },
+  { labelKey: "client.lock30s",   secs: 30   },
+  { labelKey: "client.lock1m",    secs: 60   },
+  { labelKey: "client.lock5m",    secs: 300  },
+  { labelKey: "client.lock15m",   secs: 900  },
+  { labelKey: "client.lock30m",   secs: 1800 },
+  { labelKey: "client.lockNever", secs: 0    },
 ];
 
 const P = {
@@ -293,6 +351,7 @@ function SkeletonBills() {
 
 // ── PIN setup modal ────────────────────────────────────────────────────────
 function PinSetupModal({ onDone, onClose }) {
+  const t = useT();
   const [step,  setStep]  = useState(1);
   const [pin1,  setPin1]  = useState("");
   const [pin2,  setPin2]  = useState("");
@@ -311,7 +370,7 @@ function PinSetupModal({ onDone, onClose }) {
         setTimeout(() => setStep(2), 250);
       } else {
         if (pin1 === next) { onDone(pin1); }
-        else { setError("PINs don't match. Try again."); setPin2(""); setPin1(""); setTimeout(() => setStep(1), 800); }
+        else { setError(t("client.pinsNoMatch")); setPin2(""); setPin1(""); setTimeout(() => setStep(1), 800); }
       }
     }
   };
@@ -319,10 +378,10 @@ function PinSetupModal({ onDone, onClose }) {
   const handleDel = () => { setActive(v => v.slice(0, -1)); setError(""); };
 
   return (
-    <Modal title={step === 1 ? "Set App PIN" : "Confirm PIN"} onClose={onClose}>
+    <Modal title={step === 1 ? t("client.setAppPin") : t("client.confirmPin")} onClose={onClose}>
       <div className="flex flex-col items-center gap-6 py-2">
         <p className="text-sm text-slate-500 dark:text-slate-400 text-center">
-          {step === 1 ? "Choose a 6-digit PIN to protect your app" : "Enter your PIN again to confirm"}
+          {step === 1 ? t("client.choosePin6") : t("client.enterPinAgain")}
         </p>
         <div className="flex gap-4">
           {[0, 1, 2, 3, 4, 5].map(i => (
@@ -351,7 +410,7 @@ function PinSetupModal({ onDone, onClose }) {
           </button>
         </div>
         <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center px-4">
-          Your PIN is stored securely on this device only
+          {t("client.pinStoredDevice")}
         </p>
       </div>
     </Modal>
@@ -364,10 +423,11 @@ function PinSetupModal({ onDone, onClose }) {
 const PIN_PAD_CSS = `@keyframes ajoPinShake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-10px)}40%,80%{transform:translateX(10px)}}.ajo-pin-shake{animation:ajoPinShake 0.38s ease}`;
 
 function AjoPinPad({ title, subtitle, length = 6, minLength, onComplete, onCancel, error, shaking, loading, hint }) {
+  const t = useT();
   const [digits, setDigits] = useState("");
 
   useEffect(() => {
-    if (shaking) { const t = setTimeout(() => setDigits(""), 420); return () => clearTimeout(t); }
+    if (shaking) { const tm = setTimeout(() => setDigits(""), 420); return () => clearTimeout(tm); }
   }, [shaking]);
 
   const addDigit = useCallback((d) => {
@@ -421,7 +481,7 @@ function AjoPinPad({ title, subtitle, length = 6, minLength, onComplete, onCance
         {showContinue && !loading && (
           <button onClick={manualSubmit}
             className="px-8 py-2.5 bg-brand-500 text-white rounded-xl font-bold text-sm active:scale-95 transition -mt-1">
-            Continue
+            {t("common.continue")}
           </button>
         )}
       </div>
@@ -459,38 +519,15 @@ function AjoPinPad({ title, subtitle, length = 6, minLength, onComplete, onCance
 }
 
 // ── FAQ ────────────────────────────────────────────────────────────────────
-const FAQS = [
-  { q: "How do I pay my contribution?",
-    a: "On the Home tab, tap 'Make a Deposit' (or 'Pay Contribution'), choose your savings card or group, and pay from your KudiAI Wallet with your PIN. Fund your wallet first by bank transfer to your wallet account number." },
-  { q: "How do I check my savings balance?",
-    a: "Your balance is shown on the Home tab in the hero card. Tap the eye icon to hide or reveal it." },
-  { q: "How do I request a withdrawal?",
-    a: "On the Home tab, tap 'Withdraw'. Enter the amount — you'll see a fee breakdown before confirming. Your savings agent reviews and approves all requests." },
-  { q: "How do I view my transaction history?",
-    a: "Tap the History tab. Filter by Deposits, Withdrawals, or Fees. Each row opens a full receipt with a dispute option." },
-  { q: "What is the contribution calendar?",
-    a: "The green squares on the Home tab show your activity for the last 90 days — each square is a day you contributed." },
-  { q: "What fees apply?",
-    a: "A registration fee may apply when you make your first deposit. Subsequent withdrawals may carry a percentage fee. The full breakdown is shown in My Fees." },
-  { q: "What is Esusu rotation?",
-    a: "If your group uses Esusu mode, each member takes turns collecting the full pot. Check the Rotation section on your Home tab to see the current turn and schedule." },
-  { q: "How do I set a savings goal?",
-    a: "On the Home tab, tap 'Set a Savings Goal'. Enter your target amount. A progress ring shows how close you are and estimates your completion date." },
-  { q: "What is the PIN lock?",
-    a: "The PIN lock protects your portal when you step away. Go to Me → Security to set or change your PIN. Biometric (fingerprint/face) is supported on compatible devices." },
-  { q: "How do I update my profile?",
-    a: "Go to the Me tab and tap the pen icon on your profile card, or go to Me → Edit Profile to change your name, phone, and photo." },
-  { q: "How do I change my password?",
-    a: "Go to the Me tab and tap 'Change Password' at the bottom." },
-  { q: "How do I dispute a transaction?",
-    a: "Open the History tab, tap any completed transaction row to view the receipt, then tap 'Dispute' to submit a report." },
-];
+// Question/answer text lives in src/i18n/client.js (client.faqQ1…client.faqA12) so it follows the chosen language.
+const FAQS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(n => ({ q: `client.faqQ${n}`, a: `client.faqA${n}` }));
 
 function FAQ({ faqSearch = "", aiAnswer = "", aiLoading = false, aiError = "" }) {
+  const t = useT();
   const [open, setOpen] = useState(null);
   const q = faqSearch.trim().toLowerCase();
   const filtered = q
-    ? FAQS.filter(f => (f.q + " " + f.a).toLowerCase().includes(q))
+    ? FAQS.filter(f => (t(f.q) + " " + t(f.a)).toLowerCase().includes(q))
     : FAQS;
   return (
     <div className="space-y-2">
@@ -499,8 +536,8 @@ function FAQ({ faqSearch = "", aiAnswer = "", aiLoading = false, aiError = "" })
           <div className="w-10 h-10 rounded-2xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
             <Svg d={P.faq} size={20} color="#94a3b8" />
           </div>
-          <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">No matches found</p>
-          <p className="text-xs text-slate-400">Tap <span className="font-bold text-brand-500">Ask AI</span> to get a personalised answer.</p>
+          <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">{t("client.noMatches")}</p>
+          <p className="text-xs text-slate-400">{t("client.faqTapPre")} <span className="font-bold text-brand-500">{t("client.askAi")}</span> {t("client.faqTapPost")}</p>
         </div>
       )}
       {filtered.map((f, i) => {
@@ -514,12 +551,12 @@ function FAQ({ faqSearch = "", aiAnswer = "", aiLoading = false, aiError = "" })
                   {String(idx + 1).padStart(2, "0")}
                 </span>
               </div>
-              <span className="text-sm font-semibold text-slate-700 dark:text-slate-200 flex-1 leading-snug">{f.q}</span>
+              <span className="text-sm font-semibold text-slate-700 dark:text-slate-200 flex-1 leading-snug">{t(f.q)}</span>
               <Svg d={open === idx ? "M18 15l-6-6-6 6" : "M6 9l6 6 6-6"} size={16} color="#94a3b8" />
             </button>
             {open === idx && (
               <div className="px-4 pb-4 pl-[52px]">
-                <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">{f.a}</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">{t(f.a)}</p>
               </div>
             )}
           </div>
@@ -533,7 +570,7 @@ function FAQ({ faqSearch = "", aiAnswer = "", aiLoading = false, aiError = "" })
                 <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
               </svg>
             </div>
-            <p className="text-[11px] font-bold text-brand-600 dark:text-brand-400 uppercase tracking-wider">AI Answer</p>
+            <p className="text-[11px] font-bold text-brand-600 dark:text-brand-400 uppercase tracking-wider">{t("client.aiAnswer")}</p>
           </div>
           {aiLoading && (
             <div className="flex gap-1.5 py-1">
@@ -565,7 +602,7 @@ function SupportInline({ client, session }) {
 
   const submit = async (e) => {
     e.preventDefault();
-    if (!form.subject.trim() || !form.user_email.trim()) { setErr("Subject and email are required."); return; }
+    if (!form.subject.trim() || !form.user_email.trim()) { setErr(t("client.subjectEmailRequired")); return; }
     setSub(true); setErr("");
     try {
       const res = await fetch(`${ADMIN_URL}/api/public/support`, {
@@ -574,9 +611,9 @@ function SupportInline({ client, session }) {
         body: JSON.stringify({ ...form, source: "ajo_client", submitter_type: "ajo_client" }),
       });
       const d = await res.json();
-      if (!res.ok) { setErr(d.error || "Failed to submit ticket"); return; }
+      if (!res.ok) { setErr(d.error || t("client.ticketFailed")); return; }
       setDone(d.ticket_no);
-    } catch { setErr("Network error. Please try again."); }
+    } catch { setErr(t("client.networkError")); }
     finally { setSub(false); }
   };
 
@@ -589,13 +626,13 @@ function SupportInline({ client, session }) {
         <div>
           <p className="text-base font-extrabold text-slate-800 dark:text-white">{t("coopMem.ticketSuccess")}</p>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Your ticket number is <span className="font-bold text-brand-500">#{done}</span>
+            {t("client.ticketNumberIs")} <span className="font-bold text-brand-500">#{done}</span>
           </p>
-          <p className="text-xs text-slate-400 mt-2">Our team will respond to {form.user_email} shortly.</p>
+          <p className="text-xs text-slate-400 mt-2">{t("client.teamWillRespond", { email: form.user_email })}</p>
         </div>
         <button onClick={() => setDone(null)}
           className="px-6 py-3 bg-brand-500 text-white rounded-2xl font-bold text-sm">
-          Submit another
+          {t("client.submitAnother")}
         </button>
       </div>
     );
@@ -605,11 +642,11 @@ function SupportInline({ client, session }) {
     <form onSubmit={submit} className="space-y-4">
       <div className="bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800/40 rounded-2xl px-4 py-3">
         <p className="text-[11px] text-brand-600 dark:text-brand-300 font-medium leading-relaxed">
-          Describe your issue and our support team will respond by email within 24 hours.
+          {t("client.supportIntro")}
         </p>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        {[["Your Name", "user_name", "text", "Your name"], ["Email *", "user_email", "email", "your@email.com"]].map(([l, k, tp, ph]) => (
+        {[[t("client.yourNameLabel"), "user_name", "text", t("client.yourNamePh")], [t("client.emailReq"), "user_email", "email", "your@email.com"]].map(([l, k, tp, ph]) => (
           <div key={k}>
             <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">{l}</p>
             <input type={tp} placeholder={ph} value={form[k]}
@@ -619,7 +656,7 @@ function SupportInline({ client, session }) {
         ))}
       </div>
       <div>
-        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Category</p>
+        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">{t("client.category")}</p>
         <select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
           className="w-full h-11 px-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/30">
           {TICKET_TYPES.map(tt => <option key={tt.value} value={tt.value}>{tt.label}</option>)}
@@ -627,13 +664,13 @@ function SupportInline({ client, session }) {
       </div>
       <div>
         <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">{t("coopMem.subjectField")}</p>
-        <input placeholder="Brief summary of your issue" value={form.subject}
+        <input placeholder={t("client.subjectPh")} value={form.subject}
           onChange={e => setForm(f => ({ ...f, subject: e.target.value }))} required
           className="w-full h-11 px-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/30" />
       </div>
       <div>
-        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Description</p>
-        <textarea placeholder="Describe the problem in detail…" value={form.description} rows={4}
+        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">{t("client.description")}</p>
+        <textarea placeholder={t("client.descriptionPh")} value={form.description} rows={4}
           onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
           className="w-full px-3 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/30 resize-none" />
       </div>
@@ -646,7 +683,7 @@ function SupportInline({ client, session }) {
       <button type="submit" disabled={submitting}
         className="w-full h-12 bg-brand-500 disabled:opacity-50 text-white rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition active:scale-[0.99]">
         {submitting && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-        {submitting ? "Submitting…" : "Submit Ticket"}
+        {submitting ? t("client.submitting") : t("coopMem.ticketSubmit")}
       </button>
     </form>
   );
@@ -665,6 +702,7 @@ const SHAKE_CSS = `@keyframes _shake{0%,100%{transform:translateX(0)}20%,60%{tra
 const PAD_DIGITS = [1,2,3,4,5,6,7,8,9];
 
 function AjoTxnPinModal({ hasPinSet, title, amount, description, onApprove, onCancel, onNeedPinSetup }) {
+  const t = useT();
   const [pin, setPin] = useState("");
   const [err, setErr] = useState("");
   const [shake, setShake] = useState(false);
@@ -683,11 +721,11 @@ function AjoTxnPinModal({ hasPinSet, title, amount, description, onApprove, onCa
     } catch (e) {
       triggerShake();
       setPin("");
-      setErr(e?.message || "Something went wrong. Try again.");
+      setErr(e?.message || t("client.somethingWrongTry"));
     } finally {
       setBusy(false);
     }
-  }, [onApprove, triggerShake]);
+  }, [onApprove, triggerShake, t]);
 
   const handleDigit = useCallback((d) => {
     if (busy || pin.length >= 4) return;
@@ -719,16 +757,16 @@ function AjoTxnPinModal({ hasPinSet, title, amount, description, onApprove, onCa
                 <rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0110 0v4" />
               </svg>
             </div>
-            <p className="font-bold text-[16px] text-slate-900 dark:text-slate-100">Set up your transaction PIN</p>
+            <p className="font-bold text-[16px] text-slate-900 dark:text-slate-100">{t("client.setupTxnPinTitle")}</p>
             <p className="text-[13px] text-slate-500 dark:text-slate-400">
-              For your security, a transaction PIN is required before you can withdraw, deposit, or move money. It only takes a minute.
+              {t("client.setupTxnPinBody")}
             </p>
             <button
               onClick={() => { onCancel?.(); onNeedPinSetup?.(); }}
               className="w-full mt-2 py-3 bg-brand-500 hover:bg-brand-600 text-white rounded-2xl font-bold text-sm transition active:scale-[0.99]">
-              Set Up PIN
+              {t("client.setUpPin")}
             </button>
-            <button onClick={onCancel} className="text-sm text-slate-400 py-2">Not now</button>
+            <button onClick={onCancel} className="text-sm text-slate-400 py-2">{t("client.notNow")}</button>
           </div>
         </div>
       </>
@@ -759,7 +797,7 @@ function AjoTxnPinModal({ hasPinSet, title, amount, description, onApprove, onCa
           </div>
         )}
         <div className="flex flex-col items-center gap-4 px-6">
-          <p className="text-[13px] text-slate-500 text-center">Enter your transaction PIN to confirm</p>
+          <p className="text-[13px] text-slate-500 text-center">{t("client.enterTxnPinConfirm")}</p>
           {busy
             ? <div className="w-6 h-6 border-2 border-slate-200 border-t-brand-500 rounded-full animate-spin" />
             : <div className={`flex justify-center gap-4 ${shake ? "ajo-pin-shake" : ""}`}>
@@ -790,7 +828,7 @@ function AjoTxnPinModal({ hasPinSet, title, amount, description, onApprove, onCa
               </svg>
             </button>
           </div>
-          <button onClick={onCancel} className="text-sm text-slate-400 py-2 px-6 mb-1">Cancel</button>
+          <button onClick={onCancel} className="text-sm text-slate-400 py-2 px-6 mb-1">{t("common.cancel")}</button>
         </div>
       </div>
     </>
@@ -951,22 +989,22 @@ function MoneyCycleCard({ cycle, saved, net, availableNow, withdrawn, locked, lo
     }`}>
       <button type="button" onClick={onSelect} className="w-full text-left px-3.5 py-3">
         <div className="flex items-start justify-between gap-2 mb-1">
-          <p className="text-sm font-extrabold text-slate-700 dark:text-slate-200 leading-tight">{cycle.label || "Savings"}</p>
+          <p className="text-sm font-extrabold text-slate-700 dark:text-slate-200 leading-tight">{cycle.label || t("client.savings")}</p>
           <span className={`flex-shrink-0 text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wide mt-0.5 ${
             showActive
               ? "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400"
               : "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400"
           }`}>
-            {showActive ? "Active" : "Complete"}
+            {showActive ? t("client.active") : t("client.complete")}
           </span>
         </div>
         <div className="flex items-center justify-between gap-2 flex-wrap">
           {saved > 0 && (
-            <span className="text-xs text-slate-500 dark:text-slate-400">Saved <span className="font-bold text-slate-700 dark:text-slate-200 tabular-nums">{fmt(saved)}</span></span>
+            <span className="text-xs text-slate-500 dark:text-slate-400">{t("client.saved")} <span className="font-bold text-slate-700 dark:text-slate-200 tabular-nums">{fmt(saved)}</span></span>
           )}
           {mode === "withdraw" && (locked
-            ? <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium text-right max-w-[55%]">{lockReason || "Available when complete"}</span>
-            : <span className="text-xs font-bold text-green-600 dark:text-green-400 tabular-nums">{fmt(availableNow ?? net)} available</span>
+            ? <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium text-right max-w-[55%]">{lockReason || t("client.availableWhenComplete")}</span>
+            : <span className="text-xs font-bold text-green-600 dark:text-green-400 tabular-nums">{t("client.amtAvailable", { amt: fmt(availableNow ?? net) })}</span>
           )}
           {(mode === "pay" || mode === "deposit") && (
             <span className="text-[10px] font-bold text-brand-600 dark:text-brand-400">
@@ -975,7 +1013,7 @@ function MoneyCycleCard({ cycle, saved, net, availableNow, withdrawn, locked, lo
           )}
         </div>
         {withdrawn > 0 && (
-          <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">Withdrawn <span className="font-semibold tabular-nums">{fmt(withdrawn)}</span></p>
+          <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">{t("client.withdrawn")} <span className="font-semibold tabular-nums">{fmt(withdrawn)}</span></p>
         )}
       </button>
       {selected && children && (
@@ -1011,10 +1049,10 @@ function MoneyGroupCard({ group, saved, availableNow, withdrawn, selected, onSel
         </div>
         <div className="flex items-center justify-between gap-2">
           {saved > 0 && (
-            <span className="text-xs text-slate-500 dark:text-slate-400">My savings <span className="font-bold text-slate-700 dark:text-slate-200 tabular-nums">{fmt(saved)}</span></span>
+            <span className="text-xs text-slate-500 dark:text-slate-400">{t("client.mySavings")} <span className="font-bold text-slate-700 dark:text-slate-200 tabular-nums">{fmt(saved)}</span></span>
           )}
           {mode === "withdraw" && (isReleased
-            ? <span className="text-xs font-bold text-green-600 dark:text-green-400 tabular-nums">{fmt(availableNow ?? saved)} available</span>
+            ? <span className="text-xs font-bold text-green-600 dark:text-green-400 tabular-nums">{t("client.amtAvailable", { amt: fmt(availableNow ?? saved) })}</span>
             : <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">{t("ajoPt.lockedUntilClose")}</span>
           )}
           {(mode === "pay" || mode === "deposit") && (
@@ -1022,7 +1060,7 @@ function MoneyGroupCard({ group, saved, availableNow, withdrawn, selected, onSel
           )}
         </div>
         {withdrawn > 0 && (
-          <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">Withdrawn <span className="font-semibold tabular-nums">{fmt(withdrawn)}</span></p>
+          <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">{t("client.withdrawn")} <span className="font-semibold tabular-nums">{fmt(withdrawn)}</span></p>
         )}
       </button>
       {selected && children && (
@@ -1064,20 +1102,20 @@ function MoneyEsusuCard({ rd, client, myContribution = 0, availableNow = 0, sele
         </div>
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <span className="text-xs text-slate-500 dark:text-slate-400">
-            Group pot (all members) <span className="font-bold text-slate-700 dark:text-slate-200 tabular-nums">{fmt(rd.pot_size || 0)}</span>
+            {t("client.groupPotAll")} <span className="font-bold text-slate-700 dark:text-slate-200 tabular-nums">{fmt(rd.pot_size || 0)}</span>
           </span>
           <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${hasPaidContrib ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400" : "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400"}`}>
-            {hasPaidContrib ? t("ajoPt.periodPaid") : "Pending"}
+            {hasPaidContrib ? t("ajoPt.periodPaid") : t("client.pending")}
           </span>
         </div>
         {mode === "withdraw" && hasAvailable && (
-          <span className="text-xs font-bold text-green-600 dark:text-green-400 tabular-nums block mt-1">{fmt(availableNow)} available</span>
+          <span className="text-xs font-bold text-green-600 dark:text-green-400 tabular-nums block mt-1">{t("client.amtAvailable", { amt: fmt(availableNow) })}</span>
         )}
         {mode === "withdraw" && !hasAvailable && myContribution > 0 && (
           <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">
             {myTurnPaid
-              ? `${fmt(myContribution)} still committed to this round — your payout is already paid, this funds other members' turns`
-              : `${fmt(myContribution)} of your contributions locked in this circle — released on your payout turn`}
+              ? t("client.esusuCommittedPaid", { amt: fmt(myContribution) })
+              : t("client.esusuLockedTurn", { amt: fmt(myContribution) })}
           </p>
         )}
       </button>
@@ -1163,7 +1201,7 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], contribu
   // ── Pay from wallet — the only route now (no Paystack for clients) ────────
   const handlePayWallet = async (pin) => {
     const amt = parseFloat(customAmt);
-    if (!amt || amt <= 0) { setMessage("Please enter a valid amount."); throw new Error("Please enter a valid amount."); }
+    if (!amt || amt <= 0) { setMessage(t("client.enterValidAmount")); throw new Error(t("client.enterValidAmount")); }
     setStatus("loading"); setMessage("");
     setPaidAmt(amt);
     try {
@@ -1174,7 +1212,7 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], contribu
         pin,
       });
       setStatus("done");
-      setMessage("Paid from your KudiAI Wallet.");
+      setMessage(t("client.paidFromWallet"));
       onSuccess?.(res?.contribution_id, res?.client);
     } catch (e) {
       setStatus("error");
@@ -1199,7 +1237,7 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], contribu
       {client?.contribution_amount > 0 && Number(customAmt) !== client.contribution_amount && (
         <button onClick={() => setCustomAmt(String(client.contribution_amount))}
           className="text-[10px] text-brand-500 dark:text-brand-400 underline underline-offset-2">
-          Use {fmt(client.contribution_amount)} instead
+          {t("client.useInstead", { amt: fmt(client.contribution_amount) })}
         </button>
       )}
       {contribCtx === "personal_savings" && (() => {
@@ -1211,7 +1249,7 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], contribu
         return (
           <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl px-3 py-2">
             <p className="text-[11px] font-bold text-blue-700 dark:text-blue-300">
-              Your first payment is ₦{minReq.toLocaleString("en-NG")} — includes a one-time ₦{regCharge.toLocaleString("en-NG")} registration. After today, every payment is ₦{expected.toLocaleString("en-NG")}.
+              {t("client.firstPaymentNote", { min: minReq.toLocaleString("en-NG"), reg: regCharge.toLocaleString("en-NG"), exp: expected.toLocaleString("en-NG") })}
             </p>
           </div>
         );
@@ -1224,25 +1262,25 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], contribu
       )}
       {!wallet?.hasAccount ? (
         <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-3 py-2.5">
-          <p className="text-[12px] font-bold text-amber-700 dark:text-amber-300">Your KudiAI Wallet isn't ready yet</p>
-          <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">Contributions are paid from your wallet. Saving needs no ID number — opening a wallet needs your BVN or NIN, that's a CBN rule, not ours.</p>
+          <p className="text-[12px] font-bold text-amber-700 dark:text-amber-300">{t("client.walletNotReady")}</p>
+          <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">{t("client.walletNotReadyBody")}</p>
           <button onClick={() => { onClose(); onActivateWallet?.(); }}
             className="w-full mt-2.5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold text-[12.5px] transition active:scale-[0.99]">
-            Activate wallet
+            {t("client.activateWallet")}
           </button>
         </div>
       ) : (parseFloat(customAmt) || 0) * 100 > wallet.balanceKobo ? (
         <button onClick={() => { onClose(); onTopUpWallet?.(); }}
           disabled={status === "loading"}
           className="w-full py-3.5 bg-brand-500 hover:bg-brand-600 disabled:opacity-60 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] shadow-md">
-          Fund Wallet · {fmt(wallet.balanceNaira)} available
+          {t("client.fundWalletAvail", { amt: fmt(wallet.balanceNaira) })}
         </button>
       ) : (
         <button
           onClick={() => {
             const amt = parseFloat(customAmt);
-            if (!amt || amt <= 0) { setMessage("Please enter a valid amount."); return; }
-            if (amt * 100 > wallet.balanceKobo) { setMessage("Insufficient wallet balance."); return; }
+            if (!amt || amt <= 0) { setMessage(t("client.enterValidAmount")); return; }
+            if (amt * 100 > wallet.balanceKobo) { setMessage(t("client.insufficientWallet")); return; }
             setTxnPin({
               title: t("coopMem.confirmPaymentTitle"),
               amount: Math.round(amt * 100),
@@ -1255,8 +1293,8 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], contribu
           disabled={status === "loading"}
           className="w-full py-3.5 bg-brand-500 hover:bg-brand-600 disabled:opacity-60 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2 shadow-md">
           {status === "loading"
-            ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Paying…</>
-            : <>Pay {fmt(parseFloat(customAmt) || 0)} from Wallet</>}
+            ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> {t("client.paying")}</>
+            : <>{t("client.payFromWallet", { amt: fmt(parseFloat(customAmt) || 0) })}</>}
         </button>
       )}
     </div>
@@ -1287,7 +1325,7 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], contribu
             <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
               <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8" /><polyline points="16 6 12 2 8 6" /><line x1="12" y1="2" x2="12" y2="15" />
             </svg>
-            Share Receipt
+            {t("client.shareReceipt")}
           </button>
           <button onClick={onClose} className="w-full py-3.5 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-2xl font-bold text-sm transition active:scale-[0.99]">{t("common.close")}</button>
         </div>
@@ -1337,13 +1375,13 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], contribu
               <div className="py-4">
                 <p className="text-sm text-slate-400 dark:text-slate-500 text-center mb-4">{t("ajoPt.noActivePlans")}</p>
                 <div className="bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800/40 rounded-2xl p-4 text-center">
-                  <p className="text-[13px] font-extrabold text-slate-800 dark:text-white mb-1">No savings card yet</p>
+                  <p className="text-[13px] font-extrabold text-slate-800 dark:text-white mb-1">{t("client.noSavingsCardYet")}</p>
                   <p className="text-[12px] text-slate-500 dark:text-slate-400 mb-3">
-                    Open one to start saving toward a goal.
+                    {t("client.openOneToStart")}
                   </p>
                   <button onClick={() => { onClose(); onOpenCycle?.(); }}
                     className="px-5 py-2.5 bg-brand-500 hover:bg-brand-600 text-white rounded-xl font-bold text-[12px] transition active:scale-[0.98]">
-                    Open a savings card
+                    {t("client.openSavingsCard")}
                   </button>
                 </div>
               </div>
@@ -1429,12 +1467,12 @@ function ActionBtn({ label, icon, bg, onClick }) {
 
 // ── Bill service tiles for Quick Services grid ─────────────────────────────
 const QUICK_SERVICES = [
-  { id: "airtime",     label: "Airtime",     g1: "#ef4444", g2: "#dc2626", d: "M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81 19.79 19.79 0 01.25 2.18 2 2 0 012.22 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" },
-  { id: "data",        label: "Data Bundle", g1: "#3b82f6", g2: "#1d4ed8", d: "M1 6l11-4 11 4|M1 12l11-4 11 4|M1 18l11-4 11 4" },
-  { id: "electricity", label: "Electricity", g1: "#f59e0b", g2: "#d97706", d: "M13 2L3 14h9l-1 8 10-12h-9l1-8z" },
-  { id: "cable",       label: "Cable TV",    g1: "#8b5cf6", g2: "#6d28d9", d: "M2 7a2 2 0 012-2h16a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V7z|M12 19v3|M8 22h8" },
-  { id: "betting",     label: "Betting",     g1: "#10b981", g2: "#059669", d: "M12 2a10 10 0 100 20A10 10 0 0012 2z|M12 8v4l3 3" },
-  { id: "more",        label: "More Bills",  g1: "#6366f1", g2: "#4f46e5", d: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2|M9 5a2 2 0 002 2h2a2 2 0 002-2|M9 5a2 2 0 012-2h2a2 2 0 012 2|M9 13h6|M9 17h4" },
+  { id: "airtime",     labelKey: "client.svcAirtime",     g1: "#ef4444", g2: "#dc2626", d: "M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81 19.79 19.79 0 01.25 2.18 2 2 0 012.22 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" },
+  { id: "data",        labelKey: "client.svcData",        g1: "#3b82f6", g2: "#1d4ed8", d: "M1 6l11-4 11 4|M1 12l11-4 11 4|M1 18l11-4 11 4" },
+  { id: "electricity", labelKey: "client.svcElectricity", g1: "#f59e0b", g2: "#d97706", d: "M13 2L3 14h9l-1 8 10-12h-9l1-8z" },
+  { id: "cable",       labelKey: "client.svcCable",       g1: "#8b5cf6", g2: "#6d28d9", d: "M2 7a2 2 0 012-2h16a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V7z|M12 19v3|M8 22h8" },
+  { id: "betting",     labelKey: "client.svcBetting",     g1: "#10b981", g2: "#059669", d: "M12 2a10 10 0 100 20A10 10 0 0012 2z|M12 8v4l3 3" },
+  { id: "more",        labelKey: "client.svcMore",        g1: "#6366f1", g2: "#4f46e5", d: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2|M9 5a2 2 0 002 2h2a2 2 0 002-2|M9 5a2 2 0 012-2h2a2 2 0 012 2|M9 13h6|M9 17h4" },
 ];
 
 // ── Contribution calendar ─────────────────────────────────────────────────
@@ -1521,7 +1559,7 @@ function AjoMemberFirstLogin({ ajoClient }) {
         </div>
         <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white">{t("setup.setPassword")}</h1>
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-          Hi {ajoClient?.full_name?.split(" ")[0] || "there"}! Choose a password you'll use every time you log in.
+          {t("client.firstLoginHi", { name: ajoClient?.full_name?.split(" ")[0] || t("client.there") })}
         </p>
       </div>
       <div className="flex-1 px-5 pt-8 pb-10 space-y-5">
@@ -1559,7 +1597,7 @@ function AjoMemberFirstLogin({ ajoClient }) {
           {saving ? t("setup.saving") : t("setup.setBtn")}
         </button>
         <button onClick={() => import("../utils/logout").then(m => m.performLogout())} className="w-full text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition text-center">
-          Sign out
+          {t("client.signOut")}
         </button>
       </div>
     </div>
@@ -1599,7 +1637,7 @@ function ChangePasswordModal({ onClose }) {
         <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-4">{t("setup.changePassword")}</h3>
         {success ? (
           <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl px-4 py-3 text-green-700 dark:text-green-400 font-semibold text-sm text-center">
-            Password updated successfully!
+            {t("client.passwordUpdated")}
           </div>
         ) : (
           <>
@@ -1615,7 +1653,7 @@ function ChangePasswordModal({ onClose }) {
             </div>
             <button onClick={handle} disabled={saving || pwd.length < 8 || pwd !== confirm}
               className="w-full py-3.5 bg-brand-500 hover:bg-brand-600 text-white rounded-xl font-bold text-sm transition disabled:opacity-50">
-              {saving ? "Updating…" : "Update Password"}
+              {saving ? t("client.updating") : t("client.updatePassword")}
             </button>
           </>
         )}
@@ -1773,8 +1811,8 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
   const handleSubmit = async (pin) => {
     if (!amtNum || amtNum <= 0)   { setError(t("error.somethingWrong")); throw new Error(t("error.somethingWrong")); }
     if (amtNum > activeCeiling) {
-      const pendMsg = activePending > 0 ? ` (${fmt(activePending)} already pending)` : "";
-      const msg = `Only ${fmt(activeCeiling)} is available from this ${activeTab === "esusu" ? "circle" : activeTab === "group" ? "group" : "card"}${pendMsg}`;
+      const pendMsg = activePending > 0 ? " " + t("client.alreadyPendingParen", { amt: fmt(activePending) }) : "";
+      const msg = t(activeTab === "esusu" ? "client.onlyAvailCircle" : activeTab === "group" ? "client.onlyAvailGroup" : "client.onlyAvailCard", { amt: fmt(activeCeiling), pending: pendMsg });
       setError(msg);
       throw new Error(msg);
     }
@@ -1820,15 +1858,15 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
           />
         </div>
         {(activeTab === "group" || activeTab === "esusu") && entityStatsLoading && (
-          <p className="text-[11px] text-slate-400 mt-1">Checking what's available…</p>
+          <p className="text-[11px] text-slate-400 mt-1">{t("client.checkingAvailable")}</p>
         )}
         {(activeTab === "group" || activeTab === "esusu") && !entityStatsLoading && entityStats?.locked > 0 && (
           <p className="text-[11px] text-amber-500 mt-1">
-            {fmt(entityStats.locked)} already committed to {activeTab === "esusu" ? "this circle's current round" : "this group's active round"} — not available to withdraw
+            {t(activeTab === "esusu" ? "client.committedCircleRound" : "client.committedGroupRound", { amt: fmt(entityStats.locked) })}
           </p>
         )}
         {activePending > 0 && (
-          <p className="text-[11px] text-amber-500 mt-1">{fmt(activePending)} pending review — {fmt(activeCeiling)} available now</p>
+          <p className="text-[11px] text-amber-500 mt-1">{t("client.pendingReviewAvailNow", { pending: fmt(activePending), avail: fmt(activeCeiling) })}</p>
         )}
         {!((activeTab === "group" || activeTab === "esusu") && entityStatsLoading) && amtNum > activeCeiling && (
           <p className="text-[11px] text-red-500 mt-1">{t("ajoPt.exceeded")}</p>
@@ -1837,12 +1875,12 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
           <div className="mt-2 pt-2 border-t border-slate-200 dark:border-slate-600">
             {feeAmt > 0 ? (
               <div className="flex items-baseline justify-between">
-                <span className="text-xs text-slate-500 dark:text-slate-400">You&apos;ll receive · {fmt(feeAmt)} handling fee</span>
+                <span className="text-xs text-slate-500 dark:text-slate-400">{t("client.youReceiveFee", { fee: fmt(feeAmt) })}</span>
                 <span className="text-sm font-extrabold text-green-600 dark:text-green-400 tabular-nums">{fmt(Math.max(0, netAmt))}</span>
               </div>
             ) : (
               <div className="flex items-baseline justify-between">
-                <span className="text-xs text-slate-500 dark:text-slate-400">You&apos;ll receive · no fee</span>
+                <span className="text-xs text-slate-500 dark:text-slate-400">{t("client.youReceiveNoFee")}</span>
                 <span className="text-sm font-extrabold text-green-600 dark:text-green-400 tabular-nums">{fmt(amtNum)}</span>
               </div>
             )}
@@ -1855,13 +1893,13 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
           <path d="M20 12V8H6a2 2 0 01-2-2c0-1.1.9-2 2-2h12v4M4 6v12a2 2 0 002 2h14v-4M18 12a2 2 0 00-2 2c0 1.1.9 2 2 2h4v-4h-4z" />
         </svg>
         <p className="text-[12px] text-slate-600 dark:text-slate-300 leading-relaxed">
-          Paid straight to your <strong>KudiAI Wallet</strong> — no bank account to set up. Once approved, it lands in your wallet straight away.
+          {t("client.paidStraightPre")} <strong>KudiAI Wallet</strong> {t("client.paidStraightPost")}
         </p>
       </div>
 
       {!walletActive && (
         <p className="text-[11px] text-amber-600 dark:text-amber-400 mb-3 leading-relaxed">
-          Your KudiAI wallet isn't active yet — activate it first so this can actually be paid out once approved.
+          {t("client.walletNotActiveWithdraw")}
         </p>
       )}
 
@@ -1871,16 +1909,15 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
         onClick={() => {
           if (!amtNum || amtNum <= 0) { setError(t("error.somethingWrong")); return; }
           if (amtNum > activeCeiling) {
-            const pendMsg = activePending > 0 ? ` — ${fmt(activePending)} already pending review` : "";
-            const source  = activeTab === "esusu" ? "this circle" : activeTab === "group" ? "this group" : "this card";
-            setError(`Only ${fmt(activeCeiling)} available from ${source}${pendMsg}`);
+            const pendMsg = activePending > 0 ? " " + t("client.alreadyPendingDash", { amt: fmt(activePending) }) : "";
+            setError(t(activeTab === "esusu" ? "client.onlyAvailCircle2" : activeTab === "group" ? "client.onlyAvailGroup2" : "client.onlyAvailCard2", { amt: fmt(activeCeiling), pending: pendMsg }));
             return;
           }
           if (netAmt <= 0) { setError(t("error.somethingWrong")); return; }
           setTxnPin({
-            title: "Confirm Withdrawal",
+            title: t("client.confirmWithdrawal"),
             amount: Math.round(netAmt * 100),
-            description: "Savings withdrawal request",
+            description: t("client.savingsWithdrawalReq"),
             hasPinSet: Boolean(client?.portal_pin_changed_at),
             onApprove: async (pin) => { await handleSubmit(pin); setTxnPin(null); },
             onNeedPinSetup: () => onNeedPinSetup?.(),
@@ -1888,7 +1925,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
         }}
         disabled={saving || !amtNum || amtNum <= 0 || ((activeTab === "group" || activeTab === "esusu") && entityStatsLoading)}
         className="w-full py-3.5 bg-brand-500 hover:bg-brand-600 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] disabled:opacity-50 shadow-sm">
-        {saving ? "Withdrawing…" : amtNum > 0 && netAmt > 0 ? `Withdraw ${fmt(netAmt)}` : "Withdraw"}
+        {saving ? t("client.withdrawing") : amtNum > 0 && netAmt > 0 ? t("client.withdrawAmt", { amt: fmt(netAmt) }) : t("client.withdraw")}
       </button>
     </>
   );
@@ -1929,7 +1966,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
                 : <div className="h-10 w-40 bg-slate-200 dark:bg-slate-700 rounded-xl mx-auto animate-pulse" />
               }
               {locksLoaded && totalPending > 0 && (
-                <p className="text-[11px] text-amber-500 dark:text-amber-400 mt-1">{fmt(totalPending)} pending review</p>
+                <p className="text-[11px] text-amber-500 dark:text-amber-400 mt-1">{t("client.amtPendingReview", { amt: fmt(totalPending) })}</p>
               )}
             </div>
 
@@ -1938,22 +1975,22 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
               <details className="mb-4 group">
                 <summary className="text-xs font-bold text-amber-600 dark:text-amber-400 cursor-pointer select-none list-none flex items-center gap-1.5">
                   <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 transition-transform group-open:rotate-90 flex-shrink-0" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
-                  + {fmt(lockedAmount)} set aside
+                  {t("client.plusSetAside", { amt: fmt(lockedAmount) })}
                 </summary>
                 <div className="mt-2 space-y-1.5 pl-1">
                   {cycleLocked > 0 && (
                     <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-800/30">
-                      <p className="text-xs text-amber-700 dark:text-amber-400">{fmt(cycleLocked)} · In your savings plan (until it completes)</p>
+                      <p className="text-xs text-amber-700 dark:text-amber-400">{t("client.lockedInPlan", { amt: fmt(cycleLocked) })}</p>
                     </div>
                   )}
                   {groupLocked > 0 && (
                     <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-800/30">
-                      <p className="text-xs text-amber-700 dark:text-amber-400">{fmt(groupLocked)} · In your group savings</p>
+                      <p className="text-xs text-amber-700 dark:text-amber-400">{t("client.lockedInGroup", { amt: fmt(groupLocked) })}</p>
                     </div>
                   )}
                   {esusuLocked > 0 && (
                     <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-800/30">
-                      <p className="text-xs text-amber-700 dark:text-amber-400">{fmt(esusuLocked)} · In your esusu rotation</p>
+                      <p className="text-xs text-amber-700 dark:text-amber-400">{t("client.lockedInEsusu", { amt: fmt(esusuLocked) })}</p>
                     </div>
                   )}
                 </div>
@@ -1980,7 +2017,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
                 {/* First Period sub-tab */}
                 {personalSubTab === "first_period" && (
                   <>
-                    <MoneySummaryRow label1="Total saved" val1={fpTotal} label2="Available" val2={fpAvail} loading={false} />
+                    <MoneySummaryRow label1={t("client.totalSaved")} val1={fpTotal} label2={t("client.available")} val2={fpAvail} loading={false} />
                     {fpCycles.length === 0 && (
                       <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-4">{t("ajoPt.noActivePlans")}</p>
                     )}
@@ -1993,7 +2030,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
                         <MoneyCycleCard key={cy.id} cycle={cy} saved={stats.saved} net={stats.net} withdrawn={stats.withdrawn}
                           availableNow={locked ? undefined : cyAvailNow}
                           locked={locked}
-                          lockReason="Available when your savings plan is complete"
+                          lockReason={t("client.availWhenPlanComplete")}
                           mode="withdraw"
                           selected={selectedCycleId === cy.id}
                           onSelect={() => { if (!locked) { setSelectedCycleId(cy.id); setAmount(""); setError(""); } }}>
@@ -2007,7 +2044,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
                 {/* Percentage sub-tab */}
                 {personalSubTab === "percent" && (
                   <>
-                    <MoneySummaryRow label1="Total saved" val1={pctTotal} label2="Available" val2={pctAvail} loading={false} />
+                    <MoneySummaryRow label1={t("client.totalSaved")} val1={pctTotal} label2={t("client.available")} val2={pctAvail} loading={false} />
                     {pctCycles.length === 0 && (
                       <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-4">{t("ajoPt.noActivePlans")}</p>
                     )}
@@ -2029,7 +2066,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
                 )}
 
                 {personalSubTabs.length === 0 && (
-                  <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">No savings plans yet</p>
+                  <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">{t("client.noSavingsPlansYet")}</p>
                 )}
               </>
             )}
@@ -2037,7 +2074,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
             {/* ── Savings Groups tab ──────────────────────────────────── */}
             {activeTab === "group" && (
               <>
-                <MoneySummaryRow label1="Total saved" val1={grpTotal} label2="Released" val2={grpAvail} loading={false} />
+                <MoneySummaryRow label1={t("client.totalSaved")} val1={grpTotal} label2={t("client.released")} val2={grpAvail} loading={false} />
                 {savingsGroups.length === 0 && (
                   <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">{t("ajoPt.noActivePlans")}</p>
                 )}
@@ -2053,7 +2090,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
                       selected={selectedGrpId === g.id}
                       onSelect={() => { setSelectedGrpId(g.id); setAmount(""); setError(""); }}>
                       {canWithdraw ? withdrawalForm : (
-                        <p className="pt-3 text-xs text-amber-600 dark:text-amber-400">Round not started yet — your agent will open contributions when the group is ready.</p>
+                        <p className="pt-3 text-xs text-amber-600 dark:text-amber-400">{t("client.roundNotStarted")}</p>
                       )}
                     </MoneyGroupCard>
                   );
@@ -2072,7 +2109,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
                   </div>
                 )}
                 {esusuRounds.length === 0 && (
-                  <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">No active esusu round</p>
+                  <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">{t("client.noActiveEsusuRound")}</p>
                 )}
                 {esusuRounds.map(rd => {
                   const grpId    = rd.group?.id;
@@ -2090,7 +2127,7 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
                       selected={selectedGrpId === grpId}
                       onSelect={() => { setSelectedGrpId(grpId); setAmount(""); setError(""); }}>
                       {availNow > 0 ? withdrawalForm : (
-                        <p className="pt-3 text-xs text-amber-600 dark:text-amber-400">Available to withdraw once your turn's payout has been credited.</p>
+                        <p className="pt-3 text-xs text-amber-600 dark:text-amber-400">{t("client.availAfterTurnPayout")}</p>
                       )}
                     </MoneyEsusuCard>
                   );
@@ -2201,12 +2238,12 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
     : null;
 
   const insightData = streak >= 3
-    ? { type: "fire", text: `${streak}-month savings streak — you're on a roll!` }
+    ? { type: "fire", text: t("client.insightStreak", { n: streak }) }
     : totalLastMonth > 0 && totalThisMonth > totalLastMonth
-      ? { type: "up",   text: `You saved ${Math.round(((totalThisMonth - totalLastMonth) / totalLastMonth) * 100)}% more than last month!` }
+      ? { type: "up",   text: t("client.insightUp", { pct: Math.round(((totalThisMonth - totalLastMonth) / totalLastMonth) * 100) }) }
       : healthScore >= 80
-        ? { type: "star", text: `Your savings health score is ${healthScore}/100 — excellent!` }
-        : { type: "tip",  text: `${fmt(client.total_saved || 0)} deposited so far. Keep it up!` };
+        ? { type: "star", text: t("client.insightHealth", { score: healthScore }) }
+        : { type: "tip",  text: t("client.insightTip", { amt: fmt(client.total_saved || 0) }) };
 
   const _now = new Date();
   const _todayStr = `${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,"0")}-${String(_now.getDate()).padStart(2,"0")}`;
@@ -2232,7 +2269,7 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
       <div>
         <p className="text-sm text-slate-400 dark:text-slate-500 font-medium">{greetingText(t)}</p>
         <h1 className="text-2xl font-black text-slate-800 dark:text-white leading-tight">
-          {(client?.full_name || "").split(" ")[0] || "Member"} 👋
+          {(client?.full_name || "").split(" ")[0] || t("client.member")} 👋
         </h1>
         <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{fmtLocaleDate(lang)}</p>
       </div>
@@ -2269,7 +2306,7 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
         <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full bg-white/5 pointer-events-none" />
         <div className="absolute -bottom-10 -left-6 w-40 h-40 rounded-full bg-white/5 pointer-events-none" />
         {/* Eye toggle — AMP-01 */}
-        <button onClick={toggleBalance} aria-label={balanceHidden ? "Show balance" : "Hide balance"}
+        <button onClick={toggleBalance} aria-label={balanceHidden ? t("client.showBalance") : t("client.hideBalance")}
           className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-white/10 active:scale-90 transition-transform z-10">
           {balanceHidden
             ? <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-white/70" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -2288,11 +2325,11 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
             <div className="inline-flex items-center gap-1 p-0.5 mb-3 rounded-full bg-white/10">
               <button onClick={() => pickHero("savings")}
                 className={`px-3 py-1 rounded-full text-[11px] font-bold transition-colors ${!showWallet ? "bg-white text-slate-900" : "text-white/70"}`}>
-                Savings
+                {t("client.savings")}
               </button>
               <button onClick={() => pickHero("wallet")}
                 className={`px-3 py-1 rounded-full text-[11px] font-bold transition-colors ${showWallet ? "bg-white text-slate-900" : "text-white/70"}`}>
-                Wallet
+                {t("client.wallet")}
               </button>
             </div>
           )}
@@ -2301,7 +2338,7 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
             /* ── WALLET BALANCE — the client's own KudiAI Wallet, used to fund contribution payments ── */
             <div>
               <div className="flex items-start justify-between gap-3 pr-7">
-                <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest pt-0.5">Wallet balance</p>
+                <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest pt-0.5">{t("client.walletBalance")}</p>
                 {wallet?.hasAccount && wallet.accountState !== "retired" && (
                   <div className="text-right flex-shrink-0">
                     <p className="text-[13px] font-extrabold tracking-[0.1em] text-white tabular-nums leading-none">{wallet.wallet.flw_account_number}</p>
@@ -2318,7 +2355,7 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
               )}
               {!wallet?.loading && (pendingPayouts || []).length > 0 && (
                 <p className="text-[11px] font-bold text-sky-200 mb-1">
-                  +{fmt((pendingPayouts || []).reduce((s, p) => s + Number(p.amount_kobo || 0), 0) / 100)} pending — on its way to your wallet
+                  {t("client.pendingOnWay", { amt: fmt((pendingPayouts || []).reduce((s, p) => s + Number(p.amount_kobo || 0), 0) / 100) })}
                 </p>
               )}
               {/* mini actions — raised "3D" buttons, same style as the owner's Home hero */}
@@ -2328,20 +2365,20 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
                 ) : !wallet?.hasAccount ? (
                   <button onClick={onWalletClick}
                     className="flex-1 bg-white text-slate-900 text-[12px] font-bold rounded-xl py-2.5">
-                    Activate wallet
+                    {t("client.activateWallet")}
                   </button>
                 ) : (
                   <>
-                    <WalletMiniAction onClick={() => onWalletAction("fund")} d={WALLET_MINI_ICONS.in} label="Fund" />
-                    <WalletMiniAction onClick={() => onWalletAction("transfer")} d={WALLET_MINI_ICONS.out} label="Transfer" />
-                    <WalletMiniAction onClick={() => onWalletAction("receive")} d={WALLET_MINI_ICONS.in} label="Receive" />
-                    <WalletMiniAction onClick={onBillsClick} d={WALLET_MINI_ICONS.invoice} label="Bills" />
+                    <WalletMiniAction onClick={() => onWalletAction("fund")} d={WALLET_MINI_ICONS.in} label={t("client.fund")} />
+                    <WalletMiniAction onClick={() => onWalletAction("transfer")} d={WALLET_MINI_ICONS.out} label={t("client.transfer")} />
+                    <WalletMiniAction onClick={() => onWalletAction("receive")} d={WALLET_MINI_ICONS.in} label={t("client.receive")} />
+                    <WalletMiniAction onClick={onBillsClick} d={WALLET_MINI_ICONS.invoice} label={t("client.bills")} />
                   </>
                 )}
               </div>
               {wallet?.hasAccount && (
                 <button onClick={onWalletClick} className="w-full mt-2.5 text-[11px] font-bold text-white/60 active:text-white/80 transition-colors text-center">
-                  View transaction history →
+                  {t("client.viewTxnHistory")}
                 </button>
               )}
             </div>
@@ -2355,7 +2392,7 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
               <div className="flex items-center gap-2 mb-4">
                 {streak > 0 && (
                   <span className="bg-white/15 backdrop-blur-sm rounded-full px-2.5 py-1 text-[11px] font-bold text-white">
-                    🔥 {streak}mo streak
+                    🔥 {t("client.moStreak", { n: streak })}
                   </span>
                 )}
                 <span className="bg-white/15 backdrop-blur-sm rounded-full px-2.5 py-1 text-[11px] font-bold text-white">
@@ -2403,12 +2440,12 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
             <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
           </svg>
           <span>
-            Next contribution: {balanceHidden ? "• • •" : fmt(client.contribution_amount)} &middot;{" "}
+            {t("client.nextContribution")} {balanceHidden ? "• • •" : fmt(client.contribution_amount)} &middot;{" "}
             {daysUntilDue != null && daysUntilDue < 0
-              ? `${Math.abs(daysUntilDue)}d overdue`
-              : daysUntilDue === 0 ? "due today"
-              : daysUntilDue === 1 ? "due tomorrow"
-              : `due in ${daysUntilDue}d`}
+              ? t("client.dOverdue", { n: Math.abs(daysUntilDue) })
+              : daysUntilDue === 0 ? t("client.dueToday")
+              : daysUntilDue === 1 ? t("client.dueTomorrow")
+              : t("client.dueInD", { n: daysUntilDue })}
           </span>
         </div>
       )}
@@ -2461,22 +2498,22 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
             <div className="flex items-center justify-between px-1">
               {activeCycles.length > 0 ? (
                 <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                  Personal Savings
+                  {t("client.personalSavings")}
                 </p>
               ) : <span />}
               <button onClick={() => setShowOpenCycle(true)}
                 className="flex items-center gap-1 text-[11px] font-bold text-brand-600 dark:text-brand-400 active:opacity-70 transition-opacity py-1">
                 <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
-                Open New Card
+                {t("client.openNewCard")}
               </button>
             </div>
             {activeCycles.length === 0 && (
               <div className="bg-white dark:bg-slate-800 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 p-5 text-center">
-                <p className="text-[13px] font-bold text-slate-700 dark:text-slate-200 mb-1">No savings card yet</p>
-                <p className="text-[12px] text-slate-400 dark:text-slate-500 mb-3">Open one to start building toward a goal.</p>
+                <p className="text-[13px] font-bold text-slate-700 dark:text-slate-200 mb-1">{t("client.noSavingsCardYet")}</p>
+                <p className="text-[12px] text-slate-400 dark:text-slate-500 mb-3">{t("client.openOneToBuild")}</p>
                 <button onClick={() => setShowOpenCycle(true)}
                   className="px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-xl font-bold text-[12px] transition active:scale-[0.98]">
-                  Open your first card
+                  {t("client.openFirstCard")}
                 </button>
               </div>
             )}
@@ -2519,7 +2556,7 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
                   {s.d.split("|").map((p, i) => <path key={i} d={p} />)}
                 </svg>
               </div>
-              <span className="text-[10px] font-semibold text-slate-600 dark:text-slate-400 text-center leading-tight">{s.label}</span>
+              <span className="text-[10px] font-semibold text-slate-600 dark:text-slate-400 text-center leading-tight">{t(s.labelKey)}</span>
             </button>
           ))}
         </div>
@@ -2539,7 +2576,7 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
             {ownerInfo.staff.phone && <p className="text-[11px] text-slate-400 mt-0.5">{ownerInfo.staff.phone}</p>}
           </div>
           <span className="text-[9px] bg-brand-100 dark:bg-brand-900/30 text-brand-500 dark:text-brand-400 font-bold px-2 py-1 rounded-full capitalize flex-shrink-0">
-            {ownerInfo.staff.role || "staff"}
+            {roleWord(t, ownerInfo.staff.role)}
           </span>
         </div>
       )}
@@ -2553,14 +2590,14 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
             </svg>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Fees</p>
+            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">{t("client.fees")}</p>
             {client.commission_model === "percent" ? (
               <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                {client.ajo_group_id ? "Group withdrawal fee:" : "Withdrawal fee:"} <span className="text-brand-500 dark:text-brand-400 font-bold">{client.commission_percent || 0}% of amount</span>
+                {client.ajo_group_id ? t("client.groupWithdrawalFee") : t("client.withdrawalFeeColon")} <span className="text-brand-500 dark:text-brand-400 font-bold">{t("client.pctOfAmount", { pct: client.commission_percent || 0 })}</span>
               </p>
             ) : client.commission_model === "first_period" ? (
               <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                Fee: <span className="text-brand-500 dark:text-brand-400 font-bold">first contribution period per cycle</span>
+                {t("client.feeColon")} <span className="text-brand-500 dark:text-brand-400 font-bold">{t("client.firstPeriodPerCycle")}</span>
               </p>
             ) : null}
           </div>
@@ -2577,8 +2614,8 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
               </svg>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-extrabold text-white leading-tight">Here's how fees work on your savings</p>
-              <p className="text-[11px] text-white/75 mt-0.5 leading-relaxed">See your registration fee, withdrawal charges, and full breakdown in My Fees.</p>
+              <p className="text-sm font-extrabold text-white leading-tight">{t("client.feeIntroTitle")}</p>
+              <p className="text-[11px] text-white/75 mt-0.5 leading-relaxed">{t("client.feeIntroBody")}</p>
             </div>
             <button onClick={dismissFeeCard}
               className="w-7 h-7 flex items-center justify-center rounded-full bg-white/20 flex-shrink-0 text-white font-bold text-base leading-none active:bg-white/30">
@@ -2587,7 +2624,7 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
           </div>
           <button onClick={() => { dismissFeeCard(); onGoToMe?.(); }}
             className="mt-3 w-full py-2 bg-white/20 rounded-xl text-sm font-bold text-white active:bg-white/30 transition">
-            View My Fees →
+            {t("client.viewMyFees")}
           </button>
         </div>
       )}
@@ -2596,36 +2633,36 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
       {(goal > 0 || editGoal) ? (
         <div className="bg-white dark:bg-slate-800 rounded-2xl px-4 py-4 border border-slate-100 dark:border-slate-700 shadow-sm">
           <div className="flex items-center justify-between mb-3">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Savings Goal</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t("client.savingsGoal")}</p>
             {!editGoal && !clearConfirm && (
               <div className="flex items-center gap-3">
                 <button onClick={() => setClearConfirm(true)}
-                  className="text-[11px] text-red-400 dark:text-red-500 font-semibold">Clear</button>
+                  className="text-[11px] text-red-400 dark:text-red-500 font-semibold">{t("client.clear")}</button>
                 <button onClick={() => { setEditGoal(true); setGoalInput(String(goal)); }}
-                  className="text-[11px] text-brand-500 dark:text-brand-400 font-bold">Edit</button>
+                  className="text-[11px] text-brand-500 dark:text-brand-400 font-bold">{t("common.edit")}</button>
               </div>
             )}
           </div>
 
           {clearConfirm && (
             <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/40 rounded-xl px-3 py-3 mb-3 space-y-2">
-              <p className="text-xs font-extrabold text-amber-700 dark:text-amber-400">Remove savings goal?</p>
-              <p className="text-[11px] text-amber-600 dark:text-amber-500">Your balance stays — only the target is cleared.</p>
+              <p className="text-xs font-extrabold text-amber-700 dark:text-amber-400">{t("client.removeGoalQ")}</p>
+              <p className="text-[11px] text-amber-600 dark:text-amber-500">{t("client.removeGoalBody")}</p>
               <div className="flex gap-2">
                 <button onClick={() => setClearConfirm(false)}
                   className="flex-1 py-2 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg text-xs font-bold">
-                  Keep it
+                  {t("client.keepIt")}
                 </button>
                 <button onClick={async () => {
                   setClearConfirm(false); setGoal(0);
                   try {
                     await ajoFn("delete-goal", { client_id: client.id });
                   } catch (e) {
-                    toast({ type: "error", title: "Couldn't clear goal — try again", body: e?.message });
+                    toast({ type: "error", title: t("client.goalClearFailed"), body: e?.message });
                     setGoal(prev => prev); // revert optimistic
                   }
                 }} className="flex-1 py-2 bg-amber-600 text-white rounded-lg text-xs font-bold">
-                  Clear Goal
+                  {t("client.clearGoal")}
                 </button>
               </div>
             </div>
@@ -2634,12 +2671,12 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
           {editGoal && cycles.length === 0 ? (
             <div className="bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800/40 rounded-xl px-3 py-3">
               <p className="text-[12px] font-semibold text-slate-600 dark:text-slate-300 mb-2.5">
-                Connect this goal to a savings card first — open one to start tracking toward it.
+                {t("client.connectGoalFirst")}
               </p>
               <div className="flex gap-2">
                 <button onClick={() => setShowOpenCycle(true)}
                   className="flex-1 px-3 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-xl text-[12px] font-bold transition active:scale-[0.98]">
-                  Open a savings card
+                  {t("client.openSavingsCard")}
                 </button>
                 <button onClick={() => setEditGoal(false)}
                   className="px-3 py-2 bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 rounded-xl text-sm font-bold">✕</button>
@@ -2648,7 +2685,7 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
           ) : editGoal ? (
             <div className="flex gap-2">
               <input type="number" value={goalInput} onChange={e => setGoalInput(e.target.value)}
-                placeholder="Target amount (₦)"
+                placeholder={t("client.targetAmountPh")}
                 className="flex-1 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500" />
               <button onClick={async () => {
                 const g = parseFloat(goalInput) || 0;
@@ -2657,15 +2694,15 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
                   setGoal(g); setEditGoal(false);
                   try {
                     await ajoFn("set-goal", { client_id: client.id, target_amount: g });
-                    toast({ type: "success", title: `Savings goal set — ${fmt(g)}` });
+                    toast({ type: "success", title: t("client.goalSet", { amt: fmt(g) }) });
                   } catch (e) {
-                    toast({ type: "error", title: "Couldn't save goal — try again", body: e?.message });
+                    toast({ type: "error", title: t("client.goalSaveFailed"), body: e?.message });
                     setGoal(prev);
                   }
                 } else {
                   setEditGoal(false);
                 }
-              }} className="px-3 py-2 bg-brand-500 text-white rounded-xl text-sm font-bold">Save</button>
+              }} className="px-3 py-2 bg-brand-500 text-white rounded-xl text-sm font-bold">{t("common.save")}</button>
               <button onClick={() => setEditGoal(false)}
                 className="px-3 py-2 bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 rounded-xl text-sm font-bold">✕</button>
             </div>
@@ -2688,12 +2725,12 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
                   </div>
                 </div>
                 <div className="flex-1 min-w-0 space-y-0.5">
-                  <p className="text-[11px] text-slate-400 dark:text-slate-500 font-semibold">Saved</p>
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500 font-semibold">{t("client.saved")}</p>
                   <p className="text-base font-extrabold text-slate-800 dark:text-white leading-tight">{fmt(client.current_balance || 0)}</p>
-                  <p className="text-[11px] text-slate-400 dark:text-slate-500">of {fmt(goal)}</p>
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500">{t("client.ofAmt", { amt: fmt(goal) })}</p>
                   {monthsNeeded != null && monthsNeeded > 0 && (
                     <p className="text-[11px] text-brand-500 dark:text-brand-400 font-semibold mt-1">
-                      Est. {(() => {
+                      {t("client.est")} {(() => {
                         const d = new Date(); d.setMonth(d.getMonth() + monthsNeeded);
                         return d.toLocaleDateString("en-NG", { month: "short", year: "numeric" });
                       })()}
@@ -2702,7 +2739,7 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
                   {pct >= 100 && (
                     <div className="flex items-center gap-1 mt-1">
                       <svg viewBox="0 0 24 24" fill="none" width="11" height="11" stroke="#22c55e" strokeWidth={2.5} strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
-                      <p className="text-[11px] text-green-500 font-bold">Goal reached!</p>
+                      <p className="text-[11px] text-green-500 font-bold">{t("client.goalReached")}</p>
                     </div>
                   )}
                 </div>
@@ -2751,7 +2788,7 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
       {/* ── Esusu Rotation groups ── */}
       {rotationsData.filter(rd => rd.group?.group_mode === "rotating").length > 0 && (
         <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider px-1 mt-2">
-          Esusu Rotation
+          {t("client.esusuRotation")}
         </p>
       )}
       {rotationLoading && rotationsData.length === 0 && (
@@ -2769,7 +2806,7 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
               onRefresh={null}
             />
           ) : (
-            <p className="text-xs text-slate-500 dark:text-slate-400">No active rotation round yet.</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">{t("client.noActiveRotationYet")}</p>
           )}
         </div>
       ))}
@@ -2780,7 +2817,7 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
       {/* ── Savings Groups ── */}
       {rotationsData.filter(rd => rd.group?.group_mode !== "rotating").length > 0 && (
         <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider px-1 mt-2">
-          Savings Groups
+          {t("client.savingsGroups")}
         </p>
       )}
       {rotationsData.filter(rd => rd.group?.group_mode !== "rotating").map(rd => {
@@ -2801,10 +2838,10 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
           ? Math.ceil((new Date(grp.target_deadline) - new Date()) / 86400000)
           : null;
         const statusMap = {
-          not_started: { label: "Not started", pill: "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400" },
-          active:      { label: "Active",      pill: "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400" },
-          target_met:  { label: "Target met",  pill: "bg-blue-100  dark:bg-blue-900/30  text-blue-700  dark:text-blue-400"  },
-          closed:      { label: "Closed",      pill: "bg-slate-100 dark:bg-slate-700    text-slate-500 dark:text-slate-400" },
+          not_started: { label: t("client.notStarted"), pill: "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400" },
+          active:      { label: t("client.active"),     pill: "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400" },
+          target_met:  { label: t("client.targetMet"),  pill: "bg-blue-100  dark:bg-blue-900/30  text-blue-700  dark:text-blue-400"  },
+          closed:      { label: t("client.closed"),     pill: "bg-slate-100 dark:bg-slate-700    text-slate-500 dark:text-slate-400" },
         };
         const st = statusMap[rs] || statusMap.not_started;
         return (
@@ -2821,10 +2858,10 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
             {(rs === "active" || rs === "target_met") && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500">
-                  <span>My contribution this round</span>
+                  <span>{t("client.myContribThisRound")}</span>
                   {daysLeft !== null && (
                     <span className={daysLeft < 0 ? "text-red-500" : ""}>
-                      {daysLeft < 0 ? "Deadline passed" : `${daysLeft} day${daysLeft !== 1 ? "s" : ""} left`}
+                      {daysLeft < 0 ? t("client.deadlinePassed") : t(daysLeft !== 1 ? "client.daysLeft" : "client.dayLeft", { n: daysLeft })}
                     </span>
                   )}
                 </div>
@@ -2838,23 +2875,23 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
                     </div>
                     <div className="flex items-center justify-between">
                       <p className="text-sm font-extrabold text-slate-700 dark:text-slate-200 tabular-nums">{fmt(myTotal)}</p>
-                      <p className="text-[11px] text-slate-400 dark:text-slate-500">of {fmt(target)} target · {pct}%</p>
+                      <p className="text-[11px] text-slate-400 dark:text-slate-500">{t("client.ofTargetPct", { amt: fmt(target), pct })}</p>
                     </div>
                   </>
                 )}
                 {target === 0 && (
-                  <p className="text-sm font-extrabold text-slate-700 dark:text-slate-200 tabular-nums">{fmt(myTotal)} saved</p>
+                  <p className="text-sm font-extrabold text-slate-700 dark:text-slate-200 tabular-nums">{t("client.amtSaved", { amt: fmt(myTotal) })}</p>
                 )}
                 {rs === "active" && (
                   <div className="flex items-center gap-1.5 pt-0.5">
                     <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3 text-amber-500 flex-shrink-0" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                       <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>
                     </svg>
-                    <p className="text-[10px] text-slate-400 dark:text-slate-500">Locked until the round closes</p>
+                    <p className="text-[10px] text-slate-400 dark:text-slate-500">{t("client.lockedUntilRoundCloses")}</p>
                   </div>
                 )}
                 {rs === "target_met" && (
-                  <p className="text-[10px] text-blue-600 dark:text-blue-400">Target reached — waiting for your savings agent to close the group</p>
+                  <p className="text-[10px] text-blue-600 dark:text-blue-400">{t("client.targetReachedWaiting")}</p>
                 )}
               </div>
             )}
@@ -2862,21 +2899,21 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
             {/* Not started */}
             {rs === "not_started" && (
               <p className="text-[11px] text-amber-600 dark:text-amber-400">
-                Waiting for your savings agent to start the round
+                {t("client.waitingAgentStart")}
               </p>
             )}
 
             {/* Closed */}
             {rs === "closed" && (
               <p className="text-[11px] text-green-600 dark:text-green-400">
-                {myTotal > 0 ? `${fmt(myTotal)} released to your balance` : "This round has closed"}
+                {myTotal > 0 ? t("client.releasedToBalance", { amt: fmt(myTotal) }) : t("client.roundClosed")}
               </p>
             )}
 
             {/* Contribution frequency */}
             {Number(grp.contribution_amount) > 0 && (
               <p className="text-[10px] text-slate-400 dark:text-slate-500 pt-0.5 border-t border-slate-100 dark:border-slate-700">
-                {fmt(grp.contribution_amount)} / {grp.contribution_frequency || "period"}
+                {fmt(grp.contribution_amount)} / {freqWord(t, grp.contribution_frequency)}
               </p>
             )}
 
@@ -2888,7 +2925,7 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
               <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                 <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>
               </svg>
-              View Group Dashboard
+              {t("client.viewGroupDashboard")}
             </button>
           </div>
         );
@@ -2908,10 +2945,10 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
         const sortedMembers = [...(details.members || [])].sort((a, b) => (b.contributed || 0) - (a.contributed || 0));
         const maxContrib    = Math.max(...sortedMembers.map(m => m.contributed || 0), 1);
         const statusMap = {
-          not_started: { label: "Not Started",  pill: "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400" },
-          active:      { label: "Active",        pill: "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400" },
-          target_met:  { label: "Target Met ✓",  pill: "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300" },
-          closed:      { label: "Closed",        pill: "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400" },
+          not_started: { label: t("client.notStartedCap"), pill: "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400" },
+          active:      { label: t("client.active"),        pill: "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400" },
+          target_met:  { label: t("client.targetMetCheck"), pill: "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300" },
+          closed:      { label: t("client.closed"),        pill: "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400" },
         };
         const st = statusMap[rs] || statusMap.not_started;
         return (
@@ -2943,30 +2980,30 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
                   <>
                     {/* Hero */}
                     <div className="bg-gradient-to-br from-slate-800 to-slate-900 dark:from-slate-700 dark:to-slate-800 rounded-2xl p-5 text-white">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Group Total Saved</p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">{t("client.groupTotalSaved")}</p>
                       <p className="text-3xl font-extrabold tabular-nums leading-none">{fmt(pot)}</p>
                       {target > 0 && (
-                        <p className="text-[11px] text-slate-400 mt-1">of {fmt(target)} target · <span className="text-white font-bold">{Math.round(pct)}%</span></p>
+                        <p className="text-[11px] text-slate-400 mt-1">{t("client.ofTarget", { amt: fmt(target) })} · <span className="text-white font-bold">{Math.round(pct)}%</span></p>
                       )}
                       <div className="mt-3 pt-3 border-t border-white/10 flex items-center justify-between">
                         <div>
-                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">My Contribution</p>
+                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{t("client.myContribution")}</p>
                           <p className="text-base font-extrabold tabular-nums">{fmt(myTotal)}</p>
                         </div>
                         {pot > 0 && (
-                          <span className="text-[10px] font-bold text-slate-300 bg-white/10 px-2 py-1 rounded-full">{myPct}% of pot</span>
+                          <span className="text-[10px] font-bold text-slate-300 bg-white/10 px-2 py-1 rounded-full">{t("client.pctOfPot", { pct: myPct })}</span>
                         )}
                       </div>
                       {rs === "active" && daysLeft !== null && daysLeft >= 0 && (
                         <div className="flex items-center gap-1.5 mt-2">
                           <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                          <span className="text-[10px] text-green-400 font-bold">{daysLeft} days remaining</span>
+                          <span className="text-[10px] text-green-400 font-bold">{t("client.daysRemaining", { n: daysLeft })}</span>
                         </div>
                       )}
                       {daysLeft !== null && daysLeft < 0 && (rs === "active" || rs === "target_met") && (
                         <div className="flex items-center gap-1.5 mt-2">
                           <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                          <span className="text-[10px] text-amber-400 font-bold">Deadline passed</span>
+                          <span className="text-[10px] text-amber-400 font-bold">{t("client.deadlinePassed")}</span>
                         </div>
                       )}
                     </div>
@@ -2981,8 +3018,8 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
                           />
                         </div>
                         <div className="flex items-center justify-between mt-1">
-                          <span className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold">{fmt(pot)} raised</span>
-                          <span className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold">{fmt(Math.max(0, target - pot))} to go</span>
+                          <span className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold">{t("client.amtRaised", { amt: fmt(pot) })}</span>
+                          <span className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold">{t("client.amtToGo", { amt: fmt(Math.max(0, target - pot)) })}</span>
                         </div>
                       </div>
                     )}
@@ -2990,10 +3027,10 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
                     {/* Stats grid */}
                     <div className="grid grid-cols-2 gap-2">
                       {[
-                        { label: "Members",      value: String(sortedMembers.length) },
-                        { label: "Days Left",    value: daysLeft !== null ? (daysLeft >= 0 ? `${daysLeft}d` : "Overdue") : "—" },
-                        { label: "Contribution", value: grp.contribution_amount ? fmt(grp.contribution_amount) : "—" },
-                        { label: "Frequency",    value: grp.contribution_frequency || "—" },
+                        { label: t("client.members"),      value: String(sortedMembers.length) },
+                        { label: t("client.daysLeftLabel"), value: daysLeft !== null ? (daysLeft >= 0 ? t("client.nDays", { n: daysLeft }) : t("client.overdue")) : "—" },
+                        { label: t("client.contribution"), value: grp.contribution_amount ? fmt(grp.contribution_amount) : "—" },
+                        { label: t("client.frequency"),    value: grp.contribution_frequency ? freqWord(t, grp.contribution_frequency) : "—" },
                       ].map(({ label, value }) => (
                         <div key={label} className="bg-slate-50 dark:bg-slate-800/60 rounded-xl px-3 py-2.5 border border-slate-100 dark:border-slate-700">
                           <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide">{label}</p>
@@ -3005,7 +3042,7 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
                     {/* Saving strength */}
                     {sortedMembers.length > 0 && (
                       <div>
-                        <p className="text-[10px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2">Saving Strength</p>
+                        <p className="text-[10px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2">{t("client.savingStrength")}</p>
                         <div className="space-y-2">
                           {sortedMembers.map((m, idx) => {
                             const contributed = m.contributed ?? null;
@@ -3022,14 +3059,14 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
                                   <div className="flex items-center gap-1.5 min-w-0 flex-1">
                                     <span className="text-[10px] font-extrabold text-slate-400 dark:text-slate-500 tabular-nums flex-shrink-0 w-5">#{idx + 1}</span>
                                     <p className={`text-[11px] font-extrabold truncate ${m.is_me ? "text-brand-700 dark:text-brand-300" : "text-slate-800 dark:text-white"}`}>
-                                      {m.full_name}{m.is_me ? " (You)" : ""}
+                                      {m.full_name}{m.is_me ? ` (${t("client.you")})` : ""}
                                     </p>
                                   </div>
                                   <div className="flex items-center gap-1.5 flex-shrink-0">
                                     {contributed !== null ? (
                                       <span className="text-[10px] font-extrabold text-slate-600 dark:text-slate-300 tabular-nums">{fmt(contributed)}</span>
                                     ) : (
-                                      <span className="text-[10px] text-slate-400">Hidden</span>
+                                      <span className="text-[10px] text-slate-400">{t("client.hidden")}</span>
                                     )}
                                     {sharePct !== null && (
                                       <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded-full">{sharePct}%</span>
@@ -3050,7 +3087,7 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
 
                     {grp.started_at && (
                       <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center">
-                        Round started {new Date(grp.started_at).toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" })}
+                        {t("client.roundStarted", { date: new Date(grp.started_at).toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" }) })}
                       </p>
                     )}
                     <div className="h-4" />
@@ -3070,7 +3107,7 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
       {/* Recent activity — green in / navy out / amber pending */}
       {recent.length > 0 && (
         <div>
-          <p className="text-[12px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Recent Activity</p>
+          <p className="text-[12px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">{t("client.recentActivity")}</p>
           <div className="space-y-2">
             {recent.map(c => {
               const isCredit  = c.type === "contribution" || c.type === "esusu_payout";
@@ -3081,8 +3118,8 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
                 <div key={c.id} className="bg-white dark:bg-slate-800 rounded-xl px-3 py-2.5 flex items-center gap-3 border border-slate-100 dark:border-slate-700">
                   <div className={`w-2 h-2 rounded-full flex-shrink-0 ${dotCls}`} />
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">{ledgerTypeLabel(c)}</p>
-                    <p className="text-[10px] text-slate-400">{fmtDate(c.created_at)} &middot; {c.payment_method || "cash"}</p>
+                    <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">{ledgerLabelT(t, c)}</p>
+                    <p className="text-[10px] text-slate-400">{fmtDate(c.created_at)} &middot; {methodWord(t, c.payment_method || "cash")}</p>
                   </div>
                   <span className={`text-sm font-extrabold tabular flex-shrink-0 ${amtCls}`}>
                     {isCredit ? "+" : "−"}{balanceHidden ? "• • •" : fmt(c.amount)}
@@ -3118,20 +3155,20 @@ function PendingInfoSheet({ item, onClose }) {
         </div>
         <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl px-4 py-3 mb-4">
           <p className="text-xs font-bold text-amber-700 dark:text-amber-300 mb-1">
-            {isPendingManual ? "Awaiting bank transfer verification" : "Awaiting approval"}
+            {isPendingManual ? t("client.awaitingTransferVerify") : t("client.awaitingApproval")}
           </p>
           <p className="text-xs text-amber-600 dark:text-amber-400 leading-relaxed">
             {isPendingManual
-              ? "Your savings agent will verify the bank transfer you submitted. This usually takes a few hours during business days."
-              : "Your savings agent will review and confirm this entry. You'll be notified by email once it's approved."}
+              ? t("client.agentVerifyTransfer")
+              : t("client.agentReviewEntry")}
           </p>
         </div>
         <div className="space-y-2 mb-5">
           {[
-            { label: "Amount", value: fmt(item.amount) },
-            { label: "Type",   value: ledgerTypeLabel(item) },
-            item.payment_method && { label: "Method", value: item.payment_method.replace(/_/g, " ") },
-            (item.claim_notes || item.notes) && { label: "Note", value: item.claim_notes || item.notes },
+            { label: t("common.amount"), value: fmt(item.amount) },
+            { label: t("client.type"),   value: ledgerLabelT(t, item) },
+            item.payment_method && { label: t("client.method"), value: methodWord(t, item.payment_method) },
+            (item.claim_notes || item.notes) && { label: t("common.note"), value: item.claim_notes || item.notes },
           ].filter(Boolean).map(row => (
             <div key={row.label} className="flex justify-between text-xs">
               <span className="text-slate-500 dark:text-slate-400">{row.label}</span>
@@ -3200,7 +3237,7 @@ function ClosedHistorySheet({ title, subtitle, stats = [], children, onClose, cl
 function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, cycles = [], rotationsData = [], wallet, onOpenStatements }) {
   const t = useT();
   // Build lookup maps so each row can show its entity name
-  const cycleNameMap = Object.fromEntries(cycles.map(c => [c.id, c.label || "Personal Savings"]));
+  const cycleNameMap = Object.fromEntries(cycles.map(c => [c.id, c.label || t("client.personalSavings")]));
   // Closed cards (completed/settled) no longer show on the main portal view —
   // they're referenced here instead, so the client can still look back at them.
   const closedCycles = cycles.filter(cy => cy.status === "completed" || cy.status === "settled");
@@ -3268,7 +3305,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
   );
 
   const FILTERS = [
-    { id: "all",         label: t("common.all") },
+    { id: "all",         label: t("client.filterAll") },
     { id: "deposits",    label: t("ajoPt.depositsTab") },
     { id: "withdrawals", label: t("ajoPt.withdrawTab") },
     { id: "fees",        label: t("ajoPt.feesTab") },
@@ -3400,7 +3437,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2">
               <p className={`text-xs font-semibold min-w-0 truncate ${isReversed ? "line-through text-slate-400 dark:text-slate-500" : "text-slate-700 dark:text-slate-200"}`}>
-                {isWdReq ? "Withdrawal Request" : isWallet ? (wEntry?.title || WALLET_SOURCE[item.type]?.label || item.type) : ledgerTypeLabel(item)}
+                {isWdReq ? t("client.withdrawalRequest") : isWallet ? (wEntry?.title || WALLET_SOURCE[item.type]?.label || item.type) : ledgerLabelT(t, item)}
               </p>
               <span className={`text-sm font-extrabold tabular flex-shrink-0 ${amtCls}`}>
                 {sign}{fmt(item.amount)}
@@ -3408,43 +3445,43 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
             </div>
             {/* Status / badge row */}
             <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-              {isPending && <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 px-1.5 py-0.5 rounded-full">Pending · tap for info</span>}
-              {isHeld24h && <span className="text-[10px] font-bold text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 px-1.5 py-0.5 rounded-full">Under review for your security — up to 24h</span>}
+              {isPending && <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 px-1.5 py-0.5 rounded-full">{t("client.pendingTapInfo")}</span>}
+              {isHeld24h && <span className="text-[10px] font-bold text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 px-1.5 py-0.5 rounded-full">{t("client.heldReview24h")}</span>}
               {isReversed && <span className="text-[10px] font-bold text-red-500 bg-red-50 dark:bg-red-900/20 px-1.5 py-0.5 rounded-full">{t("ajoPt.reversed")}</span>}
               {!isPending && !isHeld24h && !isReversed && (isWdReq && withdrawalStage(item)
-                ? <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${STAGE_CLS[withdrawalStage(item).tone]}`}>{withdrawalStage(item).label}</span>
-                : <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full capitalize ${statusCls(item.status)}`}>{item.status || "—"}</span>)}
-              {isWdReq && withdrawalStage(item)?.detail && <span className="basis-full text-[10px] text-slate-400 dark:text-slate-500">{withdrawalStage(item).detail}</span>}
-              {isWdReq && item.net_amount != null && <span className="text-[10px] text-slate-400 dark:text-slate-500">Net: {fmt(item.net_amount)}</span>}
+                ? <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${STAGE_CLS[withdrawalStage(item).tone]}`}>{stageText(t, item).label}</span>
+                : <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full capitalize ${statusCls(item.status)}`}>{statusWord(t, item.status) || "—"}</span>)}
+              {isWdReq && stageText(t, item)?.detail && <span className="basis-full text-[10px] text-slate-400 dark:text-slate-500">{stageText(t, item).detail}</span>}
+              {isWdReq && item.net_amount != null && <span className="text-[10px] text-slate-400 dark:text-slate-500">{t("client.netAmt", { amt: fmt(item.net_amount) })}</span>}
             </div>
             {!isWallet && (
               <p className="text-[10px] text-slate-400 mt-0.5">
-                {isManual ? "Bank transfer" : (item.payment_method || (isWdReq ? "withdrawal" : "cash"))}
-                {item.paystack_ref && ` · Ref: ${item.paystack_ref.slice(-8)}`}
+                {isManual ? t("client.bankTransferCap") : methodWord(t, item.payment_method || (isWdReq ? "withdrawal" : "cash"))}
+                {item.paystack_ref && ` · ${t("client.ref")}: ${item.paystack_ref.slice(-8)}`}
               </p>
             )}
             <p className="text-[10px] text-slate-400">{fmtDateTime(item.created_at || item.date)}</p>
             {!isWdReq && !isWallet && (
               <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
                 {item.cycle_id
-                  ? (cycleNameMap[item.cycle_id] || "Personal Savings")
+                  ? (cycleNameMap[item.cycle_id] || t("client.personalSavings"))
                   : item.group_id
-                    ? (groupNameMap[item.group_id] || "Group")
-                    : "Personal Savings"}
+                    ? (groupNameMap[item.group_id] || t("client.group"))
+                    : t("client.personalSavings")}
               </p>
             )}
             {(item.claim_notes || item.notes) && <p className="text-[10px] text-slate-400 italic mt-0.5">"{item.claim_notes || item.notes}"</p>}
             {isRejected && isManual && item.rejected_reason && (
-              <p className="text-[10px] text-red-500 dark:text-red-400 mt-1 font-semibold">Reason: {item.rejected_reason}</p>
+              <p className="text-[10px] text-red-500 dark:text-red-400 mt-1 font-semibold">{t("client.reasonColon")} {item.rejected_reason}</p>
             )}
             {(item.dispute_ticket_no || disputedIds.has(item.id)) ? (
               <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1 font-semibold">
-                Dispute filed{item.dispute_ticket_no ? ` · ${item.dispute_ticket_no}` : ""}
+                {t("client.disputeFiled")}{item.dispute_ticket_no ? ` · ${item.dispute_ticket_no}` : ""}
               </p>
             ) : (!isPending && item._type === "contribution" && (
               <button onClick={e => { e.stopPropagation(); setDisputeFor(item); setDisputeDesc(""); setDisputeError(""); }}
                 className="text-[10px] text-slate-400 hover:text-red-500 dark:hover:text-red-400 mt-1 underline text-left">
-                Report an issue
+                {t("client.reportIssue")}
               </button>
             ))}
           </div>
@@ -3504,13 +3541,13 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
 
       {closedRoundView && (
         <ClosedHistorySheet onClose={() => setClosedRoundView(null)} closeLabel={t("common.close")}
-          title={`${closedRoundView.group_name} · Round ${closedRoundView.round_number}`}
-          subtitle={`Esusu · ${closedRoundView.status === "cancelled" ? "Ended early" : "Completed"}${closedRoundView.completed_at ? ` ${fmtDate(closedRoundView.completed_at)}` : ""}`}
+          title={`${closedRoundView.group_name} · ${t("client.roundN", { n: closedRoundView.round_number })}`}
+          subtitle={`Esusu · ${closedRoundView.status === "cancelled" ? t("client.endedEarly") : t("client.completed")}${closedRoundView.completed_at ? ` ${fmtDate(closedRoundView.completed_at)}` : ""}`}
           stats={[
-            { label: "You paid in", value: fmt(closedRoundView.my_contributed) },
-            { label: "You received", value: fmt(closedRoundView.my_received) },
+            { label: t("client.youPaidIn"), value: fmt(closedRoundView.my_contributed) },
+            { label: t("client.youReceived"), value: fmt(closedRoundView.my_received) },
           ]}>
-          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Rotation Order</p>
+          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">{t("client.rotationOrder")}</p>
           <div className="space-y-2">
             {closedRoundView.turns.map(turn => (
               <div key={turn.position} className={`rounded-2xl border px-4 py-3 bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 ${turn.is_me ? "ring-1 ring-brand-400 dark:ring-brand-500" : ""}`}>
@@ -3519,13 +3556,13 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap min-w-0">
                       <p className="text-sm font-bold text-slate-800 dark:text-white truncate min-w-0">
-                        {turn.client_name || "Member"}{turn.is_me && <span className="ml-1 text-[10px] font-semibold text-brand-500">(You)</span>}
+                        {turn.client_name || t("client.member")}{turn.is_me && <span className="ml-1 text-[10px] font-semibold text-brand-500">({t("client.you")})</span>}
                       </p>
                       <Badge status={turn.status === "paid" ? "paid" : turn.status === "skipped" ? "skipped" : "expired"}
-                        label={turn.status === "paid" ? "Collected" : turn.status === "skipped" ? "Skipped" : "Not paid"} />
+                        label={turn.status === "paid" ? t("client.collected") : turn.status === "skipped" ? t("client.skipped") : t("client.notPaid")} />
                     </div>
                     {turn.status === "skipped" && turn.skip_reason && (
-                      <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">Skipped: {turn.skip_reason}</p>
+                      <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">{t("client.skippedColon")} {turn.skip_reason}</p>
                     )}
                   </div>
                 </div>
@@ -3538,29 +3575,29 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
       {closedGroupView && (
         <ClosedHistorySheet onClose={() => setClosedGroupView(null)} closeLabel={t("common.close")}
           title={closedGroupView.group_name}
-          subtitle={`Savings group · ${closedGroupView.membership_status === "left" ? `You left${closedGroupView.left_at ? ` ${fmtDate(closedGroupView.left_at)}` : ""}` : "Closed"}`}
+          subtitle={`${t("client.savingsGroup")} · ${closedGroupView.membership_status === "left" ? `${t("client.youLeft")}${closedGroupView.left_at ? ` ${fmtDate(closedGroupView.left_at)}` : ""}` : t("client.closed")}`}
           stats={[
-            { label: "You saved", value: fmt(closedGroupView.my_contributed) },
-            { label: "Released to you", value: fmt(closedGroupView.my_released) },
-            ...(closedGroupView.target_amount > 0 ? [{ label: "Group target", value: fmt(closedGroupView.target_amount) }] : []),
-            ...(closedGroupView.joined_at ? [{ label: "Joined", value: fmtDate(closedGroupView.joined_at) }] : []),
+            { label: t("client.youSaved"), value: fmt(closedGroupView.my_contributed) },
+            { label: t("client.releasedToYou"), value: fmt(closedGroupView.my_released) },
+            ...(closedGroupView.target_amount > 0 ? [{ label: t("client.groupTarget"), value: fmt(closedGroupView.target_amount) }] : []),
+            ...(closedGroupView.joined_at ? [{ label: t("client.joined"), value: fmtDate(closedGroupView.joined_at) }] : []),
           ]} />
       )}
 
       {/* Closed savings — cards, esusu rounds and savings groups that have ended, still referenceable here */}
       {hasClosed && (
         <div className="mb-5">
-          <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2.5 px-1">Closed Savings</p>
+          <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2.5 px-1">{t("client.closedSavings")}</p>
           <div className="space-y-2">
             {closedHist.esusu_rounds.map(r => (
               <ClosedHistoryRow key={`${r.group_id}-${r.round_number}`} onClick={() => setClosedRoundView(r)}
-                title={`${r.group_name} · Round ${r.round_number}`}
-                detail={`Esusu · ${r.status === "cancelled" ? "Ended early" : "Completed"} · Paid in ${fmt(r.my_contributed)} · Received ${fmt(r.my_received)}`} />
+                title={`${r.group_name} · ${t("client.roundN", { n: r.round_number })}`}
+                detail={`Esusu · ${r.status === "cancelled" ? t("client.endedEarly") : t("client.completed")} · ${t("client.paidInAmt", { amt: fmt(r.my_contributed) })} · ${t("client.receivedAmt", { amt: fmt(r.my_received) })}`} />
             ))}
             {closedHist.savings_groups.map(g => (
               <ClosedHistoryRow key={g.group_id} onClick={() => setClosedGroupView(g)}
                 title={g.group_name}
-                detail={`Savings group · ${g.membership_status === "left" ? "Left" : "Closed"} · Saved ${fmt(g.my_contributed)}`} />
+                detail={`${t("client.savingsGroup")} · ${g.membership_status === "left" ? t("client.left") : t("client.closed")} · ${t("client.savedAmt", { amt: fmt(g.my_contributed) })}`} />
             ))}
             {closedCycles.map(cyc => {
               const stats = getCycleStats(cyc, contributions);
@@ -3568,9 +3605,9 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
                 <button key={cyc.id} onClick={() => setClosedCardView(cyc)}
                   className="w-full text-left flex items-center justify-between gap-3 rounded-2xl border border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3 active:scale-[0.98] transition-transform">
                   <div className="min-w-0">
-                    <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate">{cyc.label || "Personal Savings"}</p>
+                    <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate">{cyc.label || t("client.personalSavings")}</p>
                     <p className="text-[10px] text-slate-400 mt-0.5">
-                      {cyc.status === "settled" ? "Fully withdrawn" : "Complete"} · Saved {fmt(stats.saved)}
+                      {cyc.status === "settled" ? t("client.fullyWithdrawn") : t("client.complete")} · {t("client.savedAmt", { amt: fmt(stats.saved) })}
                     </p>
                   </div>
                   <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-300 dark:text-slate-600 flex-shrink-0" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
@@ -3598,7 +3635,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
             <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 text-slate-500 dark:text-slate-300" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 15V3m0 12l-4-4m4 4l4-4"/><path d="M2 17l.621 2.485A2 2 0 004.561 21h14.878a2 2 0 001.94-1.515L22 17"/>
             </svg>
-            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-300">Statement</span>
+            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-300">{t("client.statement")}</span>
           </button>
         )}
       </div>
@@ -3606,12 +3643,12 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
       {/* Month-grouped rows */}
       {filtered.length === 0 ? (
         <div className="text-center py-10">
-          <p className="text-sm text-slate-400 dark:text-slate-500">No {typeFilter === "all" ? "transactions" : typeFilter} to show</p>
+          <p className="text-sm text-slate-400 dark:text-slate-500">{t(typeFilter === "deposits" ? "client.noDepositsToShow" : typeFilter === "withdrawals" ? "client.noWithdrawalsToShow" : typeFilter === "fees" ? "client.noFeesToShow" : "client.noTxnToShow")}</p>
         </div>
       ) : (
         months.map(month => (
           <div key={month} className="mb-5">
-            <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2.5 px-1">{month}</p>
+            <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2.5 px-1">{month === "Unknown" ? t("client.unknownDate") : month}</p>
             <div className="space-y-2">
               {monthMap[month].map(item => renderItem(item))}
             </div>
@@ -3623,14 +3660,14 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
       {disputeFor && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 px-4 pb-6">
           <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-2xl p-5 shadow-xl max-h-[80dvh] overflow-y-auto">
-            <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-1">Report an Issue</h3>
+            <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-1">{t("client.reportIssueTitle")}</h3>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-3">
               {fmtDate(disputeFor.created_at)} · {disputeFor.type === "contribution" ? "+" : "−"}{fmt(disputeFor.amount)}
             </p>
             <textarea
               value={disputeDesc}
               onChange={e => setDisputeDesc(e.target.value)}
-              placeholder="Describe the issue (optional)…"
+              placeholder={t("client.describeIssueOpt")}
               rows={3}
               className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none mb-3"
             />
@@ -3640,7 +3677,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
             <div className="flex gap-2">
               <button onClick={() => { setDisputeFor(null); setDisputeError(""); }}
                 className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 text-sm font-semibold text-slate-500 dark:text-slate-400">
-                Cancel
+                {t("common.cancel")}
               </button>
               <button
                 onClick={async () => {
@@ -3655,7 +3692,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
                     });
                     setDisputedIds(prev => new Set([...prev, disputeFor.id]));
                     setDisputeFor(null);
-                    toast({ title: "Dispute submitted — we'll review your case", type: "success" });
+                    toast({ title: t("client.disputeSubmitted"), type: "success" });
                   } catch (err) {
                     setDisputeError(friendlyError(err));
                   } finally {
@@ -3664,7 +3701,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
                 }}
                 disabled={disputeLoading}
                 className="flex-1 py-2.5 rounded-xl bg-brand-500 text-white text-sm font-bold disabled:opacity-50">
-                {disputeLoading ? "Submitting…" : "Submit Report"}
+                {disputeLoading ? t("client.submitting") : t("client.submitReport")}
               </button>
             </div>
           </div>
@@ -3792,7 +3829,8 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
   const [bankVerified,  setBankVerified]  = useState(false);
   const [bankError,     setBankError]     = useState("");
 
-  const autoLabel = pinLock.autoLockTimeout === 0 ? "Never" : (AUTO_LOCK_OPTIONS.find(o => o.secs === pinLock.autoLockTimeout)?.label || `${pinLock.autoLockTimeout}s`);
+  const autoOpt   = AUTO_LOCK_OPTIONS.find(o => o.secs === pinLock.autoLockTimeout);
+  const autoLabel = pinLock.autoLockTimeout === 0 ? t("client.lockNever") : (autoOpt ? t(autoOpt.labelKey) : `${pinLock.autoLockTimeout}s`);
 
   useEffect(() => {
     ajoFn("get-txn-pin-status", { client_id: clientId })
@@ -3834,7 +3872,7 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
         setSecNewPin(pin);
         setSecStep(3);
       } else if (secStep === 3) {
-        if (pin !== secNewPin) { triggerSecShake(); setSecErr("PINs don't match — try again"); setSecBusy(false); return; }
+        if (pin !== secNewPin) { triggerSecShake(); setSecErr(t("client.pinsNoMatchDash")); setSecBusy(false); return; }
         if (pinLock.appPinSet) {
           await pinLock.changeAppPin(oldAppPin, pin);
         } else {
@@ -3845,10 +3883,10 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
     } catch (e) {
       const msg = (e?.message || "").toLowerCase();
       triggerSecShake();
-      setSecErr(msg.includes("incorrect") || msg.includes("wrong") || msg.includes("invalid") ? "Incorrect PIN — try again" : "Something went wrong. Try again.");
+      setSecErr(msg.includes("incorrect") || msg.includes("wrong") || msg.includes("invalid") ? t("client.incorrectPin") : t("client.somethingWrongTry"));
     }
     setSecBusy(false);
-  }, [secStep, secNewPin, oldAppPin, pinLock, triggerSecShake, resetSecView]);
+  }, [secStep, secNewPin, oldAppPin, pinLock, triggerSecShake, resetSecView, t]);
 
   // Transaction PIN change — step 1 (old PIN) → 2 (OTP) → 3 (new PIN) → 4 (confirm)
   const handleTxnPinStep = useCallback(async (pin) => {
@@ -3866,7 +3904,7 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
       } else if (secStep === 3) {
         setSecNewPin(pin); setSecStep(4);
       } else if (secStep === 4) {
-        if (pin !== secNewPin) { triggerSecShake(); setSecErr("PINs don't match — try again"); setSecBusy(false); return; }
+        if (pin !== secNewPin) { triggerSecShake(); setSecErr(t("client.pinsNoMatchDash")); setSecBusy(false); return; }
         await ajoFn("set-txn-pin", { client_id: clientId, old_pin: oldTxnPin || null, new_pin: pin });
         setTxnPinSet(true);
         setTxnResetAt(new Date().toISOString());
@@ -3874,7 +3912,7 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
       }
     } catch (err) { setSecErr(friendlyError(err)); }
     setSecBusy(false);
-  }, [secStep, secNewPin, oldTxnPin, clientId, triggerSecShake, resetSecView]);
+  }, [secStep, secNewPin, oldTxnPin, clientId, triggerSecShake, resetSecView, t]);
 
   // Use server-side portal_pin_changed_at (survives page reload); fall back to local state for optimistic UI
   const _pinChangedAt = client?.portal_pin_changed_at || txnResetAt;
@@ -3898,9 +3936,9 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
       });
       if (!res.ok) throw new Error("AI unavailable");
       const text = await res.text();
-      setAiAnswer(text || "No answer returned.");
+      setAiAnswer(text || t("client.noAnswer"));
     } catch {
-      setAiError("Couldn't get an AI answer right now. Please try again.");
+      setAiError(t("client.aiFailed"));
     } finally {
       setAiLoading(false);
     }
@@ -3957,7 +3995,7 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
       setTimeout(() => { setSaveMsg(""); setView("profile"); }, 1500);
     } catch (err) {
       console.error("[profile-save]", err);
-      setSaveMsg(err?.message || "Save failed. Please try again.");
+      setSaveMsg(err?.message || t("client.saveFailed"));
     }
     setSaving(false);
   };
@@ -4021,13 +4059,13 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
 
   const resolveBank = async () => {
     if (!editForm.bank_code || editForm.account_number.length !== 10) {
-      setBankError("Select a bank and enter a 10-digit account number"); return;
+      setBankError(t("client.selectBankAcct")); return;
     }
     setBankVerifying(true); setBankError(""); setBankVerified(false);
     try {
       const { data } = await bankLookup("resolve-account", { account_number: editForm.account_number, bank_code: editForm.bank_code });
       if (!data?.status || !data?.data?.account_name) {
-        setBankError(data?.message || "Could not verify account. Check the details and retry."); return;
+        setBankError(data?.message || t("client.couldNotVerifyAcct")); return;
       }
       const selectedBank = banks.find(b => b.code === editForm.bank_code);
       setEditForm(p => ({
@@ -4036,7 +4074,7 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
         bank_name: selectedBank?.name || p.bank_name,
       }));
       setBankVerified(true);
-    } catch { setBankError("Verification failed. Try again."); }
+    } catch { setBankError(t("client.verificationFailed")); }
     finally { setBankVerifying(false); }
   };
 
@@ -4087,12 +4125,12 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
                     {regFeeRow ? (
                       <>
                         <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
-                        <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">Paid on {fmtDate(regFeeRow.created_at)}</p>
+                        <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">{t("client.paidOn", { date: fmtDate(regFeeRow.created_at) })}</p>
                       </>
                     ) : (
                       <>
                         <span className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" />
-                        <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">Will be deducted from your first deposit</p>
+                        <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">{t("client.deductedFirstDeposit")}</p>
                       </>
                     )}
                   </div>
@@ -4111,7 +4149,7 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
                 {client?.commission_model === "percent" ? (
                   <>
                     <p className="text-2xl font-extrabold text-slate-800 dark:text-white tabular-nums">{client.commission_percent || 0}%</p>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Your group&apos;s withdrawal fee: {client.commission_percent || 0}%</p>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t("client.groupFeePct", { pct: client.commission_percent || 0 })}</p>
                   </>
                 ) : (
                   <p className="text-sm font-semibold text-green-600 dark:text-green-400">{t("common.noData")}</p>
@@ -4124,22 +4162,22 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
             cycles.filter(cy => cy.status === "active").map(cy => (
               <div key={cy.id} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 overflow-hidden">
                 <p className="px-4 pt-3 pb-2 text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest border-b border-slate-50 dark:border-slate-700/30">
-                  {cy.label || "Personal Savings"} — Cycle Fee
+                  {cy.label || t("client.personalSavings")} — {t("client.cycleFee")}
                 </p>
                 <div className="px-4 py-4">
                   {cy.commission_model === "percent" ? (
                     <>
                       <p className="text-2xl font-extrabold text-slate-800 dark:text-white tabular-nums">{cy.commission_percent || 0}%</p>
-                      <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{cy.commission_percent || 0}% deducted from each withdrawal</p>
+                      <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t("client.pctDeductedEach", { pct: cy.commission_percent || 0 })}</p>
                     </>
                   ) : cy.commission_model === "first_period" ? (
                     <>
-                      <p className="text-sm font-bold text-slate-700 dark:text-slate-200">First deposit goes to your collector</p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Savings in this cycle start from deposit 2</p>
-                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 font-medium">Funds are locked until this cycle completes</p>
+                      <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{t("client.firstDepositCollector")}</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{t("client.savingsStartDeposit2")}</p>
+                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 font-medium">{t("client.fundsLockedCycle")}</p>
                     </>
                   ) : (
-                    <p className="text-sm font-semibold text-green-600 dark:text-green-400">No fee on this cycle</p>
+                    <p className="text-sm font-semibold text-green-600 dark:text-green-400">{t("client.noFeeCycle")}</p>
                   )}
                 </div>
               </div>
@@ -4156,18 +4194,17 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
            (client?.registration_charge || 0) > 0 &&
            !regFeeRow && (
             <div className="bg-amber-50 dark:bg-amber-900/20 rounded-2xl border border-amber-200 dark:border-amber-800 px-4 py-4">
-              <p className="text-[11px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-widest mb-1.5">First Deposit Note</p>
+              <p className="text-[11px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-widest mb-1.5">{t("client.firstDepositNote")}</p>
               <p className="text-sm text-amber-700 dark:text-amber-300 leading-relaxed">
-                From your first deposit of{" "}
+                {t("client.fromFirstDepositOf")}{" "}
                 <span className="font-bold">{fmt(client.contribution_amount || 0)}</span>:{" "}
-                <span className="font-semibold">{fmt(client.registration_charge)}</span> registration fee +
-                the deposit itself goes to your collector. Your savings start from deposit 2.
+                <span className="font-semibold">{fmt(client.registration_charge)}</span> {t("client.regFeePlusDeposit")}
               </p>
             </div>
           )}
 
           <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center px-2 leading-relaxed">
-            Fees are set by your savings collector. Contact them for questions about your fee structure.
+            {t("client.feesSetByCollector")}
           </p>
         </div>
       </div>
@@ -4213,56 +4250,56 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
                 {avatarSrc && <img src={avatarSrc} alt="" className="absolute inset-0 w-full h-full object-cover" onError={(e) => e.currentTarget.style.display = "none"} />}
               </div>
             </button>
-            <p className="text-base font-extrabold text-slate-800 dark:text-slate-100 mt-3">{client?.full_name || "Member"}</p>
+            <p className="text-base font-extrabold text-slate-800 dark:text-slate-100 mt-3">{client?.full_name || t("client.member")}</p>
             <div className="flex items-center gap-2 mt-1.5">
               <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 text-[11px] font-bold capitalize">
-                {client?.status || "Active"}
+                {client?.status ? ({ active: t("client.active"), pending: t("client.pending"), suspended: t("client.suspended"), inactive: t("client.inactive") }[client.status] || client.status) : t("client.active")}
               </span>
               <span className="text-[11px] text-slate-400 font-mono">{client?.membership_number || "—"}</span>
             </div>
-            {avatarSrc && <p className="text-[11px] text-slate-400 dark:text-slate-600 mt-2">Tap photo to view full size</p>}
+            {avatarSrc && <p className="text-[11px] text-slate-400 dark:text-slate-600 mt-2">{t("client.tapPhotoFull")}</p>}
           </div>
           {/* Info cards */}
           <div className="px-4 pt-5 space-y-4">
             <InfoCard title={t("ajoPt.personalTab")}>
-              <InfoRow label="Full Name"  value={client?.full_name} />
-              <InfoRow label="Phone"      value={client?.phone} />
-              <InfoRow label="Email"      value={client?.email || session?.user?.email} />
+              <InfoRow label={t("client.fullName")}  value={client?.full_name} />
+              <InfoRow label={t("client.phoneLabel")} value={client?.phone} />
+              <InfoRow label={t("client.email")}     value={client?.email || session?.user?.email} />
               {client?.nin ? <InfoRow label="NIN" value={`••••••••${(client.nin || "").slice(-3)}`} /> : null}
             </InfoCard>
-            <InfoCard title="Location">
-              <InfoRow label="Address"    value={client?.address} />
-              <InfoRow label="State"      value={client?.state} />
-              <InfoRow label="LGA"        value={client?.lga} />
-              <InfoRow label="Ward"       value={client?.ward} />
+            <InfoCard title={t("client.location")}>
+              <InfoRow label={t("client.address")}   value={client?.address} />
+              <InfoRow label={t("client.state")}     value={client?.state} />
+              <InfoRow label={t("client.lga")}       value={client?.lga} />
+              <InfoRow label={t("client.ward")}      value={client?.ward} />
             </InfoCard>
-            <InfoCard title="Next of Kin">
-              <InfoRow label="Name"       value={client?.next_of_kin_name} />
-              <InfoRow label="Phone"      value={client?.next_of_kin_phone} />
-              <InfoRow label="Email"      value={client?.next_of_kin_email} />
-              <InfoRow label="Address"    value={client?.next_of_kin_address} />
+            <InfoCard title={t("client.nextOfKin")}>
+              <InfoRow label={t("common.name")}      value={client?.next_of_kin_name} />
+              <InfoRow label={t("client.phoneLabel")} value={client?.next_of_kin_phone} />
+              <InfoRow label={t("client.email")}     value={client?.next_of_kin_email} />
+              <InfoRow label={t("client.address")}   value={client?.next_of_kin_address} />
             </InfoCard>
-            <InfoCard title="Bank Account">
+            <InfoCard title={t("client.bankAccount")}>
               {client?.account_name ? (
                 <>
-                  <InfoRow label="Account Name"   value={client.account_name} />
-                  <InfoRow label="Account No."    value={client.account_number ? `****${client.account_number.slice(-4)}` : "—"} />
-                  <InfoRow label="Bank"           value={client.bank_name} />
+                  <InfoRow label={t("client.accountName")} value={client.account_name} />
+                  <InfoRow label={t("client.accountNo")}   value={client.account_number ? `****${client.account_number.slice(-4)}` : "—"} />
+                  <InfoRow label={t("client.bank")}        value={client.bank_name} />
                 </>
               ) : (
                 <div className="py-3">
-                  <p className="text-[13px] text-slate-400 dark:text-slate-500 italic">No bank account added yet — tap Edit to add one.</p>
+                  <p className="text-[13px] text-slate-400 dark:text-slate-500 italic">{t("client.noBankYet")}</p>
                 </div>
               )}
             </InfoCard>
-            <InfoCard title="Membership">
-              <InfoRow label="Member No."  value={client?.membership_number} />
-              <InfoRow label="Since"       value={client?.created_at ? new Date(client.created_at).toLocaleDateString("en-NG", { month: "short", year: "numeric" }) : "—"} />
-              <InfoRow label="Group"       value={client?.group_name} />
-              <InfoRow label="Frequency"   value={client?.contribution_frequency ? `${client.contribution_frequency.charAt(0).toUpperCase()}${client.contribution_frequency.slice(1)}` : "—"} />
-              <InfoRow label="Amount"      value={client?.contribution_amount ? `₦${Number(client.contribution_amount).toLocaleString("en-NG")} / ${client?.contribution_frequency || "cycle"}` : "—"} />
+            <InfoCard title={t("client.membership")}>
+              <InfoRow label={t("client.memberNo")}  value={client?.membership_number} />
+              <InfoRow label={t("client.since")}     value={client?.created_at ? new Date(client.created_at).toLocaleDateString("en-NG", { month: "short", year: "numeric" }) : "—"} />
+              <InfoRow label={t("client.group")}     value={client?.group_name} />
+              <InfoRow label={t("client.frequency")} value={client?.contribution_frequency ? (w => `${w.charAt(0).toUpperCase()}${w.slice(1)}`)(freqWord(t, client.contribution_frequency)) : "—"} />
+              <InfoRow label={t("common.amount")}    value={client?.contribution_amount ? `₦${Number(client.contribution_amount).toLocaleString("en-NG")} / ${client?.contribution_frequency ? freqWord(t, client.contribution_frequency) : t("client.cycleWord")}` : "—"} />
               {(client?.registration_charge ?? 0) > 0 && (
-                <InfoRow label="Reg. Fee" value={`₦${Number(client.registration_charge).toLocaleString("en-NG")}`} />
+                <InfoRow label={t("client.regFeeShort")} value={`₦${Number(client.registration_charge).toLocaleString("en-NG")}`} />
               )}
             </InfoCard>
           </div>
@@ -4279,16 +4316,16 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
     /* Phone OTP verification step */
     if (pendingPhone) return (
       <div className="h-full flex flex-col">
-        <SubHeader title="Verify Phone Change" onBack={() => { setPendingPhone(null); setPhoneOtp(""); setPhoneOtpError(""); }} />
+        <SubHeader title={t("client.verifyPhoneChange")} onBack={() => { setPendingPhone(null); setPhoneOtp(""); setPhoneOtpError(""); }} />
         <div className="flex-1 overflow-y-auto px-4 py-6 space-y-5 pb-8">
           <div className="bg-brand-50 dark:bg-brand-900/20 rounded-2xl p-4">
-            <p className="text-sm font-bold text-brand-700 dark:text-brand-300 mb-1">Check your email</p>
+            <p className="text-sm font-bold text-brand-700 dark:text-brand-300 mb-1">{t("client.checkEmail")}</p>
             <p className="text-[13px] text-brand-600/80 dark:text-brand-400/80 leading-relaxed">
-              We sent a 6-digit code to your registered email. Enter it below to confirm your new phone number.
+              {t("client.codeSentPhone")}
             </p>
           </div>
           <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">Verification Code</p>
+            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">{t("client.verificationCode")}</p>
             <input
               type="number" inputMode="numeric" value={phoneOtp}
               onChange={e => { setPhoneOtp(e.target.value.replace(/\D/g, "").slice(0, 6)); setPhoneOtpError(""); }}
@@ -4304,11 +4341,11 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
           )}
           <button onClick={verifyPhoneOtp} disabled={phoneOtp.length !== 6 || phoneOtpSending}
             className="w-full h-12 rounded-2xl bg-brand-500 text-white font-bold text-sm disabled:opacity-50 active:scale-95 transition">
-            {phoneOtpSending ? "Verifying…" : "Confirm Phone Change"}
+            {phoneOtpSending ? t("client.verifying") : t("client.confirmPhoneChange")}
           </button>
           <button onClick={sendPhoneOtp} disabled={phoneOtpSending}
             className="w-full py-3 text-[13px] text-slate-400 dark:text-slate-500 font-semibold">
-            Didn&apos;t receive it? Resend code
+            {t("client.resendCode")}
           </button>
         </div>
       </div>
@@ -4317,16 +4354,16 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
     /* Email OTP verification step */
     if (pendingEmail) return (
       <div className="h-full flex flex-col">
-        <SubHeader title="Verify New Email" onBack={() => { setPendingEmail(null); setEmailOtp(""); setOtpError(""); }} />
+        <SubHeader title={t("client.verifyNewEmail")} onBack={() => { setPendingEmail(null); setEmailOtp(""); setOtpError(""); }} />
         <div className="flex-1 overflow-y-auto px-4 py-6 space-y-5 pb-8">
           <div className="bg-brand-50 dark:bg-brand-900/20 rounded-2xl p-4">
-            <p className="text-sm font-bold text-brand-700 dark:text-brand-300 mb-1">Check your inbox</p>
+            <p className="text-sm font-bold text-brand-700 dark:text-brand-300 mb-1">{t("client.checkInbox")}</p>
             <p className="text-[13px] text-brand-600/80 dark:text-brand-400/80 leading-relaxed">
-              We sent a 6-digit code to <span className="font-bold">{pendingEmail}</span>. Enter it below to confirm your new email address.
+              {t("client.codeSentToPre")} <span className="font-bold">{pendingEmail}</span>{t("client.codeSentToPost")}
             </p>
           </div>
           <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">Verification Code</p>
+            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">{t("client.verificationCode")}</p>
             <input
               type="number" inputMode="numeric" value={emailOtp}
               onChange={e => { setEmailOtp(e.target.value.replace(/\D/g, "").slice(0, 6)); setOtpError(""); }}
@@ -4342,11 +4379,11 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
           )}
           <button onClick={verifyEmailOtp} disabled={emailOtp.length !== 6 || otpSending}
             className="w-full h-12 rounded-2xl bg-brand-500 text-white font-bold text-sm disabled:opacity-50 active:scale-95 transition">
-            {otpSending ? "Verifying…" : "Confirm Email Change"}
+            {otpSending ? t("client.verifying") : t("client.confirmEmailChange")}
           </button>
           <button onClick={sendEmailOtp} disabled={otpSending}
             className="w-full py-3 text-[13px] text-slate-400 dark:text-slate-500 font-semibold">
-            Didn't receive it? Resend code
+            {t("client.resendCode")}
           </button>
         </div>
       </div>
@@ -4354,7 +4391,7 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
 
     return (
       <div className="h-full flex flex-col">
-        <SubHeader title="Edit Profile" onBack={() => { setSaveMsg(""); setView("profile"); }} />
+        <SubHeader title={t("common.editProfile")} onBack={() => { setSaveMsg(""); setView("profile"); }} />
         <div className="flex-1 overflow-y-auto px-4 py-5 space-y-6 pb-8">
 
           {/* Avatar */}
@@ -4369,7 +4406,7 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
                 <Svg d={P.cam} size={15} color="#fff" />
               </button>
             </div>
-            <p className="text-[12px] text-slate-400">Tap camera to change · Max 2 MB</p>
+            <p className="text-[12px] text-slate-400">{t("client.tapCameraChange")}</p>
             {uploadProgress > 0 && (
               <div className="w-48">
                 <div className="h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
@@ -4390,8 +4427,8 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
 
           {/* Personal */}
           <div className="space-y-3">
-            <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Personal</p>
-            {[["Full Name", "full_name", "text"], ["Phone", "phone", "tel"]].map(([lbl, k, t]) => (
+            <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">{t("client.personal")}</p>
+            {[[t("client.fullName"), "full_name", "text"], [t("client.phoneLabel"), "phone", "tel"]].map(([lbl, k, t]) => (
               <div key={k}>
                 <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">{lbl}</p>
                 <input type={t} value={editForm[k]} onChange={e => setEditForm(p => ({ ...p, [k]: e.target.value }))}
@@ -4399,17 +4436,17 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
               </div>
             ))}
             <div>
-              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Email</p>
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">{t("client.email")}</p>
               <input type="email" value={editForm.email}
                 onChange={e => setEditForm(p => ({ ...p, email: e.target.value }))}
                 className="w-full h-12 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/30" />
               {editForm.email && editForm.email !== currentEmail && emailRegex.test(editForm.email) && (
-                <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1.5 px-1">Email changed — you'll receive a code to verify</p>
+                <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1.5 px-1">{t("client.emailChangedCode")}</p>
               )}
             </div>
             <div>
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">NIN</p>
-              <input type="text" inputMode="numeric" maxLength={11} value={editForm.nin} placeholder="11-digit NIN"
+              <input type="text" inputMode="numeric" maxLength={11} value={editForm.nin} placeholder={t("client.nin11Ph")}
                 onChange={e => setEditForm(p => ({ ...p, nin: e.target.value.replace(/\D/g, "").slice(0, 11) }))}
                 className="w-full h-12 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/30" />
             </div>
@@ -4417,8 +4454,8 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
 
           {/* Location */}
           <div className="space-y-3">
-            <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Location</p>
-            {[["Address", "address"], ["State", "state"], ["LGA", "lga"], ["Ward", "ward"]].map(([lbl, k]) => (
+            <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">{t("client.location")}</p>
+            {[[t("client.address"), "address"], [t("client.state"), "state"], [t("client.lga"), "lga"], [t("client.ward"), "ward"]].map(([lbl, k]) => (
               <div key={k}>
                 <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">{lbl}</p>
                 <input type="text" value={editForm[k]} onChange={e => setEditForm(p => ({ ...p, [k]: e.target.value }))}
@@ -4429,8 +4466,8 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
 
           {/* Next of Kin */}
           <div className="space-y-3">
-            <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Next of Kin</p>
-            {[["Name", "nok_name", "text"], ["Phone", "nok_phone", "tel"], ["Email", "nok_email", "email"], ["Address", "nok_addr", "text"]].map(([lbl, k, t]) => (
+            <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">{t("client.nextOfKin")}</p>
+            {[[t("common.name"), "nok_name", "text"], [t("client.phoneLabel"), "nok_phone", "tel"], [t("client.email"), "nok_email", "email"], [t("client.address"), "nok_addr", "text"]].map(([lbl, k, t]) => (
               <div key={k}>
                 <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">{lbl}</p>
                 <input type={t} value={editForm[k]} onChange={e => setEditForm(p => ({ ...p, [k]: e.target.value }))}
@@ -4441,22 +4478,22 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
 
           {/* Bank Account */}
           <div className="space-y-3">
-            <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Bank Account (Payout)</p>
+            <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">{t("client.bankAccountPayout")}</p>
             <div>
-              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Bank</p>
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">{t("client.bank")}</p>
               <select value={editForm.bank_code} onChange={e => {
                 const sel = banks.find(b => b.code === e.target.value);
                 setEditForm(p => ({ ...p, bank_code: e.target.value, bank_name: sel?.name || "", account_name: "" }));
                 setBankVerified(false); setBankError("");
               }} className="w-full h-12 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/30">
-                <option value="">Select bank…</option>
+                <option value="">{t("client.selectBank")}</option>
                 {banks.map(b => <option key={b.code} value={b.code}>{b.name}</option>)}
               </select>
             </div>
             <div>
-              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Account Number</p>
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">{t("client.accountNumber")}</p>
               <div className="flex gap-2">
-                <input type="text" inputMode="numeric" maxLength={10} value={editForm.account_number} placeholder="10-digit number"
+                <input type="text" inputMode="numeric" maxLength={10} value={editForm.account_number} placeholder={t("client.tenDigitPh")}
                   onChange={e => {
                     setEditForm(p => ({ ...p, account_number: e.target.value.replace(/\D/g, "").slice(0, 10), account_name: "" }));
                     setBankVerified(false); setBankError("");
@@ -4465,7 +4502,7 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
                 <button type="button" onClick={resolveBank}
                   disabled={bankVerifying || !editForm.bank_code || editForm.account_number.length !== 10}
                   className="h-12 px-4 rounded-xl bg-brand-500 text-white text-sm font-bold disabled:opacity-40 active:scale-95 transition flex-shrink-0">
-                  {bankVerifying ? "…" : "Verify"}
+                  {bankVerifying ? "…" : t("client.verify")}
                 </button>
               </div>
             </div>
@@ -4478,7 +4515,7 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
             {!bankVerified && editForm.account_name && (
               <div className="px-4 py-3 bg-slate-100 dark:bg-slate-700/50 rounded-xl">
                 <p className="text-[12px] font-semibold text-slate-500 dark:text-slate-400">{editForm.account_name} · {editForm.bank_name || "—"}</p>
-                <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">Saved account — re-verify to change</p>
+                <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{t("client.savedAcctReverify")}</p>
               </div>
             )}
             {bankError && <p className="text-xs text-red-500 px-1">{bankError}</p>}
@@ -4486,16 +4523,16 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
 
           {/* Membership — read-only */}
           <div className="space-y-3">
-            <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Membership (read-only)</p>
+            <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">{t("client.membershipReadOnly")}</p>
             <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700/50 overflow-hidden divide-y divide-slate-100 dark:divide-slate-700/30">
               {[
-                ["Member No.", client?.membership_number],
-                ["Since", client?.created_at ? new Date(client.created_at).toLocaleDateString("en-NG", { month: "short", year: "numeric" }) : null],
-                ["Group", client?.group_name],
-                ["Frequency", client?.contribution_frequency],
-                ["Amount", client?.contribution_amount ? `₦${Number(client.contribution_amount).toLocaleString("en-NG")}` : null],
-                ["Reg. Fee", client?.registration_charge != null ? `₦${Number(client.registration_charge).toLocaleString("en-NG")}` : null],
-                ["Withdrawal Fee", client?.commission_model === "percent" ? `${client.commission_percent || 0}%` : client?.commission_model === "first_period" ? "First period/cycle" : client?.commission_model === "none" ? "None" : null],
+                [t("client.memberNo"), client?.membership_number],
+                [t("client.since"), client?.created_at ? new Date(client.created_at).toLocaleDateString("en-NG", { month: "short", year: "numeric" }) : null],
+                [t("client.group"), client?.group_name],
+                [t("client.frequency"), client?.contribution_frequency ? freqWord(t, client.contribution_frequency) : null],
+                [t("common.amount"), client?.contribution_amount ? `₦${Number(client.contribution_amount).toLocaleString("en-NG")}` : null],
+                [t("client.regFeeShort"), client?.registration_charge != null ? `₦${Number(client.registration_charge).toLocaleString("en-NG")}` : null],
+                [t("client.withdrawalFeeLabel"), client?.commission_model === "percent" ? `${client.commission_percent || 0}%` : client?.commission_model === "first_period" ? t("client.firstPeriodCycle") : client?.commission_model === "none" ? t("client.none") : null],
               ].map(([lbl, val]) => (
                 <div key={lbl} className="flex items-center px-4 py-3">
                   <p className="text-[12px] text-slate-400 dark:text-slate-500 w-28 flex-shrink-0">{lbl}</p>
@@ -4506,14 +4543,14 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
           </div>
 
           {saveMsg && (
-            <div className={`flex items-center gap-2 px-4 py-3 rounded-xl ${saveMsg.includes("saved") ? "bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400" : "bg-red-50 dark:bg-red-900/30 text-red-600"}`}>
-              <Svg d={saveMsg.includes("saved") ? P.check : P.alert} size={16} color="currentColor" />
+            <div className={`flex items-center gap-2 px-4 py-3 rounded-xl ${(saveMsg === t("profile.saved") || saveMsg.includes("saved")) ? "bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400" : "bg-red-50 dark:bg-red-900/30 text-red-600"}`}>
+              <Svg d={(saveMsg === t("profile.saved") || saveMsg.includes("saved")) ? P.check : P.alert} size={16} color="currentColor" />
               <p className="text-sm font-semibold">{saveMsg}</p>
             </div>
           )}
           <button onClick={saveProfile} disabled={saving}
             className="w-full h-12 rounded-2xl bg-brand-500 text-white font-bold text-sm flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50">
-            {saving ? "Saving…" : "Save Changes"}
+            {saving ? t("common.saving") : t("client.saveChanges")}
           </button>
         </div>
       </div>
@@ -4532,14 +4569,14 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
     <div className="h-full overflow-y-auto pb-4">
       {/* Account */}
       <div className="px-4 mt-5 mb-5">
-        <SectionLabel>Account</SectionLabel>
+        <SectionLabel>{t("client.account")}</SectionLabel>
         <SettingsCard>
           {/* Profile summary row — full row taps to open profile preview */}
           <Row
             iconCls="bg-green-50 dark:bg-green-900/20"
             icon={<RowIcon d={P.doc} color="#16a34a" />}
             label={t("ajoPt.myFees")}
-            sub="Registration fee, withdrawal charges"
+            sub={t("client.myFeesSub")}
             onClick={() => setView("fees")}
           />
           <button onClick={() => setView("profile")}
@@ -4549,9 +4586,9 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
               {(photoPreview || client?.profile_image_url) && <img src={photoPreview || client.profile_image_url} alt="" className="absolute inset-0 w-full h-full object-cover" onError={(e) => e.currentTarget.style.display = "none"} />}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="font-extrabold text-[15px] leading-snug text-slate-800 dark:text-slate-100 truncate">{client?.full_name || "Member"}</p>
+              <p className="font-extrabold text-[15px] leading-snug text-slate-800 dark:text-slate-100 truncate">{client?.full_name || t("client.member")}</p>
               <p className="text-[12px] text-slate-400 dark:text-slate-500 mt-0.5 truncate capitalize">
-                {[client?.contribution_frequency ? `${client.contribution_frequency} savings` : null, client?.membership_number].filter(Boolean).join(" · ") || "View profile"}
+                {[client?.contribution_frequency ? t("client.freqSavings", { freq: freqWord(t, client.contribution_frequency) }) : null, client?.membership_number].filter(Boolean).join(" · ") || t("client.viewProfile")}
               </p>
             </div>
             <Svg d="M9 18l6-6-6-6" size={16} color="#cbd5e1" />
@@ -4562,7 +4599,7 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
       {/* Wallet tier — everyone starts at Tier 1; shows the limits and how to reach the next tier */}
       {tierWalletEnabled && (
         <div className="px-4 mb-5">
-          <SectionLabel>Wallet tier</SectionLabel>
+          <SectionLabel>{t("client.walletTier")}</SectionLabel>
           <WalletTierCard userId={client?.client_user_id || session?.user?.id} enabled
             prefill={{ fullName: client?.full_name || "", address: client?.address || "", state: client?.state || "", lga: client?.lga || "" }} />
         </div>
@@ -4571,23 +4608,23 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
       {/* Statements */}
       {onOpenStatements && (
         <div className="px-4 mb-5">
-          <SectionLabel>Statements</SectionLabel>
+          <SectionLabel>{t("client.statements")}</SectionLabel>
           <SettingsCard>
             <Row iconCls="bg-brand-50 dark:bg-brand-900/20" icon={<RowIcon d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z|M14 2v6h6|M16 13H8|M16 17H8" color="#3DA829" />}
-              label="Statements" sub="Savings and wallet · monthly statement PDFs" onClick={onOpenStatements} />
+              label={t("client.statements")} sub={t("client.statementsSub")} onClick={onOpenStatements} />
           </SettingsCard>
         </div>
       )}
 
       {/* Preferences */}
       <div className="px-4 mb-5">
-        <SectionLabel>Preferences</SectionLabel>
+        <SectionLabel>{t("client.preferences")}</SectionLabel>
         <SettingsCard>
           <Row
             iconCls="bg-emerald-50 dark:bg-emerald-900/20"
             icon={<svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="#10b981" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>}
-            label="Daily Brief"
-            sub="AI savings summary read aloud on app open"
+            label={t("client.dailyBrief")}
+            sub={t("client.dailyBriefSub")}
             onClick={toggleBrief}
             right={
               <button onClick={e => { e.stopPropagation(); toggleBrief(); }} role="switch" aria-checked={briefEnabled}
@@ -4602,24 +4639,24 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
 
       {/* Security */}
       <div className="px-4 mb-5">
-        <SectionLabel>Security</SectionLabel>
+        <SectionLabel>{t("client.security")}</SectionLabel>
         <SettingsCard>
           {/* 1 — App Lock PIN */}
           <Row
             iconCls="bg-blue-50 dark:bg-blue-900/20"
             icon={<RowIcon d={P.lock} color="#3b82f6" />}
-            label="App Lock PIN"
-            sub={pinLock.appPinSet ? "Change your 6-digit unlock PIN" : "Set a 6-digit PIN to lock this app"}
+            label={t("client.appLockPin")}
+            sub={pinLock.appPinSet ? t("client.changeUnlockPin") : t("client.setLockPin")}
             onClick={() => { setSecView("app-pin"); setSecStep(pinLock.appPinSet ? 1 : 2); setSecErr(""); setSecNewPin(""); }}
           />
           {/* 2 — Transaction PIN */}
           <Row
             iconCls="bg-blue-50 dark:bg-blue-900/20"
             icon={<RowIcon d={P.shield} color="#3b82f6" />}
-            label="Transaction PIN"
+            label={t("client.txnPin")}
             sub={txnCooling
-              ? "Recently reset — high-value operations under 24h review"
-              : txnPinSet ? "Change your 4-digit transaction PIN" : "Set a 4-digit transaction PIN"}
+              ? t("client.txnPinCooling")
+              : txnPinSet ? t("client.changeTxnPin4") : t("client.setTxnPin4")}
             onClick={() => {
               setSecView("txn-pin"); setSecStep(txnPinSet ? 1 : 3);
               setSecErr(""); setSecNewPin(""); setOldTxnPin("");
@@ -4633,8 +4670,8 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
             <Row
               iconCls="bg-blue-50 dark:bg-blue-900/20"
               icon={<RowIcon d={P.finger} color="#3b82f6" />}
-              label="Biometric Unlock"
-              sub={pinLock.biometricEnabled ? "Fingerprint / Face ID enabled" : "Use fingerprint or face to unlock"}
+              label={t("client.biometricUnlock")}
+              sub={pinLock.biometricEnabled ? t("client.biometricOn") : t("client.biometricOff")}
               onClick={async () => {
                 if (!pinLock.appPinSet) { setShowPinSetup(true); return; }
                 setLockBusy(true);
@@ -4667,8 +4704,8 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
           <Row
             iconCls="bg-blue-50 dark:bg-blue-900/20"
             icon={<RowIcon d={P.lock} color="#3b82f6" />}
-            label="Auto Lock"
-            sub={pinLock.autoLockTimeout === 0 ? "Auto lock is disabled" : `Locks after ${autoLabel}`}
+            label={t("client.autoLock")}
+            sub={pinLock.autoLockTimeout === 0 ? t("client.autoLockDisabled") : t("client.locksAfter", { time: autoLabel })}
             onClick={() => setShowLockPick(true)}
           />
         </SettingsCard>
@@ -4676,15 +4713,15 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
 
       {/* Preferences */}
       <div className="px-4 mb-5">
-        <SectionLabel>Preferences</SectionLabel>
+        <SectionLabel>{t("client.preferences")}</SectionLabel>
         <SettingsCard>
           <Row iconCls="bg-amber-50 dark:bg-amber-900/20" icon={<RowIcon d={isDark ? P.moon : P.sun} color="#f59e0b" />}
-            label="Dark Mode" onClick={toggleDark} right={Toggle} />
+            label={t("client.darkMode")} onClick={toggleDark} right={Toggle} />
           <Row iconCls="bg-blue-50 dark:bg-blue-900/20" icon={<RowIcon d="M12 2a10 10 0 100 20A10 10 0 0012 2z|M2 12h20|M12 2c-5 0-8 4.5-8 10s3 10 8 10 8-4.5 8-10S17 2 12 2z" color="#3b82f6" />}
-            label="Language" sub={LANGUAGES.find(l => l.code === lang)?.native || "English"}
+            label={t("client.language")} sub={LANGUAGES.find(l => l.code === lang)?.native || "English"}
             onClick={() => setShowLang(true)} />
           <Row iconCls="bg-brand-50 dark:bg-brand-900/20" icon={<RowIcon d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9|M13.73 21a2 2 0 01-3.46 0" color="#3DA829" />}
-            label="Notification Preferences" sub="Push alerts and category toggles"
+            label={t("client.notifPrefs")} sub={t("client.notifPrefsSub")}
             onClick={() => setShowNotifPrefs(true)} />
         </SettingsCard>
       </div>
@@ -4694,28 +4731,28 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
         <SectionLabel>{t("common.helpSupport")}</SectionLabel>
         <SettingsCard>
           <Row iconCls="bg-violet-50 dark:bg-violet-900/20" icon={<RowIcon d={P.faq} color="#7c3aed" />}
-            label="FAQ & AI Help" sub="Search questions or ask AI" onClick={() => { setView("faq"); setFaqTab("faq"); }} />
+            label={t("client.faqAiHelp")} sub={t("client.faqAiHelpSub")} onClick={() => { setView("faq"); setFaqTab("faq"); }} />
           <Row iconCls="bg-violet-50 dark:bg-violet-900/20" icon={<RowIcon d={P.help} color="#7c3aed" />}
-            label="Contact Support" sub="Submit a support ticket" onClick={() => { setView("faq"); setFaqTab("support"); }} />
+            label={t("client.contactSupport")} sub={t("client.contactSupportSub")} onClick={() => { setView("faq"); setFaqTab("support"); }} />
         </SettingsCard>
       </div>
 
       {/* Legal */}
       <div className="px-4 mb-5">
-        <SectionLabel>Legal</SectionLabel>
+        <SectionLabel>{t("client.legal")}</SectionLabel>
         <SettingsCard>
           <Row
             iconCls="bg-slate-100 dark:bg-slate-700"
             icon={<RowIcon d={P.doc} color="#475569" />}
-            label="Terms & Conditions"
-            sub="View the full terms of service"
+            label={t("client.termsConditions")}
+            sub={t("client.termsSub")}
             onClick={() => setLegalView("terms")}
           />
           <Row
             iconCls="bg-slate-100 dark:bg-slate-700"
             icon={<RowIcon d={P.doc} color="#475569" />}
-            label="Privacy Policy"
-            sub="How we collect and use your data"
+            label={t("client.privacyPolicy")}
+            sub={t("client.privacySub")}
             onClick={() => setLegalView("privacy")}
           />
           {consentRecord && (
@@ -4724,10 +4761,9 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
                 <Svg d={P.check} size={20} color="#10b981" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-[14px] leading-snug text-slate-700 dark:text-slate-200">Your consent record</p>
+                <p className="font-semibold text-[14px] leading-snug text-slate-700 dark:text-slate-200">{t("client.consentRecord")}</p>
                 <p className="text-[12px] text-slate-400 dark:text-slate-500 mt-0.5 leading-relaxed">
-                  You accepted T&amp;C v{consentRecord.tnc_version} and Privacy Policy v{consentRecord.privacy_version} on{" "}
-                  {new Date(consentRecord.consented_at).toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" })}
+                  {t("client.consentAccepted", { tnc: consentRecord.tnc_version, privacy: consentRecord.privacy_version, date: new Date(consentRecord.consented_at).toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" }) })}
                 </p>
               </div>
             </div>
@@ -4749,15 +4785,15 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
         <button onClick={() => import("../utils/logout").then(m => m.performLogout())}
           className="w-full py-[15px] bg-red-50 dark:bg-red-950/30 rounded-2xl font-bold text-sm border border-red-100 dark:border-red-900/40 active:bg-red-100 transition-colors flex items-center justify-center gap-2.5 text-red-500 dark:text-red-400">
           <Svg d={P.out2} size={18} color="currentColor" />
-          Sign Out
+          {t("client.signOutCap")}
         </button>
         <DeleteAccountLink className="mt-1" />
       </div>
 
       {/* Footer */}
       <div className="text-center py-4 px-8 space-y-1">
-        <p className="text-[11px] text-slate-400 dark:text-slate-500 font-medium">KudiAI Track &middot; Savings Member Portal</p>
-        <p className="text-[10px] text-slate-300 dark:text-slate-600">Powered by AMAYA &amp; Co. Technologies<br />All rights reserved &copy; {YEAR}</p>
+        <p className="text-[11px] text-slate-400 dark:text-slate-500 font-medium">KudiAI Track &middot; {t("client.memberPortal")}</p>
+        <p className="text-[10px] text-slate-300 dark:text-slate-600">{t("client.poweredBy")}<br />{t("client.allRights", { year: YEAR })}</p>
       </div>
 
       {/* ── Auto Lock picker ───────────────────────────────────────────── */}
@@ -4766,11 +4802,11 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
           onClick={e => { if (e.target === e.currentTarget) setShowLockPick(false); }}>
           <div className="bg-white dark:bg-slate-800 rounded-t-3xl pb-safe px-4 pt-5"
             style={{ paddingBottom: "max(24px, env(safe-area-inset-bottom, 24px))" }}>
-            <p className="text-base font-extrabold text-slate-800 dark:text-slate-100 mb-4 text-center">Auto Lock</p>
+            <p className="text-base font-extrabold text-slate-800 dark:text-slate-100 mb-4 text-center">{t("client.autoLock")}</p>
             {neverCaution && (
               <div className="mb-3 px-4 py-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/30">
                 <p className="text-[12px] text-amber-700 dark:text-amber-400 leading-relaxed">
-                  Your app won&apos;t lock automatically. Anyone with access to your device can open it without a PIN.
+                  {t("client.neverLockWarn")}
                 </p>
               </div>
             )}
@@ -4787,13 +4823,13 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
                       ? "bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400"
                       : "text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700/40"
                   }`}>
-                  {opt.label}
+                  {t(opt.labelKey)}
                   {pinLock.autoLockTimeout === opt.secs && <Svg d={P.check} size={16} color="currentColor" />}
                 </button>
               ))}
             </div>
             <button onClick={() => { setShowLockPick(false); setNeverCaution(false); }}
-              className="mt-3 w-full py-3 text-sm text-slate-400 font-semibold">Cancel</button>
+              className="mt-3 w-full py-3 text-sm text-slate-400 font-semibold">{t("common.cancel")}</button>
           </div>
         </div>
       )}
@@ -4802,8 +4838,8 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
       {secView === "app-pin" && secStep === 1 && (
         <AjoPinPad
           length={6}
-          title="Enter current PIN"
-          subtitle="Enter your 6-digit app unlock PIN"
+          title={t("client.enterCurrentPin")}
+          subtitle={t("client.enterAppUnlockPin")}
           onComplete={handleAppPinStep}
           onCancel={resetSecView}
           error={secErr} shaking={secShake} loading={secBusy}
@@ -4812,8 +4848,8 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
       {secView === "app-pin" && secStep === 2 && (
         <AjoPinPad
           length={6}
-          title={pinLock.appPinSet ? "Enter new PIN" : "Set your PIN"}
-          subtitle="Choose a 6-digit unlock PIN for this app"
+          title={pinLock.appPinSet ? t("client.enterNewPin") : t("client.setYourPin")}
+          subtitle={t("client.chooseUnlockPin")}
           onComplete={handleAppPinStep}
           onCancel={resetSecView}
           error={secErr} shaking={secShake} loading={secBusy}
@@ -4822,8 +4858,8 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
       {secView === "app-pin" && secStep === 3 && (
         <AjoPinPad
           length={6}
-          title="Confirm new PIN"
-          subtitle="Enter your new PIN one more time"
+          title={t("client.confirmNewPin")}
+          subtitle={t("client.enterNewPinAgain")}
           onComplete={handleAppPinStep}
           onCancel={() => { setSecStep(2); setSecErr(""); }}
           error={secErr} shaking={secShake} loading={secBusy}
@@ -4834,8 +4870,8 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
       {secView === "txn-pin" && secStep === 1 && (
         <AjoPinPad
           length={4}
-          title="Enter current transaction PIN"
-          subtitle="Verify your identity before changing your transaction PIN"
+          title={t("client.enterCurrentTxnPin")}
+          subtitle={t("client.verifyIdentityTxn")}
           onComplete={handleTxnPinStep}
           onCancel={resetSecView}
           error={secErr} shaking={secShake} loading={secBusy}
@@ -4844,8 +4880,8 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
       {secView === "txn-pin" && secStep === 2 && (
         <AjoPinPad
           length={6}
-          title="Enter OTP"
-          subtitle="We sent a 6-digit code to your registered email"
+          title={t("client.enterOtp")}
+          subtitle={t("client.otpSentEmail")}
           onComplete={handleTxnPinStep}
           onCancel={() => { setSecStep(1); setSecErr(""); }}
           error={secErr} shaking={secShake} loading={secBusy}
@@ -4854,8 +4890,8 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
       {secView === "txn-pin" && secStep === 3 && (
         <AjoPinPad
           length={4}
-          title="Set new transaction PIN"
-          subtitle="Choose a 4-digit PIN for authorising transactions"
+          title={t("client.setNewTxnPin")}
+          subtitle={t("client.chooseTxnPin4")}
           onComplete={handleTxnPinStep}
           onCancel={resetSecView}
           error={secErr} shaking={secShake} loading={secBusy}
@@ -4864,8 +4900,8 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
       {secView === "txn-pin" && secStep === 4 && (
         <AjoPinPad
           length={4}
-          title="Confirm new PIN"
-          subtitle="Enter your new transaction PIN once more"
+          title={t("client.confirmNewPin")}
+          subtitle={t("client.enterNewTxnPinAgain")}
           onComplete={handleTxnPinStep}
           onCancel={() => { setSecStep(3); setSecErr(""); }}
           error={secErr} shaking={secShake} loading={secBusy}
@@ -4885,7 +4921,7 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
             <p className="text-base font-extrabold text-slate-800 dark:text-slate-100 flex-1">{t("common.helpSupport")}</p>
             {/* Tabs */}
             <div className="flex gap-1 pb-0">
-              {[["faq", "FAQ"], ["support", "Support"]].map(([id, lbl]) => (
+              {[["faq", t("client.faq")], ["support", t("client.support")]].map(([id, lbl]) => (
                 <button key={id} onClick={() => { setFaqTab(id); setFaqSearch(""); setAiAnswer(""); setAiError(""); }}
                   className={`px-3 py-2 text-[12px] font-bold rounded-t-xl border-b-2 transition ${
                     faqTab === id
@@ -4912,13 +4948,13 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
                     value={faqSearch}
                     onChange={e => { setFaqSearch(e.target.value); setAiAnswer(""); setAiError(""); }}
                     onKeyDown={e => { if (e.key === "Enter" && faqSearch.trim()) askAI(faqSearch.trim()); }}
-                    placeholder="Search or ask anything…"
+                    placeholder={t("client.searchOrAsk")}
                     className="w-full pl-9 pr-20 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30"
                   />
                   {faqSearch.trim() && (
                     <button onClick={() => askAI(faqSearch.trim())} disabled={aiLoading}
                       className="absolute right-2 px-2.5 py-1 bg-brand-500 disabled:opacity-50 text-white rounded-lg text-[11px] font-bold">
-                      Ask AI
+                      {t("client.askAi")}
                     </button>
                   )}
                 </div>
@@ -4977,12 +5013,12 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
               <span className="text-7xl font-black text-white">{initials}</span>
             </div>
             {(photoPreview || client?.profile_image_url) && (
-              <img src={photoPreview || client.profile_image_url} alt={client?.full_name || "Avatar"}
+              <img src={photoPreview || client.profile_image_url} alt={client?.full_name || t("client.avatar")}
                 className="absolute inset-0 w-full h-full object-cover" draggable={false}
                 onError={(e) => e.currentTarget.style.display = "none"} />
             )}
           </div>
-          <p className="absolute bottom-8 text-white/30 text-[11px]">Pinch to zoom · Double-tap to toggle</p>
+          <p className="absolute bottom-8 text-white/30 text-[11px]">{t("client.pinchZoom")}</p>
         </div>
       )}
 
@@ -5004,7 +5040,7 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
       )}
 
       {showLang && (
-        <Modal title="Language" onClose={() => setShowLang(false)}>
+        <Modal title={t("client.language")} onClose={() => setShowLang(false)}>
           <div className="space-y-2 px-4 pb-4">
             {LANGUAGES.map(l => (
               <button key={l.code} onClick={() => { changeLang(l.code); markLangChosen(); setShowLang(false); }}
@@ -5120,12 +5156,13 @@ function AjoMemberBillsWrapper({ client, ownerInfo, session, wallet }) {
 // Used both from the always-visible "Open New Card" entry point on Overview
 // and from the goal-setting flow when a client has no card to attach a goal to.
 const CARD_FREQUENCIES = [
-  { id: "daily",   label: "Daily"   },
-  { id: "weekly",  label: "Weekly"  },
-  { id: "monthly", label: "Monthly" },
+  { id: "daily",   labelKey: "client.freqDailyCap"   },
+  { id: "weekly",  labelKey: "client.freqWeeklyCap"  },
+  { id: "monthly", labelKey: "client.freqMonthlyCap" },
 ];
 
 function OpenCycleSheet({ client, cycleCount = 0, onClose, onOpened }) {
+  const t = useT();
   const [name,      setName]      = useState("");
   const [amount,    setAmount]    = useState("");
   const [model,     setModel]     = useState("first_period");
@@ -5142,7 +5179,7 @@ function OpenCycleSheet({ client, cycleCount = 0, onClose, onOpened }) {
         ...(name.trim() ? { label: name.trim() } : {}),
         ...(amount && Number(amount) > 0 ? { amount: Number(amount) } : {}),
       });
-      if (res?.ok === false) throw new Error(res.error || "Could not open your savings card");
+      if (res?.ok === false) throw new Error(res.error || t("client.couldNotOpenCard"));
       // realtime (ajo_cycles INSERT, filtered to this client) refreshes `cycles` in the parent
       onOpened?.();
       onClose();
@@ -5154,22 +5191,22 @@ function OpenCycleSheet({ client, cycleCount = 0, onClose, onOpened }) {
   };
 
   return (
-    <BottomSheet open onClose={onClose} title="Open a savings card">
+    <BottomSheet open onClose={onClose} title={t("client.openSavingsCard")}>
       <p className="text-[12px] text-slate-500 dark:text-slate-400 mb-4 leading-relaxed">
-        You can hold more than one card at a time — give this one a name if you're opening another.
+        {t("client.moreThanOneCard")}
       </p>
       {err && <p className="text-[12px] text-red-500 mb-3">{err}</p>}
 
       <div className="space-y-3 mb-4">
         <div>
-          <label className="text-[12px] font-semibold text-slate-500 dark:text-slate-400">Card name <span className="text-slate-300 font-normal">optional</span></label>
+          <label className="text-[12px] font-semibold text-slate-500 dark:text-slate-400">{t("client.cardName")} <span className="text-slate-300 font-normal">{t("common.optional")}</span></label>
           <input type="text" value={name} onChange={e => setName(e.target.value)}
-            placeholder={cycleCount > 0 ? "e.g. Rent Fund, School Fees" : "Personal Savings"}
+            placeholder={cycleCount > 0 ? t("client.cardNameEg") : t("client.personalSavings")}
             className="w-full mt-1.5 px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/60 text-slate-900 dark:text-slate-50 text-[14px] font-semibold placeholder:font-normal placeholder:text-slate-400 focus:outline-none focus:border-brand-400" />
         </div>
         <div>
           <label className="text-[12px] font-semibold text-slate-500 dark:text-slate-400">
-            How much per period <span className="text-slate-300 font-normal">optional — leave blank for no fixed target</span>
+            {t("client.howMuchPerPeriod")} <span className="text-slate-300 font-normal">{t("client.optionalNoTarget")}</span>
           </label>
           <div className="flex items-center gap-2 mt-1.5 px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/60">
             <span className="text-[15px] font-black text-brand-600 dark:text-brand-300">₦</span>
@@ -5179,7 +5216,7 @@ function OpenCycleSheet({ client, cycleCount = 0, onClose, onOpened }) {
           </div>
         </div>
         <div>
-          <label className="text-[12px] font-semibold text-slate-500 dark:text-slate-400">How often</label>
+          <label className="text-[12px] font-semibold text-slate-500 dark:text-slate-400">{t("client.howOften")}</label>
           <div className="flex gap-2 mt-1.5">
             {CARD_FREQUENCIES.map(f => (
               <button key={f.id} type="button" onClick={() => setFrequency(f.id)}
@@ -5188,36 +5225,36 @@ function OpenCycleSheet({ client, cycleCount = 0, onClose, onOpened }) {
                     ? "bg-brand-500 text-white"
                     : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300"
                 }`}>
-                {f.label}
+                {t(f.labelKey)}
               </button>
             ))}
           </div>
         </div>
       </div>
 
-      <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">Collector's fee</p>
+      <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">{t("client.collectorsFee")}</p>
       <div className="space-y-2">
         <button onClick={() => setModel("first_period")}
           className={`w-full text-left px-4 py-3.5 rounded-xl border transition-transform active:scale-[0.99] ${model === "first_period" ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20" : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"}`}>
-          <span className="block text-[13px] font-bold text-slate-800 dark:text-white">First-period fee</span>
+          <span className="block text-[13px] font-bold text-slate-800 dark:text-white">{t("client.firstPeriodFee")}</span>
           <span className="block text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
-            Your first contribution covers the collector's fee — every payment after that goes fully to your savings.
+            {t("client.firstPeriodFeeBody")}
           </span>
         </button>
         <button onClick={() => canPercent && setModel("percent")} disabled={!canPercent}
           className={`w-full text-left px-4 py-3.5 rounded-xl border disabled:opacity-50 transition-transform active:scale-[0.99] ${model === "percent" ? "border-brand-500 bg-brand-50 dark:bg-brand-900/20" : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"}`}>
           <span className="block text-[13px] font-bold text-slate-800 dark:text-white">
-            Percentage fee{canPercent ? ` · ${client.commission_percent}%` : ""}
+            {t("client.percentageFee")}{canPercent ? ` · ${client.commission_percent}%` : ""}
           </span>
           <span className="block text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
-            {canPercent ? "A small percentage is deducted as fee whenever you withdraw." : "Not set up for your account — ask your collector."}
+            {canPercent ? t("client.percentageFeeBody") : t("client.percentageNotSet")}
           </span>
         </button>
       </div>
 
       <button onClick={open} disabled={opening}
         className="w-full mt-4 py-3.5 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white rounded-2xl font-extrabold text-sm transition active:scale-[0.99]">
-        {opening ? "Opening…" : "Open card"}
+        {opening ? t("client.opening") : t("client.openCard")}
       </button>
     </BottomSheet>
   );
@@ -5227,19 +5264,20 @@ function OpenCycleSheet({ client, cycleCount = 0, onClose, onOpened }) {
 // Dismiss is session-scoped so it reappears next visit rather than vanishing
 // for good the first time someone taps ×. ─────────────────────────────────
 function WalletActivationBanner({ onActivate, onDismiss }) {
+  const t = useT();
   return (
     <div className="mx-4 mt-3 mb-1 bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-800/50 rounded-2xl px-4 py-3 flex items-start gap-3">
       <div className="w-8 h-8 rounded-xl bg-brand-100 dark:bg-brand-900/40 flex items-center justify-center flex-shrink-0">
         <Icon name="wallet" size={16} className="text-brand-600 dark:text-brand-300" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-[12.5px] font-bold text-brand-800 dark:text-brand-200">Open your KudiAI Wallet</p>
+        <p className="text-[12.5px] font-bold text-brand-800 dark:text-brand-200">{t("client.openYourWallet")}</p>
         <p className="text-[11px] text-brand-700/80 dark:text-brand-300/70 mt-0.5 leading-snug">
-          Saving needs no ID number. A digital wallet needs your BVN or NIN — that's a CBN rule for bank-linked accounts, not a KudiAI one.
+          {t("client.walletIdRule")}
         </p>
         <button onClick={onActivate}
           className="mt-2 text-[11px] font-bold text-white bg-brand-600 hover:bg-brand-700 rounded-xl px-3 py-1.5 transition active:scale-[0.97]">
-          Activate now
+          {t("client.activateNow")}
         </button>
       </div>
       <button onClick={onDismiss} className="text-brand-400 hover:text-brand-600 flex-shrink-0 p-1">
@@ -5254,6 +5292,7 @@ function WalletActivationBanner({ onActivate, onDismiss }) {
 // The platform moved to a new banking account: this client's wallet still has an OLD number. Not dismissible — after
 // the deadline the old number stops receiving deposits.
 function WalletMigrationBanner({ retired, onOpen }) {
+  const t = useT();
   const tone = retired
     ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
     : "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800";
@@ -5262,9 +5301,9 @@ function WalletMigrationBanner({ retired, onOpen }) {
       className={`mx-4 mt-3 mb-1 w-[calc(100%-2rem)] border rounded-2xl px-4 py-3 flex items-center gap-3 text-left active:scale-[0.99] transition-transform ${tone}`}>
       <div className="flex-1 min-w-0">
         <p className={`text-[12.5px] font-bold ${retired ? "text-red-700 dark:text-red-300" : "text-amber-800 dark:text-amber-200"}`}>
-          {retired ? "Your old wallet number has stopped working" : "Your wallet has a new account number"}
+          {retired ? t("client.oldNumberStopped") : t("client.walletNewNumber")}
         </p>
-        <p className={`text-[11px] mt-0.5 ${retired ? "text-red-600 dark:text-red-400" : "text-amber-700 dark:text-amber-300"}`}>Tap to get your new number</p>
+        <p className={`text-[11px] mt-0.5 ${retired ? "text-red-600 dark:text-red-400" : "text-amber-700 dark:text-amber-300"}`}>{t("client.tapGetNewNumber")}</p>
       </div>
       <span className={`text-[18px] leading-none ${retired ? "text-red-400" : "text-amber-400"}`}>›</span>
     </button>
@@ -5273,6 +5312,7 @@ function WalletMigrationBanner({ retired, onOpen }) {
 
 // ── KudiAI Wallet — activation (BVN) or balance/actions, for the client ────
 function MemberWalletSheet({ pendingPayouts = [], wallet, testMode, bvnVerificationEnabled, client, businessName, ownerName, onClose, onProfileUpdate, onFund, onTransfer, onStatement }) {
+  const t = useT();
   const [bvn, setBvn] = useState("");
   const [nin, setNin] = useState("");
   const [selfie, setSelfie] = useState("");
@@ -5301,7 +5341,7 @@ function MemberWalletSheet({ pendingPayouts = [], wallet, testMode, bvnVerificat
     setErr("");
     const idErr = walletIdError(bvn, nin, testMode);
     if (idErr) { setErr(idErr); return; }
-    if (!kycValid) { setErr("Fill in address and next of kin — required to open the wallet."); return; }
+    if (!kycValid) { setErr(t("client.fillAddressKin")); return; }
     setBusy(true);
     try {
       const fields = {
@@ -5319,7 +5359,7 @@ function MemberWalletSheet({ pendingPayouts = [], wallet, testMode, bvnVerificat
       // below still uses bvnVerify directly, for anyone who wants to try.
       await wallet.provisionAccount(bvn, nin, selfie);
     } catch (e) {
-      setErr(e.message || "Could not activate your wallet");
+      setErr(e.message || t("client.couldNotActivate"));
     } finally {
       setBusy(false);
     }
@@ -5327,21 +5367,21 @@ function MemberWalletSheet({ pendingPayouts = [], wallet, testMode, bvnVerificat
 
   const doReverify = async () => {
     setReverifyErr("");
-    if (!/^\d{11}$/.test(reverifyBvn)) { setReverifyErr("Enter your 11-digit BVN"); return; }
+    if (!/^\d{11}$/.test(reverifyBvn)) { setReverifyErr(t("client.enterBvn11")); return; }
     setReverifyBusy(true);
     try {
       const status = bvnVerify.pending ? await bvnVerify.checkAgain() : await bvnVerify.verify(reverifyBvn);
       if (!status.verified) {
         setReverifyErr(status.error || (status.pending
-          ? "Still processing — tap Reverify again in a moment."
-          : "BVN verification did not complete. Please try again."));
+          ? t("client.stillProcessingReverify")
+          : t("client.bvnNotComplete")));
         return;
       }
       await wallet.refresh();
       setShowReverify(false);
       setReverifyBvn("");
     } catch (e) {
-      setReverifyErr(e.message || "Could not verify your BVN");
+      setReverifyErr(e.message || t("client.couldNotVerifyBvn"));
     } finally {
       setReverifyBusy(false);
     }
@@ -5357,108 +5397,104 @@ function MemberWalletSheet({ pendingPayouts = [], wallet, testMode, bvnVerificat
       ) : !wallet.hasAccount ? (
         <div>
           <p className="text-[13px] text-slate-500 dark:text-slate-400 mb-1 leading-relaxed">
-            Saving with us needs no ID number. A digital wallet needs your BVN or NIN — that's a CBN rule for
-            bank-linked accounts, not a KudiAI one.
+            {t("client.savingWithUsNoId")}
           </p>
           <p className="text-[13px] text-slate-500 dark:text-slate-400 mb-4 leading-relaxed">
-            Get your own dedicated account number. Fund it, pay your savings contributions from it, and cash out
-            to any bank — your first 3 transfers each day are free.
+            {t("client.getDedicatedAcct")}
           </p>
           {!testMode && (
             <div className="space-y-3 mb-4">
               <WalletIdFields bvn={bvn} nin={nin} onBvn={setBvn} onNin={setNin} selfie={selfie} onSelfie={setSelfie} />
               <p className="text-[11px] text-slate-400 leading-relaxed">
-                A BVN or NIN is required by the Central Bank of Nigeria to open any bank-linked account — it isn't a
-                KudiAI requirement, and your savings themselves need no ID number at all. It isn't stored by KudiAI; the
-                name and date of birth on it must match your profile.
+                {t("client.bvnCbnNote")}
               </p>
             </div>
           )}
 
           <div className="space-y-3 mb-4">
-            <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Address</p>
+            <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">{t("client.address")}</p>
             <div>
-              <label className={KYC_LABEL}>Street Address <span className="text-red-500">*</span></label>
-              <input value={address} onChange={e => setAddress(e.target.value)} placeholder="12 Market Road, Onitsha" className={KYC_INPUT} />
+              <label className={KYC_LABEL}>{t("client.streetAddress")} <span className="text-red-500">*</span></label>
+              <input value={address} onChange={e => setAddress(e.target.value)} placeholder={t("client.streetAddressPh")} className={KYC_INPUT} />
             </div>
             <div>
-              <label className={KYC_LABEL}>State <span className="text-red-500">*</span></label>
+              <label className={KYC_LABEL}>{t("client.state")} <span className="text-red-500">*</span></label>
               <select value={state} onChange={e => { setState(e.target.value); setLga(""); setWard(""); }} className={KYC_INPUT}>
-                <option value="">Select State…</option>
+                <option value="">{t("client.selectState")}</option>
                 {STATES.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className={KYC_LABEL}>LGA <span className="text-red-500">*</span></label>
+                <label className={KYC_LABEL}>{t("client.lga")} <span className="text-red-500">*</span></label>
                 <select value={lga} disabled={!state} onChange={e => { setLga(e.target.value); setWard(""); }} className={KYC_INPUT + " disabled:opacity-50"}>
-                  <option value="">{state ? "Select LGA…" : "State first"}</option>
+                  <option value="">{state ? t("client.selectLga") : t("client.stateFirst")}</option>
                   {lgas.map(l => <option key={l} value={l}>{l}</option>)}
                 </select>
               </div>
               <div>
-                <label className={KYC_LABEL}>Ward <span className="text-red-500">*</span></label>
+                <label className={KYC_LABEL}>{t("client.ward")} <span className="text-red-500">*</span></label>
                 <select value={ward} disabled={!lga} onChange={e => setWard(e.target.value)} className={KYC_INPUT + " disabled:opacity-50"}>
-                  <option value="">{lga ? "Select Ward…" : "LGA first"}</option>
+                  <option value="">{lga ? t("client.selectWard") : t("client.lgaFirst")}</option>
                   {wards.map(w => <option key={w} value={w}>{w}</option>)}
                 </select>
               </div>
             </div>
 
-            <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest pt-2">Next of Kin</p>
+            <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest pt-2">{t("client.nextOfKin")}</p>
             <div>
-              <label className={KYC_LABEL}>Full Name <span className="text-red-500">*</span></label>
-              <input value={kinName} onChange={e => setKinName(e.target.value)} placeholder="Next of kin name" className={KYC_INPUT} />
+              <label className={KYC_LABEL}>{t("client.fullName")} <span className="text-red-500">*</span></label>
+              <input value={kinName} onChange={e => setKinName(e.target.value)} placeholder={t("client.kinNamePh")} className={KYC_INPUT} />
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className={KYC_LABEL}>Phone <span className="text-red-500">*</span></label>
+                <label className={KYC_LABEL}>{t("client.phoneLabel")} <span className="text-red-500">*</span></label>
                 <input type="tel" value={kinPhone} onChange={e => setKinPhone(e.target.value)} placeholder="08012345678" className={KYC_INPUT} />
               </div>
               <div>
-                <label className={KYC_LABEL}>Email <span className="text-slate-300 font-normal">optional</span></label>
+                <label className={KYC_LABEL}>{t("client.email")} <span className="text-slate-300 font-normal">{t("common.optional")}</span></label>
                 <input type="email" value={kinEmail} onChange={e => setKinEmail(e.target.value)} placeholder="email@example.com" className={KYC_INPUT} />
               </div>
             </div>
             <div>
-              <label className={KYC_LABEL}>Address <span className="text-slate-300 font-normal">optional</span></label>
-              <input value={kinAddr} onChange={e => setKinAddr(e.target.value)} placeholder="Next of kin address" className={KYC_INPUT} />
+              <label className={KYC_LABEL}>{t("client.address")} <span className="text-slate-300 font-normal">{t("common.optional")}</span></label>
+              <input value={kinAddr} onChange={e => setKinAddr(e.target.value)} placeholder={t("client.kinAddressPh")} className={KYC_INPUT} />
             </div>
           </div>
 
           {err && <p className="text-[12px] text-red-500 mb-3">{err}</p>}
           <button onClick={activate} disabled={busy || wallet.busy}
             className="w-full bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white font-bold rounded-2xl py-4 text-[15px] transition-colors">
-            {busy || wallet.busy ? "Activating…" : "Activate wallet"}
+            {busy || wallet.busy ? t("client.activating") : t("client.activateWallet")}
           </button>
         </div>
       ) : (
         <div>
-          <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-1">Balance</p>
+          <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-1">{t("client.balance")}</p>
           <AmountDisplay amount={wallet.balanceKobo} fromKobo size="hero" align="left" className="mb-4" />
           <WalletMigrationCard api={wallet} testMode={testMode} className="mb-3" />
           <AccountCard wallet={wallet.wallet} displayName={businessName || ownerName} />
 
           {bvnVerificationEnabled && !wallet.bvnVerified && !testMode && (
             <div className="mt-3 rounded-2xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-4 py-3.5">
-              <p className="text-[12.5px] font-bold text-amber-700 dark:text-amber-300">Please reverify your BVN</p>
+              <p className="text-[12.5px] font-bold text-amber-700 dark:text-amber-300">{t("client.reverifyBvnTitle")}</p>
               <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5 leading-relaxed">
-                We've added real BVN verification for wallet security. Your wallet keeps working normally, but please reverify to stay in good standing.
+                {t("client.reverifyBvnBody")}
               </p>
               {!showReverify ? (
                 <button onClick={() => setShowReverify(true)}
                   className="mt-2.5 w-full py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold text-[12.5px] transition active:scale-[0.99]">
-                  Reverify now
+                  {t("client.reverifyNow")}
                 </button>
               ) : (
                 <div className="mt-3 space-y-2">
                   <input inputMode="numeric" value={reverifyBvn}
                     onChange={(e) => setReverifyBvn(e.target.value.replace(/\D/g, "").slice(0, 11))}
-                    placeholder="11-digit BVN" className="w-full px-3.5 py-3 rounded-xl border border-amber-200 dark:border-amber-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-[14px] font-semibold tracking-wider focus:outline-none" />
+                    placeholder={t("client.bvn11Ph")} className="w-full px-3.5 py-3 rounded-xl border border-amber-200 dark:border-amber-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-[14px] font-semibold tracking-wider focus:outline-none" />
                   {reverifyErr && <p className="text-[11px] text-red-500">{reverifyErr}</p>}
                   <button onClick={doReverify} disabled={reverifyBusy}
                     className="w-full py-2.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-xl font-bold text-[12.5px] transition active:scale-[0.99]">
-                    {reverifyBusy ? "Verifying…" : "Submit"}
+                    {reverifyBusy ? t("client.verifying") : t("client.submit")}
                   </button>
                 </div>
               )}
@@ -5466,15 +5502,15 @@ function MemberWalletSheet({ pendingPayouts = [], wallet, testMode, bvnVerificat
           )}
 
           <div className="flex items-center gap-2 mt-4 mb-2">
-            <ActionButton icon="plus" label="Fund" onClick={onFund} />
-            <ActionButton icon="send" label="Transfer" tone="slate" onClick={onTransfer} />
+            <ActionButton icon="plus" label={t("client.fund")} onClick={onFund} />
+            <ActionButton icon="send" label={t("client.transfer")} tone="slate" onClick={onTransfer} />
           </div>
 
           {/* Scheduled transfers — same standing-instruction management as the
               owner's Wallet screen. */}
           {wallet.scheduledTransfers.filter(s => s.status !== "cancelled").length > 0 && (
             <div className="mt-4">
-              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400 mb-1">Repeat transfers</p>
+              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400 mb-1">{t("client.repeatTransfers")}</p>
               <div className="divide-y divide-slate-100 dark:divide-slate-800">
                 {wallet.scheduledTransfers.filter(s => s.status !== "cancelled").map((s) => (
                   <div key={s.id} className="py-3 flex items-center gap-3">
@@ -5484,15 +5520,15 @@ function MemberWalletSheet({ pendingPayouts = [], wallet, testMode, bvnVerificat
                     <div className="flex-1 min-w-0">
                       <p className="text-[13px] font-bold text-slate-800 dark:text-slate-100 truncate">{s.account_name}</p>
                       <p className="text-[11px] text-slate-400 capitalize">
-                        {fmt(s.amount_kobo / 100)} · {s.frequency}
-                        {s.status === "paused" && <span className="text-amber-500 font-bold"> · Paused</span>}
+                        {fmt(s.amount_kobo / 100)} · {freqWord(t, s.frequency)}
+                        {s.status === "paused" && <span className="text-amber-500 font-bold"> · {t("client.paused")}</span>}
                       </p>
                       {s.status === "paused" && s.last_run_error && (
                         <p className="text-[10px] text-red-500 mt-0.5 truncate">{s.last_run_error}</p>
                       )}
                       {s.status === "active" && (
                         <p className="text-[10px] text-slate-400 mt-0.5">
-                          Next {new Date(s.next_run_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                          {t("client.nextOn", { date: new Date(s.next_run_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) })}
                         </p>
                       )}
                     </div>
@@ -5500,12 +5536,12 @@ function MemberWalletSheet({ pendingPayouts = [], wallet, testMode, bvnVerificat
                       <button
                         onClick={() => wallet.setScheduledTransferStatus(s.id, s.status === "active" ? "paused" : "active")}
                         className="text-[11px] font-bold text-brand-600 dark:text-brand-400 px-2 py-1">
-                        {s.status === "active" ? "Pause" : "Resume"}
+                        {s.status === "active" ? t("client.pause") : t("client.resume")}
                       </button>
                       <button
-                        onClick={() => { if (window.confirm(`Cancel this repeat transfer to ${s.account_name}?`)) wallet.setScheduledTransferStatus(s.id, "cancelled"); }}
+                        onClick={() => { if (window.confirm(t("client.cancelRepeatQ", { name: s.account_name }))) wallet.setScheduledTransferStatus(s.id, "cancelled"); }}
                         className="text-[11px] font-bold text-red-500 px-2 py-1">
-                        Cancel
+                        {t("common.cancel")}
                       </button>
                     </div>
                   </div>
@@ -5518,16 +5554,16 @@ function MemberWalletSheet({ pendingPayouts = [], wallet, testMode, bvnVerificat
               tap-to-view receipt, same as the owner's Wallet screen. */}
           <div className="mt-4">
             <div className="flex items-center justify-between mb-1">
-              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Transactions</p>
+              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">{t("client.transactions")}</p>
               {wallet.ledger.length > 0 && (
                 <button onClick={onStatement} className="text-[11px] font-bold text-brand-600 dark:text-brand-400">
-                  Statement →
+                  {t("client.statementArrow")}
                 </button>
               )}
             </div>
             <PendingPayoutNotice payouts={pendingPayouts} />
             {wallet.ledger.length === 0 && pendingPayouts.length === 0 ? (
-              <p className="text-[13px] text-slate-400 py-8 text-center">No wallet activity yet.</p>
+              <p className="text-[13px] text-slate-400 py-8 text-center">{t("client.noWalletActivity")}</p>
             ) : (
               <div className="divide-y divide-slate-100 dark:divide-slate-800">
                 {pendingPayouts.map((p) => <WalletTxRow key={`payout-${p.id}`} row={pendingPayoutRow(p)} />)}
@@ -5753,7 +5789,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
     setSyncResult(null);
     fetchPortalData(true).finally(() => {
       setSyncing(false);
-      setSyncResult("Up to date");
+      setSyncResult(t("client.upToDate"));
       setTimeout(() => setSyncResult(null), 4000);
     });
   }, [reconnectTick]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -6001,7 +6037,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
                 loading={offersLoading}
                 recordEvent={recordOfferEvent}
                 ctaUrl={ctaUrl}
-                title="Offers for Members"
+                title={t("client.offersForMembers")}
                 maxShown={1}
               />
             </>
@@ -6013,8 +6049,8 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
           <div className="absolute bottom-[70px] inset-x-0 z-50 px-4">
             <div className="bg-orange-600 text-white rounded-2xl px-4 py-3 shadow-xl flex items-start gap-3">
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold">Couldn't load your data</p>
-                <p className="text-xs opacity-80 mt-0.5">Check your connection and try again.</p>
+                <p className="text-sm font-semibold">{t("client.loadFailedTitle")}</p>
+                <p className="text-xs opacity-80 mt-0.5">{t("client.loadFailedBody")}</p>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
                 <button
@@ -6022,7 +6058,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
                   disabled={loadingData}
                   className="text-xs font-bold bg-white/20 hover:bg-white/30 px-2 py-1 rounded-lg disabled:opacity-50 transition-opacity"
                 >
-                  Retry
+                  {t("client.retry")}
                 </button>
                 <button onClick={() => setPortalLoadError(false)} className="text-white/70 hover:text-white">
                   <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
@@ -6156,7 +6192,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
         <DailyVoice
           userId={session?.user?.id}
           context={loadingData ? "" : buildAjoMemberContext(client, contributions, ownerInfo)}
-          fallback={`Keep it up${client?.full_name ? ", " + client.full_name.split(" ")[0] : ""}! Every contribution you make brings you one step closer to your savings goal — stay consistent and you'll get there!`}
+          fallback={t("client.dailyFallback", { name: client?.full_name ? ", " + client.full_name.split(" ")[0] : "" })}
           dataLoading={loadingData}
           userType="ajo_member"
         />
@@ -6165,13 +6201,13 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
       {client && (
         <AIChatWidget
           portalContext={buildAjoMemberContext(client, contributions, ownerInfo)}
-          greeting={`${greetingText(t)}${client.full_name ? `, ${client.full_name.split(" ")[0]}` : ""}! I'm **KudiAI**, your Ajo savings assistant.\n\nI know your balance, contributions, and savings history. Ask me anything!`}
+          greeting={`${greetingText(t)}${client.full_name ? `, ${client.full_name.split(" ")[0]}` : ""}! ${t("client.aiGreet1")}\n\n${t("client.aiGreet2")}`}
           quickChips={[
             { label: t("aiChip.mySavings")         || "My Balance",           q: "What is my current savings balance?" },
             { label: t("portal.nextPayment")        || "Next Contribution",    q: "When is my next contribution due?" },
             { label: t("portal.history")            || "Contribution History", q: "Show my recent contribution history" },
             { label: t("aiChip.coopBenefits")       || "Savings Goal",        q: "How am I doing with my savings goal?" },
-            { label: t("aiChip.mySavings") + " Tips"|| "Savings Tips",        q: "Give me tips to save more consistently" },
+            { label: t("client.chipTips", { base: t("aiChip.mySavings") }) || "Savings Tips", q: "Give me tips to save more consistently" },
           ]}
           inputPlaceholder={t("aiChip.ajoPlaceholder") || "Ask about your savings…"}
         />

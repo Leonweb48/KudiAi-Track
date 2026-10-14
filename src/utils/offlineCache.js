@@ -1,3 +1,4 @@
+import { trNow } from "../i18n/now";
 const PREFIX    = "kt_oc_";
 const TS_SUFFIX = "_ts";
 
@@ -46,6 +47,6 @@ export function formatSyncTime(ts) {
   const t   = d.toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" });
   if (d.toDateString() === now.toDateString()) return t;
   const yd  = new Date(now); yd.setDate(now.getDate() - 1);
-  if (d.toDateString() === yd.toDateString()) return `yesterday ${t}`;
+  if (d.toDateString() === yd.toDateString()) return trNow("msg.sync.yesterday", { time: t });
   return d.toLocaleDateString("en-NG", { day: "numeric", month: "short" }) + " " + t;
 }

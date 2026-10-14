@@ -1,5 +1,6 @@
 import { useState } from "react";
 import PinDots from "./PinDots";
+import { useT, tNow } from "../contexts/LanguageContext";
 
 const BackspaceIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor"
@@ -20,6 +21,7 @@ function isWeakPin(pin) {
 }
 
 export default function PinSetupModal({ lock }) {
+  const t = useT();
   const [step,     setStep]     = useState("enter");   // "enter" | "confirm"
   const [firstPin, setFirstPin] = useState("");
   const [pin,      setPin]      = useState("");
@@ -37,7 +39,7 @@ export default function PinSetupModal({ lock }) {
       if (step === "enter") {
         if (isWeakPin(next)) {
           setPin("");
-          setError("PIN is too easy to guess. Try a different one.");
+          setError(tNow("settings.pin.modal.weak"));
           return;
         }
         setFirstPin(next);
@@ -48,7 +50,7 @@ export default function PinSetupModal({ lock }) {
           lock.setupPIN(next);
         } else {
           setPin("");
-          setError("PINs don't match. Try again.");
+          setError(tNow("settings.pin.modal.mismatch"));
           setStep("enter");
           setFirstPin("");
         }
@@ -77,11 +79,11 @@ export default function PinSetupModal({ lock }) {
         </div>
 
         <div className="text-center px-6">
-          <p className="text-xl font-extrabold text-slate-900 dark:text-white leading-tight">Secure Your Account</p>
+          <p className="text-xl font-extrabold text-slate-900 dark:text-white leading-tight">{t("settings.pin.modal.title")}</p>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
             {step === "enter"
-              ? "Create a 4-digit PIN to protect your data"
-              : "Re-enter your PIN to confirm"}
+              ? t("settings.pin.modal.enterDesc")
+              : t("settings.pin.modal.confirmDesc")}
           </p>
 
           {/* Step indicator */}
@@ -133,8 +135,7 @@ export default function PinSetupModal({ lock }) {
       {/* Bottom */}
       <div className="pb-8 text-center px-6">
         <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed">
-          Your PIN is stored securely on this device and is never sent to our servers.
-          You'll need it each time you open the app.
+          {t("settings.pin.modal.footer")}
         </p>
       </div>
     </div>

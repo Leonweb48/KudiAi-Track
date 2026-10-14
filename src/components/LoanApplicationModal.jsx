@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { supabase } from "../utils/supabase";
 import Field from "./shared/Field";
+import { useT } from "../contexts/LanguageContext";
 
 const BUSINESS_TYPES = [
   "Retail / Trading",
@@ -18,6 +19,7 @@ const BUSINESS_TYPES = [
 const YEARS_OPTIONS = ["Less than 1 year", "1–2 years", "2–5 years", "5–10 years", "10+ years"];
 
 export default function LoanApplicationModal({ session, profile, onClose }) {
+  const t = useT();
   const [form, setForm] = useState({
     full_name:        profile?.owner_name || profile?.full_name || "",
     business_name:    profile?.business_name || "",
@@ -37,7 +39,7 @@ export default function LoanApplicationModal({ session, profile, onClose }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.loan_amount || !form.loan_purpose || !form.business_type || !form.phone) {
-      setError("Please fill in all required fields.");
+      setError(t("finance.loanFillRequired"));
       return;
     }
     setBusy(true); setError("");
@@ -56,7 +58,7 @@ export default function LoanApplicationModal({ session, profile, onClose }) {
       if (err) throw err;
       setSuccess(true);
     } catch (err) {
-      setError(err.message || "Could not submit application. Please try again.");
+      setError(err.message || t("finance.loanSubmitFailed"));
     } finally {
       setBusy(false);
     }
@@ -76,8 +78,8 @@ export default function LoanApplicationModal({ session, profile, onClose }) {
         {/* Header */}
         <div className="px-5 pb-3 flex items-center justify-between border-b border-gray-100 dark:border-slate-800 flex-shrink-0">
           <div>
-            <h2 className="text-base font-bold text-gray-900 dark:text-white">Business Loan Application</h2>
-            <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">Our lending team reviews within 3–5 business days</p>
+            <h2 className="text-base font-bold text-gray-900 dark:text-white">{t("finance.loanTitle")}</h2>
+            <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">{t("finance.loanReviewTime")}</p>
           </div>
           <button onClick={onClose} className="w-11 h-11 flex items-center justify-center rounded-full bg-gray-100 dark:bg-slate-800 text-gray-500">
             <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.5}>
@@ -93,15 +95,15 @@ export default function LoanApplicationModal({ session, profile, onClose }) {
                 <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </div>
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Application Submitted!</h3>
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">{t("finance.loanSubmittedTitle")}</h3>
             <p className="text-sm text-gray-500 dark:text-slate-400 leading-relaxed">
-              Our lending team will review your application and contact you within <strong>3–5 business days</strong>.
+              {t("finance.loanSubmittedBody1")}<strong>{t("finance.loanSubmittedDays")}</strong>{t("finance.loanSubmittedBody2")}
             </p>
             <button
               onClick={onClose}
               className="mt-6 px-6 py-2.5 bg-green-600 text-white rounded-xl font-semibold text-sm"
             >
-              Done
+              {t("common.done")}
             </button>
           </div>
         ) : (
@@ -110,57 +112,57 @@ export default function LoanApplicationModal({ session, profile, onClose }) {
               <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>
             )}
 
-            <Field label="Full Name" value={form.full_name} onChange={e => set("full_name", e.target.value)} placeholder="Your full name" />
-            <Field label="Business Name" value={form.business_name} onChange={e => set("business_name", e.target.value)} placeholder="Your business name" />
-            <Field label="Phone Number *" value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="e.g. 08012345678" type="tel" required />
+            <Field label={t("finance.loanFullName")} value={form.full_name} onChange={e => set("full_name", e.target.value)} placeholder={t("finance.loanFullNamePh")} />
+            <Field label={t("finance.loanBizName")} value={form.business_name} onChange={e => set("business_name", e.target.value)} placeholder={t("finance.loanBizNamePh")} />
+            <Field label={t("finance.loanPhone")} value={form.phone} onChange={e => set("phone", e.target.value)} placeholder={t("finance.loanPhonePh")} type="tel" required />
 
             <div>
-              <label className="block text-xs font-semibold text-gray-600 dark:text-slate-400 mb-1.5">Business Type *</label>
+              <label className="block text-xs font-semibold text-gray-600 dark:text-slate-400 mb-1.5">{t("finance.loanBizType")}</label>
               <select
                 value={form.business_type}
                 onChange={e => set("business_type", e.target.value)}
                 required
                 className="w-full border border-gray-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500"
               >
-                <option value="">Select business type</option>
-                {BUSINESS_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                <option value="">{t("finance.loanSelectBizType")}</option>
+                {BUSINESS_TYPES.map((bt, i) => <option key={bt} value={bt}>{t(`finance.loanType${i}`)}</option>)}
               </select>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-gray-600 dark:text-slate-400 mb-1.5">Years in Business</label>
+              <label className="block text-xs font-semibold text-gray-600 dark:text-slate-400 mb-1.5">{t("finance.loanYears")}</label>
               <select
                 value={form.years_in_business}
                 onChange={e => set("years_in_business", e.target.value)}
                 className="w-full border border-gray-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500"
               >
-                <option value="">Select duration</option>
-                {YEARS_OPTIONS.map(y => <option key={y} value={y}>{y}</option>)}
+                <option value="">{t("finance.loanSelectDuration")}</option>
+                {YEARS_OPTIONS.map((y, i) => <option key={y} value={y}>{t(`finance.loanYears${i}`)}</option>)}
               </select>
             </div>
 
             <Field
-              label="Loan Amount (₦) *"
+              label={t("finance.loanAmount")}
               value={form.loan_amount}
               onChange={e => set("loan_amount", e.target.value)}
-              placeholder="e.g. 500000"
+              placeholder={t("finance.loanAmountPh")}
               type="number"
               required
             />
             <Field
-              label="Monthly Revenue (₦)"
+              label={t("finance.loanMonthlyRevenue")}
               value={form.monthly_revenue}
               onChange={e => set("monthly_revenue", e.target.value)}
-              placeholder="Approximate monthly income"
+              placeholder={t("finance.loanMonthlyRevenuePh")}
               type="number"
             />
 
             <div>
-              <label className="block text-xs font-semibold text-gray-600 dark:text-slate-400 mb-1.5">Loan Purpose *</label>
+              <label className="block text-xs font-semibold text-gray-600 dark:text-slate-400 mb-1.5">{t("finance.loanPurpose")}</label>
               <textarea
                 value={form.loan_purpose}
                 onChange={e => set("loan_purpose", e.target.value)}
-                placeholder="Briefly describe what the loan will be used for…"
+                placeholder={t("finance.loanPurposePh")}
                 required
                 rows={3}
                 className="w-full border border-gray-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
@@ -173,10 +175,10 @@ export default function LoanApplicationModal({ session, profile, onClose }) {
                 disabled={busy}
                 className="w-full py-3 rounded-xl font-bold text-sm bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 transition-colors"
               >
-                {busy ? "Submitting…" : "Submit Application"}
+                {busy ? t("finance.loanSubmitting") : t("finance.loanSubmit")}
               </button>
               <p className="text-[10px] text-gray-400 dark:text-slate-500 text-center mt-2">
-                Your information is secure and will only be used for loan assessment.
+                {t("finance.loanSecureNote")}
               </p>
             </div>
           </form>

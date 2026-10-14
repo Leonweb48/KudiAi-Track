@@ -62,14 +62,15 @@ const P = {
   eyeOff:  "M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24|M1 1l22 22",
 };
 
-/* Mic tile gets brand treatment; service tiles keep category-identifier colors via Tailwind */
+/* Mic tile gets brand treatment; service tiles keep category-identifier colors via Tailwind.
+   `label` is a translation key, shown with t(s.label). */
 const BILL_SERVICES = [
-  { id: "mic",         label: "Mic Sale",    brand: true,  mic: true },
-  { id: "airtime",     label: "Airtime",     bg: "from-red-500 to-red-600",        icon: "M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81a19.79 19.79 0 01-3.07-8.67A2 2 0 012 .82h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" },
-  { id: "data",        label: "Data",        bg: "from-blue-500 to-blue-700",       icon: "M1 6l11-4 11 4|M1 12l11-4 11 4|M1 18l11-4 11 4" },
-  { id: "electricity", label: "Electricity", bg: "from-amber-400 to-amber-600",     icon: "M13 2L3 14h9l-1 8 10-12h-9l1-8z" },
-  { id: "cable",       label: "Cable TV",    bg: "from-violet-500 to-violet-700",   icon: "M2 7a2 2 0 012-2h16a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V7z|M12 19v3|M8 22h8" },
-  { id: "betting",     label: "Betting",     bg: "from-emerald-500 to-emerald-600", icon: "M12 2a10 10 0 100 20A10 10 0 0012 2z|M12 8v4l3 3" },
+  { id: "mic",         label: "bill.micSale",     brand: true,  mic: true },
+  { id: "airtime",     label: "bill.airtime",     bg: "from-red-500 to-red-600",        icon: "M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81a19.79 19.79 0 01-3.07-8.67A2 2 0 012 .82h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" },
+  { id: "data",        label: "bill.data",        bg: "from-blue-500 to-blue-700",       icon: "M1 6l11-4 11 4|M1 12l11-4 11 4|M1 18l11-4 11 4" },
+  { id: "electricity", label: "bill.electricity", bg: "from-amber-400 to-amber-600",     icon: "M13 2L3 14h9l-1 8 10-12h-9l1-8z" },
+  { id: "cable",       label: "bill.cableTV",      bg: "from-violet-500 to-violet-700",   icon: "M2 7a2 2 0 012-2h16a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V7z|M12 19v3|M8 22h8" },
+  { id: "betting",     label: "bill.betting",      bg: "from-emerald-500 to-emerald-600", icon: "M12 2a10 10 0 100 20A10 10 0 0012 2z|M12 8v4l3 3" },
 ];
 
 /* getTxStyle and TxRow are imported from components/shared/TxRow */
@@ -243,10 +244,10 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
 
   /* Quick actions — tap destinations frozen per Gate 0 ruling 6 */
   const PRIMARY_ACTIONS = [
-    { label: "Record Sale",     icon: P.in,      action: () => onQuickAction?.("transactions", "in")                   },
-    { label: "New Invoice",     icon: P.invoice, action: () => onQuickAction?.("finance", "invoices")                  },
-    { label: "Pay Bills",       icon: P.report,  action: () => onQuickAction?.("bills")                                },
-    { label: "Receive Payment", icon: P.bank,    action: () => onQuickAction?.("transactions", "in", "debt repayment") },
+    { label: t("home.recordSale"),     icon: P.in,      action: () => onQuickAction?.("transactions", "in")                   },
+    { label: t("home.newInvoice"),     icon: P.invoice, action: () => onQuickAction?.("finance", "invoices")                  },
+    { label: t("home.payBills"),       icon: P.report,  action: () => onQuickAction?.("bills")                                },
+    { label: t("home.receivePayment"), icon: P.bank,    action: () => onQuickAction?.("transactions", "in", "debt repayment") },
   ];
 
   return (
@@ -283,10 +284,10 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
               : "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800"}`}>
           <span className="flex-1 min-w-0">
             <span className={`block text-[13px] font-extrabold ${wallet.accountState === "retired" ? "text-red-700 dark:text-red-300" : "text-amber-800 dark:text-amber-200"}`}>
-              {wallet.accountState === "retired" ? "Your old wallet number has stopped working" : "Your wallet has a new account number"}
+              {wallet.accountState === "retired" ? t("home.walletRetired") : t("home.walletNewNumber")}
             </span>
             <span className={`block text-[11.5px] mt-0.5 ${wallet.accountState === "retired" ? "text-red-600 dark:text-red-400" : "text-amber-700 dark:text-amber-300"}`}>
-              Tap to get your new number
+              {t("home.walletTapNewNumber")}
             </span>
           </span>
           <span className={`text-[18px] leading-none ${wallet.accountState === "retired" ? "text-red-400" : "text-amber-400"}`}>›</span>
@@ -305,11 +306,11 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
           <div className="flex items-start justify-between mb-4">
             <div className="flex-1 min-w-0">
               <p className="text-[12px] font-semibold text-white/70 mb-0.5">{t(greetingKey())} 👋</p>
-              <p className="text-[15px] font-black text-white truncate">{profile.business_name || profile.owner_name || "Welcome"}</p>
+              <p className="text-[15px] font-black text-white truncate">{profile.business_name || profile.owner_name || t("home.welcome")}</p>
             </div>
             <button
               onClick={toggleBalanceHidden}
-              aria-label={balanceHidden ? "Show balances" : "Hide balances"}
+              aria-label={balanceHidden ? t("home.showBalances") : t("home.hideBalances")}
               className="w-11 h-11 flex items-center justify-center rounded-xl bg-white/15 active:bg-white/25 active:scale-90 transition mt-0.5 flex-shrink-0 ml-3">
               <Svg d={balanceHidden ? P.eyeOff : P.eye} size={15} color="white" sw={2} />
             </button>
@@ -320,11 +321,11 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
             <div className="inline-flex items-center gap-1 p-0.5 mb-3 rounded-full bg-white/10">
               <button onClick={() => pickHero("sales")}
                 className={`px-3 py-1 rounded-full text-[11px] font-bold transition-colors ${!showWallet ? "bg-white text-slate-900" : "text-white/70"}`}>
-                Sales
+                {t("home.heroSales")}
               </button>
               <button onClick={() => pickHero("wallet")}
                 className={`px-3 py-1 rounded-full text-[11px] font-bold transition-colors ${showWallet ? "bg-white text-slate-900" : "text-white/70"}`}>
-                Wallet{walletTestMode ? " · TEST" : ""}
+                {t("home.heroWallet")}{walletTestMode ? " · TEST" : ""}
               </button>
             </div>
           )}
@@ -334,7 +335,7 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
             <div>
               <button type="button" onClick={() => setTab("wallet")} className="block w-full text-left active:opacity-80 transition-opacity">
                 <div className="flex items-start justify-between gap-3">
-                  <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest pt-0.5">WALLET BALANCE</p>
+                  <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest pt-0.5">{t("home.walletBalance")}</p>
                   {wallet.hasAccount && wallet.accountState !== "retired" && (
                     <div className="text-right flex-shrink-0">
                       <p className="text-[13px] font-extrabold tracking-[0.1em] text-white tabular-nums leading-none">{wallet.wallet.flw_account_number}</p>
@@ -356,14 +357,14 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
                 ) : !wallet.hasAccount ? (
                   <button onClick={() => setTab("wallet")}
                     className="flex-1 bg-white text-slate-900 text-[12px] font-bold rounded-xl py-2.5">
-                    Activate wallet
+                    {t("home.activateWallet")}
                   </button>
                 ) : (
                   <>
-                    <WalletMiniAction onClick={() => setWalletSheet("fund")} d={P.in} label="Fund" />
-                    <WalletMiniAction onClick={() => setWalletSheet("transfer")} d={P.out} label="Transfer" />
-                    <WalletMiniAction onClick={() => setWalletSheet("receive")} d={P.in} label="Receive" />
-                    <WalletMiniAction onClick={() => setTab("bills")} d={P.invoice} label="Bills" />
+                    <WalletMiniAction onClick={() => setWalletSheet("fund")} d={P.in} label={t("home.fund")} />
+                    <WalletMiniAction onClick={() => setWalletSheet("transfer")} d={P.out} label={t("home.transfer")} />
+                    <WalletMiniAction onClick={() => setWalletSheet("receive")} d={P.in} label={t("home.receive")} />
+                    <WalletMiniAction onClick={() => setTab("bills")} d={P.invoice} label={t("nav.bills")} />
                   </>
                 )}
               </div>
@@ -371,14 +372,14 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
                 <button onClick={() => setWalletSheet("receive")}
                   className="w-full mt-2 flex items-center gap-1.5 bg-white/10 rounded-lg px-2 py-1.5 text-left">
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-300 animate-pulse flex-shrink-0" />
-                  <span className="text-[10px] text-white/80 flex-1">Waiting for {fmt(wallet.payRequest.amount_kobo / 100)}</span>
+                  <span className="text-[10px] text-white/80 flex-1">{t("home.waitingFor", { amount: fmt(wallet.payRequest.amount_kobo / 100) })}</span>
                 </button>
               )}
             </div>
           ) : (
             <>
               {/* TODAY'S SALES — total inflows for the day */}
-              <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest">TODAY'S SALES</p>
+              <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest">{t("home.todaysSales")}</p>
               {loading ? (
                 <div className="h-11 w-40 bg-white/20 rounded-xl animate-pulse mt-2 mb-4" />
               ) : (
@@ -404,7 +405,7 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
                     hidden={balanceHidden}
                     style={{ color: "var(--brand-green)", maxWidth: 84 }}
                   />
-                  <span className="text-white/50 text-[10px]">in</span>
+                  <span className="text-white/50 text-[10px]">{t("home.in")}</span>
                   <span className="text-white/30 text-[10px] mx-0.5">·</span>
                   <span className="text-white/70 text-[11px] font-bold">↓</span>
                   <AmountDisplay
@@ -414,9 +415,9 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
                     hidden={balanceHidden}
                     style={{ color: "rgba(255,255,255,0.7)", maxWidth: 84 }}
                   />
-                  <span className="text-white/50 text-[10px]">out</span>
+                  <span className="text-white/50 text-[10px]">{t("home.out")}</span>
                   {todayTx.length > 0 && (
-                    <span className="text-[10px] text-white/40 ml-1">· {todayTx.length} txn{todayTx.length !== 1 ? "s" : ""}</span>
+                    <span className="text-[10px] text-white/40 ml-1">· {t(todayTx.length !== 1 ? "home.txnCountMany" : "home.txnCountOne", { n: todayTx.length })}</span>
                   )}
                 </div>
               )}
@@ -429,11 +430,11 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
       {showWallet && wallet.hasAccount && (
         <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-card border border-slate-100 dark:border-slate-700/50">
           <div className="flex items-center justify-between mb-1">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Recent activity</p>
-            <button onClick={() => setTab("wallet")} className="text-[11px] font-bold text-brand-600 dark:text-brand-400">See all →</button>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{t("home.recentActivity")}</p>
+            <button onClick={() => setTab("wallet")} className="text-[11px] font-bold text-brand-600 dark:text-brand-400">{t("home.seeAll")}</button>
           </div>
           {wallet.ledger.length === 0 ? (
-            <p className="text-[12px] text-slate-400 py-4 text-center">No wallet activity yet.</p>
+            <p className="text-[12px] text-slate-400 py-4 text-center">{t("home.noWalletActivity")}</p>
           ) : (
             <div className="divide-y divide-slate-100 dark:divide-slate-800">
               {wallet.ledger.slice(0, 4).map(row => (
@@ -460,7 +461,7 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
                 : profit < 0 ? "text-red-500 dark:text-red-400"
                   : "text-slate-400 dark:text-slate-500"
             }`}>
-              {profit > 0 ? "Today's Profit" : profit < 0 ? "Today's Deficit" : "Break Even"}
+              {profit > 0 ? t("home.todayProfit") : profit < 0 ? t("home.todaysDeficit") : t("home.breakEven")}
             </p>
             <AmountDisplay
               amount={Math.abs(profit)}
@@ -478,7 +479,7 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
               {todayRevenue > 0 ? ` ${Math.round(Math.abs(profit) / todayRevenue * 100)}%` : ""}
             </span>
             <p className="text-[10px] text-slate-400 dark:text-slate-500 whitespace-nowrap">
-              {balanceHidden ? "••••" : `Expenses: ${fmt(todayExpenses)}`}
+              {balanceHidden ? "••••" : t("home.expensesAmount", { amount: fmt(todayExpenses) })}
             </p>
           </div>
         </div>
@@ -491,9 +492,9 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
       {!showWallet && todayAjo > 0 && (
         <div className="flex justify-center">
           <div className="inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-[11px] font-bold border bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-400 border-violet-100 dark:border-violet-800/40">
-            <span>Ajo</span>
+            <span>{t("nav.ajo")}</span>
             <span className="opacity-40">·</span>
-            <span>{balanceHidden ? "•••• collected today" : `${fmt(todayAjo)} collected today`}</span>
+            <span>{t("home.collectedToday", { amount: balanceHidden ? "••••" : fmt(todayAjo) })}</span>
           </div>
         </div>
       )}
@@ -511,7 +512,7 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
           {/* This week — source: forecast.thisWeekActual from getSalesPrediction */}
           <button onClick={() => setTab("transactions")}
             className="flex flex-col gap-0.5 bg-white dark:bg-slate-800 rounded-2xl px-3 py-3 shadow-card border border-slate-100 dark:border-slate-700/50 active:scale-95 transition-transform text-left min-w-0 overflow-hidden">
-            <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider whitespace-nowrap">This Week</p>
+            <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider whitespace-nowrap">{t("home.thisWeek")}</p>
             <AmountDisplay
               amount={forecast?.thisWeekActual ?? 0}
               size="stat"
@@ -519,14 +520,14 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
               hidden={balanceHidden}
               className="text-slate-800 dark:text-slate-100 w-full"
             />
-            <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-none">Sales</p>
+            <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-none">{t("home.heroSales")}</p>
           </button>
 
           {/* Credit outstanding */}
           <button onClick={() => onQuickAction?.("credit")}
             className="flex flex-col gap-0.5 bg-white dark:bg-slate-800 rounded-2xl px-3 py-3 shadow-card border border-slate-100 dark:border-slate-700/50 active:scale-95 transition-transform text-left min-w-0 overflow-hidden">
             <div className="flex items-center gap-1">
-              <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider whitespace-nowrap">Credit</p>
+              <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider whitespace-nowrap">{t("nav.credit")}</p>
               {overdueCount > 0 && <span className="text-[8px] text-red-500">⚠</span>}
             </div>
             <AmountDisplay
@@ -536,13 +537,13 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
               hidden={balanceHidden}
               className="text-slate-800 dark:text-slate-100 w-full"
             />
-            <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-none">Outstanding</p>
+            <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-none">{t("home.outstanding")}</p>
           </button>
 
           {/* Ajo held */}
           <button onClick={() => onQuickAction?.("aso")}
             className="flex flex-col gap-0.5 bg-white dark:bg-slate-800 rounded-2xl px-3 py-3 shadow-card border border-slate-100 dark:border-slate-700/50 active:scale-95 transition-transform text-left min-w-0 overflow-hidden">
-            <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider whitespace-nowrap">Ajo</p>
+            <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider whitespace-nowrap">{t("nav.ajo")}</p>
             <AmountDisplay
               amount={totalAso}
               size="stat"
@@ -550,7 +551,7 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
               hidden={balanceHidden}
               className="text-slate-800 dark:text-slate-100 w-full"
             />
-            <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-none">Held</p>
+            <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-none">{t("home.held")}</p>
           </button>
 
         </div>
@@ -577,9 +578,9 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
         {/* Quick Services — mic in slot 1 per ruling 6; bill tiles keep category colors */}
         <div className="border-t border-slate-100 dark:border-slate-700/60 pt-4">
           <div className="flex items-center justify-between mb-3.5">
-            <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Quick Services</p>
+            <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">{t("home.quickServices")}</p>
             <button onClick={() => setTab("bills")}
-              className="text-[11px] font-bold text-brand-600 dark:text-brand-400">See all</button>
+              className="text-[11px] font-bold text-brand-600 dark:text-brand-400">{t("home.seeAllShort")}</button>
           </div>
           <div className="grid grid-cols-3 gap-y-4">
             {BILL_SERVICES.filter(s => s.id !== "betting" || bettingVisible).map(s => (
@@ -596,7 +597,7 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
                   </svg>
                 </div>
                 <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 text-center leading-tight">
-                  {s.label}
+                  {t(s.label)}
                 </span>
               </button>
             ))}
@@ -610,12 +611,12 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
           <div className="bg-brand-50 dark:bg-brand-900/30 border border-brand-200 dark:border-brand-700/60 rounded-2xl px-4 py-3 mb-2 flex items-start gap-3 relative">
             <span className="text-xl leading-none mt-0.5">✨</span>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-brand-800 dark:text-brand-200">Ask me anything about your business</p>
-              <p className="text-xs text-brand-600 dark:text-brand-400 mt-0.5">I speak English, Pidgin, Hausa, Igbo &amp; Yoruba</p>
+              <p className="text-sm font-bold text-brand-800 dark:text-brand-200">{t("home.aiTipTitle")}</p>
+              <p className="text-xs text-brand-600 dark:text-brand-400 mt-0.5">{t("home.aiTipLangs")}</p>
             </div>
             <button
               onClick={() => { localStorage.setItem("kt_ai_intro_seen", "1"); setShowAITip(false); }}
-              aria-label="Dismiss"
+              aria-label={t("home.dismiss")}
               className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full text-brand-400 dark:text-brand-500 hover:bg-brand-100 dark:hover:bg-brand-800/40 active:scale-90 transition-transform mt-0.5">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                 <path d="M18 6L6 18M6 6l12 12" />
@@ -631,8 +632,8 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
             <span className="text-xl leading-none">✨</span>
           </div>
           <div className="flex-1 min-w-0 text-left">
-            <p className="text-[15px] font-black text-white leading-tight">KudiAI Assistant</p>
-            <p className="text-[11px] text-green-100 mt-0.5">Ask anything · sales, credit, stock, ajo</p>
+            <p className="text-[15px] font-black text-white leading-tight">{t("home.aiAssistant")}</p>
+            <p className="text-[11px] text-green-100 mt-0.5">{t("home.aiAssistantSub")}</p>
           </div>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" className="opacity-70 flex-shrink-0">
             <path d="M9 18l6-6-6-6" />
@@ -667,7 +668,7 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
           </svg>
           <input
             type="search"
-            placeholder="Search transactions, items, customers…"
+            placeholder={t("home.searchPlaceholder")}
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 rounded-2xl text-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/40 transition"
@@ -684,7 +685,7 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
 
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-[13px] font-bold text-slate-700 dark:text-slate-300 tracking-wide">
-            {search ? `Results for "${search}"` : t("home.recentTxns")}
+            {search ? t("home.resultsFor", { q: search }) : t("home.recentTxns")}
           </h2>
           {!search && (
             <button onClick={() => setTab("transactions")} className="text-xs text-brand-600 dark:text-brand-400 font-bold">
@@ -709,8 +710,8 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
           ).slice(0, 10);
           return results.length === 0 ? (
             <div className="text-center py-8 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700/50">
-              <p className="text-slate-400 text-sm font-semibold">No transactions found</p>
-              <p className="text-slate-300 dark:text-slate-600 text-xs mt-1">Try a different search term</p>
+              <p className="text-slate-400 text-sm font-semibold">{t("home.noTxnsFound")}</p>
+              <p className="text-slate-300 dark:text-slate-600 text-xs mt-1">{t("home.tryDifferentTerm")}</p>
             </div>
           ) : (
             <div className="space-y-2">{results.map(tx => <TxRow key={tx.id} tx={tx} onClick={() => openTxReceipt(tx)} hidden={balanceHidden} />)}</div>
@@ -724,14 +725,14 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
             </div>
             <p className="text-slate-700 dark:text-slate-300 text-base font-bold mb-1">{t("home.noTxns")}</p>
             <p className="text-slate-400 dark:text-slate-500 text-sm px-8 mb-5">
-              Record your first sale and watch this space come alive
+              {t("home.firstSaleHint")}
             </p>
             <button
               onClick={() => onQuickAction?.("transactions", "in")}
               className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold text-white active:scale-95 transition shadow-sm"
               style={{ background: "linear-gradient(135deg,var(--brand-green),var(--brand-green-dark))" }}>
               <Svg d={P.in} size={16} color="white" sw={2.5} />
-              Record First Sale
+              {t("home.recordFirstSale")}
             </button>
           </div>
         ) : (() => {
@@ -756,7 +757,7 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
         loading={offersLoading}
         recordEvent={recordOfferEvent}
         ctaUrl={ctaUrl}
-        title="Offers for You"
+        title={t("home.offersForYou")}
       />
 
       {/* ── Popup slot ───────────────────────────────────────────── */}

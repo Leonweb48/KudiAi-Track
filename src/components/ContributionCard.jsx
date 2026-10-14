@@ -4,6 +4,7 @@ import { spanDays, watDay } from "../utils/statementPeriod";
 import TransactionPinModal from "./TransactionPinModal";
 import ResultOverlay from "./ResultOverlay";
 import { allocatePeriods, allocateForReceipt } from "../utils/allocatePeriods.mjs";
+import { useT } from "../contexts/LanguageContext";
 
 // ── Visual maps ───────────────────────────────────────────────────────────────
 
@@ -40,6 +41,41 @@ const MARK_LABEL = {
   collector:       "Collector's",
 };
 
+// On-screen labels for each mark (MARK_LABEL itself stays English — the PDF uses it).
+const MARK_KEY = {
+  paid:            "ajo.card.mark_paid",
+  paid_in_advance: "ajo.card.mark_paid_in_advance",
+  partial:         "ajo.card.mark_partial",
+  pending:         "ajo.card.mark_pending",
+  missed:          "ajo.card.mark_missed",
+  current:         "ajo.card.mark_current",
+  upcoming:        "ajo.card.mark_upcoming",
+  collector:       "ajo.card.mark_collector",
+};
+
+// On-screen transaction/status labels (stored values never change).
+const TX_KEY = {
+  contribution:              "ajo.card.tx_contribution",
+  withdrawal:                "ajo.card.tx_withdrawal",
+  commission:                "ajo.card.tx_commission",
+  registration_fee:          "ajo.card.tx_registration_fee",
+  withdrawal_fee:            "ajo.card.tx_withdrawal_fee",
+  reversal_contribution:     "ajo.card.tx_reversal_contribution",
+  reversal_withdrawal:       "ajo.card.tx_reversal_withdrawal",
+  reversal_withdrawal_fee:   "ajo.card.tx_reversal_withdrawal_fee",
+  reversal_registration_fee: "ajo.card.tx_reversal_registration_fee",
+  esusu_payout:              "ajo.card.tx_esusu_payout",
+  disbursement:              "ajo.card.tx_disbursement",
+};
+const STATUS_KEY = {
+  completed: "ajo.card.status_completed",
+  approved:  "ajo.card.status_approved",
+  rejected:  "ajo.card.status_rejected",
+  pending:   "ajo.card.status_pending",
+  reversed:  "ajo.card.status_reversed",
+  failed:    "ajo.card.status_failed",
+};
+
 const COLS_BY_FREQ = { daily: 7, weekly: 5, monthly: 4 };
 
 function fmtPeriodRange(p, freq) {
@@ -66,6 +102,7 @@ function computeCommission(cycle, contributions) {
   if (cycle.commission_model === "first_period") {
     return {
       amount: Number(cycle.expected_amount_per_period),
+      kind: "first_period",
       label: `Period 1 (${fmtCurrency(cycle.expected_amount_per_period)})`,
     };
   }
@@ -74,6 +111,7 @@ function computeCommission(cycle, contributions) {
     const pct = Number(cycle.commission_percent || 0);
     return {
       amount: (totalPaid * pct) / 100,
+      kind: "percent", pct, base: totalPaid,
       label: `${pct}% of ${fmtCurrency(totalPaid)}`,
     };
   }
@@ -228,6 +266,7 @@ export default function ContributionCard({
   compact = false,
   isLegacyCycle = false,
 }) {
+  const t = useT();
   const [selected,             setSelected]             = useState(null);
   const [exporting,            setExporting]            = useState(false);
   const [showPinForCommission, setShowPinForCommission] = useState(false);
@@ -290,17 +329,27 @@ export default function ContributionCard({
     cycle.status !== "active" && commission.amount > 0 && !commissionDone &&
     cycle.commission_model !== "first_period";
   const totalExp     = cycle ? Number(cycle.expected_amount_per_period) * cycle.length_periods : 0;
+  const markLabel = (s) => (MARK_KEY[s] ? t(MARK_KEY[s]) : MARK_LABEL[s]);
+  const commissionLabel = commission.kind === "first_period"
+    ? t("ajo.card.commFirstPeriod", { amount: fmtCurrency(cycle?.expected_amount_per_period) })
+    : commission.kind === "percent"
+    ? t("ajo.card.commPercent", { pct: commission.pct, total: fmtCurrency(commission.base) })
+    : commission.label;
+  const freqCap = freq.charAt(0).toUpperCase() + freq.slice(1);
+  const cycleHeading = ["daily", "weekly", "monthly"].includes(freq)
+    ? t(`ajo.card.cycle_${freq}`)
+    : t("ajo.card.cycleOther", { freq: freqCap });
 
   if (!cycle) {
     return (
       <div className="rounded-xl border border-dashed border-slate-300 dark:border-slate-600 p-6 text-center">
-        <p className="text-sm text-slate-500 dark:text-slate-400 mb-3">No active cycle.</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mb-3">{t("ajo.card.noActiveCycle")}</p>
         {onOpenCycle && (
           <button
             onClick={() => onOpenCycle()}
             className="px-4 py-2 bg-brand-500 text-white text-sm font-semibold rounded-lg hover:bg-brand-600 transition-colors"
           >
-            Open Cycle
+            {t("ajo.card.openCycle")}
           </button>
         )}
       </div>
@@ -318,9 +367,9 @@ export default function ContributionCard({
     setCommissionExecuting(true);
     try {
       await onExecuteCommission(commission.amount, pin);
-      setCommissionResult({ type: "success", title: "Commission Deducted", amount: commission.amount, counterparty: clientName });
+      setCommissionResult({ type: "success", title: t("ajo.card.commissionDeducted"), amount: commission.amount, counterparty: clientName });
     } catch (e) {
-      setCommissionResult({ type: "failure", title: "Commission Failed", reason: e?.message || "Couldn't deduct commission — try again" });
+      setCommissionResult({ type: "failure", title: t("ajo.card.commissionFailed"), reason: e?.message || t("ajo.card.commissionFailedRetry") });
     } finally {
       setCommissionExecuting(false);
     }
@@ -332,11 +381,11 @@ export default function ContributionCard({
       <div className="px-4 pt-4 pb-3 flex items-start justify-between gap-2">
         <div>
           <p className="text-xs font-semibold text-brand-500 uppercase tracking-wide">
-            {freq.charAt(0).toUpperCase() + freq.slice(1)} Cycle
+            {cycleHeading}
             {cycle.label ? ` — ${cycle.label}` : ""}
           </p>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            From {fmtDate(cycle.start_date)} · {cycle.length_periods} periods
+            {t("ajo.card.fromPeriods", { date: fmtDate(cycle.start_date), n: cycle.length_periods })}
           </p>
           {cycleStarted && (
             <div className="flex items-center gap-1.5 mt-1.5">
@@ -348,12 +397,12 @@ export default function ContributionCard({
           )}
           {nextDue && cycle.status === "active" && (
             <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
-              Next due {fmtDate(nextDue)}
+              {t("ajo.card.nextDue", { date: fmtDate(nextDue) })}
             </p>
           )}
           {cycle.status === "completed" && (
             <span className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-700 text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">
-              ✓ Complete — withdraw available
+              {t("ajo.card.completeWithdraw")}
             </span>
           )}
         </div>
@@ -364,7 +413,7 @@ export default function ContributionCard({
               disabled={exporting}
               className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 hover:text-brand-500 transition-colors disabled:opacity-50 min-h-[44px] px-3 inline-flex items-center"
             >
-              {exporting ? "Exporting…" : "PDF"}
+              {exporting ? t("ajo.card.exporting") : "PDF"}
             </button>
           )}
           {!compact && onCloseCycle && cycle.status === "active" && (
@@ -372,7 +421,7 @@ export default function ContributionCard({
               onClick={onCloseCycle}
               className="text-[11px] font-semibold text-red-500 hover:text-red-600 transition-colors min-h-[44px] px-3 inline-flex items-center"
             >
-              Close
+              {t("common.close")}
             </button>
           )}
           {!compact && onOpenCycle && (cycle.status === "completed" || cycle.status === "settled") && (
@@ -380,7 +429,7 @@ export default function ContributionCard({
               onClick={() => onOpenCycle()}
               className="text-[11px] font-semibold text-brand-500 hover:text-brand-600 transition-colors min-h-[44px] px-3 inline-flex items-center"
             >
-              New Cycle
+              {t("ajo.card.newCycle")}
             </button>
           )}
         </div>
@@ -390,19 +439,19 @@ export default function ContributionCard({
       {!compact && (
         <div className="flex border-b border-slate-100 dark:border-slate-700 px-4">
           {[
-            { id: "card",    label: "Card" },
-            { id: "history", label: `History${cycleContribs.length > 0 ? ` (${cycleContribs.length})` : ""}` },
-          ].map(t => (
+            { id: "card",    label: t("ajo.card.tabCard") },
+            { id: "history", label: cycleContribs.length > 0 ? t("ajo.card.tabHistoryN", { n: cycleContribs.length }) : t("ajo.card.tabHistory") },
+          ].map(tab => (
             <button
-              key={t.id}
-              onClick={() => setCardTab(t.id)}
+              key={tab.id}
+              onClick={() => setCardTab(tab.id)}
               className={`py-2 mr-5 text-xs font-bold border-b-2 transition-colors ${
-                cardTab === t.id
-                  ? t.id === "card" ? "border-brand-500 text-brand-500" : "border-blue-500 text-blue-600 dark:text-blue-400"
+                cardTab === tab.id
+                  ? tab.id === "card" ? "border-brand-500 text-brand-500" : "border-blue-500 text-blue-600 dark:text-blue-400"
                   : "border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
               }`}
             >
-              {t.label}
+              {tab.label}
             </button>
           ))}
         </div>
@@ -414,32 +463,32 @@ export default function ContributionCard({
       {/* Stats strip */}
       <div className="px-4 pb-3 flex flex-col gap-1">
         <div className="flex gap-4 text-[11px]">
-          <span className="text-emerald-600 font-semibold">{paidCount} paid</span>
-          {partialCount > 0 && <span className="text-amber-500 font-semibold">{partialCount} partial</span>}
-          {pendingCount > 0 && <span className="text-amber-400 font-semibold">{pendingCount} pending</span>}
-          {missedCount > 0 && <span className="text-red-500 font-semibold">{missedCount} missed</span>}
+          <span className="text-emerald-600 font-semibold">{t("ajo.card.nPaid", { n: paidCount })}</span>
+          {partialCount > 0 && <span className="text-amber-500 font-semibold">{t("ajo.card.nPartial", { n: partialCount })}</span>}
+          {pendingCount > 0 && <span className="text-amber-400 font-semibold">{t("ajo.card.nPending", { n: pendingCount })}</span>}
+          {missedCount > 0 && <span className="text-red-500 font-semibold">{t("ajo.card.nMissed", { n: missedCount })}</span>}
           <span className="ml-auto text-slate-500 dark:text-slate-400">
             {fmtCurrency(totalPaid)} / {fmtCurrency(totalExp)}
           </span>
         </div>
         {outstandingPartial > 0 && (
           <p className="text-[10px] text-amber-600 dark:text-amber-500 font-medium">
-            {fmtCurrency(outstandingPartial)} outstanding across {partialCount} partial period{partialCount > 1 ? "s" : ""}
+            {t(partialCount > 1 ? "ajo.card.outstandingPartialMany" : "ajo.card.outstandingPartialOne", { amount: fmtCurrency(outstandingPartial), n: partialCount })}
           </p>
         )}
         {pendingTotal > 0 && (
           <p className="text-[10px] text-amber-500 font-medium">
-            {fmtCurrency(pendingTotal)} awaiting confirmation
+            {t("ajo.card.awaitingConfirmation", { amount: fmtCurrency(pendingTotal) })}
           </p>
         )}
         {totalWithdrawn > 0 && (
           <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
-            {fmtCurrency(totalWithdrawn)} withdrawn · {fmtCurrency(Math.max(0, totalPaid - cycleFees - totalWithdrawn))} available
+            {t("ajo.card.withdrawnAvailable", { withdrawn: fmtCurrency(totalWithdrawn), available: fmtCurrency(Math.max(0, totalPaid - cycleFees - totalWithdrawn)) })}
           </p>
         )}
         {!cycleStarted && pendingTotal > 0 && (
           <p className="text-[10px] text-slate-400 dark:text-slate-500">
-            Cycle not yet started — first payment pending confirmation
+            {t("ajo.card.notStartedPending")}
           </p>
         )}
       </div>
@@ -454,8 +503,8 @@ export default function ContributionCard({
             </svg>
           </div>
           <div>
-            <p className="text-sm font-bold text-slate-700 dark:text-slate-200">Activate with your first deposit</p>
-            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">Your savings period tracker will appear here after your first deposit.</p>
+            <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{t("ajo.card.activateFirstDeposit")}</p>
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{t("ajo.card.trackerAppears")}</p>
           </div>
           {(() => {
             const expected   = Number(cycle.expected_amount_per_period || 0);
@@ -469,12 +518,14 @@ export default function ContributionCard({
             if (!isFirstPrd && regCharge === 0) return null;
             const total = expected + regCharge;
             const parts = isFirstPrd
-              ? `${fmtCurrency(expected)} collector fee${regCharge > 0 ? ` + ${fmtCurrency(regCharge)} registration` : ""}`
-              : `${fmtCurrency(expected)} contribution + ${fmtCurrency(regCharge)} registration`;
+              ? (regCharge > 0
+                  ? t("ajo.card.partsCollectorReg", { fee: fmtCurrency(expected), reg: fmtCurrency(regCharge) })
+                  : t("ajo.card.partsCollector", { fee: fmtCurrency(expected) }))
+              : t("ajo.card.partsContribReg", { amount: fmtCurrency(expected), reg: fmtCurrency(regCharge) });
             return (
               <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl px-3 py-2.5 w-full">
                 <p className="text-[11px] font-bold text-blue-700 dark:text-blue-300">
-                  First deposit: {fmtCurrency(total)} = {parts}
+                  {t("ajo.card.firstDepositEq", { total: fmtCurrency(total), parts })}
                 </p>
               </div>
             );
@@ -500,7 +551,7 @@ export default function ContributionCard({
                   ${MARK_CLS[p.status]}
                   ${compact ? "text-[9px]" : ""}
                 `}
-                title={`Period ${p.idx + 1} · ${MARK_LABEL[p.status]}${outstanding > 0 ? ` · ${fmtCurrency(outstanding)} outstanding` : ""}`}
+                title={`${t("ajo.card.periodN", { n: p.idx + 1 })} · ${markLabel(p.status)}${outstanding > 0 ? ` · ${t("ajo.card.amountOutstanding", { amount: fmtCurrency(outstanding) })}` : ""}`}
               >
                 <span className={compact ? "text-[10px]" : "text-base leading-none mb-0.5"}>{MARK_ICON[p.status]}</span>
                 {!compact && (
@@ -518,18 +569,18 @@ export default function ContributionCard({
       {!compact && commission.amount > 0 && (
         <div className="mx-4 mb-3 rounded-xl bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-800 px-3 py-2.5 flex items-center justify-between gap-3">
           <div>
-            <p className="text-[10px] font-bold text-brand-500 uppercase tracking-wide">Collector Commission</p>
-            <p className="text-xs text-brand-600 dark:text-brand-300 mt-0.5">{commission.label}</p>
+            <p className="text-[10px] font-bold text-brand-500 uppercase tracking-wide">{t("ajo.card.collectorCommission")}</p>
+            <p className="text-xs text-brand-600 dark:text-brand-300 mt-0.5">{commissionLabel}</p>
             {cycle?.commission_model === "first_period" && !commissionDone && Number(cycle.commission_balance || 0) > 0 && (
               <p className="text-[10px] text-amber-500 font-medium mt-0.5">
-                {fmtCurrency(cycle.commission_balance)} / {fmtCurrency(commission.amount)} received
+                {t("ajo.card.receivedOf", { got: fmtCurrency(cycle.commission_balance), of: fmtCurrency(commission.amount) })}
               </p>
             )}
           </div>
           <div className="text-right flex-shrink-0">
             <p className="font-extrabold text-brand-600 dark:text-brand-300 text-sm">{fmtCurrency(commission.amount)}</p>
             {commissionDone && (
-              <p className="text-[10px] text-emerald-600 font-semibold mt-0.5">Executed ✓</p>
+              <p className="text-[10px] text-emerald-600 font-semibold mt-0.5">{t("ajo.card.executed")}</p>
             )}
           </div>
         </div>
@@ -543,10 +594,10 @@ export default function ContributionCard({
             disabled={commissionExecuting}
             className="w-full py-3.5 min-h-[44px] rounded-xl bg-brand-500 text-white text-sm font-bold hover:bg-brand-600 transition-colors disabled:opacity-50 active:scale-[0.98]"
           >
-            {commissionExecuting ? "Processing…" : `Execute Commission — ${fmtCurrency(commission.amount)}`}
+            {commissionExecuting ? t("ajo.card.processing") : t("ajo.card.executeCommission", { amount: fmtCurrency(commission.amount) })}
           </button>
           <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center mt-1">
-            PIN-gated · deducts from client balance · client is notified
+            {t("ajo.card.pinGatedNote")}
           </p>
         </div>
       )}
@@ -554,12 +605,12 @@ export default function ContributionCard({
       {/* Legend */}
       {!compact && (
         <div className="px-4 pb-3 flex flex-wrap gap-3">
-          {Object.entries(MARK_LABEL).map(([k, v]) => (
+          {Object.keys(MARK_LABEL).map((k) => (
             <span key={k} className="flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400">
               <span className={`w-3 h-3 rounded flex items-center justify-center text-[8px] font-bold ${MARK_CLS[k]}`}>
                 {MARK_ICON[k]}
               </span>
-              {v}
+              {markLabel(k)}
             </span>
           ))}
         </div>
@@ -598,7 +649,7 @@ export default function ContributionCard({
               <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8 text-slate-300 dark:text-slate-600" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round">
                 <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8"/>
               </svg>
-              <p className="text-xs text-slate-400 dark:text-slate-500 font-semibold">No transactions yet for this cycle</p>
+              <p className="text-xs text-slate-400 dark:text-slate-500 font-semibold">{t("ajo.card.noTxThisCycle")}</p>
             </div>
           );
         }
@@ -619,14 +670,14 @@ export default function ContributionCard({
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-[11px] font-bold text-slate-700 dark:text-slate-200 truncate">
-                        {TX_LABEL[tx.type] ?? tx.type}
+                        {TX_KEY[tx.type] ? t(TX_KEY[tx.type]) : (TX_LABEL[tx.type] ?? tx.type)}
                       </p>
                       <span className={`text-xs font-extrabold tabular-nums flex-shrink-0 ${credit ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}>
                         {credit ? "+" : "−"}{fmt(tx.amount)}
                       </span>
                     </div>
                     <div className="flex items-center gap-2 mt-0.5">
-                      <span className={`text-[10px] font-semibold capitalize ${statusCls(tx.status)}`}>{tx.status || "—"}</span>
+                      <span className={`text-[10px] font-semibold capitalize ${statusCls(tx.status)}`}>{tx.status ? (STATUS_KEY[tx.status] ? t(STATUS_KEY[tx.status]) : tx.status) : "—"}</span>
                       <span className="text-[10px] text-slate-400">·</span>
                       <span className="text-[10px] text-slate-400">{dateStr}</span>
                     </div>
@@ -644,8 +695,8 @@ export default function ContributionCard({
       {/* PIN modal for commission execution */}
       {showPinForCommission && (
         <TransactionPinModal
-          title="Confirm Commission"
-          subtitle={`Deduct ${fmtCurrency(commission.amount)} from ${clientName}'s balance`}
+          title={t("ajo.card.confirmCommission")}
+          subtitle={t("ajo.card.deductFromBalance", { amount: fmtCurrency(commission.amount), name: clientName })}
           onApprove={handleCommissionPin}
           onCancel={() => setShowPinForCommission(false)}
         />
@@ -677,11 +728,11 @@ export default function ContributionCard({
             <div className="flex items-center justify-between mb-3">
               <div>
                 <p className="font-bold text-slate-900 dark:text-white text-base">
-                  Period #{selected.idx + 1}
+                  {t("ajo.card.periodHash", { n: selected.idx + 1 })}
                 </p>
                 {selected.status === "partial" && (
                   <p className="text-xs text-amber-500 font-semibold mt-0.5">
-                    {fmtCurrency(selected.paid)} paid · {fmtCurrency(Math.max(0, Number(cycle.expected_amount_per_period) - selected.paid))} outstanding
+                    {t("ajo.card.paidOutstanding", { paid: fmtCurrency(selected.paid), outstanding: fmtCurrency(Math.max(0, Number(cycle.expected_amount_per_period) - selected.paid)) })}
                   </p>
                 )}
               </div>
@@ -694,7 +745,7 @@ export default function ContributionCard({
             </div>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
-                <span className="text-slate-500 dark:text-slate-400">Status</span>
+                <span className="text-slate-500 dark:text-slate-400">{t("ajo.card.status")}</span>
                 <span className={`font-semibold ${
                   selected.status === "paid"            ? "text-emerald-600"
                   : selected.status === "paid_in_advance" ? "text-emerald-500"
@@ -704,53 +755,53 @@ export default function ContributionCard({
                   : selected.status === "current"         ? "text-brand-500"
                   : selected.status === "collector"       ? "text-[#16255A] dark:text-[#8EA3D4]"
                   : "text-slate-400"
-                }`}>{MARK_LABEL[selected.status]}</span>
+                }`}>{markLabel(selected.status)}</span>
               </div>
               {selected.status === "collector" && (
                 <p className="text-xs text-[#16255A] dark:text-[#8EA3D4] bg-[#EEF1F9] dark:bg-[#16255A]/20 rounded-lg px-3 py-2">
-                  This deposit went to your collector as the cycle fee. Your savings start from period 2.
+                  {t("ajo.card.collectorPeriodNote")}
                 </p>
               )}
               {selected.status === "partial" && selected.idx === 0 && cycle?.commission_model === "first_period" && (
                 <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-lg px-3 py-2">
-                  Collector fee in progress — {fmtCurrency(Number(cycle.commission_balance || 0))} received of {fmtCurrency(cycle.expected_amount_per_period)}. Your savings start once the full fee is paid.
+                  {t("ajo.card.collectorFeeProgress", { got: fmtCurrency(Number(cycle.commission_balance || 0)), of: fmtCurrency(cycle.expected_amount_per_period) })}
                 </p>
               )}
               {selected.status === "pending" && (
                 <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-lg px-3 py-2">
-                  Awaiting your collector's confirmation
+                  {t("ajo.card.awaitingCollector")}
                 </p>
               )}
               {selected.status === "missed" && selected.rejectedRow && (
                 <p className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">
                   {selected.rejectedRow.reject_reason
-                    ? `Rejected: ${selected.rejectedRow.reject_reason}`
-                    : "A previous submission was rejected by your collector."}
+                    ? t("ajo.card.rejectedReason", { reason: selected.rejectedRow.reject_reason })
+                    : t("ajo.card.previousRejected")}
                 </p>
               )}
               <div className="flex justify-between">
-                <span className="text-slate-500 dark:text-slate-400">Range</span>
+                <span className="text-slate-500 dark:text-slate-400">{t("ajo.card.range")}</span>
                 <span className="font-medium text-slate-900 dark:text-white">{fmtPeriodRange(selected, freq)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500 dark:text-slate-400">Expected</span>
+                <span className="text-slate-500 dark:text-slate-400">{t("ajo.card.expected")}</span>
                 <span className="font-medium text-slate-900 dark:text-white">{fmtCurrency(cycle.expected_amount_per_period)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500 dark:text-slate-400">Paid</span>
+                <span className="text-slate-500 dark:text-slate-400">{t("ajo.card.paid")}</span>
                 <span className={`font-semibold ${selected.paid >= Number(cycle.expected_amount_per_period) ? "text-emerald-600" : selected.paid > 0 ? "text-amber-500" : "text-slate-400"}`}>
                   {fmtCurrency(selected.paid)}
                 </span>
               </div>
               {selected.status === "pending" && (selected.pendingAmount || 0) > 0 && (
                 <div className="flex justify-between">
-                  <span className="text-slate-500 dark:text-slate-400">Pending</span>
+                  <span className="text-slate-500 dark:text-slate-400">{t("ajo.card.pending")}</span>
                   <span className="font-semibold text-amber-500">{fmtCurrency(selected.pendingAmount)}</span>
                 </div>
               )}
               {selected.paid < Number(cycle.expected_amount_per_period) && selected.status !== "pending" && (
                 <div className="flex justify-between">
-                  <span className="text-slate-500 dark:text-slate-400">Shortfall</span>
+                  <span className="text-slate-500 dark:text-slate-400">{t("ajo.card.shortfall")}</span>
                   <span className="font-semibold text-red-500">
                     {fmtCurrency(Math.max(0, Number(cycle.expected_amount_per_period) - selected.paid))}
                   </span>

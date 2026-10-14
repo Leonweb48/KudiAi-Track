@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useReferrals } from "../hooks/useReferrals";
+import { useT } from "../contexts/LanguageContext";
 
 function ShareIcon() {
   return (
@@ -36,6 +37,7 @@ function GiftIcon() {
 }
 
 export default function ReferralCard() {
+  const t = useT();
   const { myCode, referrals, config, loading } = useReferrals();
   const [copied, setCopied] = useState(false);
 
@@ -49,13 +51,13 @@ export default function ReferralCard() {
     ? config.reward_type === "cash"
       ? `₦${Number(config.reward_value || 0).toLocaleString()}`
       : config.reward_type === "percentage"
-      ? `${config.reward_value}% off`
+      ? t("business.referral.percentOff", { n: config.reward_value })
       : config.reward_value
         ? String(config.reward_value)
         : null
     : null;
 
-  const shareText = `Join me on KudiAI Track and grow your business smarter! Use my referral code ${myCode.code} when signing up. https://kudiai.app`;
+  const shareText = t("business.referral.shareText", { code: myCode.code });
 
   const handleCopy = () => {
     navigator.clipboard?.writeText(myCode.code).then(() => {
@@ -66,7 +68,7 @@ export default function ReferralCard() {
 
   const handleShare = () => {
     if (navigator.share) {
-      navigator.share({ title: "Join KudiAI Track", text: shareText }).catch(() => {});
+      navigator.share({ title: t("business.referral.shareTitle"), text: shareText }).catch(() => {});
     } else {
       navigator.clipboard?.writeText(shareText);
       setCopied(true);
@@ -81,10 +83,10 @@ export default function ReferralCard() {
           <GiftIcon />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-bold text-slate-800 dark:text-white leading-tight">Refer &amp; Earn</p>
+          <p className="text-sm font-bold text-slate-800 dark:text-white leading-tight">{t("business.referral.title")}</p>
           {rewardLabel && (
             <p className="text-[11px] text-green-600 dark:text-green-400 font-semibold">
-              Earn {rewardLabel} per qualified referral
+              {t("business.referral.earnPer", { reward: rewardLabel })}
             </p>
           )}
         </div>
@@ -104,7 +106,7 @@ export default function ReferralCard() {
 
       {copied && (
         <p className="text-[11px] text-green-600 dark:text-green-400 font-semibold text-center mb-2">
-          Copied!
+          {t("business.referral.copied")}
         </p>
       )}
 
@@ -113,16 +115,16 @@ export default function ReferralCard() {
         <div className="flex gap-3 mb-3">
           <div className="flex-1 bg-slate-50 dark:bg-slate-700/40 rounded-xl px-3 py-2 text-center">
             <p className="text-base font-extrabold text-slate-800 dark:text-white">{referrals.length}</p>
-            <p className="text-[10px] text-slate-400 font-medium mt-0.5">Referred</p>
+            <p className="text-[10px] text-slate-400 font-medium mt-0.5">{t("business.referral.referred")}</p>
           </div>
           <div className="flex-1 bg-green-50 dark:bg-green-900/20 rounded-xl px-3 py-2 text-center">
             <p className="text-base font-extrabold text-green-600 dark:text-green-400">{qualified}</p>
-            <p className="text-[10px] text-slate-400 font-medium mt-0.5">Qualified</p>
+            <p className="text-[10px] text-slate-400 font-medium mt-0.5">{t("business.referral.qualified")}</p>
           </div>
           {pending > 0 && (
             <div className="flex-1 bg-amber-50 dark:bg-amber-900/20 rounded-xl px-3 py-2 text-center">
               <p className="text-base font-extrabold text-amber-600 dark:text-amber-400">{pending}</p>
-              <p className="text-[10px] text-slate-400 font-medium mt-0.5">Pending</p>
+              <p className="text-[10px] text-slate-400 font-medium mt-0.5">{t("business.referral.pending")}</p>
             </div>
           )}
         </div>
@@ -133,7 +135,7 @@ export default function ReferralCard() {
         onClick={handleShare}
         className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-sm text-white active:scale-95 transition-transform bg-[linear-gradient(135deg,#16a34a,#059669)]">
         <ShareIcon />
-        Share Your Code
+        {t("business.referral.shareCode")}
       </button>
     </div>
   );

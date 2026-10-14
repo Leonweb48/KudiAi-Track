@@ -31,6 +31,23 @@ const BLANK = {
   interest_type: "", interest_value: "",
 };
 
+// payment_method / status values → translation keys (the values themselves are saved as-is); unknown values show as stored
+const PAY_METHOD_KEY = {
+  cash:          "credit.pmCash",
+  bank_transfer: "credit.pmBankTransfer",
+  transfer:      "credit.pmTransfer",
+  pos:           "credit.pmPos",
+  online:        "credit.pmOnline",
+  other:         "credit.pmOther",
+};
+const payMethodLabel = (t, m) => PAY_METHOD_KEY[m || "cash"] ? t(PAY_METHOD_KEY[m || "cash"]) : String(m).replace(/_/g, " ");
+const STATUS_KEY = {
+  active:  "credit.chipActive",
+  overdue: "credit.chipOverdue",
+  paid:    "credit.chipPaid",
+  voided:  "credit.chipVoided",
+};
+
 function SectionLabel({ children }) {
   return (
     <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-5 mb-2">
@@ -174,12 +191,12 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
         p_reason: voidReason.trim(),
       });
       if (error) throw error;
-      setVoidMsg({ id: c.id, text: "Void request submitted. You'll be notified by email when an admin decides.", ok: true });
+      setVoidMsg({ id: c.id, text: t("credit.voidSubmitted"), ok: true });
       setVoidingCredit(null);
       setVoidReason("");
       loadCreditApprovals();
     } catch (e) {
-      setVoidMsg({ id: c.id, text: e?.message || "Failed to submit request", ok: false });
+      setVoidMsg({ id: c.id, text: e?.message || t("credit.voidSubmitFailed"), ok: false });
     } finally {
       setVoidSubmitting(false);
     }
@@ -189,10 +206,10 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
     try {
       const { error } = await supabase.rpc("cancel_approval_request", { p_request_id: requestId });
       if (error) throw error;
-      setVoidMsg({ id: creditId, text: "Request cancelled.", ok: true });
+      setVoidMsg({ id: creditId, text: t("credit.requestCancelled"), ok: true });
       loadCreditApprovals();
     } catch (e) {
-      setVoidMsg({ id: creditId, text: e?.message || "Failed to cancel", ok: false });
+      setVoidMsg({ id: creditId, text: e?.message || t("credit.cancelFailed"), ok: false });
     }
   };
 
@@ -204,9 +221,9 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
             <rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/>
           </svg>
         </div>
-        <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-2">Credit Management</h2>
+        <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-2">{t("credit.mgmtTitle")}</h2>
         <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 max-w-xs leading-relaxed">
-          Track credit sales, manage repayments, and monitor outstanding balances. {planAvailableText("credit")}
+          {t("credit.mgmtBody")} {planAvailableText("credit")}
         </p>
         {canSellPlans() && (
           <button onClick={onUpgrade} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-2xl font-bold text-sm active:scale-95 transition shadow-md">
@@ -254,11 +271,11 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
   );
 
   const CHIPS = [
-    { key: "all",     label: "All",     count: nonVoided.length },
-    { key: "active",  label: "Active",  count: nonVoided.filter(c => c.status === "active").length },
-    { key: "overdue", label: "Overdue", count: overdueList.length },
-    { key: "paid",    label: "Paid",    count: nonVoided.filter(c => c.status === "paid").length },
-    { key: "voided",  label: "Voided",  count: voidedCount },
+    { key: "all",     label: t("txn.all"),            count: nonVoided.length },
+    { key: "active",  label: t("credit.chipActive"),  count: nonVoided.filter(c => c.status === "active").length },
+    { key: "overdue", label: t("credit.chipOverdue"), count: overdueList.length },
+    { key: "paid",    label: t("credit.chipPaid"),    count: nonVoided.filter(c => c.status === "paid").length },
+    { key: "voided",  label: t("credit.chipVoided"),  count: voidedCount },
   ];
 
   const handlePhotoChange = (e) => {
@@ -313,7 +330,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
     });
     setAddingExtra(false);
     if (error) {
-      setExtraError(error.message || "Failed to update credit. Please try again.");
+      setExtraError(error.message || t("credit.updateFailed"));
       return;
     }
     if (creditItems.length > 0 && inventory?.recordMovement) {
@@ -327,7 +344,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
         });
       });
     }
-    toast({ type: "success", title: "Credit updated", body: c.customer_name });
+    toast({ type: "success", title: t("credit.updated"), body: c.customer_name });
     closeAddCreditFor();
   };
 
@@ -357,7 +374,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
       })) : null,
     });
     if (error) {
-      setAddError(error.message || "Failed to save credit record. Please try again.");
+      setAddError(error.message || t("credit.saveFailed"));
       setAdding(false);
       return;
     }
@@ -381,7 +398,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
       });
     }
     setAdding(false);
-    toast({ type: "success", title: "Credit record saved", body: f.customer_name });
+    toast({ type: "success", title: t("credit.saved"), body: f.customer_name });
     resetAdd();
   };
 
@@ -415,19 +432,19 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
         <div className="absolute -top-10 -right-10 w-36 h-36 rounded-full bg-white/5 pointer-events-none" />
         <div className="absolute -bottom-12 -left-8 w-44 h-44 rounded-full bg-white/5 pointer-events-none" />
         <div className="relative">
-          <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-0.5">Outstanding Balance</p>
+          <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-0.5">{t("credit.outstandingBalance")}</p>
           <AmountDisplay amount={totalOut} size="hero" align="left" className="text-white mb-4" />
           <div className="grid grid-cols-3 divide-x divide-white/20">
             <div className="pr-3 min-w-0">
-              <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">Total Debt</p>
+              <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">{t("credit.totalDebt")}</p>
               <AmountDisplay amount={totalDebt} size="small" align="left" className="text-white" />
             </div>
             <div className="px-3 min-w-0">
-              <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">Recovered</p>
+              <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">{t("credit.recovered")}</p>
               <AmountDisplay amount={totalRecov} size="small" align="left" className="text-green-200" />
             </div>
             <div className="pl-3 min-w-0">
-              <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">Debtors</p>
+              <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider mb-0.5">{t("credit.debtors")}</p>
               <p className="text-sm font-extrabold tabular-nums">
                 {credits.length}
                 {overdueList.length > 0 && (
@@ -444,18 +461,18 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
       {/* Interest breakdown — owner-only, shown only when any credit carries declared interest */}
       {hasInterest && (
         <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-2xl px-4 py-3 mb-4">
-          <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider mb-2">Interest Earned (declared)</p>
+          <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider mb-2">{t("credit.interestEarned")}</p>
           <div className="grid grid-cols-3 divide-x divide-amber-200 dark:divide-amber-800/40">
             <div className="pr-3 min-w-0">
-              <p className="text-[9px] font-bold text-amber-600 dark:text-amber-500 uppercase tracking-wider mb-0.5">Principal</p>
+              <p className="text-[9px] font-bold text-amber-600 dark:text-amber-500 uppercase tracking-wider mb-0.5">{t("credit.principal")}</p>
               <AmountDisplay amount={totalDebt} size="small" align="left" className="text-slate-700 dark:text-slate-200" />
             </div>
             <div className="px-3 min-w-0">
-              <p className="text-[9px] font-bold text-amber-600 dark:text-amber-500 uppercase tracking-wider mb-0.5">Interest</p>
+              <p className="text-[9px] font-bold text-amber-600 dark:text-amber-500 uppercase tracking-wider mb-0.5">{t("credit.interest")}</p>
               <AmountDisplay amount={totalInterestDeclared} size="small" align="left" className="text-amber-700 dark:text-amber-400" />
             </div>
             <div className="pl-3 min-w-0">
-              <p className="text-[9px] font-bold text-amber-600 dark:text-amber-500 uppercase tracking-wider mb-0.5">Total Due</p>
+              <p className="text-[9px] font-bold text-amber-600 dark:text-amber-500 uppercase tracking-wider mb-0.5">{t("credit.totalDue")}</p>
               <AmountDisplay amount={totalDebt + totalInterestDeclared} size="small" align="left" className="text-slate-700 dark:text-slate-200" />
             </div>
           </div>
@@ -472,15 +489,15 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-bold text-red-700 dark:text-red-400">
-              {overdueList.length} overdue {overdueList.length === 1 ? "account" : "accounts"}
+              {t(overdueList.length === 1 ? "credit.overdueAccountsOne" : "credit.overdueAccountsMany", { n: overdueList.length })}
             </p>
             <p className="text-xs text-red-500 dark:text-red-400 mt-0.5">
-              {fmt(overdueList.reduce((s, c) => s + c.outstanding, 0))} still outstanding
+              {t("credit.stillOutstanding", { amount: fmt(overdueList.reduce((s, c) => s + c.outstanding, 0)) })}
             </p>
           </div>
           <button onClick={() => setFilter("overdue")}
             className="text-xs font-bold text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/40 px-3 py-1.5 rounded-xl flex-shrink-0 active:scale-95 transition-transform">
-            View All
+            {t("credit.viewAll")}
           </button>
         </div>
       )}
@@ -496,7 +513,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
           type="text"
           value={search}
           onChange={e => setSearch(e.target.value)}
-          placeholder="Search by name or phone…"
+          placeholder={t("credit.searchPlaceholder")}
           className="w-full pl-9 pr-9 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500/40 transition"
         />
         {search && (
@@ -538,7 +555,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
           <svg viewBox="0 0 24 24" fill="none" className="w-3 h-3" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
             <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
           </svg>
-          {dueBefore || "Date"}
+          {dueBefore || t("common.date")}
         </button>
       </div>
 
@@ -551,14 +568,14 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
       {showDateFilter && (
         <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-3 mb-2 flex items-center gap-3">
           <div className="flex-1">
-            <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1">Due on or before</p>
+            <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1">{t("credit.dueOnOrBefore")}</p>
             <input type="date" value={dueBefore} onChange={e => setDueBefore(e.target.value)}
               className="w-full text-sm text-slate-800 dark:text-slate-100 bg-transparent focus:outline-none" />
           </div>
           {dueBefore && (
             <button onClick={() => { setDueBefore(""); }}
               className="text-xs font-bold text-red-400 hover:text-red-600 transition">
-              Clear
+              {t("credit.clear")}
             </button>
           )}
         </div>
@@ -567,8 +584,8 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
       {/* Result count */}
       {(search || filter !== "all" || dueBefore || period !== "all") && credits.length > 0 && (
         <p className="text-xs text-slate-400 dark:text-slate-500 mb-3 font-medium">
-          {filtered.length} {filtered.length === 1 ? "result" : "results"}
-          {search && ` for "${search}"`}
+          {t(filtered.length === 1 ? "credit.resultOne" : "credit.resultMany", { n: filtered.length })}
+          {search && ` ${t("credit.resultsFor", { q: search })}`}
         </p>
       )}
 
@@ -585,8 +602,8 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
         </div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-10 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700/50">
-          <p className="text-slate-500 dark:text-slate-400 text-sm font-semibold">No matches found</p>
-          <p className="text-slate-400 dark:text-slate-500 text-xs mt-1">Try a different search or filter</p>
+          <p className="text-slate-500 dark:text-slate-400 text-sm font-semibold">{t("credit.noMatches")}</p>
+          <p className="text-slate-400 dark:text-slate-500 text-xs mt-1">{t("credit.tryDifferent")}</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -632,7 +649,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                           <span className={`text-xs font-semibold ${
                             isOverdue ? "text-red-500 dark:text-red-400" : "text-slate-400 dark:text-slate-500"
                           }`}>
-                            Due {c.due_date}
+                            {t("credit.dueOn", { date: c.due_date })}
                           </span>
                         </>
                       )}
@@ -648,7 +665,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                     <Badge status={c.status} />
                     {isOverdue && overdueDays > 0 && (
                       <span className="text-[10px] font-bold text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-1.5 py-0.5 rounded-full">
-                        {overdueDays}d late
+                        {t("credit.daysLate", { n: overdueDays })}
                       </span>
                     )}
                   </div>
@@ -657,9 +674,9 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                 {/* Stats row */}
                 <div className="flex gap-2 mb-3">
                   {[
-                    { label: "Owed",  amount: c.outstanding,  colorBy: "out" },
-                    { label: "Paid",  amount: c.amount_paid,  colorBy: "in"  },
-                    { label: "Total", amount: c.total_amount, colorBy: null  },
+                    { label: t("credit.owed"),   amount: c.outstanding,  colorBy: "out" },
+                    { label: t("credit.paid"),   amount: c.amount_paid,  colorBy: "in"  },
+                    { label: t("common.total"), amount: c.total_amount, colorBy: null  },
                   ].map(({ label, amount, colorBy }) => (
                     <div key={label} className="flex-1 min-w-0 bg-slate-50 dark:bg-slate-700/60 rounded-xl p-2.5 overflow-hidden">
                       <p className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold mb-0.5">{label}</p>
@@ -671,10 +688,10 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                 {/* Progress */}
                 <div className="mb-2">
                   <div className="flex justify-between text-[10px] font-medium text-slate-400 dark:text-slate-500 mb-1">
-                    <span>Paid {Math.round(pct)}%</span>
+                    <span>{t("credit.paidPct", { pct: Math.round(pct) })}</span>
                     {isOverdue && overdueDays > 0
-                      ? <span className="text-red-400 dark:text-red-500 font-bold">{overdueDays} day{overdueDays !== 1 ? "s" : ""} overdue</span>
-                      : c.due_date && !isPaid && <span>Due {c.due_date}</span>
+                      ? <span className="text-red-400 dark:text-red-500 font-bold">{t(overdueDays !== 1 ? "credit.daysOverdueMany" : "credit.daysOverdueOne", { n: overdueDays })}</span>
+                      : c.due_date && !isPaid && <span>{t("credit.dueOn", { date: c.due_date })}</span>
                     }
                   </div>
                   <div className="h-1.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
@@ -696,7 +713,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                       <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 flex-shrink-0" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
                         <polyline points="20 6 9 17 4 12" />
                       </svg>
-                      Record Payment
+                      {t("credit.recordPayment")}
                     </button>
                   )}
                   {/* Secondary — 2-column grid so each button always has half the width */}
@@ -708,7 +725,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                         <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 flex-shrink-0" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
                           <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
                         </svg>
-                        New Credit
+                        {t("credit.newCredit")}
                       </button>
                     )}
                     {c.outstanding > 0 && (
@@ -721,7 +738,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                         <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 flex-shrink-0" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                           <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0" />
                         </svg>
-                        Remind
+                        {t("credit.remind")}
                       </button>
                     )}
                     <button onClick={() => setReceipt(c)}
@@ -729,7 +746,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                       <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 flex-shrink-0" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                         <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M16 13H8" />
                       </svg>
-                      Statement
+                      {t("credit.statement")}
                     </button>
                     {debtPayments.some(p => p.credit_id === c.id) && (
                       <button onClick={() => setHistoryFor(c)}
@@ -738,7 +755,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                           <polyline points="12 8 12 12 14 14"/><path d="M3.05 11a9 9 0 1 0 .5-4.5"/>
                           <polyline points="3 3 3 7 7 7"/>
                         </svg>
-                        Payments
+                        {t("credit.payments")}
                       </button>
                     )}
                     {!isVoidLocked && !isVoidOpen && !isVoided && (
@@ -748,7 +765,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                         <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 flex-shrink-0" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                           <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
                         </svg>
-                        Void
+                        {t("credit.void")}
                       </button>
                     )}
                     {isOwner && (
@@ -758,7 +775,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                         <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 flex-shrink-0" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                           <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
                         </svg>
-                        Assign
+                        {t("credit.assign")}
                       </button>
                     )}
                   </div>
@@ -771,12 +788,12 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                       <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                         <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
                       </svg>
-                      <p className="text-[10px] font-bold text-amber-700 dark:text-amber-300">Pending admin approval — void request</p>
+                      <p className="text-[10px] font-bold text-amber-700 dark:text-amber-300">{t("credit.pendingVoid")}</p>
                     </div>
                     <button
                       onClick={() => cancelCreditVoidRequest(pendingVoid.id, c.id)}
                       className="text-[10px] font-bold text-amber-600 dark:text-amber-400 hover:underline flex-shrink-0">
-                      Cancel
+                      {t("common.cancel")}
                     </button>
                   </div>
                 )}
@@ -791,7 +808,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                 {/* ── Voided record info ── */}
                 {isVoided && (c.voided_at || c.voided_reason) && (
                   <div className="mt-3 bg-slate-50 dark:bg-slate-700/30 rounded-xl px-3 py-2.5 border border-slate-200 dark:border-slate-700/40 space-y-0.5">
-                    <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Voided</p>
+                    <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">{t("credit.chipVoided")}</p>
                     {c.voided_at && (
                       <p className="text-[10px] text-slate-400 dark:text-slate-500">
                         {new Date(c.voided_at).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })}
@@ -806,21 +823,25 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                 {/* ── Inline void confirmation form ── */}
                 {isVoidOpen && (
                   <div className="mt-3 bg-red-50 dark:bg-red-900/20 rounded-xl p-3 space-y-2.5 border border-red-200 dark:border-red-800">
-                    <p className="text-xs font-bold text-red-700 dark:text-red-300 uppercase tracking-wider">Request Credit Void</p>
+                    <p className="text-xs font-bold text-red-700 dark:text-red-300 uppercase tracking-wider">{t("credit.requestVoidTitle")}</p>
                     <p className="text-[10px] text-red-600 dark:text-red-400 leading-relaxed">
-                      Voiding <strong className="inline-block max-w-[140px] truncate align-text-bottom">{c.customer_name}</strong>'s credit record ({fmt(c.total_amount)}) requires admin approval. All payment history will be preserved. The record will be removed from your active list once approved.
+                      {(() => {
+                        // "{name}" stays bold — split the sentence around it
+                        const [pre, post = ""] = t("credit.voidingBody", { amount: fmt(c.total_amount) }).split("{name}");
+                        return <>{pre}<strong className="inline-block max-w-[140px] truncate align-text-bottom">{c.customer_name}</strong>{post}</>;
+                      })()}
                     </p>
                     {c.amount_paid > 0 && (
                       <div className="bg-amber-50 dark:bg-amber-900/20 rounded-xl px-3 py-2 border border-amber-200 dark:border-amber-700/40">
-                        <p className="text-[10px] font-bold text-amber-700 dark:text-amber-300">Partial repayments already recorded</p>
+                        <p className="text-[10px] font-bold text-amber-700 dark:text-amber-300">{t("credit.partialRepayments")}</p>
                         <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5 leading-relaxed">
-                          {fmt(c.amount_paid)} has been repaid against this credit. Voiding is permanent — those repayments stay in your transaction history but will no longer count toward outstanding totals.
+                          {t("credit.partialRepaymentsBody", { amount: fmt(c.amount_paid) })}
                         </p>
                       </div>
                     )}
                     <div>
-                      <p className="text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-wide mb-0.5">Reason *</p>
-                      <textarea rows={2} value={voidReason} onChange={e => setVoidReason(e.target.value)} placeholder="Why do you need to void this credit record?"
+                      <p className="text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-wide mb-0.5">{t("credit.reasonRequired")}</p>
+                      <textarea rows={2} value={voidReason} onChange={e => setVoidReason(e.target.value)} placeholder={t("credit.voidReasonPlaceholder")}
                         className="w-full text-sm bg-white dark:bg-slate-800 border border-red-200 dark:border-red-700 rounded-xl px-3 py-2 text-slate-800 dark:text-white focus:outline-none resize-none" />
                     </div>
                     <div className="flex gap-2 pt-1">
@@ -828,11 +849,11 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                         onClick={() => submitCreditVoidRequest(c)}
                         disabled={voidSubmitting || !voidReason.trim()}
                         className="flex-1 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white rounded-xl font-bold text-xs transition active:scale-[0.99] flex items-center justify-center gap-1.5">
-                        {voidSubmitting ? <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />Submitting…</> : "Submit Void Request"}
+                        {voidSubmitting ? <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />{t("credit.submitting")}</> : t("credit.submitVoid")}
                       </button>
                       <button onClick={() => { setVoidingCredit(null); setVoidReason(""); }}
                         className="px-4 py-2 bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 rounded-xl font-bold text-xs border border-slate-200 dark:border-slate-600 transition active:scale-[0.99]">
-                        Cancel
+                        {t("common.cancel")}
                       </button>
                     </div>
                   </div>
@@ -845,7 +866,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
 
       {/* ── Add Credit to Existing Customer ──────────────────────────── */}
       {addCreditFor && (
-        <Modal title={`Add Credit — ${addCreditFor.customer_name}`} onClose={closeAddCreditFor}>
+        <Modal title={t("credit.addCreditTitle", { name: addCreditFor.customer_name })} onClose={closeAddCreditFor}>
           {/* Customer identity strip — read-only */}
           <div className="flex items-center gap-3 bg-slate-50 dark:bg-slate-700/60 rounded-xl px-3 py-2.5 mb-1">
             <div className="w-9 h-9 rounded-xl overflow-hidden flex-shrink-0">
@@ -860,24 +881,24 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
               <p className="text-sm font-bold text-slate-800 dark:text-white truncate">{addCreditFor.customer_name}</p>
               {addCreditFor.phone && <p className="text-xs text-slate-400 dark:text-slate-500">{addCreditFor.phone}</p>}
             </div>
-            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold">Profile reused</span>
+            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold">{t("credit.profileReused")}</span>
           </div>
 
-          <SectionLabel>Additional Credit</SectionLabel>
+          <SectionLabel>{t("credit.additionalCredit")}</SectionLabel>
           <div className="grid grid-cols-2 gap-2">
-            <Field label="Amount to Add (₦) *" type="number" inputMode="decimal" value={ef.total_amount}
+            <Field label={t("credit.amountToAdd")} type="number" inputMode="decimal" value={ef.total_amount}
               onChange={e => setE("total_amount", e.target.value)} placeholder="0.00" />
-            <Field label="Due Date" type="date" value={ef.due_date}
+            <Field label={t("credit.dueDate")} type="date" value={ef.due_date}
               onChange={e => setE("due_date", e.target.value)} />
           </div>
 
           {/* Optional: link catalogue products — deducts stock and records cost price */}
           {inventory?.products?.length > 0 && (
             <>
-              <SectionLabel>Linked Products (optional)</SectionLabel>
+              <SectionLabel>{t("credit.linkedProducts")}</SectionLabel>
               <input
                 type="text"
-                placeholder="Search catalogue to link products…"
+                placeholder={t("credit.searchCatalogue")}
                 value={productSearch}
                 onChange={e => setProductSearch(e.target.value)}
                 className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-200 mb-2 focus:outline-none focus:ring-2 focus:ring-brand-400"
@@ -910,7 +931,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                           className="w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-40 border-b border-slate-100 dark:border-slate-700 last:border-b-0"
                         >
                           <span className="font-medium text-slate-700 dark:text-slate-200 truncate">{p.product_name}</span>
-                          <span className="text-xs text-slate-400 ml-2 flex-shrink-0">₦{price.toLocaleString()} · {p.quantity ?? 0} in stock</span>
+                          <span className="text-xs text-slate-400 ml-2 flex-shrink-0">₦{price.toLocaleString()} · {t("credit.inStock", { n: p.quantity ?? 0 })}</span>
                         </button>
                       );
                     })}
@@ -952,7 +973,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                     </div>
                   ))}
                   <p className="text-[11px] text-slate-400 dark:text-slate-500 text-right">
-                    Products total: ₦{creditItems.reduce((s, i) => s + i.quantity * i.unit_price, 0).toLocaleString()} — stock deducted on save
+                    {t("credit.productsTotal", { amount: `₦${creditItems.reduce((s, i) => s + i.quantity * i.unit_price, 0).toLocaleString()}` })}
                   </p>
                 </div>
               )}
@@ -960,31 +981,31 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
           )}
 
           <div className="grid grid-cols-2 gap-2">
-            <Field label="Interest Type" as="select" value={ef.interest_type}
+            <Field label={t("credit.interestType")} as="select" value={ef.interest_type}
               onChange={e => { setE("interest_type", e.target.value); setE("interest_value", ""); }}>
-              <option value="">No interest</option>
-              <option value="percent">% of principal</option>
-              <option value="fixed">Fixed ₦ amount</option>
+              <option value="">{t("credit.noInterest")}</option>
+              <option value="percent">{t("credit.pctOfPrincipal")}</option>
+              <option value="fixed">{t("credit.fixedAmount")}</option>
             </Field>
             {ef.interest_type
               ? <Field
-                  label={ef.interest_type === "percent" ? "Interest %" : "Interest (₦)"}
+                  label={ef.interest_type === "percent" ? t("credit.interestPct") : t("credit.interestNaira")}
                   type="number" inputMode="decimal"
                   value={ef.interest_value}
                   onChange={e => setE("interest_value", e.target.value)}
-                  placeholder={ef.interest_type === "percent" ? "e.g. 5" : "e.g. 2000"}
+                  placeholder={t("credit.egValue", { v: ef.interest_type === "percent" ? 5 : 2000 })}
                 />
               : <div />
             }
           </div>
           {ef.interest_type && ef.interest_value && parseFloat(ef.interest_value) > 0 && parseFloat(ef.total_amount) > 0 && (
             <p className="text-[12px] text-slate-500 dark:text-slate-400 -mt-1 mb-2">
-              Interest: ₦{(
+              {t("credit.interestLabel")} ₦{(
                 ef.interest_type === "percent"
                   ? parseFloat(ef.total_amount) * parseFloat(ef.interest_value) / 100
                   : parseFloat(ef.interest_value)
               ).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              {" "}· Total due: ₦{(
+              {" "}· {t("credit.totalDueLabel")} ₦{(
                 parseFloat(ef.total_amount) + (
                   ef.interest_type === "percent"
                     ? parseFloat(ef.total_amount) * parseFloat(ef.interest_value) / 100
@@ -993,9 +1014,9 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
               ).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
           )}
-          <Field label="Notes (optional)" value={ef.notes}
+          <Field label={t("credit.notesOptional")} value={ef.notes}
             onChange={e => setE("notes", e.target.value)}
-            placeholder="e.g. Top-up for school fees" />
+            placeholder={t("credit.topUpPlaceholder")} />
 
           {ef.total_amount && parseFloat(ef.total_amount) > 0 && (
             <div className="bg-slate-50 dark:bg-slate-700/60 rounded-xl px-3 py-2.5 text-[12px] text-slate-500 dark:text-slate-400 space-y-0.5">
@@ -1008,11 +1029,11 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                 const totalAddition = principal + addedInterest;
                 return (
                   <>
-                    <p>Principal added: <strong className="text-slate-700 dark:text-slate-200">₦{principal.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
+                    <p>{t("credit.principalAdded")} <strong className="text-slate-700 dark:text-slate-200">₦{principal.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
                     {addedInterest > 0 && (
-                      <p>Interest added: <strong className="text-slate-700 dark:text-slate-200">₦{addedInterest.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
+                      <p>{t("credit.interestAdded")} <strong className="text-slate-700 dark:text-slate-200">₦{addedInterest.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
                     )}
-                    <p>New outstanding: <strong className="text-red-500 dark:text-red-400">₦{((addCreditFor.outstanding || 0) + totalAddition).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
+                    <p>{t("credit.newOutstanding")} <strong className="text-red-500 dark:text-red-400">₦{((addCreditFor.outstanding || 0) + totalAddition).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
                   </>
                 );
               })()}
@@ -1027,8 +1048,8 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
             disabled={!ef.total_amount || addingExtra}
             className="w-full mt-2 py-3 min-h-[48px] bg-[#16255A] hover:bg-[#1e3575] disabled:opacity-40 text-white rounded-2xl font-bold text-sm transition active:scale-[0.99] flex items-center justify-center gap-2">
             {addingExtra
-              ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Recording…</>
-              : "Add to Credit"
+              ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />{t("credit.recording")}</>
+              : t("credit.addToCredit")
             }
           </button>
         </Modal>
@@ -1036,13 +1057,13 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
 
       {/* ── Add Credit Modal ─────────────────────────────────────────── */}
       {showAdd && (
-        <Modal title="New Credit Record" onClose={resetAdd}>
+        <Modal title={t("credit.newRecordTitle")} onClose={resetAdd}>
 
           <div className="flex flex-col items-center mb-4 pt-1">
             <div className="relative">
               <div className="w-24 h-24 rounded-2xl overflow-hidden border-2 border-dashed border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 flex items-center justify-center shadow-sm">
                 {photoPreview
-                  ? <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
+                  ? <img src={photoPreview} alt={t("credit.photoPreview")} className="w-full h-full object-cover" />
                   : <svg viewBox="0 0 24 24" fill="none" className="w-9 h-9 text-slate-300 dark:text-slate-500" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round">
                       <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 11a4 4 0 100-8 4 4 0 000 8" />
                     </svg>
@@ -1055,26 +1076,26 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                 <input type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />
               </label>
             </div>
-            <p className="text-xs text-slate-400 dark:text-slate-500 mt-3">Tap camera to add photo</p>
+            <p className="text-xs text-slate-400 dark:text-slate-500 mt-3">{t("credit.tapCamera")}</p>
           </div>
 
-          <SectionLabel>Credit Details</SectionLabel>
-          <Field label="Customer Name *" value={f.customer_name}
-            onChange={e => set("customer_name", e.target.value)} placeholder="Full name of debtor" />
+          <SectionLabel>{t("credit.creditDetails")}</SectionLabel>
+          <Field label={t("credit.customerNameReq")} value={f.customer_name}
+            onChange={e => set("customer_name", e.target.value)} placeholder={t("credit.debtorNamePlaceholder")} />
           <div className="grid grid-cols-2 gap-2">
-            <Field label="Amount Owed (₦) *" type="number" inputMode="decimal" value={f.total_amount}
+            <Field label={t("credit.amountOwed")} type="number" inputMode="decimal" value={f.total_amount}
               onChange={e => set("total_amount", e.target.value)} placeholder="0.00" />
-            <Field label="Due Date" type="date" value={f.due_date}
+            <Field label={t("credit.dueDate")} type="date" value={f.due_date}
               onChange={e => set("due_date", e.target.value)} />
           </div>
 
           {/* Optional: link catalogue products — deducts stock and records cost price */}
           {inventory?.products?.length > 0 && (
             <>
-              <SectionLabel>Linked Products (optional)</SectionLabel>
+              <SectionLabel>{t("credit.linkedProducts")}</SectionLabel>
               <input
                 type="text"
-                placeholder="Search catalogue to link products…"
+                placeholder={t("credit.searchCatalogue")}
                 value={productSearch}
                 onChange={e => setProductSearch(e.target.value)}
                 className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-200 mb-2 focus:outline-none focus:ring-2 focus:ring-brand-400"
@@ -1107,7 +1128,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                           className="w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-40 border-b border-slate-100 dark:border-slate-700 last:border-b-0"
                         >
                           <span className="font-medium text-slate-700 dark:text-slate-200 truncate">{p.product_name}</span>
-                          <span className="text-xs text-slate-400 ml-2 flex-shrink-0">₦{price.toLocaleString()} · {p.quantity ?? 0} in stock</span>
+                          <span className="text-xs text-slate-400 ml-2 flex-shrink-0">₦{price.toLocaleString()} · {t("credit.inStock", { n: p.quantity ?? 0 })}</span>
                         </button>
                       );
                     })}
@@ -1149,7 +1170,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                     </div>
                   ))}
                   <p className="text-[11px] text-slate-400 dark:text-slate-500 text-right">
-                    Products total: ₦{creditItems.reduce((s, i) => s + i.quantity * i.unit_price, 0).toLocaleString()} — stock deducted on save
+                    {t("credit.productsTotal", { amount: `₦${creditItems.reduce((s, i) => s + i.quantity * i.unit_price, 0).toLocaleString()}` })}
                   </p>
                 </div>
               )}
@@ -1158,30 +1179,30 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
 
           {/* Optional interest — owner sets at creation; immutable after saving */}
           <div className="grid grid-cols-2 gap-2">
-            <Field label="Interest Type" as="select" value={f.interest_type}
+            <Field label={t("credit.interestType")} as="select" value={f.interest_type}
               onChange={e => { set("interest_type", e.target.value); set("interest_value", ""); }}>
-              <option value="">No interest</option>
-              <option value="percent">% of principal</option>
-              <option value="fixed">Fixed ₦ amount</option>
+              <option value="">{t("credit.noInterest")}</option>
+              <option value="percent">{t("credit.pctOfPrincipal")}</option>
+              <option value="fixed">{t("credit.fixedAmount")}</option>
             </Field>
             {f.interest_type ? (
               <Field
-                label={f.interest_type === "percent" ? "Interest %" : "Interest (₦)"}
+                label={f.interest_type === "percent" ? t("credit.interestPct") : t("credit.interestNaira")}
                 type="number" inputMode="decimal"
                 value={f.interest_value}
                 onChange={e => set("interest_value", e.target.value)}
-                placeholder={f.interest_type === "percent" ? "e.g. 5" : "e.g. 2000"}
+                placeholder={t("credit.egValue", { v: f.interest_type === "percent" ? 5 : 2000 })}
               />
             ) : <div />}
           </div>
           {f.interest_type && f.interest_value && parseFloat(f.interest_value) > 0 && parseFloat(f.total_amount) > 0 && (
             <p className="text-[12px] text-slate-500 dark:text-slate-400 mb-1 -mt-1">
-              Interest:{" "}
+              {t("credit.interestLabel")}{" "}
               {f.interest_type === "percent"
                 ? `₦${(parseFloat(f.total_amount) * parseFloat(f.interest_value) / 100).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                 : `₦${parseFloat(f.interest_value).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
               }
-              {" "}· Total due:{" "}
+              {" "}· {t("credit.totalDueLabel")}{" "}
               ₦{(
                 parseFloat(f.total_amount) + (
                   f.interest_type === "percent"
@@ -1192,53 +1213,53 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
             </p>
           )}
 
-          <SectionLabel>Contact & Identity</SectionLabel>
+          <SectionLabel>{t("credit.contactIdentity")}</SectionLabel>
           <div className="grid grid-cols-2 gap-2">
-            <Field label="Phone" type="tel" value={f.phone}
+            <Field label={t("credit.phone")} type="tel" value={f.phone}
               onChange={e => set("phone", e.target.value)} placeholder="08012345678" />
-            <Field label="Email" type="email" value={f.email}
+            <Field label={t("credit.email")} type="email" value={f.email}
               onChange={e => set("email", e.target.value)} placeholder="email@example.com" />
           </div>
           <Field label="NIN" inputMode="numeric" value={f.nin}
             onChange={e => set("nin", e.target.value.replace(/\D/g, "").slice(0, 11))}
-            placeholder="11-digit National ID Number" />
+            placeholder={t("credit.ninPlaceholder")} />
 
-          <SectionLabel>Address</SectionLabel>
-          <Field label="Street Address" value={f.address}
+          <SectionLabel>{t("credit.address")}</SectionLabel>
+          <Field label={t("credit.streetAddress")} value={f.address}
             onChange={e => set("address", e.target.value)} placeholder="12 Market Road, Onitsha" />
-          <Field label="State" as="select" value={f.state}
+          <Field label={t("credit.state")} as="select" value={f.state}
             onChange={e => { set("state", e.target.value); set("lga", ""); set("ward", ""); }}>
-            <option value="">Select State…</option>
+            <option value="">{t("credit.selectState")}</option>
             {STATES.map(s => <option key={s} value={s}>{s}</option>)}
           </Field>
           <div className="grid grid-cols-2 gap-2">
             <Field label="LGA" as="select" value={f.lga} disabled={!f.state}
               onChange={e => { set("lga", e.target.value); set("ward", ""); }}>
-              <option value="">{f.state ? "Select LGA…" : "State first"}</option>
+              <option value="">{f.state ? t("credit.selectLga") : t("credit.stateFirst")}</option>
               {lgas.map(l => <option key={l} value={l}>{l}</option>)}
             </Field>
-            <Field label="Ward" as="select" value={f.ward} disabled={!f.lga}
+            <Field label={t("credit.ward")} as="select" value={f.ward} disabled={!f.lga}
               onChange={e => set("ward", e.target.value)}>
-              <option value="">{f.lga ? "Select Ward…" : "LGA first"}</option>
+              <option value="">{f.lga ? t("credit.selectWard") : t("credit.lgaFirst")}</option>
               {wards.map(w => <option key={w} value={w}>{w}</option>)}
             </Field>
           </div>
 
-          <SectionLabel>Next of Kin</SectionLabel>
-          <Field label="Full Name" value={f.next_of_kin}
-            onChange={e => set("next_of_kin", e.target.value)} placeholder="Next of kin name" />
+          <SectionLabel>{t("credit.nextOfKin")}</SectionLabel>
+          <Field label={t("credit.fullName")} value={f.next_of_kin}
+            onChange={e => set("next_of_kin", e.target.value)} placeholder={t("credit.nokNamePlaceholder")} />
           <div className="grid grid-cols-2 gap-2">
-            <Field label="Phone" type="tel" value={f.next_of_kin_phone}
+            <Field label={t("credit.phone")} type="tel" value={f.next_of_kin_phone}
               onChange={e => set("next_of_kin_phone", e.target.value)} placeholder="08012345678" />
-            <Field label="Email" type="email" value={f.next_of_kin_email}
+            <Field label={t("credit.email")} type="email" value={f.next_of_kin_email}
               onChange={e => set("next_of_kin_email", e.target.value)} placeholder="email@example.com" />
           </div>
-          <Field label="Address" value={f.next_of_kin_address}
-            onChange={e => set("next_of_kin_address", e.target.value)} placeholder="Next of kin address" />
+          <Field label={t("credit.address")} value={f.next_of_kin_address}
+            onChange={e => set("next_of_kin_address", e.target.value)} placeholder={t("credit.nokAddressPlaceholder")} />
 
-          <SectionLabel>Notes</SectionLabel>
+          <SectionLabel>{t("credit.notes")}</SectionLabel>
           <Field as="textarea" value={f.notes}
-            onChange={e => set("notes", e.target.value)} placeholder="Optional notes…" />
+            onChange={e => set("notes", e.target.value)} placeholder={t("credit.optionalNotesPlaceholder")} />
 
           {addError && (
             <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 rounded-xl px-3 py-2 mb-1">{addError}</p>
@@ -1246,42 +1267,42 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
           <button onClick={handleAdd}
             disabled={!f.customer_name || !f.total_amount || adding}
             className="w-full py-3.5 mt-1 bg-brand-500 hover:bg-brand-600 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] shadow-sm disabled:opacity-50">
-            {adding ? "Saving…" : "Save Credit Record"}
+            {adding ? t("common.saving") : t("credit.saveRecord")}
           </button>
         </Modal>
       )}
 
       {/* Repayment modal */}
       {repaying && (
-        <Modal title={`Record Payment — ${repaying.customer_name}`}
+        <Modal title={t("credit.recordPaymentTitle", { name: repaying.customer_name })}
           onClose={() => { setRepaying(null); setRepayAmt(""); setRepayMethod("cash"); setRepayNote(""); }}>
           <div className="bg-red-50 dark:bg-red-900/20 rounded-xl px-4 py-3 mb-4 border border-red-100 dark:border-red-800/60">
-            <p className="text-xs text-slate-500 dark:text-slate-400">Outstanding balance</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">{t("credit.outstandingBalanceLower")}</p>
             <AmountDisplay amount={repaying.outstanding} size="stat" align="left" className="text-red-500 dark:text-red-400" />
           </div>
-          <Field label="Payment Amount (₦)" type="number" inputMode="decimal" value={repayAmt}
-            onChange={e => setRepayAmt(e.target.value)} placeholder="Enter amount paid" />
+          <Field label={t("credit.paymentAmount")} type="number" inputMode="decimal" value={repayAmt}
+            onChange={e => setRepayAmt(e.target.value)} placeholder={t("credit.enterAmountPaid")} />
           <div className="mb-4">
-            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wide">Payment Method</label>
+            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wide">{t("credit.paymentMethod")}</label>
             <select value={repayMethod} onChange={e => setRepayMethod(e.target.value)}
               className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-white px-4 py-3 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-green-500">
-              <option value="cash">Cash</option>
-              <option value="bank_transfer">Bank Transfer</option>
-              <option value="pos">POS</option>
-              <option value="online">Online</option>
-              <option value="other">Other</option>
+              <option value="cash">{t("credit.pmCash")}</option>
+              <option value="bank_transfer">{t("credit.pmBankTransfer")}</option>
+              <option value="pos">{t("credit.pmPos")}</option>
+              <option value="online">{t("credit.pmOnline")}</option>
+              <option value="other">{t("credit.pmOther")}</option>
             </select>
           </div>
-          <Field label="Notes (optional)" value={repayNote}
-            onChange={e => setRepayNote(e.target.value)} placeholder="e.g. partial payment, bank ref..." />
+          <Field label={t("credit.notesOptional")} value={repayNote}
+            onChange={e => setRepayNote(e.target.value)} placeholder={t("credit.repayNotePlaceholder")} />
           <button
             onClick={() => {
               if (!repayAmt) return;
               setTxnPin({
-                title: "Confirm Payment",
+                title: t("credit.confirmPayment"),
                 amount: Math.round(parseFloat(repayAmt) * 100),
                 recipient: repaying.customer_name || undefined,
-                description: `Credit repayment · ${repayMethod}`,
+                description: t("credit.repaymentDesc", { method: payMethodLabel(t, repayMethod) }),
                 onApprove: async (verifiedPin) => {
                   setTxnPin(null);
                   const amt  = parseFloat(repayAmt);
@@ -1292,24 +1313,24 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                   setRepaying(null); setRepayAmt(""); setRepayMethod("cash"); setRepayNote("");
                   const result = await repayCredit(id, amt, meth, note, verifiedPin);
                   if (result?.error) {
-                    const msg = typeof result.error === "string" ? result.error : (result.error?.message || "Payment failed — try again");
-                    setActionResult({ type: "failure", title: "Payment Failed", amount: amt, counterparty: name, reason: msg });
+                    const msg = typeof result.error === "string" ? result.error : (result.error?.message || t("credit.paymentFailedRetry"));
+                    setActionResult({ type: "failure", title: t("credit.paymentFailed"), amount: amt, counterparty: name, reason: msg });
                   } else {
                     speakConfirmation("creditSaved", getLang());
-                    setActionResult({ type: "success", title: "Payment Recorded", amount: amt, counterparty: name });
+                    setActionResult({ type: "success", title: t("credit.paymentRecorded"), amount: amt, counterparty: name });
                   }
                 },
               });
             }}
             className="w-full py-3.5 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold text-sm transition active:scale-[0.99] shadow-sm">
-            Confirm Payment
+            {t("credit.confirmPayment")}
           </button>
         </Modal>
       )}
 
       {/* Reminder modal */}
       {reminderFor && (
-        <Modal title="Send Payment Reminder" onClose={() => setReminderFor(null)}>
+        <Modal title={t("credit.sendReminder")} onClose={() => setReminderFor(null)}>
           <div className="flex items-center gap-3 mb-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-800/60">
             <div className="w-10 h-10 rounded-xl overflow-hidden flex-shrink-0">
               {reminderFor.profile_image_url
@@ -1321,16 +1342,16 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
             </div>
             <div className="flex-1 min-w-0">
               <p className="font-bold text-slate-800 dark:text-white text-sm truncate">{reminderFor.customer_name}</p>
-              <p className="text-xs text-red-500 dark:text-red-400 font-semibold">{fmt(reminderFor.outstanding)} outstanding</p>
+              <p className="text-xs text-red-500 dark:text-red-400 font-semibold">{t("credit.amountOutstanding", { amount: fmt(reminderFor.outstanding) })}</p>
             </div>
             {daysOverdue(reminderFor.due_date) > 0 && (
               <span className="text-[10px] font-bold text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/40 px-2 py-1 rounded-full flex-shrink-0">
-                {daysOverdue(reminderFor.due_date)}d overdue
+                {t("credit.daysOverdueShort", { n: daysOverdue(reminderFor.due_date) })}
               </span>
             )}
           </div>
 
-          <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">Message Preview</p>
+          <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">{t("credit.messagePreview")}</p>
           <div className="bg-slate-50 dark:bg-slate-700/60 rounded-xl p-4 mb-4 border border-slate-200 dark:border-slate-600 max-h-52 overflow-y-auto">
             <pre className="text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap font-sans leading-relaxed">{reminderMsg}</pre>
           </div>
@@ -1347,14 +1368,14 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                   <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
                     <path d="M20 6L9 17l-5-5" />
                   </svg>
-                  Copied!
+                  {t("credit.copied")}
                 </>
               ) : (
                 <>
                   <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                     <rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
                   </svg>
-                  Copy
+                  {t("credit.copy")}
                 </>
               )}
             </button>
@@ -1462,7 +1483,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
               <div className="flex items-center justify-between px-4 pb-4 border-b border-slate-100 dark:border-slate-800" style={{ paddingTop: "max(16px, env(safe-area-inset-top, 16px))" }}>
                 <div>
                   <h2 className="text-base font-black text-slate-800 dark:text-white">{historyFor.customer_name}</h2>
-                  <p className="text-xs text-slate-400 mt-0.5">Payment History · {payments.length} record{payments.length !== 1 ? "s" : ""}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">{t(payments.length !== 1 ? "credit.paymentHistoryMany" : "credit.paymentHistoryOne", { n: payments.length })}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   {payments.length > 0 && (
@@ -1475,7 +1496,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                   )}
                   {payments.length > 0 && (
                     <button onClick={async () => { const csv = buildCreditPaymentsCSV(payments, historyFor); await shareCSV(csv, creditCSVFilename(historyFor.customer_name)); }}
-                      title="Export CSV"
+                      title={t("credit.exportCsv")}
                       className="w-11 h-11 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center active:scale-90 transition">
                       <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-slate-600 dark:text-slate-300" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                         <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
@@ -1494,16 +1515,16 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
               {/* Credit summary bar */}
               <div className="px-4 py-3 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-100 dark:border-amber-900/40 flex gap-4">
                 <div className="flex-1 min-w-0">
-                  <p className="text-[10px] text-slate-400 uppercase tracking-wide font-bold">Total Paid</p>
+                  <p className="text-[10px] text-slate-400 uppercase tracking-wide font-bold">{t("credit.totalPaid")}</p>
                   <AmountDisplay amount={historyFor.amount_paid} size="small" align="left" colorBy="in" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[10px] text-slate-400 uppercase tracking-wide font-bold">Outstanding</p>
+                  <p className="text-[10px] text-slate-400 uppercase tracking-wide font-bold">{t("credit.outstanding")}</p>
                   <AmountDisplay amount={historyFor.outstanding} size="small" align="left" colorBy="out" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[10px] text-slate-400 uppercase tracking-wide font-bold">Status</p>
-                  <p className="text-sm font-black text-amber-600 capitalize truncate">{(historyFor.status || "active").replace(/_/g, " ")}</p>
+                  <p className="text-[10px] text-slate-400 uppercase tracking-wide font-bold">{t("credit.status")}</p>
+                  <p className="text-sm font-black text-amber-600 capitalize truncate">{STATUS_KEY[historyFor.status || "active"] ? t(STATUS_KEY[historyFor.status || "active"]) : (historyFor.status || "active").replace(/_/g, " ")}</p>
                 </div>
               </div>
 
@@ -1511,8 +1532,8 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
               <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2">
                 {payments.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-16 text-center">
-                    <p className="text-slate-400 text-sm font-semibold">No payment records yet</p>
-                    <p className="text-slate-400 text-xs mt-1">Payments recorded going forward will appear here</p>
+                    <p className="text-slate-400 text-sm font-semibold">{t("credit.noPayments")}</p>
+                    <p className="text-slate-400 text-xs mt-1">{t("credit.paymentsAppear")}</p>
                   </div>
                 ) : payments.map(p => {
                   const dateStr = p.created_at
@@ -1534,7 +1555,7 @@ export default function Credit({ store, plan = "starter", autoOpen, onAutoOpened
                             <span className="text-[10px] font-bold text-slate-400">{dateStr}</span>
                           </div>
                           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 capitalize">
-                            {(p.payment_method || "cash").replace(/_/g, " ")}
+                            {payMethodLabel(t, p.payment_method)}
                           </p>
                           {p.notes && <p className="text-[10px] text-slate-400 italic mt-0.5">"{p.notes}"</p>}
                         </div>

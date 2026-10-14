@@ -5,6 +5,7 @@
 // fetchAndCachePlans() once on app boot to warm the cache.
 
 import { canSellPlans } from "./platform";
+import { trNow } from "../i18n/now";
 
 // ── Standard feature keys ─────────────────────────────────────────────────────
 export const FEATURE_KEYS = {
@@ -231,23 +232,23 @@ export function getLowestPlanWithFeature(featureKey) {
 export function upgradeLabel(featureKey) {
   if (!canSellPlans()) return "";        // the Android app does not sell plans (see utils/platform.js)
   const p = getLowestPlanWithFeature(featureKey);
-  if (!p) return "Upgrade Plan";
-  const price = p.price_monthly ? `₦${Number(p.price_monthly).toLocaleString()}/mo` : "Free";
-  return `Upgrade to ${p.name} — ${price}`;
+  if (!p) return trNow("msg.plan.upgrade");
+  const price = p.price_monthly ? trNow("msg.plan.perMonth", { amount: `₦${Number(p.price_monthly).toLocaleString()}` }) : trNow("msg.plan.free");
+  return trNow("msg.plan.upgradeTo", { name: p.name, price });
 }
 
 // Dynamic heading: "Naira Plan Required"
 export function planRequiredLabel(featureKey) {
-  if (!canSellPlans()) return "Not included in your plan";
+  if (!canSellPlans()) return trNow("msg.plan.notIncluded");
   const p = getLowestPlanWithFeature(featureKey);
-  return p ? `${p.name} Plan Required` : "Upgrade Required";
+  return p ? trNow("msg.plan.required", { name: p.name }) : trNow("msg.plan.upgradeRequired");
 }
 
 // Dynamic description: "Available on the Naira plan and above."
 export function planAvailableText(featureKey) {
-  if (!canSellPlans()) return "This feature is not included in your current plan.";
+  if (!canSellPlans()) return trNow("msg.plan.notInCurrent");
   const p = getLowestPlanWithFeature(featureKey);
-  return p ? `Available on the ${p.name} plan and above.` : "Upgrade to access this feature.";
+  return p ? trNow("msg.plan.availableOn", { name: p.name }) : trNow("msg.plan.upgradeToAccess");
 }
 
 // Returns the plan's display name and sort_order from the live cache.

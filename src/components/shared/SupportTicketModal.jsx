@@ -14,9 +14,18 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../../utils/supabase";
 import { friendlyError } from "../../utils/errorMessage";
+import { useT } from "../../contexts/LanguageContext";
 
 const TICKET_TYPES = ["payment", "general", "account", "technical", "ajo", "subscription", "invoice", "other"];
 const PRIORITIES   = ["low", "medium", "high"];
+// Shown labels only — the stored type/priority values above never change.
+const TYPE_LABEL_KEYS = {
+  payment: "account.ticket.typePayment", general: "account.ticket.typeGeneral", account: "account.ticket.typeAccount",
+  technical: "account.ticket.typeTechnical", ajo: "account.ticket.typeAjo", subscription: "account.ticket.typeSubscription",
+  invoice: "account.ticket.typeInvoice", other: "account.ticket.typeOther",
+};
+const PRIORITY_LABEL_KEYS = { low: "account.ticket.priorityLow", medium: "account.ticket.priorityMedium", high: "account.ticket.priorityHigh" };
+const capitalise = (v) => v.charAt(0).toUpperCase() + v.slice(1);
 
 const inputCls = "w-full border border-slate-200 dark:border-slate-600 rounded-2xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500";
 
@@ -28,6 +37,7 @@ export default function SupportTicketModal({
   type:        initType        = "payment",
   priority:    initPriority    = "high",
 }) {
+  const t = useT();
   const [authUser, setAuthUser] = useState(null);
   const [form,    setForm]    = useState({ subject: initSubject, description: initDescription, type: initType, priority: initPriority });
   const [saving,  setSaving]  = useState(false);
@@ -47,7 +57,7 @@ export default function SupportTicketModal({
 
   async function submit() {
     if (!form.subject.trim() || !form.description.trim()) {
-      setError("Subject and description are required.");
+      setError(t("account.ticket.requiredError"));
       return;
     }
     setSaving(true);
@@ -119,7 +129,7 @@ export default function SupportTicketModal({
             <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-blue-600 dark:text-blue-400" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
               <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
             </svg>
-            <p className="text-base font-bold text-slate-800 dark:text-white">Report an Issue</p>
+            <p className="text-base font-bold text-slate-800 dark:text-white">{t("account.ticket.title")}</p>
           </div>
           <button
             onClick={onClose}
@@ -140,16 +150,16 @@ export default function SupportTicketModal({
               </svg>
             </div>
             <div>
-              <p className="text-lg font-bold text-slate-800 dark:text-white">Ticket Submitted</p>
+              <p className="text-lg font-bold text-slate-800 dark:text-white">{t("account.ticket.submittedTitle")}</p>
               <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 leading-relaxed max-w-xs mx-auto">
-                Our support team has received your report and will respond within 24 hours.
+                {t("account.ticket.submittedBody")}
               </p>
             </div>
             <button
               onClick={onClose}
               className="px-10 py-3 rounded-2xl text-white font-bold text-sm active:scale-[0.98] transition-transform shadow-lg bg-[linear-gradient(135deg,#16a34a,#059669)]"
             >
-              Done
+              {t("common.done")}
             </button>
           </div>
         ) : (
@@ -163,34 +173,34 @@ export default function SupportTicketModal({
               )}
 
               <div>
-                <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">Subject</label>
+                <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">{t("account.ticket.subject")}</label>
                 <input
                   value={form.subject}
                   onChange={e => setForm(f => ({ ...f, subject: e.target.value }))}
-                  placeholder="Brief description of your issue"
+                  placeholder={t("account.ticket.subjectPlaceholder")}
                   className={inputCls}
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">Category</label>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">{t("account.ticket.category")}</label>
                   <select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))} className={inputCls}>
-                    {TICKET_TYPES.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
+                    {TICKET_TYPES.map(ty => <option key={ty} value={ty}>{TYPE_LABEL_KEYS[ty] ? t(TYPE_LABEL_KEYS[ty]) : capitalise(ty)}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">Priority</label>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">{t("account.ticket.priority")}</label>
                   <select value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value }))} className={inputCls}>
-                    {PRIORITIES.map(p => <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>)}
+                    {PRIORITIES.map(p => <option key={p} value={p}>{PRIORITY_LABEL_KEYS[p] ? t(PRIORITY_LABEL_KEYS[p]) : capitalise(p)}</option>)}
                   </select>
                 </div>
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
-                  Full Details
-                  <span className="ml-1 font-normal text-slate-400">(auto-filled — you can add more)</span>
+                  {t("account.ticket.fullDetails")}
+                  <span className="ml-1 font-normal text-slate-400">{t("account.ticket.autoFilled")}</span>
                 </label>
                 <textarea
                   value={form.description}
@@ -201,7 +211,7 @@ export default function SupportTicketModal({
               </div>
 
               <div className="bg-blue-50 dark:bg-blue-900/20 rounded-2xl px-4 py-3 text-xs text-blue-700 dark:text-blue-300 leading-relaxed">
-                Transaction references are included automatically so our team can trace your payment without you having to look them up.
+                {t("account.ticket.refsNote")}
               </div>
 
               <button
@@ -211,12 +221,12 @@ export default function SupportTicketModal({
                 style={{ paddingBottom: "calc(14px + env(safe-area-inset-bottom, 0px))" }}
               >
                 {saving
-                  ? <><div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Submitting…</>
+                  ? <><div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />{t("account.ticket.submitting")}</>
                   : <>
                       <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                         <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
                       </svg>
-                      Submit Ticket
+                      {t("account.ticket.submit")}
                     </>
                 }
               </button>

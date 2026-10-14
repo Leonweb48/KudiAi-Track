@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../utils/supabase";
+import { useT } from "../contexts/LanguageContext";
 
 import { bankLookup } from "../utils/bankLookup";
 const FIELDS = [
-  { key: "reg_number",     label: "Business Reg. Number",  placeholder: "e.g. RC-1234567",              type: "text"     },
-  { key: "contact_email",  label: "Invoice Contact Email", placeholder: "billing@yourbusiness.com",      type: "email"    },
-  { key: "contact_phone",  label: "Invoice Contact Phone", placeholder: "08012345678",                  type: "tel"      },
-  { key: "address",        label: "Business Address",      placeholder: "12 Market Street, Lagos",      type: "textarea" },
-  { key: "thank_you_note", label: "Thank-You Note",        placeholder: "Thank you for your business!", type: "textarea" },
+  { key: "reg_number",     label: "Business Reg. Number",  placeholder: "e.g. RC-1234567",              type: "text",     labelKey: "invoices.set.regNumber", placeholderKey: "invoices.set.regNumberPh" },
+  { key: "contact_email",  label: "Invoice Contact Email", placeholder: "billing@yourbusiness.com",      type: "email",    labelKey: "invoices.set.contactEmail" },
+  { key: "contact_phone",  label: "Invoice Contact Phone", placeholder: "08012345678",                  type: "tel",      labelKey: "invoices.set.contactPhone" },
+  { key: "address",        label: "Business Address",      placeholder: "12 Market Street, Lagos",      type: "textarea", labelKey: "invoices.set.address" },
+  { key: "thank_you_note", label: "Thank-You Note",        placeholder: "Thank you for your business!", type: "textarea", labelKey: "invoices.set.thankYou", placeholderKey: "invoices.set.thankYouPh" },
 ];
 
 const inputCls = "w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-3 text-sm text-slate-800 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500";
@@ -19,6 +20,7 @@ export default function InvoiceSettingsModal({ settings, onSave, onClose, userId
   const [saved,     setSaved]     = useState(false);
   const [error,     setError]     = useState("");
   const [uploading, setUploading] = useState(false);
+  const t = useT();
 
   const [banks,        setBanks]        = useState([]);
   const [verifying,    setVerifying]    = useState(false);
@@ -53,18 +55,18 @@ export default function InvoiceSettingsModal({ settings, onSave, onClose, userId
     const acct = (form.account_number || "").trim();
     const code = form.bank_code;
     if (!acct || acct.length < 10 || !code) {
-      setVerifyErr("Enter a 10-digit account number and select a bank first.");
+      setVerifyErr(t("invoices.set.err.verifyFirst"));
       return;
     }
     setVerifying(true); setVerifyErr(""); setVerifiedName("");
     try {
       const { data, error: err } = await bankLookup("resolve-account", { account_number: acct, bank_code: code });
-      if (err || !data?.status) throw new Error(data?.message || "Could not verify account");
+      if (err || !data?.status) throw new Error(data?.message || t("invoices.set.err.couldNotVerify"));
       const name = data.data?.account_name || "";
       setVerifiedName(name);
       setForm(p => ({ ...p, account_name: name }));
     } catch (e) {
-      setVerifyErr(e.message || "Account verification failed");
+      setVerifyErr(e.message || t("invoices.set.err.verifyFailed"));
     } finally {
       setVerifying(false);
     }
@@ -81,7 +83,7 @@ export default function InvoiceSettingsModal({ settings, onSave, onClose, userId
       .from("invoice-logos")
       .upload(path, file, { upsert: true, contentType: file.type });
     if (upErr) {
-      setError("Logo upload failed: " + upErr.message);
+      setError(t("invoices.set.err.logo", { msg: upErr.message }));
     } else {
       const { data } = supabase.storage.from("invoice-logos").getPublicUrl(path);
       setForm(p => ({ ...p, logo_url: data.publicUrl }));
@@ -94,7 +96,7 @@ export default function InvoiceSettingsModal({ settings, onSave, onClose, userId
     setSaving(true); setError("");
     const { error: err } = await onSave(form);
     setSaving(false);
-    if (err) { setError(err.message || "Failed to save"); return; }
+    if (err) { setError(err.message || t("invoices.set.err.save")); return; }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -112,8 +114,8 @@ export default function InvoiceSettingsModal({ settings, onSave, onClose, userId
           </svg>
         </button>
         <div>
-          <p className="font-black text-slate-800 dark:text-white text-base leading-tight">Invoice Settings</p>
-          <p className="text-[11px] text-slate-400 leading-tight">One-time setup — appears on all your invoices</p>
+          <p className="font-black text-slate-800 dark:text-white text-base leading-tight">{t("invoices.set.title")}</p>
+          <p className="text-[11px] text-slate-400 leading-tight">{t("invoices.set.subtitle")}</p>
         </div>
       </div>
 
@@ -127,25 +129,25 @@ export default function InvoiceSettingsModal({ settings, onSave, onClose, userId
 
         {/* Logo upload */}
         <div>
-          <label className={labelCls}>Business Logo</label>
+          <label className={labelCls}>{t("invoices.set.logo")}</label>
           {form.logo_url ? (
             <div className="flex items-center gap-3 bg-slate-50 dark:bg-slate-800 rounded-2xl p-3">
               <img
                 src={form.logo_url}
-                alt="logo"
+                alt={t("invoices.set.logoAlt")}
                 className="w-16 h-16 rounded-xl object-cover border border-slate-200 dark:border-slate-700 shrink-0"
                 onError={e => { e.target.style.display = "none"; }}
               />
               <div className="flex-1 min-w-0">
-                <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">Appears top-left on your invoice PDF</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">{t("invoices.set.logoHint")}</p>
                 <div className="flex gap-2">
                   <button onClick={() => fileRef.current?.click()} disabled={uploading}
                     className="text-xs font-bold px-3 py-1.5 rounded-lg text-white active:scale-95 transition bg-brand-600 hover:bg-brand-700">
-                    {uploading ? "Uploading…" : "Change"}
+                    {uploading ? t("invoices.set.uploading") : t("invoices.set.change")}
                   </button>
                   <button onClick={() => setForm(p => ({ ...p, logo_url: "" }))}
                     className="text-xs font-bold px-3 py-1.5 rounded-lg bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400 active:scale-95 transition">
-                    Remove
+                    {t("invoices.set.remove")}
                   </button>
                 </div>
               </div>
@@ -156,7 +158,7 @@ export default function InvoiceSettingsModal({ settings, onSave, onClose, userId
               {uploading ? (
                 <>
                   <div className="w-4 h-4 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
-                  Uploading…
+                  {t("invoices.set.uploading")}
                 </>
               ) : (
                 <>
@@ -165,7 +167,7 @@ export default function InvoiceSettingsModal({ settings, onSave, onClose, userId
                     <polyline points="17 8 12 3 7 8"/>
                     <line x1="12" y1="3" x2="12" y2="15"/>
                   </svg>
-                  Tap to upload logo
+                  {t("invoices.set.tapUpload")}
                 </>
               )}
             </button>
@@ -176,13 +178,13 @@ export default function InvoiceSettingsModal({ settings, onSave, onClose, userId
         {/* Standard fields (no bank fields) */}
         {FIELDS.map(f => (
           <div key={f.key}>
-            <label className={labelCls}>{f.label}</label>
+            <label className={labelCls}>{t(f.labelKey)}</label>
             {f.type === "textarea" ? (
               <textarea
                 rows={3}
                 value={form[f.key] || ""}
                 onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))}
-                placeholder={f.placeholder}
+                placeholder={f.placeholderKey ? t(f.placeholderKey) : f.placeholder}
                 className={inputCls + " resize-none"}
               />
             ) : (
@@ -190,7 +192,7 @@ export default function InvoiceSettingsModal({ settings, onSave, onClose, userId
                 type={f.type}
                 value={form[f.key] || ""}
                 onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))}
-                placeholder={f.placeholder}
+                placeholder={f.placeholderKey ? t(f.placeholderKey) : f.placeholder}
                 className={inputCls}
               />
             )}
@@ -199,23 +201,23 @@ export default function InvoiceSettingsModal({ settings, onSave, onClose, userId
 
         {/* ── Payment / Bank Details ──────────────────────────────── */}
         <div className="pt-1">
-          <p className="text-[12px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-3">Payment Details</p>
+          <p className="text-[12px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-3">{t("invoices.set.paymentDetails")}</p>
 
           {/* Bank select */}
           <div className="mb-4">
-            <label className={labelCls}>Bank Name</label>
+            <label className={labelCls}>{t("invoices.set.bankName")}</label>
             <select
               value={form.bank_code || ""}
               onChange={handleBankChange}
               className={inputCls}>
-              <option value="">{banks.length === 0 ? "Loading banks…" : "Select bank…"}</option>
+              <option value="">{banks.length === 0 ? t("invoices.set.loadingBanks") : t("invoices.set.selectBank")}</option>
               {banks.map(b => <option key={b.code} value={b.code}>{b.name}</option>)}
             </select>
           </div>
 
           {/* Account number + Verify button */}
           <div className="mb-4">
-            <label className={labelCls}>Account Number</label>
+            <label className={labelCls}>{t("invoices.set.accountNumber")}</label>
             <div className="flex gap-2">
               <input
                 type="tel"
@@ -235,7 +237,7 @@ export default function InvoiceSettingsModal({ settings, onSave, onClose, userId
                 className="px-4 py-3 rounded-xl text-sm font-bold text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-40 active:scale-95 transition shrink-0 min-w-[72px]">
                 {verifying ? (
                   <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin mx-auto" />
-                ) : "Verify"}
+                ) : t("invoices.set.verify")}
               </button>
             </div>
 
@@ -245,7 +247,7 @@ export default function InvoiceSettingsModal({ settings, onSave, onClose, userId
                   <path d="M20 6L9 17l-5-5"/>
                 </svg>
                 <p className="text-xs font-bold text-green-700 dark:text-green-400">{verifiedName}</p>
-                <span className="text-[10px] text-green-600 dark:text-green-500 ml-auto">Verified</span>
+                <span className="text-[10px] text-green-600 dark:text-green-500 ml-auto">{t("invoices.set.verified")}</span>
               </div>
             )}
             {verifyErr && (
@@ -255,12 +257,12 @@ export default function InvoiceSettingsModal({ settings, onSave, onClose, userId
 
           {/* Account name — auto-filled, still editable */}
           <div>
-            <label className={labelCls}>Account Name</label>
+            <label className={labelCls}>{t("invoices.set.accountName")}</label>
             <input
               type="text"
               value={form.account_name || ""}
               onChange={e => setForm(p => ({ ...p, account_name: e.target.value }))}
-              placeholder="Auto-filled after verification"
+              placeholder={t("invoices.set.accountNamePh")}
               className={inputCls}
             />
           </div>
@@ -277,7 +279,7 @@ export default function InvoiceSettingsModal({ settings, onSave, onClose, userId
           className={`w-full py-3.5 rounded-2xl font-bold text-sm text-white active:scale-95 transition ${
             saved ? "bg-brand-600" : "bg-brand-700 hover:bg-brand-600"
           }`}>
-          {saving ? "Saving…" : saved ? "✓ Saved!" : "Save Invoice Settings"}
+          {saving ? t("common.saving") : saved ? t("invoices.set.saved") : t("invoices.set.save")}
         </button>
       </div>
     </div>

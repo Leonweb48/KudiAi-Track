@@ -3,6 +3,7 @@ import { friendlyError } from "../utils/errorMessage";
 import { supabase } from "../utils/supabase";
 import { AuthShell, AuthPageHeader } from "../components/AuthShell";
 import PasswordInput from "../components/PasswordInput";
+import { useT } from "../contexts/LanguageContext";
 
 function StrengthBar({ password }) {
   const score = [/.{8,}/, /[A-Z]/, /[0-9]/, /[^A-Za-z0-9]/].filter(r => r.test(password)).length;
@@ -18,6 +19,7 @@ function StrengthBar({ password }) {
 }
 
 export default function StaffFirstLogin({ staff }) {
+  const t = useT();
   const [password, setPassword] = useState("");
   const [confirm,  setConfirm]  = useState("");
   const [saving,   setSaving]   = useState(false);
@@ -25,8 +27,8 @@ export default function StaffFirstLogin({ staff }) {
   const [success,  setSuccess]  = useState(false);
 
   const submit = async () => {
-    if (password.length < 8)  { setError("Password must be at least 8 characters"); return; }
-    if (password !== confirm)  { setError("Passwords do not match"); return; }
+    if (password.length < 8)  { setError(t("auth2.pwMin8Short")); return; }
+    if (password !== confirm)  { setError(t("auth2.pwMismatchShort")); return; }
     setSaving(true); setError("");
 
     const { error: err } = await supabase.auth.updateUser({
@@ -39,8 +41,8 @@ export default function StaffFirstLogin({ staff }) {
     // onAuthStateChange fires → must_change_password: false → status "staff" or "branch_manager"
   };
 
-  const firstName = staff?.full_name?.split(" ")[0] || "there";
-  const role      = staff?.role === "manager" ? "Branch Manager" : "Staff Member";
+  const firstName = staff?.full_name?.split(" ")[0] || "";
+  const role      = staff?.role === "manager" ? t("auth2.roleManager") : t("auth2.roleStaff");
 
   if (success) return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center px-6">
@@ -50,9 +52,9 @@ export default function StaffFirstLogin({ staff }) {
             <path d="M20 6L9 17l-5-5" />
           </svg>
         </div>
-        <h2 className="text-xl font-extrabold text-slate-800 dark:text-white mb-2">Password set!</h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400">Taking you to your staff portal…</p>
-        <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">You'll review our terms before entering</p>
+        <h2 className="text-xl font-extrabold text-slate-800 dark:text-white mb-2">{t("auth2.pwSet")}</h2>
+        <p className="text-sm text-slate-500 dark:text-slate-400">{t("auth2.takingToPortal")}</p>
+        <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">{t("auth2.reviewTerms")}</p>
         <div className="mt-6 w-8 h-8 border-[3px] border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto" />
       </div>
     </div>
@@ -67,9 +69,9 @@ export default function StaffFirstLogin({ staff }) {
             <path d="M7 11V7a5 5 0 0110 0v4" />
           </svg>
         </div>
-        <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white">Set Your Password</h1>
+        <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white">{t("auth2.setYourPassword")}</h1>
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-          Hi {firstName}! Choose a secure password to access your staff portal.
+          {firstName ? t("auth2.firstLoginIntro", { name: firstName }) : t("auth2.firstLoginIntroNoName")}
         </p>
         {staff?.full_name && (
           <div className="flex items-center gap-2 mt-3">
@@ -86,12 +88,12 @@ export default function StaffFirstLogin({ staff }) {
       <div className="flex-1 px-5 pt-8 pb-10 space-y-5">
         <div>
           <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1 uppercase tracking-wide">
-            New Password *
+            {t("auth2.newPasswordReq")}
           </label>
           <PasswordInput
             value={password}
             onChange={e => { setPassword(e.target.value); setError(""); }}
-            placeholder="Minimum 8 characters"
+            placeholder={t("auth2.minimum8")}
             borderClass="border-slate-200 dark:border-slate-700"
             className="bg-white dark:bg-slate-800 text-slate-800 dark:text-white"
           />
@@ -100,26 +102,26 @@ export default function StaffFirstLogin({ staff }) {
 
         <div>
           <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1 uppercase tracking-wide">
-            Confirm Password *
+            {t("auth2.confirmPasswordReq")}
           </label>
           <PasswordInput
             value={confirm}
             onChange={e => { setConfirm(e.target.value); setError(""); }}
-            placeholder="Repeat your password"
+            placeholder={t("auth2.repeatYourPw")}
             borderClass={confirm && confirm !== password ? "border-red-400 dark:border-red-600" : "border-slate-200 dark:border-slate-700"}
             className="bg-white dark:bg-slate-800 text-slate-800 dark:text-white"
           />
           {confirm && confirm !== password && (
-            <p className="text-[10px] text-red-500 mt-1 font-medium">Passwords don't match</p>
+            <p className="text-[10px] text-red-500 mt-1 font-medium">{t("auth2.pwDontMatch")}</p>
           )}
         </div>
 
         <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl px-4 py-3 space-y-1.5">
-          <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Requirements</p>
+          <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">{t("auth2.requirements")}</p>
           {[
-            { rule: "At least 8 characters", pass: password.length >= 8 },
-            { rule: "One uppercase letter",   pass: /[A-Z]/.test(password) },
-            { rule: "One number",             pass: /[0-9]/.test(password) },
+            { rule: t("auth2.ruleMin8"),   pass: password.length >= 8 },
+            { rule: t("auth2.ruleUpper"),  pass: /[A-Z]/.test(password) },
+            { rule: t("auth2.ruleNumber"), pass: /[0-9]/.test(password) },
           ].map(({ rule, pass }) => (
             <div key={rule} className="flex items-center gap-2">
               <div className={`w-3.5 h-3.5 rounded-full flex items-center justify-center flex-shrink-0 ${pass ? "bg-indigo-500" : "bg-slate-200 dark:bg-slate-700"}`}>
@@ -141,12 +143,12 @@ export default function StaffFirstLogin({ staff }) {
           disabled={saving || password.length < 8 || password !== confirm}
           className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-2xl py-4 text-sm transition"
         >
-          {saving ? "Saving…" : "Set Password & Enter Portal →"}
+          {saving ? t("common.saving") : t("auth2.setPwEnter")}
         </button>
 
         <button onClick={() => supabase.auth.signOut()}
           className="w-full text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition text-center">
-          Sign out
+          {t("auth2.signOut")}
         </button>
       </div>
     </AuthShell>

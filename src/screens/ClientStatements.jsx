@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import Icon from "../components/Icon";
 import PeriodFilter from "../components/shared/PeriodFilter";
 import ScreenErrorBoundary from "../components/shared/ScreenErrorBoundary";
@@ -9,6 +9,7 @@ import { statementDates, statementMonths, statementRange, watToday } from "../ut
 import { saveMonthlyStatementPdf, saveSavingsStatementPdf } from "../utils/generateClientStatementPdf";
 import { buildSavingsStatementCSV, savingsStatementCSVFilename, shareCSV } from "../utils/exportCSV";
 import WalletStatement from "./WalletStatement";
+import { useT, tNow } from "../contexts/LanguageContext";
 
 export { statementMonths, statementRange };
 
@@ -23,6 +24,14 @@ export { statementMonths, statementRange };
 // wherever it was opened from. Statements is one entry in the browser history, so the Android back button
 // (App.jsx: navigate(-1) while there is history, otherwise exit) comes here instead of closing the app.
 
+// Fill {name}-style slots in translated text with elements (the bold email); the rest stays plain text.
+function withNodes(text, nodes) {
+  return String(text).split(/(\{\w+\})/).map((part, i) => {
+    const m = /^\{(\w+)\}$/.exec(part);
+    return m && nodes[m[1]] !== undefined ? <Fragment key={i}>{nodes[m[1]]}</Fragment> : part;
+  });
+}
+
 function SummaryCard({ label, value, tone }) {
   const color = tone === "in" ? "text-[#0f7b3e] dark:text-[#3ccf7a]" : tone === "out" ? "text-[#b91c1c] dark:text-[#ef7171]" : "text-slate-900 dark:text-slate-50";
   return (
@@ -34,6 +43,7 @@ function SummaryCard({ label, value, tone }) {
 }
 
 function SavingsTab({ call, clientId }) {
+  const t = useT();
   const [period, setPeriod] = useState("month");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -48,7 +58,7 @@ function SavingsTab({ call, clientId }) {
     setLoading(true); setError("");
     call("get-savings-statement", { client_id: clientId, from: range.from, to: range.to })
       .then((r) => { if (live) setStatement(r?.statement || null); })
-      .catch((e) => { if (live) setError(e?.message || "Could not load your statement"); })
+      .catch((e) => { if (live) setError(e?.message || tNow("circles.stmt.loadFail")); })
       .finally(() => { if (live) setLoading(false); });
     return () => { live = false; };
   }, [call, clientId, range.from, range.to]);
@@ -74,11 +84,11 @@ function SavingsTab({ call, clientId }) {
       <div className="flex items-center justify-end gap-3">
         <button onClick={exportPdf} disabled={!!exporting || !statement}
           className="text-[12px] font-bold text-brand-600 dark:text-brand-400 disabled:opacity-40 flex items-center gap-1">
-          <Icon name="download" size={14} /> {exporting === "pdf" ? "Preparing…" : "PDF"}
+          <Icon name="download" size={14} /> {exporting === "pdf" ? t("circles.stmt.preparing") : "PDF"}
         </button>
         <button onClick={exportCsv} disabled={!!exporting || !rows.length}
           className="text-[12px] font-bold text-brand-600 dark:text-brand-400 disabled:opacity-40 flex items-center gap-1">
-          <Icon name="download" size={14} /> {exporting === "csv" ? "Exporting…" : "CSV"}
+          <Icon name="download" size={14} /> {exporting === "csv" ? t("circles.stmt.exporting") : "CSV"}
         </button>
       </div>
 
@@ -89,14 +99,14 @@ function SavingsTab({ call, clientId }) {
       ) : (
         <>
           <div className="grid grid-cols-2 gap-2.5">
-            <SummaryCard label="Opening balance" value={fmt(statement?.opening || 0)} />
-            <SummaryCard label="Closing balance" value={fmt(statement?.closing || 0)} />
-            <SummaryCard label="Money in" value={fmt(statement?.total_in || 0)} tone="in" />
-            <SummaryCard label="Money out" value={fmt(statement?.total_out || 0)} tone="out" />
+            <SummaryCard label={t("circles.stmt.opening")} value={fmt(statement?.opening || 0)} />
+            <SummaryCard label={t("circles.stmt.closing")} value={fmt(statement?.closing || 0)} />
+            <SummaryCard label={t("circles.stmt.moneyIn")} value={fmt(statement?.total_in || 0)} tone="in" />
+            <SummaryCard label={t("circles.stmt.moneyOut")} value={fmt(statement?.total_out || 0)} tone="out" />
           </div>
           <div className="rounded-3xl bg-white dark:bg-slate-800 shadow-card border border-slate-100 dark:border-slate-700/60 p-4">
             {rows.length === 0 ? (
-              <p className="text-[13px] text-slate-400 py-8 text-center">No savings transactions in this range.</p>
+              <p className="text-[13px] text-slate-400 py-8 text-center">{t("circles.stmt.noTx")}</p>
             ) : (
               <div className="divide-y divide-slate-100 dark:divide-slate-700/60">
                 {rows.map((e, i) => (
@@ -113,7 +123,7 @@ function SavingsTab({ call, clientId }) {
                       <p className={`text-[13px] font-extrabold tabular-nums ${e.credit ? "text-[#0f7b3e] dark:text-[#3ccf7a]" : "text-[#b91c1c] dark:text-[#ef7171]"}`}>
                         {e.credit ? "+" : "−"}{fmt(e.amount)}
                       </p>
-                      <p className="text-[10px] text-slate-400 mt-0.5 tabular-nums">Bal {fmt(e.balance)}</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5 tabular-nums">{t("circles.stmt.bal", { amount: fmt(e.balance) })}</p>
                     </div>
                   </div>
                 ))}
@@ -121,7 +131,7 @@ function SavingsTab({ call, clientId }) {
             )}
           </div>
           {Number(statement?.brought_forward || 0) !== 0 && period === "all" && (
-            <p className="text-[11px] text-slate-400 text-center">Includes {fmt(statement.brought_forward)} brought forward from before your first recorded transaction.</p>
+            <p className="text-[11px] text-slate-400 text-center">{t("circles.stmt.broughtForward", { amount: fmt(statement.brought_forward) })}</p>
           )}
         </>
       )}
@@ -130,6 +140,7 @@ function SavingsTab({ call, clientId }) {
 }
 
 function MonthlyTab({ call, clientId, since, email, highlight }) {
+  const t = useT();
   const months = useMemo(() => statementMonths(since), [since]);
   const [sent, setSent] = useState({});          // month -> emailed_at / notified_at
   const [busy, setBusy] = useState("");
@@ -152,20 +163,21 @@ function MonthlyTab({ call, clientId, since, email, highlight }) {
     setBusy(month); setError("");
     try {
       const r = await call("get-monthly-statement", { client_id: clientId, month });
-      if (!r?.statement) throw new Error("No statement for this month");
+      if (!r?.statement) throw new Error(t("circles.stmt.noMonth"));
       await saveMonthlyStatementPdf(r.statement);
     } catch (e) {
-      setError(e?.message || "Could not prepare the statement");
+      setError(e?.message || t("circles.stmt.prepareFail"));
     } finally { setBusy(""); }
   };
 
   return (
     <div className="space-y-3">
       <div className="rounded-2xl bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800/40 px-4 py-3">
-        <p className="text-[12px] font-bold text-brand-700 dark:text-brand-300">Monthly statements</p>
+        <p className="text-[12px] font-bold text-brand-700 dark:text-brand-300">{t("circles.stmt.monthlyTitle")}</p>
         <p className="text-[11px] text-brand-700/80 dark:text-brand-300/80 mt-0.5 leading-relaxed">
-          On the 1st of every month we send you last month's statement — your savings and your wallet, every transaction with the balance after it
-          {email ? <> — to <strong>{email}</strong> and</> : ""} here in the app.
+          {email
+            ? withNodes(t("circles.stmt.monthlyBodyEmail"), { email: <strong>{email}</strong> })
+            : t("circles.stmt.monthlyBody")}
         </p>
       </div>
       {error && <p className="text-[12px] text-red-500 text-center">{error}</p>}
@@ -178,12 +190,12 @@ function MonthlyTab({ call, clientId, since, email, highlight }) {
             <div className="flex-1 min-w-0">
               <p className="text-[13px] font-bold text-slate-800 dark:text-slate-100">{monthKeyLabel(m)}</p>
               <p className="text-[11px] text-slate-400 mt-0.5">
-                {m === current ? "So far this month · savings and wallet" : sent[m] ? `Sent ${formatWATDate(sent[m])} · savings and wallet` : "Savings and wallet"}
+                {m === current ? t("circles.stmt.soFar") : sent[m] ? t("circles.stmt.sentOn", { date: formatWATDate(sent[m]) }) : t("circles.stmt.savingsWallet")}
               </p>
             </div>
             <button onClick={() => download(m)} disabled={!!busy}
               className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-brand-600 text-white text-[12px] font-bold disabled:opacity-50 active:scale-95 transition">
-              <Icon name="download" size={13} /> {busy === m ? "Preparing…" : "PDF"}
+              <Icon name="download" size={13} /> {busy === m ? t("circles.stmt.preparing") : "PDF"}
             </button>
           </div>
         ))}
@@ -198,7 +210,8 @@ function MonthlyTab({ call, clientId, since, email, highlight }) {
  */
 export default function ClientStatements({ call, clientId, client = {}, since, walletUserId, hasWallet,
                                            initialTab = "savings", initialMonth = "", onClose }) {
-  const tabs = [["savings", "Savings"], ...(hasWallet ? [["wallet", "Wallet"]] : []), ["monthly", "Monthly"]];
+  const t = useT();
+  const tabs = [["savings", t("circles.stmt.tabSavings")], ...(hasWallet ? [["wallet", t("circles.stmt.tabWallet")]] : []), ["monthly", t("circles.stmt.tabMonthly")]];
   const [tab, setTab] = useState(tabs.some(([id]) => id === initialTab) ? initialTab : "savings");
   const tabHistory = useRef([]);
   const tabRef = useRef(tab);
@@ -244,10 +257,10 @@ export default function ClientStatements({ call, clientId, client = {}, since, w
   return (
     <div className="pb-28">
       <div className="flex items-center gap-3 px-4 pt-3 pb-2">
-        <button onClick={back} aria-label="Back" className="w-9 h-9 -ml-1 flex items-center justify-center rounded-full active:bg-slate-100 dark:active:bg-slate-800">
+        <button onClick={back} aria-label={t("common.back")} className="w-9 h-9 -ml-1 flex items-center justify-center rounded-full active:bg-slate-100 dark:active:bg-slate-800">
           <Icon name="chevron-left" size={20} className="text-slate-600 dark:text-slate-300" />
         </button>
-        <h1 className="text-[18px] font-extrabold text-slate-900 dark:text-slate-50">Statements</h1>
+        <h1 className="text-[18px] font-extrabold text-slate-900 dark:text-slate-50">{t("circles.stmt.title")}</h1>
       </div>
       <div className="px-4 mb-3">
         <div className="flex gap-1.5 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 w-fit">

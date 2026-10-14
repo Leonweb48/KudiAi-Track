@@ -13,6 +13,7 @@ import { buildWalletStatementCSV, walletStatementCSVFilename, shareCSV } from ".
 import { saveWalletStatementPdf } from "../utils/generateWalletStatementPdf";
 import { businessHolder } from "../utils/statementPdfLayout";
 import { statementDates, statementRange } from "../utils/statementPeriod";
+import { useT } from "../contexts/LanguageContext";
 
 // A dedicated, independent query — useWallet's own `ledger` is deliberately
 // capped at the last 50 rows for its realtime hot-path; a statement needs the
@@ -55,6 +56,7 @@ export default function WalletStatement({ session, store, userId: userIdOverride
   const userId = userIdOverride || session?.user?.id || null;
   const bizName = displayName || store?.profile?.business_name || "";
   const ownerName = displayName || store?.profile?.owner_name || "";
+  const t = useT();
   const navigate = useNavigate();
   const goBack = onClose || (() => navigate(-1));
   const { walletEnabled } = usePlatformConfig();
@@ -162,14 +164,14 @@ export default function WalletStatement({ session, store, userId: userIdOverride
             <Icon name="chevron-left" size={20} className="text-slate-600 dark:text-slate-300" />
           </button>
         )}
-        {!embedded && <h1 className="text-[18px] font-extrabold text-slate-900 dark:text-slate-50">Statement</h1>}
+        {!embedded && <h1 className="text-[18px] font-extrabold text-slate-900 dark:text-slate-50">{t("finance.statement")}</h1>}
         <button onClick={handleExportPdf} disabled={!!exporting || periodFiltered.length === 0}
           className="ml-auto text-[12px] font-bold text-brand-600 dark:text-brand-400 disabled:opacity-40 flex items-center gap-1">
-          <Icon name="download" size={14} /> {exporting === "pdf" ? "Preparing…" : "PDF"}
+          <Icon name="download" size={14} /> {exporting === "pdf" ? t("finance.preparing") : "PDF"}
         </button>
         <button onClick={handleExportCsv} disabled={!!exporting || filtered.length === 0}
           className="text-[12px] font-bold text-brand-600 dark:text-brand-400 disabled:opacity-40 flex items-center gap-1">
-          <Icon name="download" size={14} /> {exporting === "csv" ? "Exporting…" : "CSV"}
+          <Icon name="download" size={14} /> {exporting === "csv" ? t("report.exporting") : "CSV"}
         </button>
       </div>
 
@@ -177,7 +179,7 @@ export default function WalletStatement({ session, store, userId: userIdOverride
         <PeriodFilter period={period} setPeriod={setPeriod} dateFrom={dateFrom} setDateFrom={setDateFrom} dateTo={dateTo} setDateTo={setDateTo} />
 
         <div className="flex gap-1.5 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 w-fit">
-          {[["list", "List"], ["insights", "Insights"]].map(([id, label]) => (
+          {[["list", t("finance.viewList")], ["insights", t("finance.viewInsights")]].map(([id, label]) => (
             <button key={id} onClick={() => setView(id)}
               className={`px-3.5 py-1.5 rounded-lg text-[12px] font-bold transition-colors ${
                 view === id ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-50 shadow-sm" : "text-slate-500 dark:text-slate-400"}`}>
@@ -195,15 +197,15 @@ export default function WalletStatement({ session, store, userId: userIdOverride
             <div className="space-y-3">
               <div className="grid grid-cols-3 gap-2.5">
                 <div className="rounded-2xl bg-white dark:bg-slate-800 shadow-card border border-slate-100 dark:border-slate-700/60 p-3">
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Money in</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{t("finance.moneyIn")}</p>
                   <p className="text-[15px] font-extrabold text-slate-900 dark:text-slate-50 mt-1 truncate">{fmt(insights.totalIn)}</p>
                 </div>
                 <div className="rounded-2xl bg-white dark:bg-slate-800 shadow-card border border-slate-100 dark:border-slate-700/60 p-3">
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Money out</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{t("finance.moneyOut")}</p>
                   <p className="text-[15px] font-extrabold text-slate-900 dark:text-slate-50 mt-1 truncate">{fmt(insights.totalOut)}</p>
                 </div>
                 <div className="rounded-2xl bg-white dark:bg-slate-800 shadow-card border border-slate-100 dark:border-slate-700/60 p-3">
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Net</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{t("finance.net")}</p>
                   <p className={`text-[15px] font-extrabold mt-1 truncate ${insights.net >= 0 ? "text-[#0ca30c]" : "text-[#d03b3b] dark:text-[#e66767]"}`}>
                     {insights.net >= 0 ? "+" : "−"}{fmt(Math.abs(insights.net))}
                   </p>
@@ -211,15 +213,15 @@ export default function WalletStatement({ session, store, userId: userIdOverride
               </div>
 
               <div className="rounded-3xl bg-white dark:bg-slate-800 shadow-card border border-slate-100 dark:border-slate-700/60 p-4">
-                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400 mb-3">Where it went</p>
+                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400 mb-3">{t("finance.whereItWent")}</p>
                 {insights.categories.length === 0 ? (
-                  <p className="text-[13px] text-slate-400 py-6 text-center">No spending in this range.</p>
+                  <p className="text-[13px] text-slate-400 py-6 text-center">{t("finance.noSpendingRange")}</p>
                 ) : (
                   <div className="space-y-3.5">
                     {insights.categories.map((c) => (
                       <div key={c.key}>
                         <div className="flex items-center justify-between mb-1">
-                          <span className="text-[12px] font-bold text-slate-700 dark:text-slate-200">{c.label}</span>
+                          <span className="text-[12px] font-bold text-slate-700 dark:text-slate-200">{t(`finance.spend_${c.key}`)}</span>
                           <span className="text-[12px] font-extrabold text-slate-900 dark:text-slate-50 tabular-nums">{fmt(c.amount)}</span>
                         </div>
                         <div className="h-2.5 rounded-full bg-slate-100 dark:bg-slate-700/50 overflow-hidden">
@@ -236,7 +238,7 @@ export default function WalletStatement({ session, store, userId: userIdOverride
           <>
             <input
               value={q} onChange={(e) => setQ(e.target.value)}
-              placeholder="Search narration, type, amount…"
+              placeholder={t("finance.searchStatement")}
               className="w-full text-[13px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30"
             />
 
@@ -246,7 +248,7 @@ export default function WalletStatement({ session, store, userId: userIdOverride
                   <div className="w-8 h-8 border-[3px] border-brand-500 border-t-transparent rounded-full animate-spin" />
                 </div>
               ) : filtered.length === 0 ? (
-                <p className="text-[13px] text-slate-400 py-8 text-center">No transactions in this range.</p>
+                <p className="text-[13px] text-slate-400 py-8 text-center">{t("finance.noTxRange")}</p>
               ) : (
                 <div className="divide-y divide-slate-100 dark:divide-slate-800">
                   {filtered.map((row) => <WalletTxRow key={row.id} row={row} entry={w.entryFor(row)} hidden={false} onOpen={openReceipt} />)}
@@ -254,7 +256,7 @@ export default function WalletStatement({ session, store, userId: userIdOverride
               )}
             </div>
             {rows.length === STATEMENT_ROW_CAP && (
-              <p className="text-[11px] text-slate-400 text-center">Showing the most recent {STATEMENT_ROW_CAP.toLocaleString()} transactions.</p>
+              <p className="text-[11px] text-slate-400 text-center">{t("finance.showingRecent", { n: STATEMENT_ROW_CAP.toLocaleString() })}</p>
             )}
           </>
         )}

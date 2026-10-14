@@ -58,6 +58,21 @@ function fmtPayType(pt) {
   return pt.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
 }
 
+// Stored values shown in the on-screen report preview, in the chosen language (the PDF keeps its English labels)
+const PAY_KEYS = {
+  cash: "finance.payCash", transfer: "finance.payTransfer", pos: "finance.payPos", "mobile money": "finance.payMobileMoney",
+  bill_payment: "finance.payBill", bill: "finance.payBill", wallet: "finance.payWallet", credit: "finance.payCredit",
+};
+function payLabel(t, pt) {
+  if (!pt) return "—";
+  return PAY_KEYS[pt] ? t(PAY_KEYS[pt]) : fmtPayType(pt);
+}
+const STATUS_KEYS = { active: "finance.rptStatusActive", overdue: "finance.rptStatusOverdue", paid: "finance.rptStatusPaid", partially_paid: "finance.rptStatusPartial" };
+function statusLabel(t, status) {
+  if (!status) return t("finance.rptStatusActive");
+  return STATUS_KEYS[status] ? t(STATUS_KEYS[status]) : status.replace(/_/g, " ").toUpperCase();
+}
+
 function daysLate(due) {
   if (!due) return 0;
   const t = new Date(); t.setHours(0,0,0,0);
@@ -159,6 +174,7 @@ function SectionTitle({ children }) {
 }
 
 function Table({ cols, rows, highlight }) {
+  const t = useT();
   return (
     <table style={{width:"100%",borderCollapse:"collapse",fontSize:9,tableLayout:"fixed",marginBottom:14}}>
       <colgroup>
@@ -184,7 +200,7 @@ function Table({ cols, rows, highlight }) {
           </tr>
         ))}
         {rows.length === 0 && (
-          <tr><td colSpan={cols.length} style={S({padding:"14px 8px",textAlign:"center",color:"#94a3b8",fontStyle:"italic",fontSize:9})}>No data for this period</td></tr>
+          <tr><td colSpan={cols.length} style={S({padding:"14px 8px",textAlign:"center",color:"#94a3b8",fontStyle:"italic",fontSize:9})}>{t("finance.rptNoDataPeriod")}</td></tr>
         )}
       </tbody>
     </table>
@@ -206,141 +222,144 @@ function ChartLegend({ items }) {
 
 /* ── Report sections ───────────────────────────────────────────────── */
 function SalesSection({ data }) {
+  const t = useT();
   const catRows = Object.entries(data.byCat).sort((a,b)=>b[1].in-a[1].in).map(([cat,v])=>({
     cat, in_: fmt(v.in), out_: fmt(v.out), net: fmt(v.in-v.out), count: v.count
   }));
-  const txRows = data.tx.slice(0,50).map(t=>({
-    date: fmtD(t.transaction_date),
-    item: t.item_name||"—",
-    cat:  t.category||"—",
-    type: t.type==="in"?"Income":"Expense",
-    amount: fmt(t.amount),
-    pay: fmtPayType(t.payment_type),
-    _type: t.type,
+  const txRows = data.tx.slice(0,50).map(tx=>({
+    date: fmtD(tx.transaction_date),
+    item: tx.item_name||"—",
+    cat:  tx.category||"—",
+    type: tx.type==="in"?t("finance.rptIncome"):t("finance.rptExpense"),
+    amount: fmt(tx.amount),
+    pay: payLabel(t, tx.payment_type),
+    _type: tx.type,
   }));
   return (
     <div>
       <StatGrid stats={[
-        { label:"Total Sales",     value:fmt(data.salesTotals.revenue), color:"#0284c7", bg:"#eff6ff", border:"#bfdbfe" },
-        { label:"Profit on Sales", value:fmt(data.salesTotals.profit),  color: data.salesTotals.profit>=0?"#16a34a":"#ef4444", bg:"#f0fdf4", border:"#bbf7d0" },
-        { label:"Expenses",        value:fmt(data.cashOut),             color:"#ef4444", bg:"#fef2f2", border:"#fecaca" },
-        { label:"Net Cash",        value:fmt(data.profit),              color: data.profit>=0?"#16a34a":"#ef4444", bg:"#f8fafc", border:"#e2e8f0" },
+        { label:t("finance.rl_totalSales"),     value:fmt(data.salesTotals.revenue), color:"#0284c7", bg:"#eff6ff", border:"#bfdbfe" },
+        { label:t("finance.rl_profitOnSales"), value:fmt(data.salesTotals.profit),  color: data.salesTotals.profit>=0?"#16a34a":"#ef4444", bg:"#f0fdf4", border:"#bbf7d0" },
+        { label:t("finance.rl_expenses"),        value:fmt(data.cashOut),             color:"#ef4444", bg:"#fef2f2", border:"#fecaca" },
+        { label:t("finance.rl_netCash"),        value:fmt(data.profit),              color: data.profit>=0?"#16a34a":"#ef4444", bg:"#f8fafc", border:"#e2e8f0" },
       ]}/>
-      <SectionTitle>Sales &amp; Profit</SectionTitle>
+      <SectionTitle>{t("finance.st_salesProfit")}</SectionTitle>
       <Table
         cols={[
-          {key:"date",   label:"Date",   w:"14%"},
-          {key:"item",   label:"Item",   bold:true, w:"34%"},
-          {key:"qty",    label:"Qty",    right:true, w:"8%"},
-          {key:"amount", label:"Amount", right:true, bold:true, w:"22%"},
-          {key:"profit", label:"Profit", right:true, bold:true, color:r=>r._p==null?"#94a3b8":r._p>=0?"#16a34a":"#ef4444", w:"22%"},
+          {key:"date",   label:t("finance.rl_date"),   w:"14%"},
+          {key:"item",   label:t("finance.rl_item"),   bold:true, w:"34%"},
+          {key:"qty",    label:t("finance.rl_qty"),    right:true, w:"8%"},
+          {key:"amount", label:t("finance.rl_amount"), right:true, bold:true, w:"22%"},
+          {key:"profit", label:t("finance.rl_profit"), right:true, bold:true, color:r=>r._p==null?"#94a3b8":r._p>=0?"#16a34a":"#ef4444", w:"22%"},
         ]}
         rows={data.sales.slice(0,50).map(r=>({
           date: fmtD(r.t.transaction_date), item: r.item, qty: r.qty, amount: fmt(r.amount),
-          profit: r.profit==null ? "No cost price" : fmt(r.profit) + (r.partial ? " *" : ""), _p: r.profit,
+          profit: r.profit==null ? t("finance.rptNoCostPrice") : fmt(r.profit) + (r.partial ? " *" : ""), _p: r.profit,
         }))}/>
-      {data.sales.length > 50 && <p style={S({fontSize:10,color:"#94a3b8",fontStyle:"italic",marginTop:-8})}>Showing first 50 of {data.sales.length} sales — the PDF lists them all</p>}
+      {data.sales.length > 50 && <p style={S({fontSize:10,color:"#94a3b8",fontStyle:"italic",marginTop:-8})}>{t("finance.rptFirst50Sales", { n: data.sales.length })}</p>}
       {data.salesTotals.uncosted > 0 && (
         <p style={S({fontSize:10.5,color:"#b45309",marginTop:-4,marginBottom:12})}>
-          {fmt(data.salesTotals.uncosted)} of sales have no cost price, so their profit isn't counted{data.sales.some(r=>r.partial) ? " (* = part of the sale has no cost price)" : ""}. Add cost prices in Stock to include them.
+          {t("finance.rptUncostedSales", { amount: fmt(data.salesTotals.uncosted) })}{data.sales.some(r=>r.partial) ? t("finance.rptPartialNote") : ""}{t("finance.rptAddCostPrices")}
         </p>
       )}
-      <SectionTitle>Income vs Expenses</SectionTitle>
-      <ChartLegend items={[{color:"#16a34a",label:"Income"},{color:"#ef4444",label:"Expenses"}]}/>
+      <SectionTitle>{t("finance.st_incomeVsExpenses")}</SectionTitle>
+      <ChartLegend items={[{color:"#16a34a",label:t("finance.rl_income")},{color:"#ef4444",label:t("finance.rl_expenses")}]}/>
       <BarChart bars={data.bars}/>
-      <SectionTitle>Category Breakdown</SectionTitle>
+      <SectionTitle>{t("finance.st_categoryBreakdown")}</SectionTitle>
       <Table
         cols={[
-          {key:"cat",  label:"Category", bold:true, w:"35%"},
-          {key:"in_",  label:"Income",   right:true, color:()=>"#16a34a", w:"18%"},
-          {key:"out_", label:"Expenses", right:true, color:()=>"#ef4444", w:"18%"},
-          {key:"net",  label:"Net",      right:true, w:"18%"},
-          {key:"count",label:"Count",    right:true, w:"11%"},
+          {key:"cat",  label:t("finance.rl_category"), bold:true, w:"35%"},
+          {key:"in_",  label:t("finance.rl_income"),   right:true, color:()=>"#16a34a", w:"18%"},
+          {key:"out_", label:t("finance.rl_expenses"), right:true, color:()=>"#ef4444", w:"18%"},
+          {key:"net",  label:t("finance.rl_net"),      right:true, w:"18%"},
+          {key:"count",label:t("finance.rl_count"),    right:true, w:"11%"},
         ]}
         rows={catRows}/>
-      <SectionTitle>Transaction Log</SectionTitle>
+      <SectionTitle>{t("finance.st_transactionLog")}</SectionTitle>
       <Table
         cols={[
-          {key:"date",  label:"Date",     w:"13%"},
-          {key:"item",  label:"Item",     bold:true, w:"26%"},
-          {key:"cat",   label:"Category", w:"16%"},
-          {key:"type",  label:"Type",     color:r=>r._type==="in"?"#16a34a":"#ef4444", bold:true, w:"10%"},
-          {key:"amount",label:"Amount",   right:true, bold:true, w:"15%"},
-          {key:"pay",   label:"Payment",  w:"20%"},
+          {key:"date",  label:t("finance.rl_date"),     w:"13%"},
+          {key:"item",  label:t("finance.rl_item"),     bold:true, w:"26%"},
+          {key:"cat",   label:t("finance.rl_category"), w:"16%"},
+          {key:"type",  label:t("finance.rl_type"),     color:r=>r._type==="in"?"#16a34a":"#ef4444", bold:true, w:"10%"},
+          {key:"amount",label:t("finance.rl_amount"),   right:true, bold:true, w:"15%"},
+          {key:"pay",   label:t("finance.rl_payment"),  w:"20%"},
         ]}
         rows={txRows}
         highlight={(r)=>r._type==="out"?"#fff5f5":undefined}/>
-      {data.tx.length > 50 && <p style={S({fontSize:10,color:"#94a3b8",fontStyle:"italic",marginTop:-8})}>Showing first 50 of {data.tx.length} transactions</p>}
+      {data.tx.length > 50 && <p style={S({fontSize:10,color:"#94a3b8",fontStyle:"italic",marginTop:-8})}>{t("finance.rptFirst50Tx", { n: data.tx.length })}</p>}
     </div>
   );
 }
 
 function CreditSection({ data }) {
+  const t = useT();
   const pt = data.profitTotals;
   const rows = data.profits.map(({ c, profit, partial })=>({
     name:  c.customer_name,
-    profit: profit==null ? "No cost" : fmt(profit) + (partial ? " *" : ""),
+    profit: profit==null ? t("finance.rptNoCost") : fmt(profit) + (partial ? " *" : ""),
     _p:    profit,
     total: fmt(c.total_amount||0),
     paid:  fmt(c.amount_paid||0),
     owed:  fmt(c.outstanding||0),
     due:   fmtD(c.due_date),
-    status:c.status?.replace(/_/g," ")?.toUpperCase()||"ACTIVE",
+    status:statusLabel(t, c.status),
     late:  c.status==="overdue"?`${daysLate(c.due_date)}d`:"—",
     _s:    c.status,
   }));
   const pieData = [
-    { label:"Outstanding", v:data.totalOut,  color:"#ef4444" },
-    { label:"Paid",        v:data.totalPaid, color:"#16a34a" },
+    { label:t("finance.rl_outstanding"), v:data.totalOut,  color:"#ef4444" },
+    { label:t("finance.rl_paid"),        v:data.totalPaid, color:"#16a34a" },
   ];
   return (
     <div>
       <StatGrid stats={[
-        { label:"Total Debt",    value:fmt(data.totalDebt),    color:"#334155", bg:"#f8fafc",   border:"#e2e8f0" },
-        { label:"Outstanding",  value:fmt(data.totalOut),     color:"#ef4444", bg:"#fef2f2",   border:"#fecaca" },
-        { label:"Recovered",    value:fmt(data.totalPaid),    color:"#16a34a", bg:"#f0fdf4",   border:"#bbf7d0" },
-        { label:"Profit on Credit", value:fmt(pt.profit),       color:"#16a34a", bg:"#f0fdf4",   border:"#bbf7d0" },
+        { label:t("finance.rl_totalDebt"),    value:fmt(data.totalDebt),    color:"#334155", bg:"#f8fafc",   border:"#e2e8f0" },
+        { label:t("finance.rl_outstanding"),  value:fmt(data.totalOut),     color:"#ef4444", bg:"#fef2f2",   border:"#fecaca" },
+        { label:t("finance.rl_recovered"),    value:fmt(data.totalPaid),    color:"#16a34a", bg:"#f0fdf4",   border:"#bbf7d0" },
+        { label:t("finance.rl_profitOnCredit"), value:fmt(pt.profit),       color:"#16a34a", bg:"#f0fdf4",   border:"#bbf7d0" },
       ]}/>
       <div style={{display:"flex",gap:16,alignItems:"flex-start",marginBottom:14}}>
         <div style={{width:190,flexShrink:0}}>
-          <SectionTitle>Payment Status</SectionTitle>
+          <SectionTitle>{t("finance.st_paymentStatus")}</SectionTitle>
           <PieChart segments={pieData} size={150}/>
           <ChartLegend items={pieData.map(p=>({color:p.color,label:p.label}))}/>
         </div>
         <div style={{flex:1,minWidth:0}}>
-          <SectionTitle>Overdue Summary</SectionTitle>
+          <SectionTitle>{t("finance.st_overdueSummary")}</SectionTitle>
           {data.overdueCount===0
-            ? <p style={S({color:"#16a34a",fontSize:11,fontStyle:"italic"})}>✓ No overdue accounts</p>
+            ? <p style={S({color:"#16a34a",fontSize:11,fontStyle:"italic"})}>✓ {t("finance.rptNoOverdue")}</p>
             : <div style={S({background:"#fef2f2",border:"1px solid #fecaca",borderRadius:10,padding:"10px 14px"})}>
-                <p style={S({fontSize:12,fontWeight:700,color:"#dc2626",margin:0,wordBreak:"break-word"})}>⚠ {data.overdueCount} overdue account{data.overdueCount>1?"s":""}</p>
-                <p style={S({fontSize:11,color:"#ef4444",margin:"4px 0 0",wordBreak:"break-word"})}>{fmt(data.overdueDue)} outstanding on overdue accounts</p>
+                <p style={S({fontSize:12,fontWeight:700,color:"#dc2626",margin:0,wordBreak:"break-word"})}>⚠ {t(data.overdueCount>1 ? "finance.rptOverdueAccountsMany" : "finance.rptOverdueAccountsOne", { n: data.overdueCount })}</p>
+                <p style={S({fontSize:11,color:"#ef4444",margin:"4px 0 0",wordBreak:"break-word"})}>{t("finance.rptOverdueOutstanding", { amount: fmt(data.overdueDue) })}</p>
               </div>
           }
         </div>
       </div>
-      <SectionTitle>Debtor Records</SectionTitle>
+      <SectionTitle>{t("finance.st_debtorRecords")}</SectionTitle>
       <Table
         cols={[
-          {key:"name",  label:"Customer",    bold:true, w:"18%"},
-          {key:"total", label:"Total",       right:true, w:"11%"},
-          {key:"paid",  label:"Paid",        right:true, color:()=>"#16a34a", w:"11%"},
-          {key:"owed",  label:"Owed",        right:true, bold:true, color:r=>r._s==="overdue"?"#dc2626":"#ef4444", w:"11%"},
-          {key:"profit",label:"Profit",      right:true, bold:true, color:r=>r._p==null?"#94a3b8":"#16a34a", w:"12%"},
-          {key:"due",   label:"Due Date",               w:"12%"},
-          {key:"status",label:"Status",      color:r=>r._s==="overdue"?"#dc2626":r._s==="paid"?"#16a34a":"#64748b", bold:true, w:"17%"},
-          {key:"late",  label:"Late",        right:true, color:r=>r.late!=="—"?"#dc2626":"#94a3b8", w:"8%"},
+          {key:"name",  label:t("finance.rl_customer"),    bold:true, w:"18%"},
+          {key:"total", label:t("finance.rl_total"),       right:true, w:"11%"},
+          {key:"paid",  label:t("finance.rl_paid"),        right:true, color:()=>"#16a34a", w:"11%"},
+          {key:"owed",  label:t("finance.rl_owed"),        right:true, bold:true, color:r=>r._s==="overdue"?"#dc2626":"#ef4444", w:"11%"},
+          {key:"profit",label:t("finance.rl_profit"),      right:true, bold:true, color:r=>r._p==null?"#94a3b8":"#16a34a", w:"12%"},
+          {key:"due",   label:t("finance.rl_dueDate"),               w:"12%"},
+          {key:"status",label:t("finance.rl_status"),      color:r=>r._s==="overdue"?"#dc2626":r._s==="paid"?"#16a34a":"#64748b", bold:true, w:"17%"},
+          {key:"late",  label:t("finance.rl_late"),        right:true, color:r=>r.late!=="—"?"#dc2626":"#94a3b8", w:"8%"},
         ]}
         rows={rows}
         highlight={r=>r._s==="overdue"?"#fff5f5":undefined}/>
       <p style={S({fontSize:10.5,color:"#64748b",marginTop:-4,marginBottom:12,lineHeight:1.5})}>
-        Profit = profit on the goods sold on credit (each item's cost price saved when the credit was given) + interest {fmt(pt.interest)} — earned as customers repay.
-        {pt.uncosted > 0 ? ` ${fmt(pt.uncosted)} of credit has no item cost (no items recorded, or credit added later), so its goods profit isn't counted (*).` : ""}
+        {t("finance.rptCreditProfitNote", { amount: fmt(pt.interest) })}
+        {pt.uncosted > 0 ? t("finance.rptCreditUncosted", { amount: fmt(pt.uncosted) }) : ""}
       </p>
     </div>
   );
 }
 
 function AsoSection({ data }) {
+  const t = useT();
   const {
     active=[], totalBal,
     totContribs=0, totManual=0, totWithdrawals=0,
@@ -360,48 +379,48 @@ function AsoSection({ data }) {
   return (
     <div>
       <StatGrid stats={[
-        { label:"Savings Held",       value:fmt(totalBal),               color:"#2E8020", bg:"#f0fdf4", border:"#bbf7d0" },
-        { label:"Period Collections", value:fmt(totContribs+totManual),  color:"#16a34a", bg:"#f0fdf4", border:"#bbf7d0" },
-        { label:"Period Withdrawals", value:fmt(totWithdrawals),         color:"#ef4444", bg:"#fef2f2", border:"#fecaca" },
-        { label:"Ajo Profit",         value:fmt(totProfit),              color:"#d97706", bg:"#fffbeb", border:"#fde68a" },
+        { label:t("finance.rl_savingsHeld"),       value:fmt(totalBal),               color:"#2E8020", bg:"#f0fdf4", border:"#bbf7d0" },
+        { label:t("finance.rl_periodCollections"), value:fmt(totContribs+totManual),  color:"#16a34a", bg:"#f0fdf4", border:"#bbf7d0" },
+        { label:t("finance.rl_periodWithdrawals"), value:fmt(totWithdrawals),         color:"#ef4444", bg:"#fef2f2", border:"#fecaca" },
+        { label:t("finance.rl_ajoProfit"),         value:fmt(totProfit),              color:"#d97706", bg:"#fffbeb", border:"#fde68a" },
       ]}/>
       {bars.length > 0 && (<>
-        <SectionTitle>Collections by Client</SectionTitle>
+        <SectionTitle>{t("finance.st_collectionsByClient")}</SectionTitle>
         <BarChart bars={bars} maxH={110}/>
       </>)}
-      <SectionTitle>Period Activity by Client</SectionTitle>
+      <SectionTitle>{t("finance.st_periodActivityByClient")}</SectionTitle>
       <p style={S({fontSize:9,color:"#94a3b8",marginBottom:8,fontStyle:"italic"})}>
-        Savings Held = client funds held in trust — separate from business profit. Profit = fees + commission earned from each client.
+        {t("finance.rptAsoNote")}
       </p>
       <Table
         cols={[
-          {key:"name",    label:"Client",       bold:true, w:"20%"},
-          {key:"contribs",label:"Contributions",right:true, color:()=>"#16a34a", w:"14%"},
-          {key:"manual",  label:"Manual Dep.",  right:true, w:"11%"},
-          {key:"withdr",  label:"Withdrawals",  right:true, color:()=>"#ef4444", w:"13%"},
-          {key:"fees",    label:"Profit",       right:true, bold:true, color:r=>r._fees>0?"#16a34a":"#94a3b8", w:"11%"},
-          {key:"net",     label:"Net",          right:true, bold:true, color:r=>r._net>=0?"#2E8020":"#ef4444", w:"13%"},
-          {key:"balance", label:"Balance",      right:true, w:"18%"},
+          {key:"name",    label:t("finance.rl_client"),       bold:true, w:"20%"},
+          {key:"contribs",label:t("finance.rl_contributions"),right:true, color:()=>"#16a34a", w:"14%"},
+          {key:"manual",  label:t("finance.rl_manualDep"),  right:true, w:"11%"},
+          {key:"withdr",  label:t("finance.rl_withdrawals"),  right:true, color:()=>"#ef4444", w:"13%"},
+          {key:"fees",    label:t("finance.rl_profit"),       right:true, bold:true, color:r=>r._fees>0?"#16a34a":"#94a3b8", w:"11%"},
+          {key:"net",     label:t("finance.rl_net"),          right:true, bold:true, color:r=>r._net>=0?"#2E8020":"#ef4444", w:"13%"},
+          {key:"balance", label:t("finance.rl_balance"),      right:true, w:"18%"},
         ]}
         rows={rows}
         highlight={r=>r._net<0?"#fff5f5":undefined}/>
       {totProfit > 0 && (<>
-        <SectionTitle>Ajo Profit Summary</SectionTitle>
+        <SectionTitle>{t("finance.st_ajoProfitSummary")}</SectionTitle>
         <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:14}}>
           <div style={S({background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,padding:"8px 14px",flex:1,minWidth:100})}>
-            <p style={S({fontSize:9,color:"#92400e",fontWeight:700,marginBottom:3,textTransform:"uppercase",letterSpacing:0.5})}>Registration Fees</p>
+            <p style={S({fontSize:9,color:"#92400e",fontWeight:700,marginBottom:3,textTransform:"uppercase",letterSpacing:0.5})}>{t("finance.rptRegFees")}</p>
             <p style={S({fontSize:15,fontWeight:900,color:"#d97706",margin:0})}>{fmt(totRegFees)}</p>
           </div>
           <div style={S({background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,padding:"8px 14px",flex:1,minWidth:100})}>
-            <p style={S({fontSize:9,color:"#92400e",fontWeight:700,marginBottom:3,textTransform:"uppercase",letterSpacing:0.5})}>Withdrawal Fees</p>
+            <p style={S({fontSize:9,color:"#92400e",fontWeight:700,marginBottom:3,textTransform:"uppercase",letterSpacing:0.5})}>{t("finance.rptWdFees")}</p>
             <p style={S({fontSize:15,fontWeight:900,color:"#d97706",margin:0})}>{fmt(totWdFees)}</p>
           </div>
           <div style={S({background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,padding:"8px 14px",flex:1,minWidth:100})}>
-            <p style={S({fontSize:9,color:"#92400e",fontWeight:700,marginBottom:3,textTransform:"uppercase",letterSpacing:0.5})}>Commission</p>
+            <p style={S({fontSize:9,color:"#92400e",fontWeight:700,marginBottom:3,textTransform:"uppercase",letterSpacing:0.5})}>{t("finance.rptCommission")}</p>
             <p style={S({fontSize:15,fontWeight:900,color:"#d97706",margin:0})}>{fmt(totCommission)}</p>
           </div>
           <div style={S({background:"#2E8020",borderRadius:10,padding:"8px 14px",flex:1,minWidth:100})}>
-            <p style={S({fontSize:9,color:"#bbf7d0",fontWeight:700,marginBottom:3,textTransform:"uppercase",letterSpacing:0.5})}>Total Ajo Profit</p>
+            <p style={S({fontSize:9,color:"#bbf7d0",fontWeight:700,marginBottom:3,textTransform:"uppercase",letterSpacing:0.5})}>{t("finance.rptTotalAjoProfit")}</p>
             <p style={S({fontSize:15,fontWeight:900,color:"#fff",margin:0})}>{fmt(totProfit)}</p>
           </div>
         </div>
@@ -411,6 +430,7 @@ function AsoSection({ data }) {
 }
 
 function BillsSection({ data }) {
+  const t = useT();
   const pt = data.profitTotals;
   const catRows = Object.entries(data.byCat).sort((a,b)=>b[1].total-a[1].total).map(([cat,v])=>({
     cat, total:fmt(v.total), count:v.count, profit:fmt(v.profit), _p:v.profit,
@@ -419,46 +439,47 @@ function BillsSection({ data }) {
     date: fmtD(b.t.transaction_date),
     item: b.t.item_name||"—",
     cat:  b.t.category||"—",
-    amount: b.failed ? `${fmt(b.t.amount)} (refunded)` : fmt(b.t.amount),
-    profit: b.failed ? "Failed" : fmt(b.profit),
+    amount: b.failed ? t("finance.rptRefundedAmount", { amount: fmt(b.t.amount) }) : fmt(b.t.amount),
+    profit: b.failed ? t("finance.rl_failed") : fmt(b.profit),
     _p: b.failed ? null : b.profit, _f: b.failed,
   }));
   return (
     <div>
       <StatGrid stats={[
-        { label:"Total Bills Paid", value:fmt(data.total),     color:"#dc2626", bg:"#fef2f2", border:"#fecaca" },
-        { label:"Bill Profit",      value:fmt(pt.profit),      color:"#16a34a", bg:"#f0fdf4", border:"#bbf7d0" },
-        { label:"PIN Discount",     value:fmt(pt.discount),    color:"#0284c7", bg:"#eff6ff", border:"#bfdbfe" },
-        { label:"Cashback Earned",  value:fmt(pt.cashback),    color:"#d97706", bg:"#fffbeb", border:"#fde68a" },
+        { label:t("finance.rl_totalBillsPaid"), value:fmt(data.total),     color:"#dc2626", bg:"#fef2f2", border:"#fecaca" },
+        { label:t("finance.rl_billProfit"),      value:fmt(pt.profit),      color:"#16a34a", bg:"#f0fdf4", border:"#bbf7d0" },
+        { label:t("finance.rl_pinDiscount"),     value:fmt(pt.discount),    color:"#0284c7", bg:"#eff6ff", border:"#bfdbfe" },
+        { label:t("finance.rl_cashbackEarned"),  value:fmt(pt.cashback),    color:"#d97706", bg:"#fffbeb", border:"#fde68a" },
       ]}/>
-      <SectionTitle>By Category</SectionTitle>
+      <SectionTitle>{t("finance.st_byCategory")}</SectionTitle>
       <Table
         cols={[
-          {key:"cat",   label:"Category",   bold:true, w:"40%"},
-          {key:"total", label:"Total Paid", right:true, bold:true, color:()=>"#dc2626", w:"24%"},
-          {key:"count", label:"Count",      right:true, w:"12%"},
-          {key:"profit",label:"Profit",     right:true, bold:true, color:r=>r._p>0?"#16a34a":"#94a3b8", w:"24%"},
+          {key:"cat",   label:t("finance.rl_category"),   bold:true, w:"40%"},
+          {key:"total", label:t("finance.rl_totalPaid"), right:true, bold:true, color:()=>"#dc2626", w:"24%"},
+          {key:"count", label:t("finance.rl_count"),      right:true, w:"12%"},
+          {key:"profit",label:t("finance.rl_profit"),     right:true, bold:true, color:r=>r._p>0?"#16a34a":"#94a3b8", w:"24%"},
         ]}
         rows={catRows}/>
-      <SectionTitle>Bill Transactions</SectionTitle>
+      <SectionTitle>{t("finance.st_billTransactions")}</SectionTitle>
       <Table
         cols={[
-          {key:"date",  label:"Date",     w:"14%"},
-          {key:"item",  label:"Item",     bold:true, w:"30%"},
-          {key:"cat",   label:"Category", w:"16%"},
-          {key:"amount",label:"Amount",   right:true, bold:true, color:r=>r._f?"#94a3b8":"#dc2626", w:"22%"},
-          {key:"profit",label:"Profit",   right:true, bold:true, color:r=>r._f?"#94a3b8":r._p>0?"#16a34a":"#94a3b8", w:"18%"},
+          {key:"date",  label:t("finance.rl_date"),     w:"14%"},
+          {key:"item",  label:t("finance.rl_item"),     bold:true, w:"30%"},
+          {key:"cat",   label:t("finance.rl_category"), w:"16%"},
+          {key:"amount",label:t("finance.rl_amount"),   right:true, bold:true, color:r=>r._f?"#94a3b8":"#dc2626", w:"22%"},
+          {key:"profit",label:t("finance.rl_profit"),   right:true, bold:true, color:r=>r._f?"#94a3b8":r._p>0?"#16a34a":"#94a3b8", w:"18%"},
         ]}
         rows={rows}/>
       <p style={S({fontSize:10.5,color:"#64748b",marginTop:-4,marginBottom:12,lineHeight:1.5})}>
-        Bill profit = the discount on printed airtime PINs and bundles (resold at face value) + 1% cashback on airtime and data. Other bills are costs with no profit.
-        {data.failedCount > 0 ? ` ${data.failedCount} failed bill${data.failedCount===1?"":"s"} (${fmt(data.failedTotal)}, refunded) not counted.` : ""}
+        {t("finance.rptBillsNote")}
+        {data.failedCount > 0 ? t(data.failedCount===1 ? "finance.rptFailedBillsOne" : "finance.rptFailedBillsMany", { n: data.failedCount, amount: fmt(data.failedTotal) }) : ""}
       </p>
     </div>
   );
 }
 
 function StaffSection({ data }) {
+  const t = useT();
   const rows = data.rows.map(r=>({
     name:    r.name,
     txCount: r.txCount,
@@ -472,81 +493,83 @@ function StaffSection({ data }) {
   return (
     <div>
       <StatGrid stats={[
-        { label:"Active Staff",    value:data.rows.length,                               color:"#0284c7", bg:"#eff6ff",  border:"#bfdbfe" },
-        { label:"Total Txns",      value:data.rows.reduce((s,r)=>s+r.txCount,0),        color:"#334155", bg:"#f8fafc",  border:"#e2e8f0" },
-        { label:"Total Sales",     value:fmt(data.rows.reduce((s,r)=>s+r.salesIn,0)),   color:"#16a34a", bg:"#f0fdf4",  border:"#bbf7d0" },
-        { label:"Credits Added",   value:data.rows.reduce((s,r)=>s+r.creditsAdded,0),  color:"#d97706", bg:"#fffbeb",  border:"#fde68a" },
+        { label:t("finance.rl_activeStaff"),    value:data.rows.length,                               color:"#0284c7", bg:"#eff6ff",  border:"#bfdbfe" },
+        { label:t("finance.rl_totalTxns"),      value:data.rows.reduce((s,r)=>s+r.txCount,0),        color:"#334155", bg:"#f8fafc",  border:"#e2e8f0" },
+        { label:t("finance.rl_totalSales"),     value:fmt(data.rows.reduce((s,r)=>s+r.salesIn,0)),   color:"#16a34a", bg:"#f0fdf4",  border:"#bbf7d0" },
+        { label:t("finance.rl_creditsAdded"),   value:data.rows.reduce((s,r)=>s+r.creditsAdded,0),  color:"#d97706", bg:"#fffbeb",  border:"#fde68a" },
       ]}/>
       {data.bars.length > 0 && (<>
-        <SectionTitle>Sales per Staff Member</SectionTitle>
-        <ChartLegend items={[{color:"#16a34a",label:"Sales"},{color:"#ef4444",label:"Expenses"}]}/>
+        <SectionTitle>{t("finance.st_salesPerStaffMember")}</SectionTitle>
+        <ChartLegend items={[{color:"#16a34a",label:t("finance.rl_sales")},{color:"#ef4444",label:t("finance.rl_expenses")}]}/>
         <BarChart bars={data.bars} maxH={110}/>
       </>)}
-      <SectionTitle>Performance Breakdown</SectionTitle>
+      <SectionTitle>{t("finance.st_performanceBreakdown")}</SectionTitle>
       <Table
         cols={[
-          {key:"name",    label:"Staff Member", bold:true, w:"22%"},
-          {key:"txCount", label:"Txns",         right:true, w:"10%"},
-          {key:"salesIn", label:"Sales",        right:true, color:()=>"#16a34a", bold:true, w:"15%"},
-          {key:"salesOut",label:"Expenses",     right:true, color:()=>"#ef4444", w:"15%"},
-          {key:"net",     label:"Net",          right:true, bold:true, color:r=>r._net>=0?"#16a34a":"#ef4444", w:"15%"},
-          {key:"credits", label:"Credits",      right:true, color:()=>"#d97706", w:"12%"},
-          {key:"aso",     label:"Ajo",          right:true, color:()=>"#7c3aed", w:"11%"},
+          {key:"name",    label:t("finance.rl_staffMember"), bold:true, w:"22%"},
+          {key:"txCount", label:t("finance.rl_txns"),         right:true, w:"10%"},
+          {key:"salesIn", label:t("finance.rl_sales"),        right:true, color:()=>"#16a34a", bold:true, w:"15%"},
+          {key:"salesOut",label:t("finance.rl_expenses"),     right:true, color:()=>"#ef4444", w:"15%"},
+          {key:"net",     label:t("finance.rl_net"),          right:true, bold:true, color:r=>r._net>=0?"#16a34a":"#ef4444", w:"15%"},
+          {key:"credits", label:t("finance.rl_credits"),      right:true, color:()=>"#d97706", w:"12%"},
+          {key:"aso",     label:t("finance.rl_ajo"),          right:true, color:()=>"#7c3aed", w:"11%"},
         ]}
         rows={rows}/>
-      {data.rows.length===0 && <p style={S({color:"#94a3b8",fontSize:12,fontStyle:"italic"})}>No staff transaction data found. Staff ID tracking must be enabled and active.</p>}
+      {data.rows.length===0 && <p style={S({color:"#94a3b8",fontSize:12,fontStyle:"italic"})}>{t("finance.rptNoStaffData")}</p>}
     </div>
   );
 }
 
 function StockSection({ data }) {
+  const t = useT();
   const tt = data.totals;
   const pct = (m) => (m == null ? "—" : `${Math.round(m * 100)}%`);
   return (
     <div>
       <StatGrid stats={[
-        { label:"Revenue",        value:fmt(data.totalRevenue), color:"#0284c7", bg:"#eff6ff", border:"#bfdbfe" },
-        { label:"Cost of Goods",  value:fmt(tt.cogs),           color:"#64748b", bg:"#f8fafc", border:"#e2e8f0" },
-        { label:"Stock Profit",   value:fmt(tt.profit),         color:tt.profit>=0?"#16a34a":"#ef4444", bg:"#f0fdf4", border:"#bbf7d0" },
-        { label:"Spent on Stock", value:fmt(tt.stockSpend),     color:"#ef4444", bg:"#fef2f2", border:"#fecaca" },
+        { label:t("finance.rl_revenue"),        value:fmt(data.totalRevenue), color:"#0284c7", bg:"#eff6ff", border:"#bfdbfe" },
+        { label:t("finance.rl_costOfGoods"),  value:fmt(tt.cogs),           color:"#64748b", bg:"#f8fafc", border:"#e2e8f0" },
+        { label:t("finance.rl_stockProfit"),   value:fmt(tt.profit),         color:tt.profit>=0?"#16a34a":"#ef4444", bg:"#f0fdf4", border:"#bbf7d0" },
+        { label:t("finance.rl_spentOnStock"), value:fmt(tt.stockSpend),     color:"#ef4444", bg:"#fef2f2", border:"#fecaca" },
       ]}/>
       {data.bars.length > 0 && (<>
-        <SectionTitle>Revenue by Item</SectionTitle>
+        <SectionTitle>{t("finance.st_revenueByItem")}</SectionTitle>
         <BarChart bars={data.bars} maxH={110}/>
       </>)}
-      <SectionTitle>Item Performance</SectionTitle>
+      <SectionTitle>{t("finance.st_itemPerformance")}</SectionTitle>
       <Table
         cols={[
-          {key:"item",     label:"Item",       bold:true, w:"21%"},
-          {key:"qtySold",  label:"Sold",       right:true, w:"6%"},
-          {key:"revenue",  label:"Revenue",    right:true, bold:true, w:"14%"},
-          {key:"cogs",     label:"Cost",       right:true, color:()=>"#64748b", w:"13%"},
-          {key:"profit",   label:"Profit",     right:true, bold:true, color:r=>r._p==null?"#94a3b8":r._p>=0?"#16a34a":"#ef4444", w:"14%"},
-          {key:"margin",   label:"Margin",     right:true, w:"8%"},
-          {key:"qtyBought",label:"Bought",     right:true, w:"8%"},
-          {key:"cost",     label:"Restock",    right:true, color:r=>r._c>0?"#ef4444":"#94a3b8", w:"16%"},
+          {key:"item",     label:t("finance.rl_item"),       bold:true, w:"21%"},
+          {key:"qtySold",  label:t("finance.rl_sold"),       right:true, w:"6%"},
+          {key:"revenue",  label:t("finance.rl_revenue"),    right:true, bold:true, w:"14%"},
+          {key:"cogs",     label:t("finance.rl_cost"),       right:true, color:()=>"#64748b", w:"13%"},
+          {key:"profit",   label:t("finance.rl_profit"),     right:true, bold:true, color:r=>r._p==null?"#94a3b8":r._p>=0?"#16a34a":"#ef4444", w:"14%"},
+          {key:"margin",   label:t("finance.rl_margin"),     right:true, w:"8%"},
+          {key:"qtyBought",label:t("finance.rl_bought"),     right:true, w:"8%"},
+          {key:"cost",     label:t("finance.rl_restock"),    right:true, color:r=>r._c>0?"#ef4444":"#94a3b8", w:"16%"},
         ]}
         rows={data.rows.map(r=>({
           item:r.item, qtySold:r.qtySold, revenue:fmt(r.revenue), cogs:r.profit==null?"—":fmt(r.cogs),
-          profit:r.profit==null?(r.revenue>0?"No cost":"—"):fmt(r.profit)+(r.partial?" *":""), _p:r.profit,
+          profit:r.profit==null?(r.revenue>0?t("finance.rptNoCost"):"—"):fmt(r.profit)+(r.partial?" *":""), _p:r.profit,
           margin:pct(r.margin), qtyBought:r.qtyBought||"—", cost:r.cost>0?fmt(r.cost):"—", _c:r.cost,
         }))}/>
       <p style={S({fontSize:10.5,color:"#64748b",marginTop:-4,marginBottom:12,lineHeight:1.5})}>
-        Profit = revenue − the cost price saved when each item was sold. Restock = what was spent buying the item in this period.
-        {tt.uncosted > 0 ? ` ${fmt(tt.uncosted)} of item sales have no cost price, so their profit isn't counted (*).` : ""}
+        {t("finance.rptStockNote")}
+        {tt.uncosted > 0 ? t("finance.rptStockUncosted", { amount: fmt(tt.uncosted) }) : ""}
       </p>
     </div>
   );
 }
 
 function GeneralSection({ data }) {
+  const t = useT();
   const { profit: pf, money, salesSummary: ss, credit, ajo, bills, stock } = data;
   const sign = (v) => (v >= 0 ? "#16a34a" : "#ef4444");
   const ladder = [
-    { k:"Profit on goods sold",           s:"Sales, credit sales and invoices — cost price saved at each sale", v:pf.goods },
-    { k:"Ajo fees & commission",          s:"Registration fees, withdrawal fees and commission",                v:pf.ajo },
-    { k:"Interest collected on credit",   s:"Counted when customers pay it",                                    v:pf.interest },
-    { k:"Bills: PIN discount + cashback", s:"Printed PINs resold at face value, 1% on airtime and data",        v:pf.bills },
+    { k:t("finance.rptLadderGoods"),    s:t("finance.rptLadderGoodsSub"),    v:pf.goods },
+    { k:t("finance.rptLadderAjo"),      s:t("finance.rptLadderAjoSub"),      v:pf.ajo },
+    { k:t("finance.rptLadderInterest"), s:t("finance.rptLadderInterestSub"), v:pf.interest },
+    { k:t("finance.rptLadderBills"),    s:t("finance.rptLadderBillsSub"),    v:pf.bills },
   ];
   const line = (label, value, o = {}) => (
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:10,padding:o.big?"9px 12px":"7px 12px",
@@ -561,102 +584,102 @@ function GeneralSection({ data }) {
   return (
     <div>
       <StatGrid stats={[
-        { label:"Revenue",      value:fmt(pf.revenue),  color:"#0284c7",       bg:"#eff6ff", border:"#bfdbfe" },
-        { label:"Gross Profit", value:fmt(pf.gross),    color:sign(pf.gross),  bg:"#f0fdf4", border:"#bbf7d0" },
-        { label:"Expenses",     value:fmt(pf.expenses), color:"#ef4444",       bg:"#fef2f2", border:"#fecaca" },
-        { label:"Net Profit",   value:fmt(pf.net),      color:sign(pf.net),    bg:pf.net>=0?"#f0fdf4":"#fef2f2", border:pf.net>=0?"#86efac":"#fecaca" },
+        { label:t("finance.rl_revenue"),      value:fmt(pf.revenue),  color:"#0284c7",       bg:"#eff6ff", border:"#bfdbfe" },
+        { label:t("finance.rl_grossProfit"), value:fmt(pf.gross),    color:sign(pf.gross),  bg:"#f0fdf4", border:"#bbf7d0" },
+        { label:t("finance.rl_expenses"),     value:fmt(pf.expenses), color:"#ef4444",       bg:"#fef2f2", border:"#fecaca" },
+        { label:t("finance.rl_netProfit"),   value:fmt(pf.net),      color:sign(pf.net),    bg:pf.net>=0?"#f0fdf4":"#fef2f2", border:pf.net>=0?"#86efac":"#fecaca" },
       ]}/>
 
-      <SectionTitle>Where the profit came from</SectionTitle>
+      <SectionTitle>{t("finance.st_whereTheProfitCameFrom")}</SectionTitle>
       <div style={{border:"1px solid #e2e8f0",borderRadius:10,padding:4,marginBottom:8}}>
         {ladder.map(r => <div key={r.k}>{line(r.k, fmt(r.v), { sub:r.s, vc:r.v>0?"#16a34a":r.v<0?"#ef4444":"#94a3b8" })}</div>)}
-        {line("Gross profit", fmt(pf.gross), { bold:true, top:true, vc:sign(pf.gross) })}
-        {line("Less: expenses", `− ${fmt(pf.expenses)}`, { sub:"Running costs — stock purchases and bills are not expenses", vc:"#ef4444" })}
-        {line("Net profit", fmt(pf.net), { bold:true, big:true, bg:pf.net>=0?"#f0fdf4":"#fef2f2", vc:sign(pf.net) })}
+        {line(t("finance.rptGrossProfit"), fmt(pf.gross), { bold:true, top:true, vc:sign(pf.gross) })}
+        {line(t("finance.rptLessExpenses"), `− ${fmt(pf.expenses)}`, { sub:t("finance.rs_runningCosts"), vc:"#ef4444" })}
+        {line(t("finance.rptNetProfit"), fmt(pf.net), { bold:true, big:true, bg:pf.net>=0?"#f0fdf4":"#fef2f2", vc:sign(pf.net) })}
       </div>
       <p style={S({fontSize:10.5,color:"#64748b",marginBottom:12,lineHeight:1.5})}>
-        Same profit as your Finance screen for these dates ({fmt(pf.financeNet)}){pf.bills ? `, plus ${fmt(pf.bills)} earned on bills` : ""}.
-        {pf.unmeasured > 0 ? ` ${fmt(pf.unmeasured)} of sales have no cost price, so their profit isn't counted — add cost prices in Stock.` : ""}
+        {t("finance.rptSameAsFinance", { amount: fmt(pf.financeNet) })}{pf.bills ? t("finance.rptPlusBills", { amount: fmt(pf.bills) }) : ""}.
+        {pf.unmeasured > 0 ? t("finance.rptUnmeasured", { amount: fmt(pf.unmeasured) }) : ""}
       </p>
 
-      <SectionTitle>Money in &amp; out</SectionTitle>
+      <SectionTitle>{t("finance.st_moneyInOut")}</SectionTitle>
       <StatGrid stats={[
-        { label:"Money In",       value:fmt(money.in),    color:"#16a34a", bg:"#f0fdf4", border:"#bbf7d0" },
-        { label:"Money Out",      value:fmt(money.out),   color:"#ef4444", bg:"#fef2f2", border:"#fecaca", sub:"Stock + expenses" },
-        { label:"Net Cash",       value:fmt(money.net),   color:sign(money.net), bg:"#f8fafc", border:"#e2e8f0" },
-        { label:"Spent on Stock", value:fmt(money.stock), color:"#64748b", bg:"#f8fafc", border:"#e2e8f0" },
+        { label:t("finance.rl_moneyIn"),       value:fmt(money.in),    color:"#16a34a", bg:"#f0fdf4", border:"#bbf7d0" },
+        { label:t("finance.rl_moneyOut"),      value:fmt(money.out),   color:"#ef4444", bg:"#fef2f2", border:"#fecaca", sub:t("finance.rs_stockExpenses") },
+        { label:t("finance.rl_netCash"),       value:fmt(money.net),   color:sign(money.net), bg:"#f8fafc", border:"#e2e8f0" },
+        { label:t("finance.rl_spentOnStock"), value:fmt(money.stock), color:"#64748b", bg:"#f8fafc", border:"#e2e8f0" },
       ]}/>
 
-      <SectionTitle>Sales</SectionTitle>
+      <SectionTitle>{t("finance.st_sales")}</SectionTitle>
       <StatGrid stats={[
-        { label:"Sales",        value:String(ss.count),   color:"#0284c7", bg:"#eff6ff", border:"#bfdbfe" },
-        { label:"Total Sales",  value:fmt(ss.total),      color:"#0284c7", bg:"#eff6ff", border:"#bfdbfe" },
-        { label:"Average Sale", value:fmt(ss.average),    color:"#334155", bg:"#f8fafc", border:"#e2e8f0" },
-        { label:"Items Sold",   value:String(ss.qty),     color:"#334155", bg:"#f8fafc", border:"#e2e8f0" },
+        { label:t("finance.rl_sales"),        value:String(ss.count),   color:"#0284c7", bg:"#eff6ff", border:"#bfdbfe" },
+        { label:t("finance.rl_totalSales"),  value:fmt(ss.total),      color:"#0284c7", bg:"#eff6ff", border:"#bfdbfe" },
+        { label:t("finance.rl_averageSale"), value:fmt(ss.average),    color:"#334155", bg:"#f8fafc", border:"#e2e8f0" },
+        { label:t("finance.rl_itemsSold"),   value:String(ss.qty),     color:"#334155", bg:"#f8fafc", border:"#e2e8f0" },
       ]}/>
       {data.topItems.length > 0 && (<>
-        <p style={S({fontSize:10,fontWeight:700,color:"#475569",margin:"-6px 0 6px"})}>Most profitable items</p>
+        <p style={S({fontSize:10,fontWeight:700,color:"#475569",margin:"-6px 0 6px"})}>{t("finance.rptMostProfitable")}</p>
         <Table
           cols={[
-            {key:"item",    label:"Item",    bold:true, w:"40%"},
-            {key:"sold",    label:"Sold",    right:true, w:"10%"},
-            {key:"revenue", label:"Revenue", right:true, w:"20%"},
-            {key:"profit",  label:"Profit",  right:true, bold:true, color:r=>sign(r._p), w:"18%"},
-            {key:"margin",  label:"Margin",  right:true, w:"12%"},
+            {key:"item",    label:t("finance.rl_item"),    bold:true, w:"40%"},
+            {key:"sold",    label:t("finance.rl_sold"),    right:true, w:"10%"},
+            {key:"revenue", label:t("finance.rl_revenue"), right:true, w:"20%"},
+            {key:"profit",  label:t("finance.rl_profit"),  right:true, bold:true, color:r=>sign(r._p), w:"18%"},
+            {key:"margin",  label:t("finance.rl_margin"),  right:true, w:"12%"},
           ]}
           rows={data.topItems.map(r=>({ item:r.item, sold:r.qtySold, revenue:fmt(r.revenue), profit:fmt(r.profit), _p:r.profit,
                                          margin:r.margin==null?"—":`${Math.round(r.margin*100)}%` }))}/>
       </>)}
 
-      <SectionTitle>Credit</SectionTitle>
+      <SectionTitle>{t("finance.st_credit")}</SectionTitle>
       <StatGrid stats={[
-        { label:"Credit Sales",     value:fmt(money.creditSales), color:"#d97706", bg:"#fffbeb", border:"#fde68a", sub:"This period" },
-        { label:"Repayments",       value:fmt(money.repayments),  color:"#16a34a", bg:"#f0fdf4", border:"#bbf7d0", sub:"This period" },
-        { label:"Outstanding",      value:fmt(credit.outstanding), color:"#ef4444", bg:"#fef2f2", border:"#fecaca", sub:"Now" },
-        { label:"Overdue",          value:fmt(credit.overdueDue),  color:"#dc2626", bg:"#fff1f2", border:"#fecdd3", sub:`${credit.overdueCount} account${credit.overdueCount===1?"":"s"}` },
+        { label:t("finance.rl_creditSales"),     value:fmt(money.creditSales), color:"#d97706", bg:"#fffbeb", border:"#fde68a", sub:t("finance.rs_thisPeriod") },
+        { label:t("finance.rl_repayments"),       value:fmt(money.repayments),  color:"#16a34a", bg:"#f0fdf4", border:"#bbf7d0", sub:t("finance.rs_thisPeriod") },
+        { label:t("finance.rl_outstanding"),      value:fmt(credit.outstanding), color:"#ef4444", bg:"#fef2f2", border:"#fecaca", sub:t("finance.rs_now") },
+        { label:t("finance.rl_overdue"),          value:fmt(credit.overdueDue),  color:"#dc2626", bg:"#fff1f2", border:"#fecdd3", sub:t(credit.overdueCount===1 ? "finance.rptAccountsOne" : "finance.rptAccountsMany", { n: credit.overdueCount }) },
       ]}/>
       {data.overdue.length > 0 && (
         <Table
           cols={[
-            {key:"name", label:"Overdue customer", bold:true, w:"42%"},
-            {key:"owed", label:"Owed",     right:true, bold:true, color:()=>"#dc2626", w:"22%"},
-            {key:"due",  label:"Due date", w:"20%"},
-            {key:"late", label:"Days late", right:true, w:"16%"},
+            {key:"name", label:t("finance.rl_overdueCustomer"), bold:true, w:"42%"},
+            {key:"owed", label:t("finance.rl_owed"),     right:true, bold:true, color:()=>"#dc2626", w:"22%"},
+            {key:"due",  label:t("finance.rl_dueDate2"), w:"20%"},
+            {key:"late", label:t("finance.rl_daysLate"), right:true, w:"16%"},
           ]}
           rows={data.overdue.slice(0,5).map(o=>({ name:o.name, owed:fmt(o.owed), due:fmtD(o.due), late:o.late==null?"—":o.late }))}/>
       )}
 
-      <SectionTitle>Ajo savings</SectionTitle>
+      <SectionTitle>{t("finance.st_ajoSavings")}</SectionTitle>
       <StatGrid stats={[
-        { label:"Savings Held", value:fmt(ajo.held),        color:"#2E8020", bg:"#f0fdf4", border:"#bbf7d0", sub:"Clients' money" },
-        { label:"Collections",  value:fmt(ajo.collections), color:"#16a34a", bg:"#f0fdf4", border:"#bbf7d0", sub:"This period" },
-        { label:"Withdrawals",  value:fmt(ajo.withdrawals), color:"#ef4444", bg:"#fef2f2", border:"#fecaca", sub:"This period" },
-        { label:"Clients",      value:String(ajo.clients),  color:"#334155", bg:"#f8fafc", border:"#e2e8f0", sub:`${ajo.activeClients} active this period` },
+        { label:t("finance.rl_savingsHeld"), value:fmt(ajo.held),        color:"#2E8020", bg:"#f0fdf4", border:"#bbf7d0", sub:t("finance.rs_clientsMoney") },
+        { label:t("finance.rl_collections"),  value:fmt(ajo.collections), color:"#16a34a", bg:"#f0fdf4", border:"#bbf7d0", sub:t("finance.rs_thisPeriod") },
+        { label:t("finance.rl_withdrawals"),  value:fmt(ajo.withdrawals), color:"#ef4444", bg:"#fef2f2", border:"#fecaca", sub:t("finance.rs_thisPeriod") },
+        { label:t("finance.rl_clients"),      value:String(ajo.clients),  color:"#334155", bg:"#f8fafc", border:"#e2e8f0", sub:t("finance.rptActiveThisPeriod", { n: ajo.activeClients }) },
       ]}/>
 
-      <SectionTitle>Bills</SectionTitle>
+      <SectionTitle>{t("finance.st_bills")}</SectionTitle>
       <StatGrid stats={[
-        { label:"Bills Paid",  value:fmt(bills.total),   color:"#ea580c", bg:"#fff7ed", border:"#fed7aa" },
-        { label:"Number Paid", value:String(bills.count), color:"#334155", bg:"#f8fafc", border:"#e2e8f0" },
-        { label:"Bill Profit", value:fmt(bills.profit),  color:"#16a34a", bg:"#f0fdf4", border:"#bbf7d0" },
-        { label:"Failed",      value:String(bills.failedCount), color:"#94a3b8", bg:"#f8fafc", border:"#e2e8f0", sub:"Refunded" },
+        { label:t("finance.rl_billsPaid"),  value:fmt(bills.total),   color:"#ea580c", bg:"#fff7ed", border:"#fed7aa" },
+        { label:t("finance.rl_numberPaid"), value:String(bills.count), color:"#334155", bg:"#f8fafc", border:"#e2e8f0" },
+        { label:t("finance.rl_billProfit"), value:fmt(bills.profit),  color:"#16a34a", bg:"#f0fdf4", border:"#bbf7d0" },
+        { label:t("finance.rl_failed"),      value:String(bills.failedCount), color:"#94a3b8", bg:"#f8fafc", border:"#e2e8f0", sub:t("finance.rs_refunded") },
       ]}/>
 
-      <SectionTitle>Stock</SectionTitle>
+      <SectionTitle>{t("finance.st_stock")}</SectionTitle>
       <StatGrid stats={[
-        { label:"Spent on Stock", value:fmt(stock.spent),       color:"#ef4444", bg:"#fef2f2", border:"#fecaca", sub:"This period" },
-        { label:"Cost of Goods",  value:fmt(stock.cogs),        color:"#64748b", bg:"#f8fafc", border:"#e2e8f0", sub:"Of items sold" },
-        { label:"Stock on Hand",  value:fmt(data.stockOnHand),  color:"#0284c7", bg:"#eff6ff", border:"#bfdbfe", sub:"At cost, now" },
-        { label:"Low Stock",      value:String(data.lowStock),  color:data.lowStock?"#d97706":"#334155", bg:"#fffbeb", border:"#fde68a", sub:"Items" },
+        { label:t("finance.rl_spentOnStock"), value:fmt(stock.spent),       color:"#ef4444", bg:"#fef2f2", border:"#fecaca", sub:t("finance.rs_thisPeriod") },
+        { label:t("finance.rl_costOfGoods"),  value:fmt(stock.cogs),        color:"#64748b", bg:"#f8fafc", border:"#e2e8f0", sub:t("finance.rs_ofItemsSold") },
+        { label:t("finance.rl_stockOnHand"),  value:fmt(data.stockOnHand),  color:"#0284c7", bg:"#eff6ff", border:"#bfdbfe", sub:t("finance.rs_atCostNow") },
+        { label:t("finance.rl_lowStock"),      value:String(data.lowStock),  color:data.lowStock?"#d97706":"#334155", bg:"#fffbeb", border:"#fde68a", sub:t("finance.rs_items") },
       ]}/>
 
       {data.staff.length > 0 && (<>
-        <SectionTitle>Staff sales</SectionTitle>
+        <SectionTitle>{t("finance.st_staffSales")}</SectionTitle>
         <Table
           cols={[
-            {key:"name",   label:"Staff",  bold:true, w:"50%"},
-            {key:"count",  label:"Sales",  right:true, w:"20%"},
-            {key:"amount", label:"Amount", right:true, bold:true, w:"30%"},
+            {key:"name",   label:t("finance.rl_staff"),  bold:true, w:"50%"},
+            {key:"count",  label:t("finance.rl_sales"),  right:true, w:"20%"},
+            {key:"amount", label:t("finance.rl_amount"), right:true, bold:true, w:"30%"},
           ]}
           rows={data.staff.map(r=>({ name:r.name, count:r.count, amount:fmt(r.amount) }))}/>
       </>)}
@@ -666,15 +689,16 @@ function GeneralSection({ data }) {
 
 /* ── Report template ────────────────────────────────────────────────── */
 function ReportTemplate({ type, reportData, profile, from, to }) {
-  const biz = profile?.business_name || profile?.owner_name || "My Business";
+  const t = useT();
+  const biz = profile?.business_name || profile?.owner_name || t("finance.rptMyBusiness");
   const TITLES = {
-    general:"General Business Report",
-    sales:  "Sales & Revenue Report",
-    credit: "Credit Management Report",
-    aso:    "Ajo / Aso Savings Report",
-    bills:  "Bill Payments Report",
-    staff:  "Staff Performance Report",
-    stock:  "Stock & Inventory Report",
+    general:t("finance.rptTitleGeneral"),
+    sales:  t("finance.rptTitleSales"),
+    credit: t("finance.rptTitleCredit"),
+    aso:    t("finance.rptTitleAso"),
+    bills:  t("finance.rptTitleBills"),
+    staff:  t("finance.rptTitleStaff"),
+    stock:  t("finance.rptTitleStock"),
   };
   const now = new Date().toLocaleString("en-NG",{day:"numeric",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"});
   const period = from===to ? fmtD(from) : `${fmtD(from)} — ${fmtD(to)}`;
@@ -697,7 +721,7 @@ function ReportTemplate({ type, reportData, profile, from, to }) {
           <p style={S({color:"rgba(255,255,255,0.5)",margin:"2px 0 0",fontSize:10})}>support@kudiai.app</p>
         </div>
         <div style={{textAlign:"right"}}>
-          <p style={S({color:"rgba(255,255,255,0.5)",fontSize:10,margin:0})}>Generated</p>
+          <p style={S({color:"rgba(255,255,255,0.5)",fontSize:10,margin:0})}>{t("finance.rptGenerated")}</p>
           <p style={S({color:"white",fontSize:11,fontWeight:600,margin:"2px 0 0"})}>{now}</p>
         </div>
       </div>
@@ -705,7 +729,7 @@ function ReportTemplate({ type, reportData, profile, from, to }) {
       {/* REPORT TITLE BAND */}
       <div style={{background:"#f0fdf4",borderBottom:"3px solid #3DA829",padding:"14px 36px"}}>
         <p style={S({color:"#2E8020",fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:2,margin:"0 0 3px"})}>{TITLES[type]}</p>
-        <p style={S({color:"#64748b",fontSize:12,margin:0})}>Period: <strong style={{color:"#1e293b"}}>{period}</strong></p>
+        <p style={S({color:"#64748b",fontSize:12,margin:0})}>{t("finance.rptPeriodLabel")} <strong style={{color:"#1e293b"}}>{period}</strong></p>
       </div>
 
       {/* CONTENT */}
@@ -721,8 +745,8 @@ function ReportTemplate({ type, reportData, profile, from, to }) {
 
       {/* FOOTER */}
       <div style={{borderTop:"1px solid #e2e8f0",padding:"12px 36px",display:"flex",justifyContent:"space-between",alignItems:"center",background:"#f8fafc"}}>
-        <span style={S({fontSize:10,color:"#94a3b8"})}>Generated by KudiAI Track · {biz}</span>
-        <span style={S({fontSize:10,color:"#cbd5e1"})}>CONFIDENTIAL</span>
+        <span style={S({fontSize:10,color:"#94a3b8"})}>{t("finance.rptGeneratedBy", { biz })}</span>
+        <span style={S({fontSize:10,color:"#cbd5e1"})}>{t("finance.rptConfidential")}</span>
       </div>
     </div>
   );
@@ -731,13 +755,13 @@ function ReportTemplate({ type, reportData, profile, from, to }) {
 /* ── Report type selector cards ─────────────────────────────────────── */
 function makeReportTypes(t) {
   return [
-    { id:"general", label:t("report.general"), sub:"Everything in one: profit, money in & out, sales, credit, Ajo, bills & stock", icon:"📊", color:"bg-emerald-50 dark:bg-emerald-900/20", border:"border-emerald-200 dark:border-emerald-800", active:"bg-emerald-600", wide:true },
-    { id:"sales",  label:t("report.sales"),  sub:"Revenue, expenses, profit & transactions",  icon:"📈", color:"bg-green-50 dark:bg-green-900/20",  border:"border-green-200 dark:border-green-800",  active:"bg-green-600" },
-    { id:"credit", label:t("report.credit"), sub:"Debtors, outstanding & overdue accounts",   icon:"👥", color:"bg-amber-50 dark:bg-amber-900/20",  border:"border-amber-200 dark:border-amber-800",  active:"bg-amber-500" },
-    { id:"aso",    label:t("report.ajo"),    sub:"Savings clients, contributions & balance",  icon:"🏦", color:"bg-brand-50 dark:bg-brand-900/20",  border:"border-brand-200 dark:border-brand-800",  active:"bg-brand-600" },
-    { id:"bills",  label:t("report.bills"),  sub:"Bill payments by category & provider",      icon:"🧾", color:"bg-red-50 dark:bg-red-900/20",      border:"border-red-200 dark:border-red-800",      active:"bg-red-500"   },
-    { id:"staff",  label:t("report.staff"),  sub:"Per-staff transactions & contributions",    icon:"👤", color:"bg-blue-50 dark:bg-blue-900/20",    border:"border-blue-200 dark:border-blue-800",    active:"bg-blue-600"  },
-    { id:"stock",  label:t("report.stock"),  sub:"Items sold, revenue & inventory overview",  icon:"📦", color:"bg-orange-50 dark:bg-orange-900/20",border:"border-orange-200 dark:border-orange-800",active:"bg-orange-500"},
+    { id:"general", label:t("report.general"), sub:t("finance.rptSubGeneral"), icon:"📊", color:"bg-emerald-50 dark:bg-emerald-900/20", border:"border-emerald-200 dark:border-emerald-800", active:"bg-emerald-600", wide:true },
+    { id:"sales",  label:t("report.sales"),  sub:t("finance.rptSubSales"),  icon:"📈", color:"bg-green-50 dark:bg-green-900/20",  border:"border-green-200 dark:border-green-800",  active:"bg-green-600" },
+    { id:"credit", label:t("report.credit"), sub:t("finance.rptSubCredit"),   icon:"👥", color:"bg-amber-50 dark:bg-amber-900/20",  border:"border-amber-200 dark:border-amber-800",  active:"bg-amber-500" },
+    { id:"aso",    label:t("report.ajo"),    sub:t("finance.rptSubAso"),  icon:"🏦", color:"bg-brand-50 dark:bg-brand-900/20",  border:"border-brand-200 dark:border-brand-800",  active:"bg-brand-600" },
+    { id:"bills",  label:t("report.bills"),  sub:t("finance.rptSubBills"),      icon:"🧾", color:"bg-red-50 dark:bg-red-900/20",      border:"border-red-200 dark:border-red-800",      active:"bg-red-500"   },
+    { id:"staff",  label:t("report.staff"),  sub:t("finance.rptSubStaff"),    icon:"👤", color:"bg-blue-50 dark:bg-blue-900/20",    border:"border-blue-200 dark:border-blue-800",    active:"bg-blue-600"  },
+    { id:"stock",  label:t("report.stock"),  sub:t("finance.rptSubStock"),  icon:"📦", color:"bg-orange-50 dark:bg-orange-900/20",border:"border-orange-200 dark:border-orange-800",active:"bg-orange-500"},
   ];
 }
 
@@ -1164,7 +1188,7 @@ export default function Reports({ store, onClose, initialView = "main", initialM
       await buildNativeReportPDF(reportType, reportData, profile, from, to);
     } catch(e) {
       console.error("PDF export:", e);
-      setExportError("Export failed — please try again.");
+      setExportError(t("finance.rptExportFailed"));
     }
     setExporting(false);
   };
@@ -1205,7 +1229,7 @@ export default function Reports({ store, onClose, initialView = "main", initialM
       await shareCSV(csv, filename);
     } catch(e) {
       console.error("CSV export:", e);
-      setExportError("CSV export failed — please try again.");
+      setExportError(t("finance.rptCsvFailed"));
     }
   };
 
@@ -1221,15 +1245,15 @@ export default function Reports({ store, onClose, initialView = "main", initialM
     return (
       <div className="fixed inset-0 z-sheet bg-slate-50 dark:bg-slate-900 flex flex-col">
         <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 px-4 pb-3 flex items-center gap-3 flex-shrink-0" style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}>
-          <button onClick={backFromView} aria-label="Back"
+          <button onClick={backFromView} aria-label={t("common.back")}
             className="w-11 h-11 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center active:scale-95 transition-transform">
             <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
               <path d="M19 12H5M12 5l-7 7 7 7"/>
             </svg>
           </button>
           <div>
-            <p className="text-lg font-black text-slate-800 dark:text-white">{view === "wallet" ? "Wallet statement" : "Monthly reports"}</p>
-            <p className="text-xs text-slate-400 dark:text-slate-500">{view === "wallet" ? "Every wallet transaction with the balance after it" : "Business Report + Wallet Statement for every month"}</p>
+            <p className="text-lg font-black text-slate-800 dark:text-white">{view === "wallet" ? t("finance.walletStatement") : t("finance.monthlyReports")}</p>
+            <p className="text-xs text-slate-400 dark:text-slate-500">{view === "wallet" ? t("finance.rptWalletSub") : t("finance.rptMonthlySub")}</p>
           </div>
         </div>
         <div className="flex-1 overflow-y-auto py-4">
@@ -1288,7 +1312,7 @@ export default function Reports({ store, onClose, initialView = "main", initialM
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-100/80 dark:bg-slate-900/80">
             <div className="flex flex-col items-center gap-3">
               <div className="w-8 h-8 border-[3px] border-brand-500 border-t-transparent rounded-full animate-spin"/>
-              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Loading Ajo data…</p>
+              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">{t("finance.rptLoadingAjoData")}</p>
             </div>
           </div>
         )}
@@ -1346,20 +1370,20 @@ export default function Reports({ store, onClose, initialView = "main", initialM
 
         {/* Statements & monthly reports (the whole business — not in a branch's view) */}
         {profile?.id && (<>
-          <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3">Statements &amp; monthly reports</p>
+          <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3">{t("finance.rptStatementsMonthly")}</p>
           <div className={`grid ${walletEnabled ? "grid-cols-2" : "grid-cols-1"} gap-2.5 mb-6`}>
             <button onClick={() => setView("monthly")}
               className="text-left p-3.5 rounded-2xl border-2 bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800 active:scale-[0.97] transition-all">
               <span className="text-2xl leading-none block mb-2">🗓️</span>
-              <p className="text-xs font-extrabold leading-tight text-slate-700 dark:text-slate-200">Monthly reports</p>
-              <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 leading-tight">Business Report{walletEnabled ? " + Wallet Statement" : ""} for every month · emailed on the 1st</p>
+              <p className="text-xs font-extrabold leading-tight text-slate-700 dark:text-slate-200">{t("finance.monthlyReports")}</p>
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 leading-tight">{walletEnabled ? t("finance.rptMonthlyCardWallet") : t("finance.rptMonthlyCard")}</p>
             </button>
             {walletEnabled && (
               <button onClick={() => setView("wallet")}
                 className="text-left p-3.5 rounded-2xl border-2 bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800 active:scale-[0.97] transition-all">
                 <span className="text-2xl leading-none block mb-2">👛</span>
-                <p className="text-xs font-extrabold leading-tight text-slate-700 dark:text-slate-200">Wallet statement</p>
-                <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 leading-tight">Every wallet transaction with the balance after it · PDF &amp; CSV</p>
+                <p className="text-xs font-extrabold leading-tight text-slate-700 dark:text-slate-200">{t("finance.walletStatement")}</p>
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 leading-tight">{t("finance.rptWalletCardSub")}</p>
               </button>
             )}
           </div>
@@ -1429,8 +1453,8 @@ export default function Reports({ store, onClose, initialView = "main", initialM
         {/* New-business empty state */}
         {transactions.length === 0 && credits.length === 0 && asoClients.length === 0 && (
           <div className="mb-4 bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-800/40 rounded-2xl px-4 py-4 text-center">
-            <p className="text-sm font-bold text-brand-700 dark:text-brand-300">No data yet</p>
-            <p className="text-xs text-brand-600/70 dark:text-brand-400/70 mt-1 leading-relaxed">Add some transactions to generate your first report. The report will show zeroes until then.</p>
+            <p className="text-sm font-bold text-brand-700 dark:text-brand-300">{t("finance.rptNoDataYet")}</p>
+            <p className="text-xs text-brand-600/70 dark:text-brand-400/70 mt-1 leading-relaxed">{t("finance.rptNoDataHint")}</p>
           </div>
         )}
 
@@ -1438,7 +1462,7 @@ export default function Reports({ store, onClose, initialView = "main", initialM
         {asoLoading && needsAjo && (
           <div className="mb-4 flex items-center gap-2 px-4 py-3 bg-slate-100 dark:bg-slate-800 rounded-xl">
             <div className="w-4 h-4 border-2 border-brand-500 border-t-transparent rounded-full animate-spin flex-shrink-0"/>
-            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Loading Ajo contributions…</p>
+            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">{t("finance.rptLoadingAjoContribs")}</p>
           </div>
         )}
 

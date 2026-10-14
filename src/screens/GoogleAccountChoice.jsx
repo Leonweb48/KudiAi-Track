@@ -1,15 +1,25 @@
 // A brand-new Google account that signed in from the Sign in tab hasn't said what it's for. Instead of starting business
 // setup, ask: register a business, or open a KudiAI Wallet (save with a business — the client portal). useAuth sends
 // such accounts here (status "choose_account"); onDone re-runs the routing once a choice is recorded.
-import { useState } from "react";
+import { useState, Fragment } from "react";
 import { supabase } from "../utils/supabase";
+import { useT } from "../contexts/LanguageContext";
 import { AuthShell } from "../components/AuthShell";
 import AppLogo from "../components/AppLogo";
 import LegalScreen from "./LegalScreen";
 import { AccountTypeOptions, WalletDetailsFields, useSavingBusinesses } from "../components/auth/SignupParts";
 import { finishGoogleWalletSignup, markSignupChoice } from "../utils/googleWalletSignup";
 
+// Fill {name}-style slots in translated text with elements (the bold email); the rest stays plain text.
+function withNodes(text, nodes) {
+  return String(text).split(/(\{\w+\})/).map((part, i) => {
+    const m = /^\{(\w+)\}$/.exec(part);
+    return m && nodes[m[1]] !== undefined ? <Fragment key={i}>{nodes[m[1]]}</Fragment> : part;
+  });
+}
+
 export default function GoogleAccountChoice({ session, onDone }) {
+  const t = useT();
   const [step, setStep]       = useState("choose");   // "choose" | "wallet"
   const [phone, setPhone]     = useState("");
   const [agreed, setAgreed]   = useState(false);
@@ -25,7 +35,7 @@ export default function GoogleAccountChoice({ session, onDone }) {
   const asBusiness = async () => {
     setError(""); setBusy(true);
     if (!(await markSignupChoice(supabase, "business"))) {
-      setError("We couldn't save that just now. Check your connection and try again.");
+      setError(t("circles.g.errSave"));
       setBusy(false);
       return;
     }
@@ -34,8 +44,8 @@ export default function GoogleAccountChoice({ session, onDone }) {
 
   const asWallet = async () => {
     setError("");
-    if (!businessId) { setError("Select the business you're saving with."); return; }
-    if (!agreed)     { setError("Please agree to the Terms & Conditions and Privacy Policy to continue."); return; }
+    if (!businessId) { setError(t("circles.g.errBusiness")); return; }
+    if (!agreed)     { setError(t("circles.g.errAgree")); return; }
     setBusy(true);
     const out = await finishGoogleWalletSignup(supabase, session, { business_id: businessId, phone, at: Date.now() });
     if (out.status === "failed") { setError(out.message); setBusy(false); return; }
@@ -50,10 +60,12 @@ export default function GoogleAccountChoice({ session, onDone }) {
           <div className="bg-white/20 backdrop-blur-sm rounded-2xl px-4 py-2 shadow-sm mb-4">
             <AppLogo portal="public" className="h-8 w-auto" />
           </div>
-          <h1 className="text-xl font-extrabold text-white">{firstName ? `Welcome, ${firstName}` : "Welcome to KudiAI Track"}</h1>
+          <h1 className="text-xl font-extrabold text-white">{firstName ? t("circles.g.welcomeName", { name: firstName }) : t("circles.g.welcome")}</h1>
           <p className="text-xs text-white/80 mt-1.5 leading-relaxed">
-            You're signed in with Google{email ? <> as <span className="font-semibold text-white">{email}</span></> : null}.
-            <br />What would you like to open?
+            {email
+              ? withNodes(t("circles.g.signedInAs"), { email: <span className="font-semibold text-white">{email}</span> })
+              : t("circles.g.signedIn")}
+            <br />{t("circles.g.whatOpen")}
           </p>
         </div>
 
@@ -67,18 +79,18 @@ export default function GoogleAccountChoice({ session, onDone }) {
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
-                Back
+                {t("common.back")}
               </button>
               <div>
-                <h2 className="text-lg font-bold text-gray-900 dark:text-white">Open a KudiAI Wallet</h2>
-                <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">Your name and email come from Google. Tell us who you're saving with.</p>
+                <h2 className="text-lg font-bold text-gray-900 dark:text-white">{t("circles.g.openWallet")}</h2>
+                <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">{t("circles.g.walletIntro")}</p>
               </div>
               <WalletDetailsFields phone={phone} onPhone={setPhone}
                 businesses={businesses} loading={loading} businessId={businessId} onBusinessId={setBusinessId}
                 agreed={agreed} onToggleAgreed={() => setAgreed(v => !v)} onOpenLegal={setLegal} />
               <button type="button" onClick={asWallet} disabled={busy || loading || !businessId || !agreed}
                 className="w-full bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-60 text-white font-bold rounded-xl py-3.5 text-sm transition-colors shadow-sm">
-                {busy ? "Opening your wallet…" : "Open my KudiAI Wallet"}
+                {busy ? t("circles.g.opening") : t("circles.g.openMine")}
               </button>
             </div>
           )}
@@ -91,7 +103,7 @@ export default function GoogleAccountChoice({ session, onDone }) {
 
           <button type="button" onClick={() => supabase.auth.signOut()} disabled={busy}
             className="w-full mt-6 py-2.5 text-sm font-semibold text-gray-500 dark:text-slate-400">
-            Not you? Use a different account
+            {t("circles.g.notYou")}
           </button>
         </div>
       </div>

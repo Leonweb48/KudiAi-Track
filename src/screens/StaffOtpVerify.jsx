@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from "../utils/supabase";
 import AppLogo from "../components/AppLogo";
 import { AuthShell, AuthCard } from "../components/AuthShell";
+import { useT } from "../contexts/LanguageContext";
 
 const staffFn = async (action, body = {}) => {
   const r = await supabase.functions.invoke("manage-staff-account", { body: { action, ...body } });
@@ -20,6 +21,7 @@ const staffFn = async (action, body = {}) => {
 };
 
 export default function StaffOtpVerify({ staff }) {
+  const t = useT();
   const [digits,      setDigits]      = useState(["", "", "", "", "", ""]);
   const [loading,     setLoading]     = useState(false);
   const [error,       setError]       = useState("");
@@ -92,7 +94,7 @@ export default function StaffOtpVerify({ staff }) {
       await staffFn("verify-otp", { otp_code: otp });
       await supabase.auth.refreshSession();
     } catch (e) {
-      setError(e.message || "Invalid code. Please try again.");
+      setError(e.message || t("auth2.invalidCode"));
       setLoading(false);
     }
   };
@@ -107,11 +109,11 @@ export default function StaffOtpVerify({ staff }) {
       setDigits(["", "", "", "", "", ""]);
       inputRefs.current[0]?.focus();
     } catch (e) {
-      setError(e.message || "Could not resend. Please try again.");
+      setError(e.message || t("auth2.couldNotResend"));
     }
   };
 
-  const firstName = staff?.full_name?.split(" ")[0] || "there";
+  const firstName = staff?.full_name?.split(" ")[0] || "";
   const email     = staff?.email || "";
 
   return (
@@ -131,12 +133,12 @@ export default function StaffOtpVerify({ staff }) {
             </svg>
           </div>
           <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white">
-            Check Your Email
+            {t("auth2.checkYourEmail")}
           </h1>
           <p className="text-sm mt-2 leading-relaxed text-slate-500">
             {otpSending
-              ? "Sending a verification code…"
-              : <>Hi {firstName}! We sent a 6-digit code to<br />
+              ? t("auth2.sendingCode")
+              : <>{firstName ? t("auth2.hiName", { name: firstName }) : t("auth2.hiThere")} {t("auth.codeSentTo")}<br />
                   <span className="font-semibold text-indigo-400 dark:text-indigo-300">{email}</span>
                 </>
             }
@@ -151,7 +153,7 @@ export default function StaffOtpVerify({ staff }) {
               className="rounded-xl px-4 py-3 mb-5 bg-slate-100 dark:bg-[#141820] border border-slate-200 dark:border-[#1e2433]"
             >
               <p className="text-[10px] font-bold uppercase tracking-wider mb-2 text-slate-400">
-                Your Temp Password
+                {t("auth2.tempPassword")}
               </p>
               <div className="flex items-center justify-between gap-2">
                 <span className="text-sm font-extrabold font-mono text-slate-400 dark:text-slate-500" style={{ color: showTempPwd ? "#a5b4fc" : undefined }}>
@@ -162,13 +164,13 @@ export default function StaffOtpVerify({ staff }) {
                     onClick={() => setShowTempPwd(v => !v)}
                     className="text-[10px] font-bold rounded-lg px-2 py-1 transition bg-slate-200 dark:bg-[#1e2433] border border-slate-300 dark:border-[#2a3347] text-slate-500"
                   >
-                    {showTempPwd ? "Hide" : "Show"}
+                    {showTempPwd ? t("auth2.hide") : t("auth2.show")}
                   </button>
                   <button
                     onClick={() => navigator.clipboard?.writeText(tempPwd)}
                     className="text-[10px] font-bold rounded-lg px-2 py-1 transition bg-indigo-500/15 border border-indigo-500/30 text-indigo-400"
                   >
-                    Copy
+                    {t("auth2.copy")}
                   </button>
                 </div>
               </div>
@@ -211,7 +213,7 @@ export default function StaffOtpVerify({ staff }) {
             <div
               className="rounded-xl px-4 py-3 mb-4 text-center text-xs bg-emerald-500/10 border border-emerald-500/20 text-emerald-400"
             >
-              ✓ New code sent — check your inbox.
+              {t("auth2.newCodeSent")}
             </div>
           )}
 
@@ -224,16 +226,16 @@ export default function StaffOtpVerify({ staff }) {
             {loading
               ? <span className="inline-flex items-center justify-center gap-2">
                   <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                  Verifying…
+                  {t("auth.verifying")}
                 </span>
-              : "Verify & Continue →"}
+              : t("auth2.verifyContinue")}
           </button>
 
           {/* Resend / countdown */}
           <div className="mt-4 text-center">
             {countdown > 0 ? (
               <p className="text-xs text-slate-500">
-                Resend code in {countdown}s
+                {t("auth2.resendIn", { n: countdown })}
               </p>
             ) : (
               <button
@@ -244,7 +246,7 @@ export default function StaffOtpVerify({ staff }) {
                   <path strokeLinecap="round" strokeLinejoin="round"
                     d="M4 4v5h5M20 20v-5h-5M4 9a8 8 0 0114.93-2M20 15a8 8 0 01-14.93 2" />
                 </svg>
-                Resend verification code
+                {t("auth2.resendVerification")}
               </button>
             )}
           </div>
@@ -252,7 +254,7 @@ export default function StaffOtpVerify({ staff }) {
 
         {/* Tip */}
         <p className="text-center text-xs mt-4 text-slate-500">
-          Check your spam folder if you don't see the email.
+          {t("auth2.spamTip")}
         </p>
 
         {/* Sign out */}
@@ -260,7 +262,7 @@ export default function StaffOtpVerify({ staff }) {
           onClick={() => supabase.auth.signOut()}
           className="w-full text-center text-xs mt-3 transition-colors text-slate-500 dark:text-slate-400 bg-transparent border-0 cursor-pointer"
         >
-          Sign out
+          {t("auth2.signOut")}
         </button>
     </AuthShell>
   );

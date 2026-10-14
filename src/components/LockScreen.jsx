@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import ForgotPinFlow from "./ForgotPinFlow";
+import { useT, tNow } from "../contexts/LanguageContext";
 
 const shakeCSS = `
 @keyframes shake {
@@ -49,15 +50,16 @@ const BackspaceIcon = () => (
   </svg>
 );
 
-function computeLockedMsg(data) {
-  if (!data?.lockedUntil) return "Too many attempts. Try again later.";
+function computeLockedMsg(data, t) {
+  if (!data?.lockedUntil) return t("settings.pin.err.lockedLater");
   const ms = new Date(data.lockedUntil) - Date.now();
-  if (ms <= 0) return "Too many attempts. Try again shortly.";
+  if (ms <= 0) return t("settings.pin.err.lockedShortly");
   const mins = Math.ceil(ms / 60000);
-  return `Too many attempts. Try again in ${mins} minute${mins === 1 ? "" : "s"}.`;
+  return t(mins === 1 ? "settings.pin.err.lockedMinute" : "settings.pin.err.lockedMinutes", { n: mins });
 }
 
 export default function LockScreen({ pinLock, businessName, avatarUrl }) {
+  const t = useT();
   const maxLen = 6;
 
   const [pin,            setPin]            = useState("");
@@ -83,7 +85,7 @@ export default function LockScreen({ pinLock, businessName, avatarUrl }) {
       if (d?.noLocalPin) {
         triggerShake();
         setPin("");
-        setError("You're offline. Connect to the internet to unlock.");
+        setError(tNow("settings.pin.lock.offline"));
         return;
       }
 
@@ -102,15 +104,17 @@ export default function LockScreen({ pinLock, businessName, avatarUrl }) {
         return;
       }
       if (d?.locked) {
-        setError(computeLockedMsg(d));
+        setError(computeLockedMsg(d, tNow));
         return;
       }
       const left = d?.attemptsLeft ?? "";
-      setError(`Incorrect PIN.${left ? ` ${left} attempt${left === 1 ? "" : "s"} remaining.` : ""}`);
+      setError(left
+        ? tNow(left === 1 ? "settings.pin.err.incorrectOne" : "settings.pin.err.incorrectMany", { n: left })
+        : tNow("settings.pin.err.incorrect"));
     } catch {
       triggerShake();
       setPin("");
-      setError("Something went wrong. Try again.");
+      setError(tNow("settings.pin.err.somethingWrong"));
     }
   }, [pinLock, triggerShake]);
 
@@ -135,7 +139,7 @@ export default function LockScreen({ pinLock, businessName, avatarUrl }) {
     setError("");
     const ok = await pinLock.unlockWithBiometric();
     setBioLoading(false);
-    if (!ok) setError("Biometric failed. Use your PIN instead.");
+    if (!ok) setError(t("settings.pin.lock.bioFailed"));
   };
 
   const handleForgotPin = () => setShowForgotPin(true);
@@ -170,10 +174,10 @@ export default function LockScreen({ pinLock, businessName, avatarUrl }) {
           maxWidth: 320, width: "100%", textAlign: "center",
         }}>
           <p className="text-red-400 text-[20px] font-bold mb-3">
-            Account Locked
+            {t("settings.pin.lock.accountLocked")}
           </p>
           <p className="text-white/65" style={{ fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
-            Too many failed attempts. Please sign out and sign in again to continue.
+            {t("settings.pin.lock.reauthBody")}
           </p>
           <button
             onClick={handleSignOut}
@@ -184,7 +188,7 @@ export default function LockScreen({ pinLock, businessName, avatarUrl }) {
               fontSize: 14, cursor: "pointer", width: "100%", opacity: signingOut ? 0.6 : 1,
             }}
           >
-            {signingOut ? "Signing out…" : "Sign Out"}
+            {signingOut ? t("settings.pin.lock.signingOut") : t("settings.pin.lock.signOut")}
           </button>
         </div>
       </div>
@@ -208,10 +212,10 @@ export default function LockScreen({ pinLock, businessName, avatarUrl }) {
         <ProfileAvatar avatarUrl={avatarUrl} name={businessName} />
         <div style={{ textAlign: "center", padding: "0 24px" }}>
           <p style={{ color: "white", fontSize: 20, fontWeight: 700, lineHeight: 1.3 }}>
-            {`Welcome back${businessName ? ", " + businessName : ""}`}
+            {businessName ? t("settings.pin.lock.welcomeBackName", { name: businessName }) : t("settings.pin.lock.welcomeBack")}
           </p>
           <p className="text-white/60" style={{ fontSize: 13, marginTop: 6 }}>
-            Enter your app lock PIN to continue
+            {t("settings.pin.lock.enterPin")}
           </p>
         </div>
       </div>
@@ -317,12 +321,12 @@ export default function LockScreen({ pinLock, businessName, avatarUrl }) {
       <div style={{ paddingBottom: 32, display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
         {showBio && (
           <p className="text-white/30" style={{ fontSize: 11, textAlign: "center", padding: "0 24px" }}>
-            Tap the fingerprint icon above to use face or fingerprint unlock
+            {t("settings.pin.lock.bioTip")}
           </p>
         )}
         <button onClick={handleForgotPin}
           className="text-white/40" style={{ background: "none", border: "none", fontSize: 13, cursor: "pointer", padding: "12px 20px" }}>
-          Forgot PIN?
+          {t("settings.pin.lock.forgot")}
         </button>
       </div>
     </div>

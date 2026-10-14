@@ -10,15 +10,20 @@ import {
   FundWalletSheet, TransferSheet, ReceivePaymentSheet,
 } from "../components/WalletPanel";
 import WalletMigrationCard from "../components/WalletMigrationCard";
-import WalletIdFields from "../components/WalletIdFields";
+import WalletIdFields, { walletIdErrorText } from "../components/WalletIdFields";
 import { walletIdError } from "../utils/walletId";
 import TransactionDetailModal from "../components/shared/TransactionDetailModal";
 import { fmt } from "../utils/helpers";
 import { bizFromProfile } from "../utils/receiptConfig";
+import { useT } from "../contexts/LanguageContext";
+
+// how often a repeat transfer runs (stored value → label key)
+const FREQ_KEYS = { daily: "wallet.freq.daily", weekly: "wallet.freq.weekly", monthly: "wallet.freq.monthly" };
 
 export default function Wallet({ session, store }) {
   const userId = session?.user?.id || null;
   const navigate = useNavigate();
+  const t = useT();
   const { walletEnabled, walletTestMode, configLoading, bvnVerificationEnabled } = usePlatformConfig();
   const w = useWallet(userId, walletEnabled);
   const bvnVerify = useBvnVerification(w);
@@ -43,7 +48,7 @@ export default function Wallet({ session, store }) {
   const activate = async () => {
     setErr("");
     const idErr = walletIdError(bvn, nin, walletTestMode);
-    if (idErr) { setErr(idErr); return; }
+    if (idErr) { setErr(walletIdErrorText(idErr, t)); return; }
     setActivating(true);
     try {
       // Real BVN verification (bvnVerify) is temporarily not required before
@@ -54,7 +59,7 @@ export default function Wallet({ session, store }) {
       // below still uses bvnVerify directly, for anyone who wants to try.
       await w.provisionAccount(bvn, nin, selfie);
     } catch (e) {
-      setErr(e.message || "Could not activate wallet");
+      setErr(e.message || t("wallet.err.activate"));
     } finally {
       setActivating(false);
     }
@@ -64,21 +69,21 @@ export default function Wallet({ session, store }) {
   // just runs the BVN consent flow again and refreshes bvn_verified.
   const doReverify = async () => {
     setReverifyErr("");
-    if (!/^\d{11}$/.test(reverifyBvn)) { setReverifyErr("Enter your 11-digit BVN"); return; }
+    if (!/^\d{11}$/.test(reverifyBvn)) { setReverifyErr(t("wallet.reverify.enterBvn")); return; }
     setReverifyBusy(true);
     try {
       const status = bvnVerify.pending ? await bvnVerify.checkAgain() : await bvnVerify.verify(reverifyBvn);
       if (!status.verified) {
         setReverifyErr(status.error || (status.pending
-          ? "Still processing — tap Reverify again in a moment."
-          : "BVN verification did not complete. Please try again."));
+          ? t("wallet.reverify.stillProcessing")
+          : t("wallet.reverify.incomplete")));
         return;
       }
       await w.refresh();
       setShowReverify(false);
       setReverifyBvn("");
     } catch (e) {
-      setReverifyErr(e.message || "Could not verify your BVN");
+      setReverifyErr(e.message || t("wallet.reverify.failed"));
     } finally {
       setReverifyBusy(false);
     }
@@ -91,7 +96,7 @@ export default function Wallet({ session, store }) {
           <button onClick={() => navigate(-1)} className="w-9 h-9 -ml-1 flex items-center justify-center rounded-full">
             <Icon name="chevron-left" size={20} className="text-slate-500 dark:text-slate-400" />
           </button>
-          <h1 className="text-[17px] font-bold text-slate-800 dark:text-slate-100">Wallet</h1>
+          <h1 className="text-[17px] font-bold text-slate-800 dark:text-slate-100">{t("wallet.title")}</h1>
         </div>
         <div className="px-4 space-y-4">
           <div className="h-[168px] rounded-3xl bg-slate-100 dark:bg-slate-800 animate-pulse" />
@@ -105,7 +110,7 @@ export default function Wallet({ session, store }) {
     return (
       <div className="p-8 text-center">
         <Icon name="wallet" size={40} className="mx-auto text-slate-300 dark:text-slate-600 mb-3" />
-        <p className="text-sm text-slate-500 dark:text-slate-400">The wallet isn't available yet.</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400">{t("wallet.unavailable")}</p>
       </div>
     );
   }
@@ -119,9 +124,9 @@ export default function Wallet({ session, store }) {
         <button onClick={() => navigate(-1)} className="w-9 h-9 -ml-1 flex items-center justify-center rounded-full active:bg-slate-100 dark:active:bg-slate-800">
           <Icon name="chevron-left" size={20} className="text-slate-600 dark:text-slate-300" />
         </button>
-        <h1 className="text-[18px] font-extrabold text-slate-900 dark:text-slate-50">Wallet</h1>
+        <h1 className="text-[18px] font-extrabold text-slate-900 dark:text-slate-50">{t("wallet.title")}</h1>
         {walletTestMode && (
-          <span className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400">TEST</span>
+          <span className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400">{t("wallet.testBadge")}</span>
         )}
       </div>
 
@@ -133,7 +138,7 @@ export default function Wallet({ session, store }) {
           <div className="absolute -bottom-16 -left-10 w-52 h-52 rounded-full bg-white/[0.05]" />
           <div className="relative">
             <div className="flex items-center justify-between">
-              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/55">Available balance</p>
+              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/55">{t("wallet.availableBalance")}</p>
               <button onClick={toggleHidden} className="w-9 h-9 -mr-1.5 -mt-1 flex items-center justify-center rounded-xl bg-white/10 active:bg-white/20">
                 <Icon name="eye" size={14} className="text-white" />
               </button>
@@ -154,22 +159,21 @@ export default function Wallet({ session, store }) {
             <div className="w-14 h-14 rounded-2xl bg-brand-50 dark:bg-brand-900/30 flex items-center justify-center mx-auto mb-3">
               <Icon name="wallet" size={24} className="text-brand-600 dark:text-brand-400" />
             </div>
-            <p className="text-[15px] font-extrabold text-slate-900 dark:text-slate-50 mb-1 text-center">Activate your wallet</p>
+            <p className="text-[15px] font-extrabold text-slate-900 dark:text-slate-50 mb-1 text-center">{t("wallet.activate.title")}</p>
             <p className="text-[12px] text-slate-500 dark:text-slate-400 mb-5 text-center leading-relaxed">
-              Get a dedicated account number. Fund it and get paid into it free, transfer out at low fees, and pay bills.
+              {t("wallet.activate.body")}
             </p>
             {!walletTestMode && (
               <div className="space-y-3 mb-4">
                 <WalletIdFields bvn={bvn} nin={nin} onBvn={setBvn} onNin={setNin} selfie={selfie} onSelfie={setSelfie} inputClass={idInput} />
                 <p className="text-[11px] text-slate-400 leading-relaxed">
-                  Your BVN or NIN opens your account with our banking partner and isn't stored by KudiAI.
-                  The name and date of birth on it must match your profile.
+                  {t("wallet.activate.idNote")}
                 </p>
               </div>
             )}
             <button onClick={activate} disabled={activating || w.busy}
               className="w-full bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white font-bold rounded-2xl py-4 text-[15px] transition-colors">
-              {activating || w.busy ? "Activating…" : "Activate wallet"}
+              {activating || w.busy ? t("wallet.activating") : t("wallet.activateBtn")}
             </button>
           </div>
         ) : (
@@ -179,24 +183,24 @@ export default function Wallet({ session, store }) {
 
             {bvnVerificationEnabled && !w.bvnVerified && !walletTestMode && (
               <div className="rounded-2xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-4 py-3.5">
-                <p className="text-[12.5px] font-bold text-amber-700 dark:text-amber-300">Please reverify your BVN</p>
+                <p className="text-[12.5px] font-bold text-amber-700 dark:text-amber-300">{t("wallet.reverify.title")}</p>
                 <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5 leading-relaxed">
-                  We've added real BVN verification for wallet security. Your wallet keeps working normally, but please reverify to stay in good standing.
+                  {t("wallet.reverify.body")}
                 </p>
                 {!showReverify ? (
                   <button onClick={() => setShowReverify(true)}
                     className="mt-2.5 w-full py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold text-[12.5px] transition active:scale-[0.99]">
-                    Reverify now
+                    {t("wallet.reverify.now")}
                   </button>
                 ) : (
                   <div className="mt-3 space-y-2">
                     <input inputMode="numeric" value={reverifyBvn}
                       onChange={(e) => setReverifyBvn(e.target.value.replace(/\D/g, "").slice(0, 11))}
-                      placeholder="11-digit BVN" className={idInput} />
+                      placeholder={t("wallet.id.bvnPlaceholder")} className={idInput} />
                     {reverifyErr && <p className="text-[11px] text-red-500">{reverifyErr}</p>}
                     <button onClick={doReverify} disabled={reverifyBusy}
                       className="w-full py-2.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-xl font-bold text-[12.5px] transition active:scale-[0.99]">
-                      {reverifyBusy ? "Verifying…" : "Submit"}
+                      {reverifyBusy ? t("wallet.verifying") : t("wallet.submit")}
                     </button>
                   </div>
                 )}
@@ -206,11 +210,11 @@ export default function Wallet({ session, store }) {
             {/* quick actions */}
             <div className="rounded-3xl bg-white dark:bg-slate-800 shadow-card border border-slate-100 dark:border-slate-700/60 p-4">
               <div className="flex items-start gap-1">
-                <ActionButton icon="plus"       label="Fund wallet" onClick={() => setSheet("fund")} />
-                <ActionButton icon="send"       label="Transfer"    onClick={() => setSheet("transfer")} />
-                <ActionButton icon="arrow-down" label="Receive"     onClick={() => setSheet("receive")} />
-                <ActionButton icon="bills"      label="Pay bills"   onClick={() => navigate("/bills")} tone="slate" />
-                <ActionButton icon="card"       label="Cards"       tone="slate" disabled badge="Soon" />
+                <ActionButton icon="plus"       label={t("wallet.action.fund")} onClick={() => setSheet("fund")} />
+                <ActionButton icon="send"       label={t("wallet.action.transfer")}onClick={() => setSheet("transfer")} />
+                <ActionButton icon="arrow-down" label={t("wallet.action.receive")}onClick={() => setSheet("receive")} />
+                <ActionButton icon="bills"      label={t("wallet.action.payBills")}onClick={() => navigate("/bills")} tone="slate" />
+                <ActionButton icon="card"       label={t("wallet.action.cards")} tone="slate" disabled badge={t("wallet.action.soon")} />
               </div>
             </div>
 
@@ -219,7 +223,7 @@ export default function Wallet({ session, store }) {
                 className="w-full flex items-center gap-2.5 rounded-2xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-4 py-3 text-left">
                 <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />
                 <span className="text-[12px] text-amber-700 dark:text-amber-400 flex-1">
-                  Awaiting a <b>{fmt(w.payRequest.amount_kobo / 100)}</b> payment{w.payRequest.customer_name ? ` from ${w.payRequest.customer_name}` : ""}
+                  {t("wallet.awaitingA")} <b>{fmt(w.payRequest.amount_kobo / 100)}</b> {t("wallet.awaitingB")}{w.payRequest.customer_name ? t("wallet.awaitingFrom", { name: w.payRequest.customer_name }) : ""}
                 </span>
                 <Icon name="chevron-right" size={14} className="text-amber-400" />
               </button>
@@ -228,7 +232,7 @@ export default function Wallet({ session, store }) {
             {/* scheduled transfers */}
             {w.scheduledTransfers.length > 0 && (
               <div className="rounded-3xl bg-white dark:bg-slate-800 shadow-card border border-slate-100 dark:border-slate-700/60 p-4">
-                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400 mb-2">Repeat transfers</p>
+                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400 mb-2">{t("wallet.repeatTransfers")}</p>
                 <div className="divide-y divide-slate-100 dark:divide-slate-800">
                   {w.scheduledTransfers.filter(s => s.status !== "cancelled").map((s) => (
                     <div key={s.id} className="py-3 flex items-center gap-3">
@@ -238,15 +242,15 @@ export default function Wallet({ session, store }) {
                       <div className="flex-1 min-w-0">
                         <p className="text-[13px] font-bold text-slate-800 dark:text-slate-100 truncate">{s.account_name}</p>
                         <p className="text-[11px] text-slate-400 capitalize">
-                          {fmt(s.amount_kobo / 100)} · {s.frequency}
-                          {s.status === "paused" && <span className="text-amber-500 font-bold"> · Paused</span>}
+                          {fmt(s.amount_kobo / 100)} · {FREQ_KEYS[s.frequency] ? t(FREQ_KEYS[s.frequency]) : s.frequency}
+                          {s.status === "paused" && <span className="text-amber-500 font-bold"> · {t("wallet.paused")}</span>}
                         </p>
                         {s.status === "paused" && s.last_run_error && (
                           <p className="text-[10px] text-red-500 mt-0.5 truncate">{s.last_run_error}</p>
                         )}
                         {s.status === "active" && (
                           <p className="text-[10px] text-slate-400 mt-0.5">
-                            Next {new Date(s.next_run_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                            {t("wallet.nextRun", { date: new Date(s.next_run_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) })}
                           </p>
                         )}
                       </div>
@@ -254,12 +258,12 @@ export default function Wallet({ session, store }) {
                         <button
                           onClick={() => w.setScheduledTransferStatus(s.id, s.status === "active" ? "paused" : "active")}
                           className="text-[11px] font-bold text-brand-600 dark:text-brand-400 px-2 py-1">
-                          {s.status === "active" ? "Pause" : "Resume"}
+                          {s.status === "active" ? t("wallet.pause") : t("wallet.resume")}
                         </button>
                         <button
-                          onClick={() => { if (window.confirm(`Cancel this repeat transfer to ${s.account_name}?`)) w.setScheduledTransferStatus(s.id, "cancelled"); }}
+                          onClick={() => { if (window.confirm(t("wallet.cancelRepeatConfirm", { name: s.account_name }))) w.setScheduledTransferStatus(s.id, "cancelled"); }}
                           className="text-[11px] font-bold text-red-500 px-2 py-1">
-                          Cancel
+                          {t("common.cancel")}
                         </button>
                       </div>
                     </div>
@@ -271,15 +275,15 @@ export default function Wallet({ session, store }) {
             {/* transactions */}
             <div className="rounded-3xl bg-white dark:bg-slate-800 shadow-card border border-slate-100 dark:border-slate-700/60 p-4">
               <div className="flex items-center justify-between mb-1">
-                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Transactions</p>
+                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">{t("wallet.transactions")}</p>
                 {w.ledger.length > 0 && (
                   <button onClick={() => navigate("/wallet/statement")} className="text-[11px] font-bold text-brand-600 dark:text-brand-400">
-                    Statement →
+                    {t("wallet.statementLink")}
                   </button>
                 )}
               </div>
               {w.ledger.length === 0 ? (
-                <p className="text-[13px] text-slate-400 py-8 text-center">No wallet activity yet.</p>
+                <p className="text-[13px] text-slate-400 py-8 text-center">{t("wallet.noActivity")}</p>
               ) : (
                 <div className="divide-y divide-slate-100 dark:divide-slate-800">
                   {w.ledger.map((row) => <WalletTxRow key={row.id} row={row} entry={w.entryFor(row)} hidden={hidden} onOpen={openReceipt} />)}

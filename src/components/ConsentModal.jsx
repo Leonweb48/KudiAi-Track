@@ -2,13 +2,15 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../utils/supabase";
 import { sanitizeHtml } from "../utils/sanitizeHtml";
+import { useT } from "../contexts/LanguageContext";
 
 /* ── Inner document viewer (bottom-sheet style) ──────────────────────── */
 function LegalViewerModal({ doc, onClose }) {
+  const t = useT();
   if (!doc) return null;
   const title = doc.type === "tnc"
-    ? `Terms & Conditions — Version ${doc.version}`
-    : `Privacy Policy — Version ${doc.version}`;
+    ? t("settings.kyc.legal.tncTitle", { version: doc.version })
+    : t("settings.kyc.legal.privacyTitle", { version: doc.version });
 
   return (
     <div className="fixed inset-0 z-[100] bg-slate-900/80 flex items-end justify-center">
@@ -19,7 +21,7 @@ function LegalViewerModal({ doc, onClose }) {
           <button
             onClick={onClose}
             className="w-8 h-8 flex items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 flex-shrink-0"
-            aria-label="Close"
+            aria-label={t("common.close")}
           >
             <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
               <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -85,6 +87,7 @@ function Checkbox({ checked, onChange }) {
 
 /* ── Main export ─────────────────────────────────────────────────────── */
 export default function ConsentModal({ userId, onGranted, isReConsent = false, changeSummary = null }) {
+  const t = useT();
   const [tncDoc,      setTncDoc]      = useState(null);
   const [privacyDoc,  setPrivacyDoc]  = useState(null);
   const [loading,     setLoading]     = useState(true);
@@ -174,20 +177,20 @@ export default function ConsentModal({ userId, onGranted, isReConsent = false, c
             {isReConsent ? (
               <>
                 <h2 className="text-xl font-extrabold text-slate-900 dark:text-white">
-                  We've Updated Our Terms
+                  {t("settings.kyc.legal.updatedTitle")}
                 </h2>
                 <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 leading-relaxed max-w-xs">
                   {changeSummary ||
-                    "Our Terms & Conditions and Privacy Policy have been updated. Please review and re-accept to continue."}
+                    t("settings.kyc.legal.updatedBody")}
                 </p>
               </>
             ) : (
               <>
                 <h2 className="text-xl font-extrabold text-slate-900 dark:text-white">
-                  One Last Step
+                  {t("settings.kyc.legal.lastStep")}
                 </h2>
                 <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 leading-relaxed max-w-xs">
-                  Please review and accept our legal documents to continue.
+                  {t("settings.kyc.legal.reviewBody")}
                 </p>
               </>
             )}
@@ -200,13 +203,13 @@ export default function ConsentModal({ userId, onGranted, isReConsent = false, c
               <div className="flex items-start gap-3 p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600">
                 <Checkbox checked={tncChecked} onChange={() => setTncChecked(v => !v)} />
                 <p className="text-[13px] text-slate-700 dark:text-slate-200 leading-snug">
-                  I have read and agree to the{" "}
+                  {t("settings.kyc.legal.agreeTo")}{" "}
                   <button
                     onClick={() => setViewer(tncDoc)}
                     className="font-semibold text-green-600 dark:text-green-400 underline underline-offset-2"
                     type="button"
                   >
-                    Terms & Conditions (v{tncDoc.version})
+                    {t("settings.kyc.legal.tncLink", { version: tncDoc.version })}
                   </button>
                 </p>
               </div>
@@ -217,13 +220,13 @@ export default function ConsentModal({ userId, onGranted, isReConsent = false, c
               <div className="flex items-start gap-3 p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600">
                 <Checkbox checked={privChecked} onChange={() => setPrivChecked(v => !v)} />
                 <p className="text-[13px] text-slate-700 dark:text-slate-200 leading-snug">
-                  I have read and understand the{" "}
+                  {t("settings.kyc.legal.understand")}{" "}
                   <button
                     onClick={() => setViewer(privacyDoc)}
                     className="font-semibold text-green-600 dark:text-green-400 underline underline-offset-2"
                     type="button"
                   >
-                    Privacy Policy (v{privacyDoc.version})
+                    {t("settings.kyc.legal.privacyLink", { version: privacyDoc.version })}
                   </button>
                 </p>
               </div>
@@ -241,11 +244,11 @@ export default function ConsentModal({ userId, onGranted, isReConsent = false, c
                 : "bg-slate-300 dark:bg-slate-600 opacity-40 cursor-not-allowed"
             }`}
           >
-            {saving ? "Saving…" : "Agree and Continue"}
+            {saving ? t("common.saving") : t("settings.kyc.legal.agreeContinue")}
           </button>
 
           <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center mt-3">
-            You must accept both documents to use KudiAI
+            {t("settings.kyc.legal.mustAccept")}
           </p>
         </div>
       </div>

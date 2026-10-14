@@ -6,8 +6,14 @@ import { useState, useRef, useCallback } from "react";
 import { supabase } from "../../utils/supabase";
 import { uploadAvatar } from "../../screens/staff/StaffShared";
 import Field from "./Field";
+import { useT } from "../../contexts/LanguageContext";
 
 const GK = "#3DA829";
+
+// Stored role / status / module ids stay as they are; only the label shown is translated (unknown ids show as before).
+const ROLE_KEYS = ["cashier", "sales_officer", "credit_officer", "aso_collector", "manager", "branch_manager"];
+const STATUS_KEYS = ["active", "inactive", "suspended"];
+const MODULE_KEYS = ["transactions", "bills", "credit", "aso", "inventory", "insights", "invoices", "refunds", "discounts"];
 
 const base =
   "w-full border rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-700 dark:text-white " +
@@ -30,13 +36,14 @@ function SectionLabel({ children }) {
 }
 
 function ReadOnlyField({ label, value, note }) {
+  const t = useT();
   return (
     <div className="mb-3">
       <label className="flex items-center gap-1.5 mb-1 text-xs font-semibold text-slate-500 dark:text-slate-400 tracking-wide uppercase">
         {label} <LockIcon />
       </label>
       <div className={`${base} text-slate-400 cursor-not-allowed bg-slate-50 dark:bg-slate-800 select-none`}>
-        {value || <span className="italic text-slate-300 dark:text-slate-600">Not set</span>}
+        {value || <span className="italic text-slate-300 dark:text-slate-600">{t("settings.acct.pe.notSet")}</span>}
       </div>
       {note && (
         <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500 italic px-1">{note}</p>
@@ -47,6 +54,7 @@ function ReadOnlyField({ label, value, note }) {
 
 // ── Email change sub-flow ────────────────────────────────────────────────────
 function EmailChangeFlow({ currentEmail, onSuccess, onCancel }) {
+  const t = useT();
   const [step,    setStep]    = useState("input"); // input | otp | success
   const [newEmail, setNewEmail] = useState("");
   const [otp,     setOtp]     = useState("");
@@ -56,13 +64,13 @@ function EmailChangeFlow({ currentEmail, onSuccess, onCancel }) {
 
   const startResendCd = useCallback(() => {
     setResendCd(60);
-    const t = setInterval(() => {
-      setResendCd(p => { if (p <= 1) { clearInterval(t); return 0; } return p - 1; });
+    const iv = setInterval(() => {
+      setResendCd(p => { if (p <= 1) { clearInterval(iv); return 0; } return p - 1; });
     }, 1000);
   }, []);
 
   const requestChange = async () => {
-    if (!newEmail.includes("@")) { setError("Enter a valid email address"); return; }
+    if (!newEmail.includes("@")) { setError(t("settings.acct.pe.invalidEmail")); return; }
     setLoading(true); setError("");
     const { data, error: err } = await supabase.functions.invoke("manage-staff-profile", {
       body: { action: "request_email_change", new_email: newEmail },
@@ -73,7 +81,7 @@ function EmailChangeFlow({ currentEmail, onSuccess, onCancel }) {
   };
 
   const verifyChange = async () => {
-    if (otp.length !== 6) { setError("Enter the 6-digit code from your email"); return; }
+    if (otp.length !== 6) { setError(t("settings.acct.pe.enterCode")); return; }
     setLoading(true); setError("");
     const { data, error: err } = await supabase.functions.invoke("manage-staff-profile", {
       body: { action: "verify_email_change", otp },
@@ -89,17 +97,17 @@ function EmailChangeFlow({ currentEmail, onSuccess, onCancel }) {
   return (
     <div className="bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <p className="text-sm font-bold text-slate-700 dark:text-slate-200">Change Email</p>
-        <button onClick={onCancel} className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">Cancel</button>
+        <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{t("settings.acct.pe.changeEmail")}</p>
+        <button onClick={onCancel} className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">{t("common.cancel")}</button>
       </div>
 
       {step === "input" && (
         <>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Current: <span className="font-semibold text-slate-700 dark:text-slate-200">{currentEmail}</span>
+            {t("settings.acct.pe.current")} <span className="font-semibold text-slate-700 dark:text-slate-200">{currentEmail}</span>
           </p>
           <input
-            type="email" placeholder="New email address" value={newEmail}
+            type="email" placeholder={t("settings.acct.pe.newEmailPh")} value={newEmail}
             onChange={e => setNewEmail(e.target.value)}
             className={base}
           />
@@ -108,7 +116,7 @@ function EmailChangeFlow({ currentEmail, onSuccess, onCancel }) {
             className="w-full h-10 rounded-xl text-white text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50 transition"
             style={{ backgroundColor: GK }}>
             {loading && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-            {loading ? "Sending…" : "Send Verification Code"}
+            {loading ? t("settings.acct.pe.sending") : t("settings.acct.pe.sendCode")}
           </button>
         </>
       )}
@@ -116,10 +124,10 @@ function EmailChangeFlow({ currentEmail, onSuccess, onCancel }) {
       {step === "otp" && (
         <>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            A 6-digit code was sent to <span className="font-semibold text-slate-700 dark:text-slate-200">{newEmail}</span>
+            {t("settings.acct.pe.codeSentTo")} <span className="font-semibold text-slate-700 dark:text-slate-200">{newEmail}</span>
           </p>
           <input
-            type="text" inputMode="numeric" maxLength={6} placeholder="Enter 6-digit code"
+            type="text" inputMode="numeric" maxLength={6} placeholder={t("settings.acct.pe.codePh")}
             value={otp} onChange={e => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
             className={`${base} tracking-widest text-center text-lg font-bold`}
           />
@@ -128,11 +136,11 @@ function EmailChangeFlow({ currentEmail, onSuccess, onCancel }) {
             className="w-full h-10 rounded-xl text-white text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50 transition"
             style={{ backgroundColor: GK }}>
             {loading && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-            {loading ? "Verifying…" : "Confirm Email Change"}
+            {loading ? t("settings.acct.pe.verifying") : t("settings.acct.pe.confirmChange")}
           </button>
           <button onClick={() => { if (resendCd === 0) requestChange(); }} disabled={resendCd > 0}
             className="w-full text-xs text-center text-slate-400 disabled:text-slate-300">
-            {resendCd > 0 ? `Resend in ${resendCd}s` : "Resend code"}
+            {resendCd > 0 ? t("settings.acct.pe.resendIn", { n: resendCd }) : t("settings.acct.pe.resendCode")}
           </button>
         </>
       )}
@@ -142,7 +150,7 @@ function EmailChangeFlow({ currentEmail, onSuccess, onCancel }) {
           <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke={GK} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
             <path d="M20 6L9 17l-5-5" />
           </svg>
-          <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">Email changed successfully</p>
+          <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">{t("settings.acct.pe.emailChanged")}</p>
         </div>
       )}
     </div>
@@ -151,6 +159,7 @@ function EmailChangeFlow({ currentEmail, onSuccess, onCancel }) {
 
 // ── Main ProfileEdit component ───────────────────────────────────────────────
 export default function ProfileEdit({ staff, session, livePerms = [], onBack, onSaved }) {
+  const t = useT();
   const initials = (staff?.full_name || "S").split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
 
   const [form, setForm] = useState({
@@ -164,6 +173,7 @@ export default function ProfileEdit({ staff, session, livePerms = [], onBack, on
   const [photoPreview, setPhotoPreview] = useState(null);
   const [saving,       setSaving]       = useState(false);
   const [saveMsg,      setSaveMsg]      = useState("");
+  const [saveOk,       setSaveOk]       = useState(false); // was saveMsg.includes("saved"); a flag so it works in every language
   const [showEmail,    setShowEmail]    = useState(false);
   const [currentEmail, setCurrentEmail] = useState(staff?.email || session?.user?.email || "");
   const fileRef = useRef(null);
@@ -187,7 +197,7 @@ export default function ProfileEdit({ staff, session, livePerms = [], onBack, on
   }, [staff]);
 
   const save = async () => {
-    setSaving(true); setSaveMsg("");
+    setSaving(true); setSaveMsg(""); setSaveOk(false);
     try {
       const patches = { ...form };
       let avatarUrl = staff?.profile_image_url;
@@ -210,11 +220,11 @@ export default function ProfileEdit({ staff, session, livePerms = [], onBack, on
       await notifyChanges(patches);
 
       setPhotoFile(null); setPhotoPreview(null);
-      setSaveMsg("Profile saved!");
+      setSaveMsg(t("profile.saved")); setSaveOk(true);
       onSaved?.({ ...patches, profile_image_url: avatarUrl });
       setTimeout(() => { setSaveMsg(""); onBack?.(); }, 1500);
     } catch (err) {
-      setSaveMsg(err?.message || "Save failed. Please try again.");
+      setSaveMsg(err?.message || t("settings.acct.pe.saveFailed")); setSaveOk(/saved/.test(err?.message || ""));
     }
     setSaving(false);
   };
@@ -224,8 +234,13 @@ export default function ProfileEdit({ staff, session, livePerms = [], onBack, on
 
   // Permissions summary
   const permsSummary = livePerms.length > 0
-    ? livePerms.map(p => `${p.module}${p.can_create ? " (create)" : " (view)"}`).join(", ")
-    : "No permissions assigned";
+    ? livePerms.map(p => {
+        const mod = MODULE_KEYS.includes(p.module) ? t(`settings.acct.pe.mod.${p.module}`) : p.module;
+        return p.can_create ? t("settings.acct.pe.permCreate", { module: mod }) : t("settings.acct.pe.permView", { module: mod });
+      }).join(", ")
+    : t("settings.acct.pe.noPerms");
+  const roleLabel = ROLE_KEYS.includes(staff?.role) ? t(`settings.acct.pe.roleVal.${staff.role}`) : (staff?.role || "").replace(/_/g, " ");
+  const statusLabel = STATUS_KEYS.includes(staff?.status) ? t(`settings.acct.pe.statusVal.${staff.status}`) : staff?.status;
 
   return (
     <div className="h-full flex flex-col">
@@ -237,7 +252,7 @@ export default function ProfileEdit({ staff, session, livePerms = [], onBack, on
             <path d="M19 12H5" /><path d="M12 19l-7-7 7-7" />
           </svg>
         </button>
-        <h1 className="flex-1 text-[17px] font-extrabold text-slate-800 dark:text-slate-100 truncate">Edit Profile</h1>
+        <h1 className="flex-1 text-[17px] font-extrabold text-slate-800 dark:text-slate-100 truncate">{t("settings.acct.editProfile")}</h1>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-5 space-y-6 pb-8">
@@ -264,7 +279,7 @@ export default function ProfileEdit({ staff, session, livePerms = [], onBack, on
               </svg>
             </button>
           </div>
-          <p className="text-[11px] text-slate-400">Tap camera to change photo · JPG or PNG</p>
+          <p className="text-[11px] text-slate-400">{t("settings.acct.pe.photoHint")}</p>
           <input ref={fileRef} type="file" accept="image/*" className="hidden"
             onChange={e => {
               const f = e.target.files?.[0];
@@ -276,34 +291,34 @@ export default function ProfileEdit({ staff, session, livePerms = [], onBack, on
 
         {/* ── Read-only (owner-controlled) ── */}
         <div>
-          <SectionLabel>Owner-controlled (read-only)</SectionLabel>
-          <ReadOnlyField label="Full Name"    value={staff?.full_name}                           note="Contact your business owner to change this." />
-          <ReadOnlyField label="Role"         value={(staff?.role || "").replace(/_/g, " ")}     note="Contact your business owner to change this." />
-          <ReadOnlyField label="Status"       value={staff?.status}                              note="Contact your business owner to change this." />
+          <SectionLabel>{t("settings.acct.pe.ownerControlled")}</SectionLabel>
+          <ReadOnlyField label={t("profile.fullName")} value={staff?.full_name}                           note={t("settings.acct.pe.ownerNote")} />
+          <ReadOnlyField label={t("settings.acct.pe.role")} value={roleLabel} note={t("settings.acct.pe.ownerNote")} />
+          <ReadOnlyField label={t("settings.acct.pe.status")} value={statusLabel}                       note={t("settings.acct.pe.ownerNote")} />
           {branchLabel && (
-            <ReadOnlyField label="Branch"     value={staff?.branch_name || staff?.branch_id}    note="Contact your business owner to change this." />
+            <ReadOnlyField label={t("settings.acct.pe.branch")} value={staff?.branch_name || staff?.branch_id}    note={t("settings.acct.pe.ownerNote")} />
           )}
-          <ReadOnlyField label="Permissions"  value={permsSummary}                               note="Contact your business owner to change this." />
+          <ReadOnlyField label={t("settings.acct.pe.permissions")} value={permsSummary}                               note={t("settings.acct.pe.ownerNote")} />
         </div>
 
         {/* ── Editable contact info ── */}
         <div>
-          <SectionLabel>Contact Information</SectionLabel>
-          <Field label="Phone" type="tel" value={form.phone} onChange={field("phone")} placeholder="+234 800 000 0000" />
-          <Field label="Address" value={form.address} onChange={field("address")} placeholder="Home address" />
+          <SectionLabel>{t("settings.acct.pe.contactInfo")}</SectionLabel>
+          <Field label={t("settings.acct.phone")} type="tel" value={form.phone} onChange={field("phone")} placeholder="+234 800 000 0000" />
+          <Field label={t("profile.address")} value={form.address} onChange={field("address")} placeholder={t("settings.acct.pc.homeAddress")} />
         </div>
 
         {/* ── Next of Kin ── */}
         <div>
-          <SectionLabel>Next of Kin</SectionLabel>
-          <Field label="Name"         value={form.nok_name}         onChange={field("nok_name")}         placeholder="Full name" />
-          <Field label="Phone"        type="tel" value={form.nok_phone}  onChange={field("nok_phone")}  placeholder="+234 800 000 0000" />
-          <Field label="Relationship" value={form.nok_relationship} onChange={field("nok_relationship")} placeholder="e.g. Spouse, Parent, Sibling" />
+          <SectionLabel>{t("settings.acct.pe.nextOfKin")}</SectionLabel>
+          <Field label={t("common.name")} value={form.nok_name}         onChange={field("nok_name")}         placeholder={t("settings.acct.pe.fullNamePh")} />
+          <Field label={t("settings.acct.phone")} type="tel" value={form.nok_phone}  onChange={field("nok_phone")}  placeholder="+234 800 000 0000" />
+          <Field label={t("profile.nokRelation")} value={form.nok_relationship} onChange={field("nok_relationship")} placeholder={t("settings.acct.pe.relPh")} />
         </div>
 
         {/* ── Email (OTP-verified change) ── */}
         <div>
-          <SectionLabel>Email Address</SectionLabel>
+          <SectionLabel>{t("settings.acct.pe.emailAddress")}</SectionLabel>
           {!showEmail ? (
             <div className="mb-3">
               <div className={`${base} text-slate-400 flex items-center justify-between`}>
@@ -311,7 +326,7 @@ export default function ProfileEdit({ staff, session, livePerms = [], onBack, on
                 <button onClick={() => setShowEmail(true)}
                   className="text-xs font-bold ml-3 flex-shrink-0"
                   style={{ color: GK }}>
-                  Change
+                  {t("settings.acct.pe.change")}
                 </button>
               </div>
             </div>
@@ -327,9 +342,9 @@ export default function ProfileEdit({ staff, session, livePerms = [], onBack, on
         {/* ── Save / status ── */}
         {saveMsg && (
           <div
-            className={`flex items-center gap-2 px-4 py-3 rounded-xl ${saveMsg.includes("saved") ? "" : "bg-red-50 dark:bg-red-900/30 text-red-600"}`}
-            style={saveMsg.includes("saved") ? { backgroundColor: "#ecfdf5", color: GK } : {}}>
-            {saveMsg.includes("saved")
+            className={`flex items-center gap-2 px-4 py-3 rounded-xl ${saveOk ? "" : "bg-red-50 dark:bg-red-900/30 text-red-600"}`}
+            style={saveOk ? { backgroundColor: "#ecfdf5", color: GK } : {}}>
+            {saveOk
               ? <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
               : <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
             }
@@ -341,7 +356,7 @@ export default function ProfileEdit({ staff, session, livePerms = [], onBack, on
           className="w-full h-12 rounded-2xl text-white font-bold text-sm flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50"
           style={{ backgroundColor: GK }}>
           {saving && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-          {saving ? "Saving…" : "Save Changes"}
+          {saving ? t("common.saving") : t("settings.acct.pe.saveChanges")}
         </button>
       </div>
     </div>

@@ -1,14 +1,18 @@
 // Reusable period-filter chip row with optional custom date range.
 // Props: period, setPeriod, dateFrom, setDateFrom, dateTo, setDateTo
+import { useT } from "../../contexts/LanguageContext";
+
+// `label` is a translation key
 const CHIPS = [
-  { id: "all",    label: "All" },
-  { id: "today",  label: "Today" },
-  { id: "week",   label: "This week" },
-  { id: "month",  label: "This month" },
-  { id: "custom", label: "Custom" },
+  { id: "all",    label: "txn.all" },
+  { id: "today",  label: "common.today" },
+  { id: "week",   label: "sales.periodWeek" },
+  { id: "month",  label: "sales.periodMonth" },
+  { id: "custom", label: "sales.periodCustom" },
 ];
 
 export default function PeriodFilter({ period, setPeriod, dateFrom, setDateFrom, dateTo, setDateTo, className = "" }) {
+  const t = useT();
   return (
     <div className={className}>
       <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
@@ -21,7 +25,7 @@ export default function PeriodFilter({ period, setPeriod, dateFrom, setDateFrom,
                 ? "bg-brand-600 text-white shadow-sm"
                 : "bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400"
             }`}>
-            {c.label}
+            {t(c.label)}
           </button>
         ))}
       </div>

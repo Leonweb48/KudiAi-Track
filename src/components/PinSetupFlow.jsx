@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import PinDots from "./PinDots";
+import { useT, tNow } from "../contexts/LanguageContext";
 
 const BackspaceIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor"
@@ -26,13 +27,14 @@ function txnTooSimilarToApp(txnPin, appPin) {
 }
 
 const STEP_META = {
-  app_enter:   { title: "Create App Lock PIN",      desc: "6 digits — unlocks the app on any device", len: 6, phase: 1 },
-  app_confirm: { title: "Confirm App Lock PIN",      desc: "Re-enter your 6-digit PIN to confirm",     len: 6, phase: 1 },
-  txn_enter:   { title: "Create Transaction PIN",    desc: "4 digits — required to approve every payment", len: 4, phase: 2 },
-  txn_confirm: { title: "Confirm Transaction PIN",   desc: "Re-enter your 4-digit PIN to confirm",    len: 4, phase: 2 },
+  app_enter:   { titleKey: "settings.pin.title.createApp",  descKey: "settings.pin.setup.appEnterDesc",   len: 6, phase: 1 },
+  app_confirm: { titleKey: "settings.pin.title.confirmApp", descKey: "settings.pin.setup.appConfirmDesc", len: 6, phase: 1 },
+  txn_enter:   { titleKey: "settings.pin.title.createTxn",  descKey: "settings.pin.setup.txnEnterDesc",   len: 4, phase: 2 },
+  txn_confirm: { titleKey: "settings.pin.title.confirmTxn", descKey: "settings.pin.setup.txnConfirmDesc", len: 4, phase: 2 },
 };
 
 export default function PinSetupFlow({ pinLock }) {
+  const t = useT();
   const initialStep = !pinLock.appPinSet ? "app_enter" : "txn_enter";
 
   const [step,       setStep]       = useState(initialStep);
@@ -60,7 +62,7 @@ export default function PinSetupFlow({ pinLock }) {
       if (step === "app_enter") {
         if (isWeakPin(next)) {
           setPin("");
-          setError("PIN is too easy to guess. Try a less predictable combination.");
+          setError(tNow("settings.pin.setup.weak"));
           return;
         }
         setAppPin(next);
@@ -72,7 +74,7 @@ export default function PinSetupFlow({ pinLock }) {
       if (step === "app_confirm") {
         if (next !== appPin) {
           setPin("");
-          setError("PINs don't match. Start over.");
+          setError(tNow("settings.pin.setup.mismatch"));
           setStep("app_enter");
           setAppPin("");
           return;
@@ -83,7 +85,7 @@ export default function PinSetupFlow({ pinLock }) {
           await pinLock.setupAppPin(appPin);
         } catch (err) {
           setPin("");
-          setError(err?.message || "Failed to save PIN. Try again.");
+          setError(err?.message || tNow("settings.pin.setup.saveFailed"));
           setStep("app_enter");
           setAppPin("");
           setSaving(false);
@@ -98,12 +100,12 @@ export default function PinSetupFlow({ pinLock }) {
       if (step === "txn_enter") {
         if (isWeakPin(next)) {
           setPin("");
-          setError("PIN is too easy to guess. Try a less predictable combination.");
+          setError(tNow("settings.pin.setup.weak"));
           return;
         }
         if (txnTooSimilarToApp(next, appPin)) {
           setPin("");
-          setError("Transaction PIN is too similar to your app lock PIN.");
+          setError(tNow("settings.pin.setup.tooSimilar"));
           return;
         }
         setTxnPin(next);
@@ -115,7 +117,7 @@ export default function PinSetupFlow({ pinLock }) {
       if (step === "txn_confirm") {
         if (next !== txnPin) {
           setPin("");
-          setError("PINs don't match. Start over.");
+          setError(tNow("settings.pin.setup.mismatch"));
           setStep("txn_enter");
           setTxnPin("");
           return;
@@ -126,7 +128,7 @@ export default function PinSetupFlow({ pinLock }) {
           await pinLock.setupTxnPin(txnPin);
         } catch (err) {
           setPin("");
-          setError(err?.message || "Failed to save PIN. Try again.");
+          setError(err?.message || tNow("settings.pin.setup.saveFailed"));
           setStep("txn_enter");
           setTxnPin("");
           setSaving(false);
@@ -168,8 +170,8 @@ export default function PinSetupFlow({ pinLock }) {
         </div>
 
         <div className="text-center">
-          <p className="text-xl font-extrabold text-slate-900 dark:text-white leading-tight">{meta.title}</p>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{meta.desc}</p>
+          <p className="text-xl font-extrabold text-slate-900 dark:text-white leading-tight">{t(meta.titleKey)}</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t(meta.descKey)}</p>
         </div>
       </div>
 
@@ -181,7 +183,7 @@ export default function PinSetupFlow({ pinLock }) {
         {/* Error */}
         <div className="h-5 -mt-4">
           {error && <p className="text-xs font-semibold text-red-500 text-center">{error}</p>}
-          {saving && <p className="text-xs text-slate-400 text-center">Saving…</p>}
+          {saving && <p className="text-xs text-slate-400 text-center">{t("common.saving")}</p>}
         </div>
 
         {/* Spinner overlay when saving */}
@@ -218,13 +220,13 @@ export default function PinSetupFlow({ pinLock }) {
       <div className="pb-8 flex flex-col items-center gap-3 px-6">
         <button onClick={() => setShowWhy(v => !v)}
           className="text-[12px] text-slate-400 dark:text-slate-500 underline underline-offset-2">
-          Why do I need this?
+          {t("settings.pin.setup.why")}
         </button>
         {showWhy && (
           <div className="bg-slate-50 dark:bg-slate-800 rounded-xl p-4 text-[12px] text-slate-500 dark:text-slate-400 text-center leading-relaxed max-w-xs">
-            <strong className="text-slate-700 dark:text-slate-200">App Lock PIN</strong> prevents anyone who picks up your phone from accessing your business data.
+            <strong className="text-slate-700 dark:text-slate-200">{t("settings.pin.setup.whyAppName")}</strong> {t("settings.pin.setup.whyAppText")}
             <br /><br />
-            <strong className="text-slate-700 dark:text-slate-200">Transaction PIN</strong> is required every time you approve a payment or transfer — so your money is always protected even if someone unlocks the app.
+            <strong className="text-slate-700 dark:text-slate-200">{t("settings.pin.setup.whyTxnName")}</strong> {t("settings.pin.setup.whyTxnText")}
           </div>
         )}
       </div>

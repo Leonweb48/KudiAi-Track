@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Capacitor } from "@capacitor/core";
+import { useT } from "../contexts/LanguageContext";
 
 // A live, front-facing selfie for identity verification — NEVER a gallery photo (a photo of a photo defeats the point of a live check). Native: the
 // Capacitor Camera plugin, forced to the front camera, no gallery option. Web: getUserMedia + a live preview, captured to a canvas. Either way the
@@ -29,7 +30,8 @@ async function captureNative() {
 }
 
 /** value: the captured data URI, or "" / null when none yet. onCapture(dataUri) / onClear(): the screen owns the value, this component only captures. */
-export default function SelfieCapture({ value, onCapture, onClear, label = "Take a selfie", className = "" }) {
+export default function SelfieCapture({ value, onCapture, onClear, label, className = "" }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -45,7 +47,7 @@ export default function SelfieCapture({ value, onCapture, onClear, label = "Take
     if (isNative) {
       setBusy(true);
       try { onCapture(await captureNative()); }
-      catch (e) { if (!/cancell?ed/i.test(e?.message || "")) setError("Couldn't open the camera. Check that camera permission is allowed for the app."); }
+      catch (e) { if (!/cancell?ed/i.test(e?.message || "")) setError("native"); }
       finally { setBusy(false); }
       return;
     }
@@ -56,7 +58,7 @@ export default function SelfieCapture({ value, onCapture, onClear, label = "Take
       if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play(); }
     } catch (e) {
       setOpen(false);
-      setError(e?.name === "NotAllowedError" ? "Camera access was blocked. Allow camera access for this site and try again." : "Couldn't reach your camera. Try again, or use a different device.");
+      setError(e?.name === "NotAllowedError" ? "blocked" : "unreachable");
     } finally { setBusy(false); }
   };
 
@@ -71,15 +73,18 @@ export default function SelfieCapture({ value, onCapture, onClear, label = "Take
     stopStream(); setOpen(false); onCapture(dataUri);
   };
 
+  // error holds a code; the text is picked at render so it follows the chosen language
+  const errorText = { native: t("settings.kyc.selfie.errNative"), blocked: t("settings.kyc.selfie.errBlocked"), unreachable: t("settings.kyc.selfie.errUnreachable") }[error] || error;
+
   const cancel = () => { stopStream(); setOpen(false); };
   const retake = () => { setError(""); onClear?.(); start(); };
 
   if (value) {
     return (
       <div className={`flex items-center gap-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/60 px-3.5 py-3 ${className}`}>
-        <img src={value} alt="Your selfie" className="w-12 h-12 rounded-xl object-cover flex-shrink-0 border border-slate-200 dark:border-slate-600" />
-        <span className="flex-1 text-[13px] font-semibold text-slate-700 dark:text-slate-200">Selfie captured</span>
-        <button type="button" onClick={retake} className="text-[12px] font-semibold text-brand-600 dark:text-brand-400">Retake</button>
+        <img src={value} alt={t("settings.kyc.selfie.alt")} className="w-12 h-12 rounded-xl object-cover flex-shrink-0 border border-slate-200 dark:border-slate-600" />
+        <span className="flex-1 text-[13px] font-semibold text-slate-700 dark:text-slate-200">{t("settings.kyc.selfie.captured")}</span>
+        <button type="button" onClick={retake} className="text-[12px] font-semibold text-brand-600 dark:text-brand-400">{t("settings.kyc.selfie.retake")}</button>
       </div>
     );
   }
@@ -88,9 +93,9 @@ export default function SelfieCapture({ value, onCapture, onClear, label = "Take
     <div className={className}>
       <button type="button" onClick={start} disabled={busy}
         className="w-full flex items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 dark:border-slate-600 bg-slate-50/60 dark:bg-slate-800/40 px-4 py-3.5 text-[13px] font-semibold text-slate-600 dark:text-slate-300 disabled:opacity-60">
-        <CameraGlyph /> {busy && !open ? "Opening camera…" : label}
+        <CameraGlyph /> {busy && !open ? t("settings.kyc.selfie.opening") : (label ?? t("settings.kyc.selfie.take"))}
       </button>
-      {error && <p className="text-[12px] text-red-500 mt-1.5">{error}</p>}
+      {error && <p className="text-[12px] text-red-500 mt-1.5">{errorText}</p>}
       {/* Portal to <body>: a parent with a CSS transform (e.g. the new-device card) would otherwise trap this
           "fixed inset-0" layer inside itself, so the camera showed squashed in the card instead of full screen. */}
       {open && createPortal(
@@ -99,10 +104,10 @@ export default function SelfieCapture({ value, onCapture, onClear, label = "Take
             <video ref={videoRef} playsInline muted className="w-full h-full object-cover" style={{ transform: "scaleX(-1)" }} />
             <div className="pointer-events-none absolute inset-6 rounded-full border-2 border-white/70" />
           </div>
-          <p className="text-white/80 text-[13px] mt-5 px-6 text-center">Line your face up in the circle, in good light</p>
+          <p className="text-white/80 text-[13px] mt-5 px-6 text-center">{t("settings.kyc.selfie.lineUp")}</p>
           <div className="flex items-center gap-6 mt-6">
-            <button type="button" onClick={cancel} className="text-white/70 text-[13px] font-semibold px-4 py-2">Cancel</button>
-            <button type="button" onClick={shoot} className="w-16 h-16 rounded-full bg-white ring-4 ring-white/30" aria-label="Capture" />
+            <button type="button" onClick={cancel} className="text-white/70 text-[13px] font-semibold px-4 py-2">{t("common.cancel")}</button>
+            <button type="button" onClick={shoot} className="w-16 h-16 rounded-full bg-white ring-4 ring-white/30" aria-label={t("settings.kyc.selfie.capture")} />
           </div>
         </div>,
         document.body,

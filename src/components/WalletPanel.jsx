@@ -18,6 +18,7 @@ import { supabase } from "../utils/supabase";
 import SelfieCapture from "./SelfieCapture";
 import { submitSecuritySelfie } from "../utils/securitySelfie";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
+import { useT, tNow } from "../contexts/LanguageContext";
 import {
   getBeneficiaries, saveBeneficiary, upsertRemote, syncLocalToRemote,
   fetchAllRemote, benDisplayName, benSubLabel, deleteBeneficiaryMatch, deleteRemote,
@@ -86,6 +87,13 @@ export function BottomSheet({ open, onClose, title, back, children }) {
     </>
   );
 }
+
+// Labels for the transfer review rows (the English row name stays the row's id)
+const REVIEW_ROW_LABEL = {
+  Recipient: "walletpanel.rowRecipient", Account: "walletpanel.rowAccount", Bank: "walletpanel.rowBank",
+  Narration: "walletpanel.rowNarration", Fee: "walletpanel.rowFee", "Stamp duty": "walletpanel.rowStampDuty",
+  "Total debit": "walletpanel.rowTotalDebit", Repeats: "walletpanel.rowRepeats",
+};
 
 const inputCls =
   "w-full mt-1.5 px-4 py-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/60 text-slate-900 dark:text-slate-50 text-[16px] font-semibold placeholder:font-normal placeholder:text-slate-400 focus:outline-none focus:border-brand-400 focus:bg-white dark:focus:bg-slate-800";
@@ -157,6 +165,7 @@ export function ActionButton({ icon, label, onClick, disabled, tone = "brand", b
 // the label ourselves from the current holder's own name instead, so every
 // wallet is consistently branded regardless of what the processor stored.
 export function AccountCard({ wallet, displayName }) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
   const acct = wallet?.flw_account_number || "";
   const bank = cleanBankName(wallet?.flw_account_bank);
@@ -173,16 +182,16 @@ export function AccountCard({ wallet, displayName }) {
   if (wallet?.account_state === "retired") {
     return (
       <div className="rounded-3xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-5">
-        <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-red-500">Account number</p>
-        <p className="mt-1.5 text-[13px] font-bold text-red-700 dark:text-red-300">This number no longer receives deposits</p>
-        <p className="mt-1 text-[12px] text-red-600 dark:text-red-400 leading-relaxed">Get your new account number to fund your wallet or get paid again.</p>
+        <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-red-500">{t("walletpanel.accountNumber")}</p>
+        <p className="mt-1.5 text-[13px] font-bold text-red-700 dark:text-red-300">{t("walletpanel.retiredTitle")}</p>
+        <p className="mt-1 text-[12px] text-red-600 dark:text-red-400 leading-relaxed">{t("walletpanel.retiredBody")}</p>
       </div>
     );
   }
   return (
     <div className="rounded-3xl bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 shadow-card p-5">
       <div className="flex items-center justify-between">
-        <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Account number</p>
+        <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">{t("walletpanel.accountNumber")}</p>
         <span className="text-[10px] font-bold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-900/30 px-2 py-0.5 rounded-full">NGN</span>
       </div>
       <p className="mt-1.5 text-[28px] leading-none font-extrabold tracking-[0.12em] text-slate-900 dark:text-slate-50 tabular-nums">{acct}</p>
@@ -191,11 +200,11 @@ export function AccountCard({ wallet, displayName }) {
       <div className="mt-4 flex gap-2">
         <button onClick={copy}
           className="flex-1 flex items-center justify-center gap-1.5 rounded-xl bg-slate-100 dark:bg-slate-700/60 py-2.5 text-[13px] font-bold text-slate-700 dark:text-slate-200 active:scale-[0.98] transition-transform">
-          <Icon name={copied ? "check" : "copy"} size={14} /> {copied ? "Copied" : "Copy"}
+          <Icon name={copied ? "check" : "copy"} size={14} /> {copied ? t("walletpanel.copied") : t("walletpanel.copy")}
         </button>
         <button onClick={share}
           className="flex-1 flex items-center justify-center gap-1.5 rounded-xl bg-slate-100 dark:bg-slate-700/60 py-2.5 text-[13px] font-bold text-slate-700 dark:text-slate-200 active:scale-[0.98] transition-transform">
-          <Icon name="send" size={14} /> Share
+          <Icon name="send" size={14} /> {t("walletpanel.share")}
         </button>
       </div>
     </div>
@@ -207,6 +216,7 @@ export function AccountCard({ wallet, displayName }) {
 // `entry` is the row's history entry from useWallet().entryFor(row) — it knows the recipient / sender and their bank. Without it the row
 // still renders from the ledger row alone (a generic title and icon).
 export function WalletTxRow({ row, hidden, onOpen, entry }) {
+  const t = useT();
   const e = entry || walletEntry(row, {});
   const credit = row.direction === "credit";
   const reversed = row.status === "reversed";
@@ -215,7 +225,7 @@ export function WalletTxRow({ row, hidden, onOpen, entry }) {
       className={`w-full flex items-center gap-3 py-3 text-left ${onOpen ? "active:bg-slate-50 dark:active:bg-slate-800/60 -mx-2 px-2 rounded-xl transition-colors" : ""}`}>
       <HistoryAvatar avatar={e.avatar} />
       <div className="flex-1 min-w-0">
-        <p className="text-[14px] font-semibold text-slate-900 dark:text-slate-100 truncate">{e.title}</p>
+        <p className="text-[14px] font-semibold text-slate-900 dark:text-slate-100 truncate">{txTitle(e.title, row.source, t)}</p>
         <p className="text-[11.5px] text-slate-400 mt-0.5">{formatWATStamp(row.created_at)}</p>
       </div>
       <div className="text-right flex-shrink-0">
@@ -228,8 +238,26 @@ export function WalletTxRow({ row, hidden, onOpen, entry }) {
   );
 }
 
+// The row title, in the chosen language. walletEntry builds it in English (the stored source's label, or
+// "Transfer to NAME" etc.); only those known shapes are translated — anything else (a bill narration) is shown as-is.
+function txTitle(title, source, t) {
+  const label = WALLET_SOURCE[source]?.label;
+  if (label && title === label) {
+    const key = `walletpanel.source.${source}`;
+    const v = t(key);
+    return v === key ? title : v;
+  }
+  let m;
+  if (source === "withdrawal" && (m = /^Transfer to (.+)$/.exec(title || ""))) return t("walletpanel.txTransferTo", { name: m[1] });
+  if (source === "sale" && (m = /^Payment from (.+)$/.exec(title || ""))) return t("walletpanel.txPaymentFrom", { name: m[1] });
+  if (source === "topup" && (m = /^Transfer from (.+)$/.exec(title || ""))) return t("walletpanel.txTransferFrom", { name: m[1] });
+  if (source === "bill_reversal" && (m = /^Refund: (.+)$/.exec(title || ""))) return t("walletpanel.txRefund", { name: m[1] });
+  return title;
+}
+
 // ── searchable bank picker ─────────────────────────────────────────────────
 export function BankPickerSheet({ open, onClose, banks, onPick }) {
+  const t = useT();
   const [q, setQ] = useState("");
   useEffect(() => { if (!open) setQ(""); }, [open]);
   const deduped = useMemo(() => {
@@ -244,17 +272,17 @@ export function BankPickerSheet({ open, onClose, banks, onPick }) {
     return deduped.filter((b) => b.name.toLowerCase().includes(s)).slice(0, 80);
   }, [deduped, q]);
   return (
-    <BottomSheet open={open} onClose={onClose} title="Select bank">
+    <BottomSheet open={open} onClose={onClose} title={t("walletpanel.selectBank")}>
       <div className="relative mb-2">
         <Icon name="eye" size={0} className="hidden" />
-        <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search banks"
+        <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("walletpanel.searchBanks")}
           className={inputCls + " mt-0 pl-11"} />
         <svg viewBox="0 0 24 24" className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
           <circle cx="11" cy="11" r="7" /><path d="M21 21l-4-4" />
         </svg>
       </div>
       <div className="divide-y divide-slate-100 dark:divide-slate-800 -mx-1">
-        {list.length === 0 && <p className="text-[13px] text-slate-400 py-8 text-center">No bank matches “{q}”.</p>}
+        {list.length === 0 && <p className="text-[13px] text-slate-400 py-8 text-center">{t("walletpanel.noBankMatch", { q })}</p>}
         {list.map((b) => (
           <button key={b.id || b.code} onClick={() => { onPick(b); onClose(); }}
             className="w-full flex items-center gap-3 px-1 py-3.5 text-left active:bg-slate-50 dark:active:bg-slate-800 rounded-xl">
@@ -274,6 +302,7 @@ export function BankPickerSheet({ open, onClose, banks, onPick }) {
 // Ajo clients, personal wallets or Premium businesses (their deposits are free) — the server decides (wallet_deposit_fee_quote).
 const longDate = (d) => { try { return new Date(`${d}T12:00:00`).toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" }); } catch { return d; } };
 export function DepositFeeNote({ open }) {
+  const t = useT();
   const [rule, setRule] = useState(null);
   useEffect(() => {
     if (!open) return undefined;
@@ -283,30 +312,30 @@ export function DepositFeeNote({ open }) {
   }, [open]);
   const pct = Number(rule?.pct || 0), cap = Number(rule?.cap_kobo || 0);
   if (!rule || rule.tier === "personal" || pct <= 0 || cap <= 0) return null;
-  const fee = `${pct}% of each deposit (max ₦${(cap / 100).toLocaleString("en-NG")})`;
+  const fee = t("walletpanel.depositFeeAmount", { pct, max: (cap / 100).toLocaleString("en-NG") });
   return (
     <p className="mt-3 text-[11.5px] leading-relaxed text-slate-500 dark:text-slate-400 rounded-xl bg-slate-50 dark:bg-slate-800/60 px-3 py-2.5">
       {rule.active
-        ? <>Business deposit fee: <b>{fee}</b> on your plan. Premium plan deposits are free.</>
-        : <>From <b>{longDate(rule.starts)}</b>, money received into your business wallet carries a fee of <b>{fee}</b> on your plan. Premium plan deposits are free.</>}
+        ? <>{t("walletpanel.depositFeeActivePre")}<b>{fee}</b>{t("walletpanel.depositFeeActivePost")}</>
+        : <>{t("walletpanel.depositFeeFuturePre")}<b>{longDate(rule.starts)}</b>{t("walletpanel.depositFeeFutureMid")}<b>{fee}</b>{t("walletpanel.depositFeeFuturePost")}</>}
     </p>
   );
 }
 
 export function FundWalletSheet({ open, onClose, wallet, testMode, api, businessName, ownerName }) {
+  const t = useT();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const simulate = async () => {
     setBusy(true); setMsg("");
-    try { await api.simulateTopup(2000); setMsg("Test top-up sent — your balance updates shortly."); }
-    catch (e) { setMsg(e.message || "Failed"); } finally { setBusy(false); }
+    try { await api.simulateTopup(2000); setMsg(t("walletpanel.testTopupSent")); }
+    catch (e) { setMsg(e.message || t("walletpanel.failed")); } finally { setBusy(false); }
   };
   return (
-    <BottomSheet open={open} onClose={onClose} title="Fund wallet">
+    <BottomSheet open={open} onClose={onClose} title={t("walletpanel.fundWallet")}>
       {wallet?.account_state !== "retired" && (
         <p className="text-[13px] text-slate-500 dark:text-slate-400 mb-4">
-          Transfer from any bank to the account below. Your wallet is credited automatically —
-          usually within a minute.
+          {t("walletpanel.fundIntro")}
         </p>
       )}
       <AccountCard wallet={wallet} displayName={businessName || ownerName} />
@@ -314,7 +343,7 @@ export function FundWalletSheet({ open, onClose, wallet, testMode, api, business
       {testMode && wallet?.account_state !== "retired" && (
         <button onClick={simulate} disabled={busy}
           className="w-full mt-4 rounded-2xl border border-dashed border-brand-300 dark:border-brand-700 text-brand-600 dark:text-brand-400 text-[13px] font-bold py-3.5 disabled:opacity-40">
-          {busy ? "Sending…" : "Simulate a ₦2,000 top-up (test)"}
+          {busy ? t("walletpanel.sending") : t("walletpanel.simulateTopup")}
         </button>
       )}
       {msg && <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-2 text-center">{msg}</p>}
@@ -324,6 +353,7 @@ export function FundWalletSheet({ open, onClose, wallet, testMode, api, business
 
 // ── Transfer — bank-transfer style, PIN-confirmed, instant ─────────────────
 export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKobo = 0, dailyUsedKobo = 0, banks, api, businessName, ownerName, ownerId, onDone }) {
+  const t = useT();
   const { largeTransferSelfieThresholdKobo, securitySelfieEnabled } = usePlatformConfig();
   const [step, setStep] = useState("to");     // to | amount | review | pin | selfie | done
   const [pendingPin, setPendingPin] = useState("");   // held between the PIN step and a required selfie step, for a large transfer
@@ -421,7 +451,7 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
       await new Promise((r) => setTimeout(r, 500));
     }
     setReceiptLoading(false);
-    setErr("Receipt isn't ready yet — find it in your wallet history in a moment.");
+    setErr(t("walletpanel.receiptNotReady"));
   };
 
   const runResolve = useCallback(async (code, acct) => {
@@ -435,7 +465,7 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
     } catch (e) {
       if (id !== reqRef.current) return;
       if (/verify right now|confirm the name|try again in a moment/i.test(e.message || "")) setManual(true);
-      else setErr(e.message || "Couldn't verify that account");
+      else setErr(e.message || tNow("walletpanel.couldNotVerify"));
     } finally {
       if (id === reqRef.current) setResolving(false);
     }
@@ -513,8 +543,8 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
   };
   const pasteFromClipboard = async () => {
     const text = await readClipboardText({ userGesture: true });
-    if (!text) { setErr("Couldn't read what you copied — press and hold the box, then tap Paste."); return; }
-    if (!applyAccount(text)) setErr("There's no 10-digit account number in what you copied.");
+    if (!text) { setErr(t("walletpanel.pasteUnreadable")); return; }
+    if (!applyAccount(text)) setErr(t("walletpanel.pasteNoAccount"));
   };
 
   // No bank chosen yet for a full account number → a saved recipient with that number picks its bank straight away;
@@ -571,8 +601,8 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
   const shortForFee = !!quote && charges > 0 && kobo + charges > balanceKobo;
   const freeNote = quote
     ? (quote.free
-        ? `Free — ${Math.max(Number(quote.free_left) - 1, 0)} of your ${quote.allowance} free transfers left ${quote.period === "day" ? "today" : "this month"} after this one`
-        : `${quote.allowance > 0 ? `Your ${quote.allowance} free transfers ${quote.period === "day" ? "today" : "this month"} are used · ` : ""}₦10 below ₦5,000 · ₦25 below ₦10,000 · ₦35 up to ₦50,000 · ₦60 above`)
+        ? t(quote.period === "day" ? "walletpanel.freeNoteDay" : "walletpanel.freeNoteMonth", { left: Math.max(Number(quote.free_left) - 1, 0), allowance: quote.allowance })
+        : `${quote.allowance > 0 ? t(quote.period === "day" ? "walletpanel.freeUsedDay" : "walletpanel.freeUsedMonth", { allowance: quote.allowance }) : ""}${t("walletpanel.priceList")}`)
     : "";
 
   const doTransfer = async (pin) => {
@@ -590,7 +620,7 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
       if (saveBen) saveRecipient();
       onDone?.();
     } catch (e) {
-      setErr(e.message || (repeat ? "Could not set up the repeat transfer" : "Transfer failed"));
+      setErr(e.message || (repeat ? t("walletpanel.repeatFailed") : t("walletpanel.transferFailed")));
       setStep("review");
     } finally { setBusy(false); }
   };
@@ -618,7 +648,7 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
   return (
     <>
       <BottomSheet open={open && step !== "pin" && step !== "selfie"} onClose={onClose}
-        title={step === "done" ? "" : step === "review" ? "Confirm transfer" : "Transfer"}
+        title={step === "done" ? "" : step === "review" ? t("walletpanel.confirmTransfer") : t("walletpanel.transfer")}
         back={step === "amount" ? () => setStep("to") : step === "review" ? () => setStep("amount") : undefined}>
 
         {step === "done" ? (
@@ -628,54 +658,54 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
             </div>
             {repeat ? (
               <>
-                <p className="text-[17px] font-extrabold text-slate-900 dark:text-slate-50">Repeat transfer set up</p>
+                <p className="text-[17px] font-extrabold text-slate-900 dark:text-slate-50">{t("walletpanel.repeatSetUp")}</p>
                 <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-1">
-                  {fmt(kobo / 100)} to <b>{recipientName}</b> · {bank?.name}, {frequency}
+                  {t("walletpanel.amountTo", { amount: fmt(kobo / 100) })} <b>{recipientName}</b> · {bank?.name}, {t(`walletpanel.freqLower.${frequency}`)}
                 </p>
               </>
             ) : (
               <>
-                <p className="text-[17px] font-extrabold text-slate-900 dark:text-slate-50">{fmt(kobo / 100)} sent</p>
+                <p className="text-[17px] font-extrabold text-slate-900 dark:text-slate-50">{t("walletpanel.amountSent", { amount: fmt(kobo / 100) })}</p>
                 <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-1">
-                  to <b>{recipientName}</b> · {bank?.name}
-                  {fee > 0 ? <><br />Fee {fmt(fee / 100)}</> : null}
+                  {t("walletpanel.to")} <b>{recipientName}</b> · {bank?.name}
+                  {fee > 0 ? <><br />{t("walletpanel.feeAmount", { amount: fmt(fee / 100) })}</> : null}
                 </p>
               </>
             )}
             {err && <p className="text-[12px] text-amber-600 dark:text-amber-400 mt-3">{err}</p>}
             {(benSaved || (isFirstTimeRecipient && !saveBen)) && (
               benSaved
-                ? <p className="text-[12px] font-semibold text-emerald-600 dark:text-emerald-400 mt-3">✓ Saved as a beneficiary</p>
+                ? <p className="text-[12px] font-semibold text-emerald-600 dark:text-emerald-400 mt-3">{t("walletpanel.savedAsBen")}</p>
                 : <button onClick={saveRecipient}
                     className="w-full mt-4 rounded-2xl border border-brand-200 dark:border-brand-800/60 bg-brand-50 dark:bg-brand-900/20 text-brand-700 dark:text-brand-300 font-bold py-3 text-[13px]">
-                    Save {recipientName ? recipientName.split(" ")[0] : "this account"} as a beneficiary
+                    {t("walletpanel.saveAsBenName", { name: recipientName ? recipientName.split(" ")[0] : t("walletpanel.thisAccount") })}
                   </button>
             )}
             {!repeat && (
               <button onClick={viewReceipt} disabled={receiptLoading}
                 className="w-full mt-5 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold py-3.5 text-[14px] disabled:opacity-50">
-                {receiptLoading ? "Preparing receipt…" : "View receipt"}
+                {receiptLoading ? t("walletpanel.preparingReceipt") : t("walletpanel.viewReceipt")}
               </button>
             )}
-            <button onClick={onClose} className={primaryBtn + (repeat ? " mt-5" : " mt-2.5")}>Done</button>
+            <button onClick={onClose} className={primaryBtn + (repeat ? " mt-5" : " mt-2.5")}>{t("common.done")}</button>
           </div>
         ) : step === "review" ? (
           <div>
             <div className="rounded-3xl bg-navy-500 text-white p-5 text-center"
               style={{ background: "linear-gradient(145deg,var(--navy) 0%,var(--navy-dark) 100%)" }}>
-              <p className="text-[11px] uppercase tracking-widest text-white/50">{repeat ? "You're setting up" : "You're sending"}</p>
+              <p className="text-[11px] uppercase tracking-widest text-white/50">{repeat ? t("walletpanel.youreSettingUp") : t("walletpanel.youreSending")}</p>
               <p className="text-[34px] font-extrabold mt-1 tabular-nums">{fmt(kobo / 100)}</p>
-              {repeat && <p className="text-[12px] text-white/60 mt-1 capitalize">{frequency}</p>}
+              {repeat && <p className="text-[12px] text-white/60 mt-1 capitalize">{t(`walletpanel.freqLower.${frequency}`)}</p>}
             </div>
             <div className="mt-4 rounded-2xl border border-slate-100 dark:border-slate-700/60 divide-y divide-slate-100 dark:divide-slate-800">
               {[["Recipient", recipientName], ["Account", acctNo], ["Bank", bank?.name],
                 ["Narration", narration || "—"],
-                ["Fee", !quote ? "…" : quote.free ? "Free" : fmt(quoteFee / 100)],
+                ["Fee", !quote ? "…" : quote.free ? t("walletpanel.free") : fmt(quoteFee / 100)],
                 ...(quoteDuty > 0 ? [["Stamp duty", fmt(quoteDuty / 100)]] : []),
                 ...(charges > 0 ? [["Total debit", fmt((kobo + charges) / 100)]] : []),
-                ...(repeat ? [["Repeats", frequency[0].toUpperCase() + frequency.slice(1)]] : [])].map(([k, v]) => (
+                ...(repeat ? [["Repeats", t(`walletpanel.freq.${frequency}`)]] : [])].map(([k, v]) => (
                 <div key={k} className="flex items-center justify-between px-4 py-3">
-                  <span className="text-[12px] text-slate-400">{k}</span>
+                  <span className="text-[12px] text-slate-400">{t(REVIEW_ROW_LABEL[k])}</span>
                   {k === "Bank" ? (
                     <span className="flex items-center gap-2 min-w-0 max-w-[62%]">
                       <BankLogo code={bank?.code} name={bank?.name} size={26} radius={8} />
@@ -692,23 +722,23 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
               <div className="mt-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 p-3.5">
                 <label className="flex items-center gap-2.5 text-[13px] font-semibold text-slate-700 dark:text-slate-200">
                   <input type="checkbox" checked={saveBen} onChange={(e) => setSaveBen(e.target.checked)} className="w-[18px] h-[18px] rounded-md accent-brand-600" />
-                  Save as beneficiary <span className="font-normal text-slate-400">· optional</span>
+                  {t("walletpanel.saveAsBen")} <span className="font-normal text-slate-400">· {t("common.optional")}</span>
                 </label>
                 {saveBen && (
                   <input value={benNick} onChange={(e) => setBenNick(e.target.value.slice(0, 40))}
-                    placeholder={`Nickname (optional) — e.g. ${(recipientName || "").split(" ")[0] || "Supplier"}`}
+                    placeholder={t("walletpanel.nicknamePh", { name: (recipientName || "").split(" ")[0] || t("walletpanel.supplier") })}
                     className={inputCls + " mt-2.5"} />
                 )}
               </div>
             )}
             {shortForFee && (
               <p className="text-[12px] text-red-500 mt-2">
-                Your balance doesn't cover the {fmt(charges / 100)} in charges on top of {fmt(kobo / 100)} — send up to {fmt(Math.max(balanceKobo - charges, 0) / 100)}.
+                {t("walletpanel.shortForFee", { charges: fmt(charges / 100), amount: fmt(kobo / 100), max: fmt(Math.max(balanceKobo - charges, 0) / 100) })}
               </p>
             )}
             {err && <p className="text-[12px] text-red-500 mt-3">{err}</p>}
             <button onClick={() => setStep("pin")} disabled={busy || shortForFee} className={primaryBtn + " mt-4"}>
-              {repeat ? `Confirm — ${fmt(kobo / 100)} ${frequency}` : `Transfer ${fmt(kobo / 100)}`}
+              {repeat ? t("walletpanel.confirmRepeatBtn", { amount: fmt(kobo / 100), frequency: t(`walletpanel.freqLower.${frequency}`) }) : t("walletpanel.transferAmountBtn", { amount: fmt(kobo / 100) })}
             </button>
           </div>
         ) : step === "amount" ? (
@@ -721,34 +751,34 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
               </div>
             </div>
             <div>
-              <label className={labelCls}>Amount</label>
+              <label className={labelCls}>{t("common.amount")}</label>
               <input inputMode="decimal" autoFocus value={amount}
                 onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ""))} placeholder="0" className={inputCls} />
               <p className="text-[11px] text-slate-400 mt-1.5">
-                Available {fmt(balanceKobo / 100)} · up to {fmt(Math.min(balanceKobo, maxKobo) / 100)} per transfer
-                {dailyCapKobo > 0 && <> · {fmt(dailyLeftKobo / 100)} left today</>}
+                {t("walletpanel.availableLine", { available: fmt(balanceKobo / 100), max: fmt(Math.min(balanceKobo, maxKobo) / 100) })}
+                {dailyCapKobo > 0 && <> · {t("walletpanel.leftToday", { amount: fmt(dailyLeftKobo / 100) })}</>}
               </p>
             </div>
             <div>
-              <label className={labelCls}>Narration <span className="text-slate-300 font-normal">optional</span></label>
-              <input value={narration} onChange={(e) => setNarration(e.target.value.slice(0, 100))} placeholder="What's it for?" className={inputCls} />
+              <label className={labelCls}>{t("walletpanel.narration")} <span className="text-slate-300 font-normal">{t("common.optional")}</span></label>
+              <input value={narration} onChange={(e) => setNarration(e.target.value.slice(0, 100))} placeholder={t("walletpanel.whatsItFor")} className={inputCls} />
             </div>
             <label className="flex items-center gap-2.5 text-[13px] font-medium text-slate-600 dark:text-slate-300">
               <input type="checkbox" checked={bookExpense} onChange={(e) => setBookExpense(e.target.checked)} className="w-[18px] h-[18px] rounded-md accent-brand-600" />
-              Record as a business expense
+              {t("walletpanel.recordExpense")}
             </label>
             <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/60 p-3.5">
               <label className="flex items-center gap-2.5 text-[13px] font-bold text-slate-700 dark:text-slate-200">
                 <input type="checkbox" checked={repeat} onChange={(e) => setRepeat(e.target.checked)} className="w-[18px] h-[18px] rounded-md accent-brand-600" />
-                Repeat this transfer
+                {t("walletpanel.repeatThis")}
               </label>
               {repeat && (
                 <>
                   <p className="text-[11px] text-slate-400 mt-1.5 mb-2">
-                    Confirmed once now with your PIN — every future transfer runs automatically, and we'll alert you each time money moves.
+                    {t("walletpanel.repeatExplain")}
                   </p>
                   <div className="flex gap-1.5">
-                    {[["daily", "Daily"], ["weekly", "Weekly"], ["monthly", "Monthly"]].map(([id, label]) => (
+                    {[["daily", t("walletpanel.freq.daily")], ["weekly", t("walletpanel.freq.weekly")], ["monthly", t("walletpanel.freq.monthly")]].map(([id, label]) => (
                       <button key={id} type="button" onClick={() => setFrequency(id)}
                         className={`flex-1 py-2 rounded-xl text-[12px] font-bold transition-colors ${
                           frequency === id ? "bg-brand-600 text-white" : "bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600"}`}>
@@ -762,7 +792,7 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
             {err && <p className="text-[12px] text-red-500">{err}</p>}
             <button disabled={kobo < 10000 || kobo > cap}
               onClick={() => { setErr(""); setStep("review"); }} className={primaryBtn}>
-              Continue
+              {t("common.continue")}
             </button>
           </div>
         ) : (
@@ -770,9 +800,9 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
             {savedRecipients.length > 0 && (
               <div>
                 <div className="flex items-center justify-between">
-                  <label className={labelCls}>Saved beneficiaries</label>
+                  <label className={labelCls}>{t("walletpanel.savedBens")}</label>
                   <button type="button" onClick={() => setManageBens((v) => !v)} className="text-[11px] font-bold text-brand-600 dark:text-brand-400">
-                    {manageBens ? "Done" : "Manage"}
+                    {manageBens ? t("common.done") : t("walletpanel.manage")}
                   </button>
                 </div>
                 <div className="flex gap-2 overflow-x-auto pb-1 mt-1.5 -mx-1 px-1">
@@ -784,7 +814,7 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
                         <span className="text-[10px] text-slate-400 whitespace-nowrap">{benSubLabel(b)}</span>
                       </button>
                       {manageBens && (
-                        <button type="button" aria-label={`Remove ${benDisplayName(b)}`} onClick={() => removeRecipient(b)}
+                        <button type="button" aria-label={t("walletpanel.removeBen", { name: benDisplayName(b) })} onClick={() => removeRecipient(b)}
                           className="absolute top-1 right-1 w-6 h-6 rounded-full bg-rose-100 dark:bg-rose-900/40 text-rose-600 dark:text-rose-300 flex items-center justify-center">
                           <Icon name="x" size={12} />
                         </button>
@@ -798,22 +828,22 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
               <div className="rounded-2xl border border-brand-200 dark:border-brand-800/60 bg-brand-50 dark:bg-brand-900/20 px-3 py-2.5 flex items-center gap-3">
                 <Icon name="copy" size={18} className="text-brand-600 dark:text-brand-400 flex-shrink-0" />
                 <div className="min-w-0 flex-1">
-                  <p className="text-[11px] font-semibold text-brand-700 dark:text-brand-300">Use the account number you copied?</p>
+                  <p className="text-[11px] font-semibold text-brand-700 dark:text-brand-300">{t("walletpanel.useCopied")}</p>
                   <p className="text-[14px] font-extrabold tracking-[0.12em] text-slate-800 dark:text-white truncate">
                     {clip.account}
                     {clipBank && <span className="ml-1.5 text-[11px] font-semibold tracking-normal text-slate-500 dark:text-slate-400">· {displayBankName(clipBank)}</span>}
                   </p>
                 </div>
                 <button onClick={() => applyAccount(clip.text)}
-                  className="px-3 py-1.5 rounded-lg bg-brand-600 text-white text-[12px] font-bold active:scale-[0.97]">Use</button>
-                <button aria-label="Dismiss" onClick={() => setClip(null)}
+                  className="px-3 py-1.5 rounded-lg bg-brand-600 text-white text-[12px] font-bold active:scale-[0.97]">{t("walletpanel.use")}</button>
+                <button aria-label={t("walletpanel.dismiss")} onClick={() => setClip(null)}
                   className="w-7 h-7 flex items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700">
                   <Icon name="x" size={14} />
                 </button>
               </div>
             )}
             <div>
-              <label className={labelCls}>Account number</label>
+              <label className={labelCls}>{t("walletpanel.accountNumber")}</label>
               <div className="relative">
                 <input inputMode="numeric" autoFocus value={acctNo}
                   onChange={(e) => { setAcctNo(e.target.value.replace(/\D/g, "").slice(0, 10)); setName(""); setManual(false); setSuggests(null); }}
@@ -822,7 +852,7 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
                 {!acctNo && (
                   <button type="button" onClick={pasteFromClipboard}
                     className="absolute right-2.5 top-1/2 -translate-y-1/2 mt-[3px] px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-[12px] font-bold text-brand-600 dark:text-brand-400 active:scale-[0.97]">
-                    Paste
+                    {t("walletpanel.paste")}
                   </button>
                 )}
               </div>
@@ -831,11 +861,11 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
               <div>
                 {suggesting ? (
                   <p className="text-[12px] text-slate-400 flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-brand-400 animate-pulse" /> Finding the bank for this account…
+                    <span className="w-1.5 h-1.5 rounded-full bg-brand-400 animate-pulse" /> {t("walletpanel.findingBank")}
                   </p>
                 ) : suggests.length > 0 ? (
                   <>
-                    <label className={labelCls}>{suggests.length === 1 ? "We found this account" : "We found this account number at"}</label>
+                    <label className={labelCls}>{suggests.length === 1 ? t("walletpanel.foundOne") : t("walletpanel.foundMany")}</label>
                     <div className="mt-1.5 space-y-2">
                       {suggests.map((m) => (
                         <button key={m.code} type="button" onClick={() => pickSuggestion(m)}
@@ -849,20 +879,20 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
                         </button>
                       ))}
                     </div>
-                    <p className="text-[11px] text-slate-400 mt-1.5">Tap the right one — or choose the bank yourself below.</p>
+                    <p className="text-[11px] text-slate-400 mt-1.5">{t("walletpanel.tapRightOne")}</p>
                   </>
                 ) : (
-                  <p className="text-[12px] text-slate-400">We couldn't match a bank for this number automatically — choose it below.</p>
+                  <p className="text-[12px] text-slate-400">{t("walletpanel.noBankAuto")}</p>
                 )}
               </div>
             )}
             <div>
-              <label className={labelCls}>Bank</label>
+              <label className={labelCls}>{t("walletpanel.bank")}</label>
               <BankSelect
                 banks={bankList}
                 value={bank?.code || ""}
                 onChange={(code, b) => { setBank(b); setName(""); setManual(false); setErr(""); doneKeyRef.current = ""; }}
-                placeholder="Select bank"
+                placeholder={t("walletpanel.selectBank")}
                 className="h-[52px] mt-1.5"
                 network={netByCode}
               />
@@ -870,21 +900,21 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
                 <p className="text-[11px] text-amber-600 dark:text-amber-400 flex items-start gap-1 mt-1.5">
                   <Icon name="warn" size={12} className="mt-0.5 flex-shrink-0" />
                   {netByCode[bank.code] === "poor"
-                    ? `Transfers to ${displayBankName(bank)} are failing often right now. You can still send — if it fails, the money comes straight back to your wallet.`
-                    : `Transfers to ${displayBankName(bank)} are slower than usual right now.`}
+                    ? t("walletpanel.bankPoor", { bank: displayBankName(bank) })
+                    : t("walletpanel.bankSlow", { bank: displayBankName(bank) })}
                 </p>
               )}
             </div>
             {resolving && (
               <p className="text-[12px] text-slate-400 flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-brand-400 animate-pulse" /> Verifying account…
+                <span className="w-1.5 h-1.5 rounded-full bg-brand-400 animate-pulse" /> {t("walletpanel.verifyingAccount")}
               </p>
             )}
             {name && (
               <div className="rounded-2xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200/70 dark:border-emerald-800/50 px-4 py-3 flex items-center gap-3">
                 <BankLogo code={bank?.code} name={bank?.name} size={46} />
                 <div className="min-w-0">
-                  <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold uppercase tracking-wide">Account name</p>
+                  <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold uppercase tracking-wide">{t("walletpanel.accountName")}</p>
                   <p className="text-[15px] font-extrabold text-emerald-800 dark:text-emerald-300 break-words">{name}</p>
                   {bank?.name && <p className="text-[11px] text-emerald-700/70 dark:text-emerald-400/70 mt-0.5 truncate">{bank.name}</p>}
                 </div>
@@ -892,31 +922,31 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
             )}
             {name && isFirstTimeRecipient && (
               <p className="text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                <Icon name="warn" size={12} /> First time sending to this account — double-check the details.
+                <Icon name="warn" size={12} /> {t("walletpanel.firstTime")}
               </p>
             )}
             {manual && !name && (
               <div>
                 <div className="rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-3 py-2 mb-2">
                   <p className="text-[11px] text-amber-700 dark:text-amber-400">
-                    Couldn't auto-verify the name right now. Enter the account holder's name — you're responsible for it being correct.
+                    {t("walletpanel.manualNotice")}
                   </p>
                 </div>
-                <label className={labelCls}>Account holder name</label>
-                <input value={manualName} onChange={(e) => setManualName(e.target.value)} placeholder="Full name on the account" className={inputCls} />
-                <button onClick={retryResolve} className="text-[12px] font-bold text-brand-600 dark:text-brand-400 mt-2">Try verifying again</button>
+                <label className={labelCls}>{t("walletpanel.accountHolder")}</label>
+                <input value={manualName} onChange={(e) => setManualName(e.target.value)} placeholder={t("walletpanel.fullNameOnAcct")} className={inputCls} />
+                <button onClick={retryResolve} className="text-[12px] font-bold text-brand-600 dark:text-brand-400 mt-2">{t("walletpanel.tryVerifyAgain")}</button>
               </div>
             )}
             {err && <p className="text-[12px] text-red-500">{err}</p>}
             {err && /doesn't exist at this bank/i.test(err) && suggestBanks && (
               <button type="button" onClick={() => { setErr(""); setName(""); doneKeyRef.current = ""; setBank(null); }}
                 className="text-[12px] font-bold text-brand-600 dark:text-brand-400 -mt-2">
-                Find the right bank for this number
+                {t("walletpanel.findRightBank")}
               </button>
             )}
             <button disabled={!recipientName || (manual && !name && manualName.trim().length < 3)}
               onClick={() => { setErr(""); setStep("amount"); }} className={primaryBtn}>
-              Continue
+              {t("common.continue")}
             </button>
           </div>
         )}
@@ -924,7 +954,7 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
 
       {open && step === "pin" && (
         <TransactionPinModal
-          title="Confirm transfer"
+          title={t("walletpanel.confirmTransfer")}
           amount={kobo}
           recipient={`${recipientName} · ${bank?.name}`}
           onApprove={handlePinApproved}
@@ -942,18 +972,18 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
             </svg>
           </div>
           <div className="text-center">
-            <p className="text-xl font-extrabold text-white">One more step</p>
+            <p className="text-xl font-extrabold text-white">{t("walletpanel.oneMoreStep")}</p>
             <p className="text-sm text-white/60 mt-2 leading-relaxed max-w-xs">
-              This is a large transfer, so we keep a quick photo against it. It's just a record — take it to send {fmt(kobo / 100)}.
+              {t("walletpanel.selfieExplain", { amount: fmt(kobo / 100) })}
             </p>
           </div>
           {selfieErr && <p className="text-xs font-semibold text-red-400 text-center">{selfieErr}</p>}
           <div className="w-full max-w-[280px]">
-            <SelfieCapture value={selfie} onCapture={submitTransferSelfie} onClear={() => setSelfie("")} label="Take a selfie to continue" />
+            <SelfieCapture value={selfie} onCapture={submitTransferSelfie} onClear={() => setSelfie("")} label={t("walletpanel.takeSelfie")} />
           </div>
-          {selfieBusy && <p className="text-xs text-white/40">Saving…</p>}
+          {selfieBusy && <p className="text-xs text-white/40">{t("common.saving")}</p>}
           <button onClick={() => { setPendingPin(""); setStep("review"); }} className="py-3 px-4 text-sm text-white/40 underline underline-offset-2">
-            Cancel
+            {t("common.cancel")}
           </button>
         </div>
       )}
@@ -965,6 +995,7 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
 
 // ── Receive payment (customer pays into the wallet, booked as a sale) ──────
 export function ReceivePaymentSheet({ open, onClose, wallet, payRequest, testMode, api, businessName, ownerName }) {
+  const t = useT();
   const [amount, setAmount] = useState("");
   const [customer, setCustomer] = useState("");
   const [note, setNote] = useState("");
@@ -995,7 +1026,7 @@ export function ReceivePaymentSheet({ open, onClose, wallet, payRequest, testMod
       await new Promise((r) => setTimeout(r, 500));
     }
     setReceiptLoading(false);
-    setErr("Receipt isn't ready yet — find it in your wallet history in a moment.");
+    setErr(t("walletpanel.receiptNotReady"));
   };
 
   const acct = wallet?.flw_account_number || "";
@@ -1006,7 +1037,7 @@ export function ReceivePaymentSheet({ open, onClose, wallet, payRequest, testMod
   const create = async () => {
     setErr(""); setBusy(true);
     try { await api.createPaymentRequest(Math.round((parseFloat(amount) || 0) * 100), customer.trim(), note.trim()); }
-    catch (e) { setErr(e.message || "Could not create request"); } finally { setBusy(false); }
+    catch (e) { setErr(e.message || t("walletpanel.couldNotCreateRequest")); } finally { setBusy(false); }
   };
   const cancel = async () => { if (payRequest) await api.cancelPaymentRequest(payRequest.id); onClose(); };
   const simulate = async () => {
@@ -1017,74 +1048,74 @@ export function ReceivePaymentSheet({ open, onClose, wallet, payRequest, testMod
 
   return (
     <>
-    <BottomSheet open={open} onClose={onClose} title={paid ? "" : payRequest ? "Awaiting payment" : "Receive payment"}>
+    <BottomSheet open={open} onClose={onClose} title={paid ? "" : payRequest ? t("walletpanel.awaitingPayment") : t("walletpanel.receivePayment")}>
       {wallet?.account_state === "retired" && !paid ? (
         // the old number no longer credits the wallet — never ask a customer to pay into it
         <div className="text-center py-3">
-          <p className="text-[15px] font-extrabold text-slate-900 dark:text-slate-50">Get your new account number first</p>
+          <p className="text-[15px] font-extrabold text-slate-900 dark:text-slate-50">{t("walletpanel.getNewNumberFirst")}</p>
           <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
-            Your old account number no longer receives payments. Open Wallet and tap “Get my new number”, then come back to receive.
+            {t("walletpanel.oldNumberBody")}
           </p>
-          <button onClick={onClose} className={primaryBtn + " mt-5"}>Close</button>
+          <button onClick={onClose} className={primaryBtn + " mt-5"}>{t("common.close")}</button>
         </div>
       ) : paid ? (
         <div className="text-center py-3">
           <div className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center mx-auto mb-4">
             <Icon name="check" size={30} className="text-emerald-600 dark:text-emerald-400" />
           </div>
-          <p className="text-[17px] font-extrabold text-slate-900 dark:text-slate-50">Payment received</p>
-          <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-1">In your wallet and recorded as a sale.</p>
+          <p className="text-[17px] font-extrabold text-slate-900 dark:text-slate-50">{t("walletpanel.paymentReceived")}</p>
+          <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-1">{t("walletpanel.inWalletAsSale")}</p>
           {err && <p className="text-[12px] text-amber-600 dark:text-amber-400 mt-3">{err}</p>}
           <button onClick={viewReceipt} disabled={receiptLoading}
             className="w-full mt-5 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold py-3.5 text-[14px] disabled:opacity-50">
-            {receiptLoading ? "Preparing receipt…" : "View receipt"}
+            {receiptLoading ? t("walletpanel.preparingReceipt") : t("walletpanel.viewReceipt")}
           </button>
-          <button onClick={onClose} className={primaryBtn + " mt-2.5"}>Done</button>
+          <button onClick={onClose} className={primaryBtn + " mt-2.5"}>{t("common.done")}</button>
         </div>
       ) : payRequest ? (
         <div>
           <div className="rounded-3xl bg-slate-50 dark:bg-slate-800 p-5 text-center">
-            <p className="text-[11px] uppercase tracking-widest text-slate-400">Ask the customer to send exactly</p>
+            <p className="text-[11px] uppercase tracking-widest text-slate-400">{t("walletpanel.askExactly")}</p>
             <p className="text-[32px] font-extrabold text-slate-900 dark:text-slate-50 mt-1 tabular-nums">{fmt(reqAmt)}</p>
             <div className="mt-3 inline-flex items-center gap-2 bg-white dark:bg-slate-900 rounded-xl px-3 py-2">
               <span className="text-[15px] font-extrabold tracking-wider text-slate-800 dark:text-slate-100">{acct}</span>
-              <button onClick={copy} className="text-[12px] font-bold text-brand-600 dark:text-brand-400">{copied ? "Copied" : "Copy"}</button>
+              <button onClick={copy} className="text-[12px] font-bold text-brand-600 dark:text-brand-400">{copied ? t("walletpanel.copied") : t("walletpanel.copy")}</button>
             </div>
             <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-1.5">{bank} · {businessName || ownerName || wallet?.flw_account_name}</p>
-            {payRequest.customer_name ? <p className="text-[12px] text-slate-400 mt-1">From {payRequest.customer_name}</p> : null}
+            {payRequest.customer_name ? <p className="text-[12px] text-slate-400 mt-1">{t("walletpanel.fromName", { name: payRequest.customer_name })}</p> : null}
           </div>
           <div className="flex items-center justify-center gap-2 mt-4 text-[12px] text-slate-400">
-            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" /> Waiting for payment…
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" /> {t("walletpanel.waitingPayment")}
           </div>
           {testMode && (
             <button onClick={simulate} disabled={busy}
               className="w-full mt-3 rounded-2xl border border-dashed border-brand-300 dark:border-brand-700 text-brand-600 dark:text-brand-400 text-[13px] font-bold py-3.5 disabled:opacity-40">
-              {busy ? "Simulating…" : "Simulate the customer's payment (test)"}
+              {busy ? t("walletpanel.simulating") : t("walletpanel.simulateCustomer")}
             </button>
           )}
           {err && <p className="text-[12px] text-red-500 mt-2 text-center">{err}</p>}
-          <button onClick={cancel} className="w-full mt-3 text-[13px] font-semibold text-slate-400 py-2">Cancel request</button>
+          <button onClick={cancel} className="w-full mt-3 text-[13px] font-semibold text-slate-400 py-2">{t("walletpanel.cancelRequest")}</button>
         </div>
       ) : (
         <div className="space-y-4">
           <p className="text-[13px] text-slate-500 dark:text-slate-400">
-            Create a request; when the customer pays it lands in your wallet and is booked as a sale.
+            {t("walletpanel.receiveIntro")}
           </p>
           <div>
-            <label className={labelCls}>Amount</label>
+            <label className={labelCls}>{t("common.amount")}</label>
             <input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ""))} placeholder="0" className={inputCls} />
           </div>
           <div>
-            <label className={labelCls}>Customer <span className="text-slate-300 font-normal">optional</span></label>
-            <input value={customer} onChange={(e) => setCustomer(e.target.value)} placeholder="Name" className={inputCls} />
+            <label className={labelCls}>{t("walletpanel.customer")} <span className="text-slate-300 font-normal">{t("common.optional")}</span></label>
+            <input value={customer} onChange={(e) => setCustomer(e.target.value)} placeholder={t("common.name")} className={inputCls} />
           </div>
           <div>
-            <label className={labelCls}>Note <span className="text-slate-300 font-normal">optional</span></label>
-            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="What's it for?" className={inputCls} />
+            <label className={labelCls}>{t("common.note")} <span className="text-slate-300 font-normal">{t("common.optional")}</span></label>
+            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("walletpanel.whatsItFor")} className={inputCls} />
           </div>
           {err && <p className="text-[12px] text-red-500">{err}</p>}
           <button onClick={create} disabled={busy || (parseFloat(amount) || 0) < 100} className={primaryBtn}>
-            {busy ? "Creating…" : "Request payment"}
+            {busy ? t("walletpanel.creating") : t("walletpanel.requestPayment")}
           </button>
         </div>
       )}

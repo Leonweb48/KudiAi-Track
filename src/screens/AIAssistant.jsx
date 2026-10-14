@@ -1,40 +1,40 @@
 import { useState, useRef, useEffect } from "react";
-import { useLanguage } from "../contexts/LanguageContext";
+import { useLanguage, useT } from "../contexts/LanguageContext";
 import { buildContext } from "../utils/buildContext";
 import { askGemini } from "../utils/gemini";
 import { speakText } from "../utils/tts";
 
 const SPEECH_LANG = { en: "en-NG", pidgin: "en-NG", ha: "ha-NG", ig: "ig-NG", yo: "yo-NG" };
 
+// Chip labels are shown in the chosen language; the `q` text is the prompt sent to the AI and stays English.
 const QUICK = [
-  { label: "How much did I sell today?", q: "How much did I sell today? Break it down by payment method and top items."       },
-  { label: "Who owes me money?",         q: "Who owes me money and how much? List all credit debtors with outstanding amounts." },
-  { label: "This week vs last week",     q: "Compare this week's sales to last week — revenue, transaction count, and best items." },
-  { label: "Wetin I sell pass today?",   q: "Wetin I sell pass today? Give me the top items by revenue in Pidgin."             },
-  { label: "Sales Forecast",             q: "Show my sales forecast and predictions"                                           },
-  { label: "Total Profit",               q: "What is my total profit?"                                                        },
-  { label: "Overdue Credits",            q: "Show me all overdue credit customers"                                             },
-  { label: "Stock Status",               q: "What is my current stock status and what is running low?"                        },
-  { label: "Best Sellers",               q: "What are my best selling items?"                                                  },
-  { label: "Ajo Summary",                q: "Give me a full Ajo savings summary with all client balances"                     },
-  { label: "Ajo Overdue",                q: "Which Ajo clients are overdue for contribution?"                                  },
-  { label: "Staff Overview",             q: "Tell me about my staff"                                                          },
-  { label: "Branch Summary",             q: "Give me a summary of my branches"                                                },
-  { label: "Monthly Report",             q: "Give me a full monthly business report"                                          },
-  { label: "Invoice Summary",            q: "Show me a summary of all my invoices and outstanding amounts"                    },
-  { label: "Overdue Invoices",           q: "Which invoices are overdue and how much is owed?"                                },
-  { label: "Grow Business",              q: "How can I grow my business?"                                                     },
-  { label: "App Features",               q: "What can this app do for my business?"                                           },
-  { label: "Pricing Tips",               q: "What is a good pricing strategy for my business?"                                },
+  { labelKey: "account.ai.chipSoldToday",       q: "How much did I sell today? Break it down by payment method and top items."       },
+  { labelKey: "account.ai.chipWhoOwes",         q: "Who owes me money and how much? List all credit debtors with outstanding amounts." },
+  { labelKey: "account.ai.chipWeekVsWeek",      q: "Compare this week's sales to last week — revenue, transaction count, and best items." },
+  { labelKey: "account.ai.chipPidginTop",       q: "Wetin I sell pass today? Give me the top items by revenue in Pidgin."             },
+  { labelKey: "account.ai.chipSalesForecast",   q: "Show my sales forecast and predictions"                                           },
+  { labelKey: "aiChip.totalProfit",             q: "What is my total profit?"                                                        },
+  { labelKey: "account.ai.chipOverdueCredits",  q: "Show me all overdue credit customers"                                             },
+  { labelKey: "aiChip.stockStatus",             q: "What is my current stock status and what is running low?"                        },
+  { labelKey: "account.ai.chipBestSellers",     q: "What are my best selling items?"                                                  },
+  { labelKey: "aiChip.ajoSummary",              q: "Give me a full Ajo savings summary with all client balances"                     },
+  { labelKey: "account.ai.chipAjoOverdue",      q: "Which Ajo clients are overdue for contribution?"                                  },
+  { labelKey: "account.ai.chipStaffOverview",   q: "Tell me about my staff"                                                          },
+  { labelKey: "account.ai.chipBranchSummary",   q: "Give me a summary of my branches"                                                },
+  { labelKey: "aiChip.monthlyReport",           q: "Give me a full monthly business report"                                          },
+  { labelKey: "account.ai.chipInvoiceSummary",  q: "Show me a summary of all my invoices and outstanding amounts"                    },
+  { labelKey: "account.ai.chipOverdueInvoices", q: "Which invoices are overdue and how much is owed?"                                },
+  { labelKey: "account.ai.chipGrowBusiness",    q: "How can I grow my business?"                                                     },
+  { labelKey: "account.ai.chipAppFeatures",     q: "What can this app do for my business?"                                           },
+  { labelKey: "account.ai.chipPricingTips",     q: "What is a good pricing strategy for my business?"                                },
 ];
 
-const GREETINGS = {
-  en:     "Hello! I'm **KudiAI**, your Gemini-powered business assistant.\n\nI know your real business data — sales, credit, inventory, ajo savings — and I'm here to give you smart, specific advice to help your business grow.\n\nTap a quick question below or ask me anything!",
-  pidgin: "Hello! I be **KudiAI**, your Gemini business assistant.\n\nI sabi your real business data — sales, credit, stock, ajo savings — and I dey here to help you grow your business.\n\nTap any question or ask me anything!",
-  ha:     "Sannu! Ni ne **KudiAI**, mataimakiyar kasuwancin Gemini.\n\nNa san bayanan kasuwancin ku na ainihi — siyarwa, bashi, kaya, ajiya — kuma ina nan don taimaka muku.\n\nDanna tambaya ko rubuta naku!",
-  ig:     "Nnọọ! Abụ m **KudiAI**, onye inyeaka azụmaahịa Gemini gị.\n\nM maara data azụmaahịa gị n'ezie — ire ahịa, ugwo, ngwa ahịa, ihe nchekwa ajo.\n\nPị ajụjụ ma ọ bụ jụọ m ihe ọ bụla!",
-  yo:     "Ẹ káàbọ̀! Èmi ni **KudiAI**, olùrànlọ́wọ́ isọwọ Gemini rẹ.\n\nMo mọ data isowo gidi rẹ — tita, gbese, oja, ajo — mo si wa nibi lati ran ọ lọwọ.\n\nTẹ ibeere tabi béèrè nipa isowo rẹ!",
-};
+/* Opening message — rendered from the current language each time (never sent to the AI). */
+const greetingText = (t) => [
+  t("account.ai.greetHello"),
+  t("account.ai.greetData"),
+  t("account.ai.greetTap"),
+].join("\n\n");
 
 /* ── Renders **bold** and line-breaks ────────────────────────────────── */
 function FormattedText({ text }) {
@@ -70,8 +70,10 @@ function TypingDots() {
 /* ── Main screen ─────────────────────────────────────────────────────── */
 export default function AIAssistant({ store, inventory, branches = [], invoices = [], onClose, initialQuery = "" }) {
   const { lang } = useLanguage();
+  const t = useT();
 
-  const [messages,  setMessages]  = useState(() => [{ role: "assistant", text: GREETINGS[lang] || GREETINGS.en }]);
+  // The greeting row is marked so it re-renders in the current language; history skips it (slice(1)).
+  const [messages,  setMessages]  = useState(() => [{ role: "assistant", text: greetingText(t), greeting: true }]);
   const [input,     setInput]     = useState("");
   const [thinking,  setThinking]  = useState(false);
   const [listening, setListening] = useState(false);
@@ -134,7 +136,7 @@ export default function AIAssistant({ store, inventory, branches = [], invoices 
 
       if (firstChunk) {
         setThinking(false);
-        setMessages(prev => [...prev, { role: "assistant", text: "No response received. Please try again.", isError: true }]);
+        setMessages(prev => [...prev, { role: "assistant", text: t("account.ai.noResponse"), isError: true }]);
       } else if (ttsOnRef.current && fullReply) {
         speakText(fullReply, lang);
       }
@@ -192,8 +194,8 @@ export default function AIAssistant({ store, inventory, branches = [], invoices 
           <span className="text-base leading-none">✨</span>
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-bold text-slate-800 dark:text-white leading-tight">KudiAI Business Assistant</p>
-          <p className="text-[10px] text-slate-400 dark:text-slate-500">Powered by Gemini · knows your real data</p>
+          <p className="text-sm font-bold text-slate-800 dark:text-white leading-tight">{t("account.ai.businessAssistant")}</p>
+          <p className="text-[10px] text-slate-400 dark:text-slate-500">{t("account.ai.poweredBy")}</p>
         </div>
 
         {/* TTS toggle */}
@@ -206,7 +208,7 @@ export default function AIAssistant({ store, inventory, branches = [], invoices 
             } catch {}
             return next;
           })}
-          title={ttsOn ? "Mute voice replies" : "Enable voice replies"}
+          title={ttsOn ? t("account.ai.muteVoice") : t("account.ai.enableVoice")}
           className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors flex-shrink-0 ${
             ttsOn
               ? "bg-brand-100 dark:bg-brand-900/40 text-brand-600 dark:text-brand-400"
@@ -236,10 +238,10 @@ export default function AIAssistant({ store, inventory, branches = [], invoices 
 
       {/* ── Quick question chips ── */}
       <div className="flex gap-2 px-4 py-2.5 overflow-x-auto no-scrollbar bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 flex-shrink-0">
-        {QUICK.map(({ label, q }) => (
-          <button key={label} onClick={() => ask(q)} disabled={thinking}
+        {QUICK.map(({ labelKey, q }) => (
+          <button key={labelKey} onClick={() => ask(q)} disabled={thinking}
             className="flex-shrink-0 text-[11px] font-semibold bg-brand-50 dark:bg-brand-900/20 text-brand-700 dark:text-brand-400 border border-brand-100 dark:border-brand-800 px-3 py-1.5 rounded-full whitespace-nowrap hover:bg-brand-100 dark:hover:bg-brand-900/40 disabled:opacity-50 transition-colors active:scale-95">
-            {label}
+            {t(labelKey)}
           </button>
         ))}
       </div>
@@ -258,7 +260,7 @@ export default function AIAssistant({ store, inventory, branches = [], invoices 
                 ? "bg-brand-600 text-white rounded-br-md"
                 : "bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 shadow-card border border-slate-100 dark:border-slate-700/60 rounded-bl-md"
             }`}>
-              <FormattedText text={m.text} />
+              <FormattedText text={m.greeting ? greetingText(t) : m.text} />
               {m.role === "assistant" && idx > 0 && (
                 <button
                   onClick={() => speakText(m.text, lang)}
@@ -267,7 +269,7 @@ export default function AIAssistant({ store, inventory, branches = [], invoices 
                     <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" stroke="none" />
                     <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
                   </svg>
-                  Listen
+                  {t("account.ai.listen")}
                 </button>
               )}
             </div>
@@ -311,7 +313,7 @@ export default function AIAssistant({ store, inventory, branches = [], invoices 
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => e.key === "Enter" && !e.shiftKey && ask(input)}
-            placeholder={listening ? "Listening… speak now" : "Ask anything about your business…"}
+            placeholder={listening ? t("account.ai.listeningSpeak") : t("account.ai.askBusiness")}
             className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/60 text-sm text-slate-700 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white dark:focus:bg-slate-700"
           />
 
@@ -328,7 +330,7 @@ export default function AIAssistant({ store, inventory, branches = [], invoices 
 
         {listening && (
           <p className="text-[11px] text-red-500 text-center mt-1.5 font-medium">
-            🎤 Listening… tap the red button to stop
+            🎤 {t("account.ai.listeningStop")}
           </p>
         )}
       </div>

@@ -10,6 +10,7 @@ import { useWallet } from "../hooks/useWallet";
 import { walletIdError, digits11 } from "../utils/walletId";
 import KycConsent from "../components/KycConsent";
 import SelfieCapture from "../components/SelfieCapture";
+import { useT } from "../contexts/LanguageContext";
 
 /* ── Helpers ───────────────────────────────────────────────────── */
 async function uploadFile(file, bucket, path) {
@@ -21,8 +22,16 @@ async function uploadFile(file, bucket, path) {
 // Returns the custom text when "Other" is picked, otherwise the selected value
 const actual = (sel, other) => (sel === "Other" ? (other.trim() || "Other") : sel);
 
+// walletIdError() returns fixed English sentences — show them in the chosen language.
+const ID_ERR_KEYS = {
+  "Your BVN must be exactly 11 digits": "account.onboarding.bvnDigits",
+  "Your NIN must be exactly 11 digits": "account.onboarding.ninDigits",
+  "Enter your BVN or your NIN": "account.onboarding.enterBvnOrNin",
+};
+
 /* ── Main component ────────────────────────────────────────────── */
 export default function Onboarding({ session, onComplete }) {
+  const t = useT();
   const [step,         setStep]         = useState(1);
   const [loading,      setLoading]      = useState(false);
   const [error,        setError]        = useState("");
@@ -92,7 +101,7 @@ export default function Onboarding({ session, onComplete }) {
   const handlePhoto = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) { setError("Photo must be under 5 MB."); return; }
+    if (file.size > 5 * 1024 * 1024) { setError(t("account.onboarding.photoTooBig")); return; }
     setProfileFile(file);
     setProfilePreview(URL.createObjectURL(file));
     setError("");
@@ -101,14 +110,14 @@ export default function Onboarding({ session, onComplete }) {
   const handleStep1 = (e) => {
     e.preventDefault();
     setError("");
-    if (!profileFile) { setError("Please upload a profile photo to continue."); return; }
-    if (!phone.trim()) { setError("Phone number is required."); return; }
+    if (!profileFile) { setError(t("account.onboarding.photoRequired")); return; }
+    if (!phone.trim()) { setError(t("account.onboarding.phoneRequired")); return; }
     setStep(2);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!bizName.trim()) { setError("Business name is required."); return; }
+    if (!bizName.trim()) { setError(t("account.onboarding.bizNameRequired")); return; }
 
     setLoading(true); setError(""); setNeedsSignOut(false); setProfileSaved(false);
 
@@ -182,7 +191,7 @@ export default function Onboarding({ session, onComplete }) {
       if (dbErr) {
         if (dbErr.message?.toLowerCase().includes("foreign key") || dbErr.code === "23503") {
           setNeedsSignOut(true);
-          setError("Database issue — please sign out and sign back in.");
+          setError(t("account.onboarding.dbIssue"));
         } else {
           throw dbErr;
         }
@@ -191,11 +200,7 @@ export default function Onboarding({ session, onComplete }) {
 
       if (photoFailed) {
         setProfileSaved(true);
-        setError(
-          "Profile saved! However, your photo couldn't be uploaded — " +
-          "the 'avatars' storage bucket may be missing in Supabase. " +
-          "You can add your photo later in Settings."
-        );
+        setError(t("account.onboarding.photoUploadFailed"));
         return;
       }
 
@@ -211,7 +216,7 @@ export default function Onboarding({ session, onComplete }) {
       if (walletEnabled) { setStep(3); return; }
       onComplete();
     } catch (err) {
-      setError(err.message || "Something went wrong. Please try again.");
+      setError(err.message || t("common.somethingWrong"));
     } finally {
       setLoading(false);
     }
@@ -221,7 +226,7 @@ export default function Onboarding({ session, onComplete }) {
     e.preventDefault();
     setWalletErr("");
     const idErr = walletIdError(bvn, walletNin, false);
-    if (idErr) { setWalletErr(`${idErr}.`); return; }
+    if (idErr) { setWalletErr(`${ID_ERR_KEYS[idErr] ? t(ID_ERR_KEYS[idErr]) : idErr}.`); return; }
     setWalletBusy(true);
     try {
       // Real BVN verification (bvnVerify) is temporarily not required before
@@ -232,7 +237,7 @@ export default function Onboarding({ session, onComplete }) {
       await wallet.provisionAccount(bvn, walletNin, walletSelfie);
       onComplete();
     } catch (err) {
-      setWalletErr(err.message || "Could not activate your wallet. Please try again.");
+      setWalletErr(err.message || t("account.onboarding.walletActivateFailed"));
     } finally {
       setWalletBusy(false);
     }
@@ -268,7 +273,7 @@ export default function Onboarding({ session, onComplete }) {
                 ? <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3} strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
                 : <span>1</span>
               }
-              <span>You</span>
+              <span>{t("account.onboarding.stepYou")}</span>
             </div>
             <div className={`w-5 h-px transition-all duration-300 ${step >= 2 ? "bg-white" : "bg-white/30"}`} />
             <div className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all duration-300 ${
@@ -278,7 +283,7 @@ export default function Onboarding({ session, onComplete }) {
                 ? <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3} strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
                 : <span>2</span>
               }
-              <span>Business</span>
+              <span>{t("account.onboarding.stepBusiness")}</span>
             </div>
             {walletEnabled && (
               <>
@@ -287,7 +292,7 @@ export default function Onboarding({ session, onComplete }) {
                   step === 3 ? "bg-white text-blue-700 shadow-sm" : "bg-white/25 text-white/80"
                 }`}>
                   <span>3</span>
-                  <span>Wallet</span>
+                  <span>{t("account.onboarding.stepWallet")}</span>
                 </div>
               </>
             )}
@@ -295,20 +300,20 @@ export default function Onboarding({ session, onComplete }) {
 
           {step === 1 ? (
             <>
-              <p className="text-white text-xl font-bold text-center">Hi {firstName}!</p>
+              <p className="text-white text-xl font-bold text-center">{t("account.onboarding.hiName", { name: firstName })}</p>
               <p className="text-white/80 text-sm text-center mt-1">
-                {walletEnabled ? "Just 3 things and you're in" : "Just 2 things and you're in"}
+                {walletEnabled ? t("account.onboarding.just3Things") : t("account.onboarding.just2Things")}
               </p>
             </>
           ) : step === 2 ? (
             <>
-              <p className="text-white text-xl font-bold text-center">Almost done!</p>
-              <p className="text-white/80 text-sm text-center mt-1">Tell us about your business</p>
+              <p className="text-white text-xl font-bold text-center">{t("account.onboarding.almostDone")}</p>
+              <p className="text-white/80 text-sm text-center mt-1">{t("account.onboarding.tellUsBusiness")}</p>
             </>
           ) : (
             <>
-              <p className="text-white text-xl font-bold text-center">Open your KudiAI Wallet</p>
-              <p className="text-white/80 text-sm text-center mt-1">Get a dedicated account number — low-fee transfers &amp; bill payments</p>
+              <p className="text-white text-xl font-bold text-center">{t("account.onboarding.openWalletTitle")}</p>
+              <p className="text-white/80 text-sm text-center mt-1">{t("account.onboarding.openWalletSub")}</p>
             </>
           )}
         </div>
@@ -342,14 +347,14 @@ export default function Onboarding({ session, onComplete }) {
                       : "bg-orange-50 dark:bg-slate-800 border-2 border-dashed border-orange-300 dark:border-orange-800 group-hover:border-orange-400"
                   }`}>
                     {profilePreview
-                      ? <img src={profilePreview} alt="profile" className="w-full h-full object-cover" />
+                      ? <img src={profilePreview} alt={t("account.onboarding.profileAlt")} className="w-full h-full object-cover" />
                       : <div className="flex flex-col items-center gap-1 text-orange-400 dark:text-orange-700">
                           <svg className="w-9 h-9" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
                               d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                           </svg>
-                          <span className="text-[10px] font-semibold">Tap to upload</span>
+                          <span className="text-[10px] font-semibold">{t("account.onboarding.tapToUpload")}</span>
                         </div>
                     }
                   </div>
@@ -360,13 +365,13 @@ export default function Onboarding({ session, onComplete }) {
                   </span>
                 </div>
                 <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 mt-3">
-                  Profile photo <span className="text-red-500">*</span>
+                  {t("account.onboarding.profilePhoto")} <span className="text-red-500">*</span>
                 </p>
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Your account avatar · up to 5 MB, compressed before upload</p>
+                <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{t("account.onboarding.avatarHint")}</p>
               </div>
 
               {/* Phone */}
-              <Field label="Phone Number" required
+              <Field label={t("account.onboarding.phoneNumber")} required
                 type="tel" placeholder="08012345678" value={phone}
                 onChange={(e) => setPhone(e.target.value)} inputMode="tel" />
 
@@ -377,7 +382,7 @@ export default function Onboarding({ session, onComplete }) {
               <button type="submit"
                 className="w-full font-bold rounded-2xl py-4 text-base text-white active:scale-[0.98] transition-all"
                 style={{ background: "linear-gradient(135deg, #f97316 0%, #fb923c 100%)" }}>
-                Next — Your Business →
+                {t("account.onboarding.nextBusiness")}
               </button>
             </form>
           </>
@@ -389,27 +394,27 @@ export default function Onboarding({ session, onComplete }) {
 
             <button type="button" onClick={() => { setStep(1); setError(""); }}
               className="flex items-center gap-1.5 text-sm text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 -mt-1 mb-1">
-              ← Back
+              ← {t("common.back")}
             </button>
 
             {/* Business Name */}
-            <Field label="Business Name" required
-              placeholder="e.g. Adaeze Fabrics & Co."
+            <Field label={t("account.onboarding.businessName")} required
+              placeholder={t("account.onboarding.businessNamePh")}
               value={bizName} onChange={(e) => setBizName(e.target.value)} />
 
             {/* Business Logo — optional */}
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">
-                  Business Logo
-                  <span className="ml-1.5 text-slate-400 dark:text-slate-500 font-normal">(optional)</span>
+                  {t("account.onboarding.businessLogo")}
+                  <span className="ml-1.5 text-slate-400 dark:text-slate-500 font-normal">({t("common.optional")})</span>
                 </label>
-                <span className="text-xs text-slate-400 dark:text-slate-500">Used on invoices</span>
+                <span className="text-xs text-slate-400 dark:text-slate-500">{t("account.onboarding.usedOnInvoices")}</span>
               </div>
               <label className="flex items-center gap-4 cursor-pointer group">
                 <div className="w-16 h-16 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 group-hover:border-green-400 dark:group-hover:border-green-600 overflow-hidden flex-shrink-0 transition-colors bg-slate-50 dark:bg-slate-800 flex items-center justify-center">
                   {logoPreview
-                    ? <img src={logoPreview} alt="Business logo" className="w-full h-full object-cover" />
+                    ? <img src={logoPreview} alt={t("account.onboarding.businessLogoAlt")} className="w-full h-full object-cover" />
                     : <svg className="w-6 h-6 text-slate-300 dark:text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                       </svg>
@@ -417,14 +422,14 @@ export default function Onboarding({ session, onComplete }) {
                 </div>
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-slate-600 dark:text-slate-300">
-                    {logoFile ? logoFile.name : "Tap to upload logo"}
+                    {logoFile ? logoFile.name : t("account.onboarding.tapToUploadLogo")}
                   </p>
-                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">JPG or PNG · up to 5 MB</p>
+                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{t("account.onboarding.logoHint")}</p>
                   {logoPreview && (
                     <button type="button"
                       onClick={(e) => { e.preventDefault(); setLogoFile(null); setLogoPreview(null); }}
                       className="text-xs text-red-500 mt-1 hover:text-red-700">
-                      Remove
+                      {t("account.onboarding.remove")}
                     </button>
                   )}
                 </div>
@@ -432,7 +437,7 @@ export default function Onboarding({ session, onComplete }) {
                   onChange={(e) => {
                     const f = e.target.files[0];
                     if (!f) return;
-                    if (f.size > 5 * 1024 * 1024) { setError("Logo must be under 5 MB."); return; }
+                    if (f.size > 5 * 1024 * 1024) { setError(t("account.onboarding.logoTooBig")); return; }
                     setLogoFile(f);
                     setLogoPreview(URL.createObjectURL(f));
                     setError("");
@@ -444,7 +449,7 @@ export default function Onboarding({ session, onComplete }) {
             {/* Reassurance note */}
             <div className="bg-green-50 dark:bg-green-950/20 border border-green-100 dark:border-green-900/30 rounded-xl px-4 py-3">
               <p className="text-xs text-green-800 dark:text-green-300 leading-relaxed">
-                Your address, business type, industry, and more can be filled in from your profile after setup — nothing is lost by skipping them now.
+                {t("account.onboarding.reassurance")}
               </p>
             </div>
 
@@ -454,20 +459,20 @@ export default function Onboarding({ session, onComplete }) {
             {needsSignOut && (
               <button type="button" onClick={() => supabase.auth.signOut()}
                 className="w-full border-2 border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 font-bold rounded-2xl py-3.5 text-sm hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors">
-                Sign Out &amp; Try Again
+                {t("account.onboarding.signOutRetry")}
               </button>
             )}
             {profileSaved ? (
               <button type="button" onClick={() => (walletEnabled ? setStep(3) : onComplete())}
                 className="w-full text-white font-bold rounded-2xl py-4 text-base active:scale-[0.98] transition-all"
                 style={{ background: "linear-gradient(135deg, #16a34a 0%, #22c55e 100%)" }}>
-                Continue →
+                {t("common.continue")} →
               </button>
             ) : (
               <button type="submit" disabled={loading || needsSignOut}
                 className="w-full text-white font-bold rounded-2xl py-4 text-base active:scale-[0.98] transition-all disabled:opacity-60"
                 style={{ background: "linear-gradient(135deg, #16a34a 0%, #22c55e 100%)" }}>
-                {loading ? "Setting up your account…" : walletEnabled ? "Next — Open Your Wallet →" : "Get started →"}
+                {loading ? t("account.onboarding.settingUp") : walletEnabled ? t("account.onboarding.nextOpenWallet") : t("account.onboarding.getStarted")}
               </button>
             )}
           </form>
@@ -480,23 +485,20 @@ export default function Onboarding({ session, onComplete }) {
             <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/30 rounded-2xl px-4 py-3 flex items-start gap-3">
               <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center flex-shrink-0 text-base">🏦</div>
               <p className="text-xs text-blue-800 dark:text-blue-300 leading-relaxed">
-                Every KudiAI business gets a dedicated bank account number — top up once, then pay bills
-                and send money at low fees (free transfers come with the Standard and Premium plans). Your BVN or NIN opens the account with our banking partner and verifies your
-                identity (Flutterwave/NIBSS KYC); it isn't stored by KudiAI. The name and date of birth on it
-                must match your profile.
+                {t("account.onboarding.walletInfo")}
               </p>
             </div>
 
             <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
-              Enter your BVN <span className="font-normal text-slate-400">or</span> your NIN — either one is enough.
+              {t("account.onboarding.enterBvn")} <span className="font-normal text-slate-400">{t("account.onboarding.or")}</span> {t("account.onboarding.yourNinEnough")}
             </p>
 
             <Field label="BVN"
-              type="tel" inputMode="numeric" placeholder="11-digit Bank Verification Number"
+              type="tel" inputMode="numeric" placeholder={t("account.onboarding.bvnPh")}
               value={bvn} onChange={(e) => setBvn(digits11(e.target.value))} />
 
             <Field label="NIN"
-              type="tel" inputMode="numeric" placeholder="11-digit National Identification Number"
+              type="tel" inputMode="numeric" placeholder={t("account.onboarding.ninPh")}
               value={walletNin} onChange={(e) => setWalletNin(digits11(e.target.value))} />
 
             <KycConsent />
@@ -510,10 +512,10 @@ export default function Onboarding({ session, onComplete }) {
             <button type="submit" disabled={walletBusy || (bvn.length !== 11 && walletNin.length !== 11)}
               className="w-full font-bold rounded-2xl py-4 text-base text-white active:scale-[0.98] transition-all disabled:opacity-60"
               style={{ background: "linear-gradient(135deg, #0f1c45 0%, #1e3a8a 100%)" }}>
-              {walletBusy ? "Verifying & opening your wallet…" : "Open my wallet →"}
+              {walletBusy ? t("account.onboarding.verifyingWallet") : t("account.onboarding.openMyWallet")}
             </button>
             <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center leading-relaxed">
-              Having trouble? Contact support — your account is already set up, only the wallet step remains.
+              {t("account.onboarding.havingTrouble")}
             </p>
           </form>
         )}

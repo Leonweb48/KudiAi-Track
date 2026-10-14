@@ -6,9 +6,9 @@ import { canDo, featureLimit, upgradeLabel, planAvailableText } from "../utils/p
 import { useT } from "../contexts/LanguageContext";
 
 const TIER = (totalPts) => {
-  if (totalPts >= 500) return { label: "Gold",   color: "text-yellow-500 dark:text-yellow-400", bg: "bg-yellow-50 dark:bg-yellow-900/20" };
-  if (totalPts >= 100) return { label: "Silver", color: "text-slate-500 dark:text-slate-300",   bg: "bg-slate-100 dark:bg-slate-700/50"  };
-  return                      { label: "Bronze", color: "text-amber-600 dark:text-amber-400",   bg: "bg-amber-50 dark:bg-amber-900/20"   };
+  if (totalPts >= 500) return { label: "Gold",   key: "business.loyalty.tierGold",   color: "text-yellow-500 dark:text-yellow-400", bg: "bg-yellow-50 dark:bg-yellow-900/20" };
+  if (totalPts >= 100) return { label: "Silver", key: "business.loyalty.tierSilver", color: "text-slate-500 dark:text-slate-300",   bg: "bg-slate-100 dark:bg-slate-700/50"  };
+  return                      { label: "Bronze", key: "business.loyalty.tierBronze", color: "text-amber-600 dark:text-amber-400",   bg: "bg-amber-50 dark:bg-amber-900/20"   };
 };
 
 const fmtN = n => `₦${Number(n || 0).toLocaleString()}`;
@@ -76,6 +76,7 @@ const TYPE_STYLE = {
 };
 
 function HistoryRow({ item }) {
+  const t = useT();
   const { sym, cls, bg } = TYPE_STYLE[item.type] || TYPE_STYLE.points_earned;
   const date = new Date(item.created_at).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" });
   return (
@@ -90,7 +91,7 @@ function HistoryRow({ item }) {
       <div className="text-right flex-shrink-0">
         {item.points_delta !== 0 && (
           <p className={`text-sm font-bold ${item.points_delta > 0 ? "text-green-600 dark:text-green-400" : "text-amber-600 dark:text-amber-400"}`}>
-            {item.points_delta > 0 ? "+" : ""}{item.points_delta} pts
+            {t("business.loyalty.pts", { n: `${item.points_delta > 0 ? "+" : ""}${item.points_delta}` })}
           </p>
         )}
         {Number(item.cashback_delta) !== 0 && (
@@ -104,43 +105,44 @@ function HistoryRow({ item }) {
 }
 
 function AddModal({ onClose, onAdd, settings }) {
+  const t = useT();
   const [f, setF]       = useState({ customer_name: "", phone: "", email: "", referral_code_used: "" });
   const [saving, setSaving] = useState(false);
   const [err, setErr]   = useState("");
   const set = (k, v)    => setF(p => ({ ...p, [k]: v }));
 
   const handleSave = async () => {
-    if (!f.customer_name.trim()) { setErr("Customer name is required"); return; }
+    if (!f.customer_name.trim()) { setErr(t("business.loyalty.errNameRequired")); return; }
     setSaving(true); setErr("");
     const res = await onAdd(f);
     setSaving(false);
     if (res) { onClose(); }
-    else { setErr("Could not add customer. Try again or check the referral code."); }
+    else { setErr(t("business.loyalty.errAddFailed")); }
   };
 
   return (
-    <Modal title="Add Loyalty Customer" onClose={onClose}>
+    <Modal title={t("loyalty.addCustomer")} onClose={onClose}>
       <div className="space-y-4">
         {err && <p className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">{err}</p>}
-        <LabeledInput label="Customer Name *" value={f.customer_name} onChange={v => set("customer_name", v)} placeholder="Full name" />
-        <LabeledInput label="Phone (optional)" value={f.phone} onChange={v => set("phone", v)} placeholder="08012345678" type="tel" />
-        <LabeledInput label="Email (optional)" value={f.email} onChange={v => set("email", v)} placeholder="email@example.com" type="email" />
+        <LabeledInput label={t("business.loyalty.customerNameLabel")} value={f.customer_name} onChange={v => set("customer_name", v)} placeholder={t("business.loyalty.fullNamePlaceholder")} />
+        <LabeledInput label={t("business.loyalty.phoneOptional")} value={f.phone} onChange={v => set("phone", v)} placeholder="08012345678" type="tel" />
+        <LabeledInput label={t("business.loyalty.emailOptional")} value={f.email} onChange={v => set("email", v)} placeholder="email@example.com" type="email" />
         {settings?.is_active && (
           <div>
             <LabeledInput
-              label="Referral Code Used (optional)"
+              label={t("business.loyalty.referralCodeUsed")}
               value={f.referral_code_used}
               onChange={v => set("referral_code_used", v.toUpperCase())}
-              placeholder="e.g. ABCDEF"
+              placeholder={t("business.loyalty.referralCodePlaceholder")}
               maxLength={6}
               extraClass="font-mono uppercase tracking-widest"
             />
-            <p className="text-xs text-slate-400 mt-1">Enter the referral code of whoever introduced this customer.</p>
+            <p className="text-xs text-slate-400 mt-1">{t("business.loyalty.referralCodeHint")}</p>
           </div>
         )}
         <button onClick={handleSave} disabled={saving}
           className="w-full py-3 bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-50 transition-colors">
-          {saving ? "Adding…" : "Add Customer"}
+          {saving ? t("business.loyalty.adding") : t("business.loyalty.addCustomerBtn")}
         </button>
       </div>
     </Modal>
@@ -148,6 +150,7 @@ function AddModal({ onClose, onAdd, settings }) {
 }
 
 function SettingsModal({ settings, onClose, onSave }) {
+  const t = useT();
   const [f, setF]         = useState({ ...settings });
   const [saving, setSaving] = useState(false);
   const set = (k, v)      => setF(p => ({ ...p, [k]: v }));
@@ -166,12 +169,12 @@ function SettingsModal({ settings, onClose, onSave }) {
   };
 
   return (
-    <Modal title="Loyalty Settings" onClose={onClose}>
+    <Modal title={t("loyalty.loyaltySettings")} onClose={onClose}>
       <div className="space-y-4">
         <div className="flex items-center justify-between py-2 border-b border-slate-100 dark:border-slate-700">
           <div>
-            <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Program Active</p>
-            <p className="text-xs text-slate-400 mt-0.5">Award points and cashback on purchases</p>
+            <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">{t("business.loyalty.programActive")}</p>
+            <p className="text-xs text-slate-400 mt-0.5">{t("business.loyalty.programActiveHint")}</p>
           </div>
           <button
             onClick={() => set("is_active", !f.is_active)}
@@ -180,13 +183,13 @@ function SettingsModal({ settings, onClose, onSave }) {
             <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${f.is_active ? "translate-x-5" : "translate-x-0"}`} />
           </button>
         </div>
-        <NumberInput label="Points per ₦100 spent" hint="e.g. 1 = one point for every ₦100" value={f.points_per_100_naira} onChange={v => set("points_per_100_naira", v)} min={0} />
-        <NumberInput label="Cashback Percentage (%)" hint="e.g. 2 = 2% cashback on every purchase (0 to disable)" value={f.cashback_percentage} onChange={v => set("cashback_percentage", v)} min={0} max={50} step={0.5} />
-        <NumberInput label="Referral Bonus (points)" hint="Points awarded to a customer when they refer someone new" value={f.referral_bonus_points} onChange={v => set("referral_bonus_points", v)} min={0} />
-        <NumberInput label="Minimum Purchase Amount (₦)" hint="Customer must spend at least this much to earn rewards (0 = no minimum)" value={f.min_purchase_amount} onChange={v => set("min_purchase_amount", v)} min={0} />
+        <NumberInput label={t("business.loyalty.pointsPer100Label")} hint={t("business.loyalty.pointsPer100Hint")} value={f.points_per_100_naira} onChange={v => set("points_per_100_naira", v)} min={0} />
+        <NumberInput label={t("business.loyalty.cashbackPctLabel")} hint={t("business.loyalty.cashbackPctHint")} value={f.cashback_percentage} onChange={v => set("cashback_percentage", v)} min={0} max={50} step={0.5} />
+        <NumberInput label={t("business.loyalty.referralBonusLabel")} hint={t("business.loyalty.referralBonusHint")} value={f.referral_bonus_points} onChange={v => set("referral_bonus_points", v)} min={0} />
+        <NumberInput label={t("business.loyalty.minPurchaseLabel")} hint={t("business.loyalty.minPurchaseHint")} value={f.min_purchase_amount} onChange={v => set("min_purchase_amount", v)} min={0} />
         <button onClick={handleSave} disabled={saving}
           className="w-full py-3 bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-50 transition-colors">
-          {saving ? "Saving…" : "Save Settings"}
+          {saving ? t("common.saving") : t("business.loyalty.saveSettings")}
         </button>
       </div>
     </Modal>
@@ -194,6 +197,7 @@ function SettingsModal({ settings, onClose, onSave }) {
 }
 
 function AwardModal({ customer, settings, onAward, onClose }) {
+  const t = useT();
   const [amount, setAmount] = useState("");
   const [saving, setSaving] = useState(false);
   const num  = parseFloat(amount) || 0;
@@ -209,21 +213,21 @@ function AwardModal({ customer, settings, onAward, onClose }) {
   };
 
   return (
-    <Modal title={`Award Points — ${customer.customer_name}`} onClose={onClose}>
+    <Modal title={t("business.loyalty.awardTitle", { name: customer.customer_name })} onClose={onClose}>
       <div className="space-y-4">
-        <LabeledInput label="Purchase Amount (₦)" value={amount} onChange={setAmount} placeholder="e.g. 5000" type="number" min={0} />
+        <LabeledInput label={t("business.loyalty.purchaseAmountLabel")} value={amount} onChange={setAmount} placeholder={t("business.loyalty.purchaseAmountPlaceholder")} type="number" min={0} />
         {num > 0 && (
           <div className="bg-green-50 dark:bg-green-900/20 rounded-xl p-4 space-y-2">
-            {pts  > 0 && <KVRow left="Points to award"   right={`+${pts} pts`}   rightCls="font-bold text-green-700 dark:text-green-400" />}
-            {cash > 0 && <KVRow left="Cashback to credit" right={`+${fmtN(cash)}`} rightCls="font-bold text-green-700 dark:text-green-400" />}
+            {pts  > 0 && <KVRow left={t("business.loyalty.pointsToAward")} right={t("business.loyalty.pts", { n: `+${pts}` })}   rightCls="font-bold text-green-700 dark:text-green-400" />}
+            {cash > 0 && <KVRow left={t("business.loyalty.cashbackToCredit")} right={`+${fmtN(cash)}`} rightCls="font-bold text-green-700 dark:text-green-400" />}
             {pts === 0 && cash === 0 && (
-              <p className="text-xs text-amber-600 dark:text-amber-400">No reward for this amount — check program rates in settings.</p>
+              <p className="text-xs text-amber-600 dark:text-amber-400">{t("business.loyalty.noReward")}</p>
             )}
           </div>
         )}
         <button onClick={handleAward} disabled={!num || saving}
           className="w-full py-3 bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-50 transition-colors">
-          {saving ? "Awarding…" : "Award"}
+          {saving ? t("business.loyalty.awarding") : t("business.loyalty.award")}
         </button>
       </div>
     </Modal>
@@ -231,6 +235,7 @@ function AwardModal({ customer, settings, onAward, onClose }) {
 }
 
 function RedeemModal({ customer, onRedeem, onClose }) {
+  const t = useT();
   const [pts,  setPts]  = useState("");
   const [desc, setDesc] = useState("");
   const [saving, setSaving] = useState(false);
@@ -240,7 +245,7 @@ function RedeemModal({ customer, onRedeem, onClose }) {
   const canRedeem = num > 0 && num <= maxPts;
 
   const handleRedeem = async () => {
-    if (!canRedeem) { setErr(`Max available: ${maxPts} pts`); return; }
+    if (!canRedeem) { setErr(t("business.loyalty.maxAvailable", { n: maxPts })); return; }
     setSaving(true);
     const ok = await onRedeem(customer.id, num, desc || "Points redeemed");
     setSaving(false);
@@ -248,18 +253,18 @@ function RedeemModal({ customer, onRedeem, onClose }) {
   };
 
   return (
-    <Modal title={`Redeem Points — ${customer.customer_name}`} onClose={onClose}>
+    <Modal title={t("business.loyalty.redeemTitle", { name: customer.customer_name })} onClose={onClose}>
       <div className="space-y-4">
         <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl px-4 py-3">
-          <p className="text-xs text-slate-400">Available balance</p>
-          <p className="text-lg font-bold text-green-600 dark:text-green-400">{maxPts} pts</p>
+          <p className="text-xs text-slate-400">{t("business.loyalty.availableBalance")}</p>
+          <p className="text-lg font-bold text-green-600 dark:text-green-400">{t("business.loyalty.pts", { n: maxPts })}</p>
         </div>
         {err && <p className="text-xs text-red-500">{err}</p>}
-        <LabeledInput label="Points to Redeem" value={pts} onChange={setPts} placeholder={`Max: ${maxPts}`} type="number" min={1} max={maxPts} />
-        <LabeledInput label="Notes (optional)" value={desc} onChange={setDesc} placeholder="e.g. Discount applied" />
+        <LabeledInput label={t("business.loyalty.pointsToRedeem")} value={pts} onChange={setPts} placeholder={t("business.loyalty.maxPlaceholder", { n: maxPts })} type="number" min={1} max={maxPts} />
+        <LabeledInput label={t("business.loyalty.notesOptional")} value={desc} onChange={setDesc} placeholder={t("business.loyalty.notesPlaceholder")} />
         <button onClick={handleRedeem} disabled={!canRedeem || saving}
           className="w-full py-3 bg-amber-500 text-white rounded-xl font-bold text-sm disabled:opacity-50 transition-colors">
-          {saving ? "Redeeming…" : "Redeem Points"}
+          {saving ? t("business.loyalty.redeeming") : t("business.loyalty.redeemPointsBtn")}
         </button>
       </div>
     </Modal>
@@ -331,7 +336,7 @@ export default function Loyalty({ loyalty, plan, onUpgrade, onClose }) {
               <Icon name="x" size={20} />
             </button>
           )}
-          <h1 className="text-lg font-bold text-slate-800 dark:text-white">Loyalty Program</h1>
+          <h1 className="text-lg font-bold text-slate-800 dark:text-white">{t("loyalty.program")}</h1>
         </div>
         <div className="flex-1 flex items-center justify-center p-6">
           <div className="text-center max-w-xs">
@@ -341,11 +346,11 @@ export default function Loyalty({ loyalty, plan, onUpgrade, onClose }) {
               </svg>
             </div>
             <span className="inline-block px-3 py-1 rounded-full bg-brand-50 dark:bg-brand-900/20 text-brand-600 dark:text-brand-400 text-xs font-bold tracking-wide mb-4">
-              COMING SOON
+              {t("business.loyalty.comingSoon")}
             </span>
-            <h2 className="text-2xl font-extrabold text-slate-800 dark:text-white mb-3">Loyalty Program</h2>
+            <h2 className="text-2xl font-extrabold text-slate-800 dark:text-white mb-3">{t("loyalty.program")}</h2>
             <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
-              We're building something great — reward your best customers with points, cashback, tiers, and referral bonuses. Stay tuned.
+              {t("business.loyalty.comingSoonBody")}
             </p>
           </div>
         </div>
@@ -371,7 +376,7 @@ export default function Loyalty({ loyalty, plan, onUpgrade, onClose }) {
             </div>
             <h2 className="text-xl font-bold text-slate-800 dark:text-white mb-2">{t("loyalty.program")}</h2>
             <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
-              Reward loyal customers with points, cashback, and referral bonuses. {planAvailableText("loyalty")}
+              {t("business.loyalty.upsellBody")} {planAvailableText("loyalty")}
             </p>
             {canSellPlans() && (
               <button onClick={onUpgrade}
@@ -403,7 +408,7 @@ export default function Loyalty({ loyalty, plan, onUpgrade, onClose }) {
 
   const handleDelete = async () => {
     if (!selected) return;
-    if (!window.confirm(`Remove ${selected.customer_name} from the loyalty program?\n\nAll their points, cashback, and history will be deleted.`)) return;
+    if (!window.confirm(`${t("business.loyalty.confirmRemove", { name: selected.customer_name })}\n\n${t("business.loyalty.confirmRemoveDetail")}`)) return;
     await deleteCustomer(selected.id);
     goBack();
   };
@@ -422,7 +427,7 @@ export default function Loyalty({ loyalty, plan, onUpgrade, onClose }) {
               <h1 className="font-bold text-slate-800 dark:text-white truncate leading-tight">{selected.customer_name}</h1>
               <div className="flex items-center gap-2 mt-0.5">
                 <span className="text-xs font-mono text-slate-400">{selected.loyalty_id}</span>
-                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${tier.bg} ${tier.color}`}>{tier.label}</span>
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${tier.bg} ${tier.color}`}>{t(tier.key)}</span>
               </div>
             </div>
             <button onClick={handleDelete} className="p-2 rounded-xl text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
@@ -450,34 +455,34 @@ export default function Loyalty({ loyalty, plan, onUpgrade, onClose }) {
         <div className="px-4 pt-4 space-y-3">
           {detailTab === "profile" && (
             <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-5 space-y-4">
-              <FieldRow label="Phone"         value={selected.phone || "—"} />
-              <FieldRow label="Email"         value={selected.email || "—"} />
+              <FieldRow label={t("business.loyalty.phone")} value={selected.phone || "—"} />
+              <FieldRow label={t("business.loyalty.email")} value={selected.email || "—"} />
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs text-slate-400">Referral Code</span>
+                  <span className="text-xs text-slate-400">{t("business.loyalty.referralCode")}</span>
                   <button onClick={() => handleCopy(selected.referral_code)}
                     className="text-xs font-semibold text-green-600 dark:text-green-400">
-                    {copied ? "Copied!" : "Copy"}
+                    {copied ? t("business.loyalty.copied") : t("business.loyalty.copy")}
                   </button>
                 </div>
                 <div className="bg-slate-50 dark:bg-slate-700/60 rounded-xl px-3 py-2.5 font-mono text-sm font-bold text-slate-700 dark:text-white tracking-widest text-center">
                   {selected.referral_code}
                 </div>
-                <p className="text-xs text-slate-400 mt-1.5 text-center">Share this code for referral rewards</p>
+                <p className="text-xs text-slate-400 mt-1.5 text-center">{t("business.loyalty.shareCodeHint")}</p>
               </div>
-              {selected.referred_by && <FieldRow label="Referred by (code)" value={selected.referred_by} />}
-              <FieldRow label="Total Referrals Made" value={`${selected.total_referrals || 0} customer${(selected.total_referrals || 0) !== 1 ? "s" : ""}`} />
-              <FieldRow label="Member Since" value={new Date(selected.created_at).toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" })} />
+              {selected.referred_by && <FieldRow label={t("business.loyalty.referredBy")} value={selected.referred_by} />}
+              <FieldRow label={t("business.loyalty.totalReferrals")} value={t((selected.total_referrals || 0) !== 1 ? "business.loyalty.customersMany" : "business.loyalty.customersOne", { n: selected.total_referrals || 0 })} />
+              <FieldRow label={t("business.loyalty.memberSince")} value={new Date(selected.created_at).toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" })} />
             </div>
           )}
 
           {detailTab === "rewards" && (
             <>
               <div className="grid grid-cols-2 gap-3">
-                <StatBox label="Points Balance"        value={`${selected.points_balance || 0} pts`}   color="text-green-600 dark:text-green-400" />
-                <StatBox label="Cashback Balance"      value={fmtN(selected.cashback_balance)}          color="text-blue-600 dark:text-blue-400"   />
-                <StatBox label="Total Pts Earned"      value={`${selected.total_points_earned || 0}`}   color="text-slate-600 dark:text-slate-300"  />
-                <StatBox label="Total Cashback Earned" value={fmtN(selected.total_cashback_earned)}     color="text-slate-600 dark:text-slate-300"  />
+                <StatBox label={t("business.loyalty.pointsBalance")} value={t("business.loyalty.pts", { n: selected.points_balance || 0 })}   color="text-green-600 dark:text-green-400" />
+                <StatBox label={t("business.loyalty.cashbackBalance")} value={fmtN(selected.cashback_balance)}          color="text-blue-600 dark:text-blue-400"   />
+                <StatBox label={t("business.loyalty.totalPtsEarned")} value={`${selected.total_points_earned || 0}`}   color="text-slate-600 dark:text-slate-300"  />
+                <StatBox label={t("business.loyalty.totalCashbackEarned")} value={fmtN(selected.total_cashback_earned)}     color="text-slate-600 dark:text-slate-300"  />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <button onClick={() => setShowAward(true)}
@@ -490,21 +495,21 @@ export default function Loyalty({ loyalty, plan, onUpgrade, onClose }) {
                 </button>
               </div>
               <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-4 space-y-2">
-                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Current Program Rates</p>
-                <KVRow left="Points per ₦100" right={`${settings.points_per_100_naira} pt${settings.points_per_100_naira !== 1 ? "s" : ""}`} />
-                <KVRow left="Cashback rate"    right={settings.cashback_percentage > 0 ? `${settings.cashback_percentage}%` : "Disabled"} />
-                <KVRow left="Min purchase"     right={Number(settings.min_purchase_amount) > 0 ? fmtN(settings.min_purchase_amount) : "None"} />
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">{t("business.loyalty.currentRates")}</p>
+                <KVRow left={t("business.loyalty.pointsPer100")} right={t(settings.points_per_100_naira !== 1 ? "business.loyalty.pts" : "business.loyalty.ptOne", { n: settings.points_per_100_naira })} />
+                <KVRow left={t("business.loyalty.cashbackRate")} right={settings.cashback_percentage > 0 ? `${settings.cashback_percentage}%` : t("business.loyalty.disabled")} />
+                <KVRow left={t("business.loyalty.minPurchase")} right={Number(settings.min_purchase_amount) > 0 ? fmtN(settings.min_purchase_amount) : t("business.loyalty.none")} />
               </div>
             </>
           )}
 
           {detailTab === "history" && (
             histLoading ? (
-              <div className="text-center py-12 text-slate-400 text-sm">Loading…</div>
+              <div className="text-center py-12 text-slate-400 text-sm">{t("common.loading")}</div>
             ) : history.length === 0 ? (
               <div className="text-center py-14">
-                <p className="text-slate-400 text-sm font-medium">No reward history yet</p>
-                <p className="text-xs text-slate-300 dark:text-slate-600 mt-1">Award points to see history here</p>
+                <p className="text-slate-400 text-sm font-medium">{t("business.loyalty.noHistory")}</p>
+                <p className="text-xs text-slate-300 dark:text-slate-600 mt-1">{t("business.loyalty.noHistoryHint")}</p>
               </div>
             ) : (
               <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm divide-y divide-slate-50 dark:divide-slate-700/50 overflow-hidden">
@@ -546,7 +551,7 @@ export default function Loyalty({ loyalty, plan, onUpgrade, onClose }) {
             }}
             className="flex items-center gap-1.5 bg-green-600 text-white px-3 py-2 rounded-xl text-sm font-bold shadow-sm">
             <Icon name="plus" size={15} />
-            Add
+            {t("loyalty.add")}
           </button>
         </div>
       </div>
@@ -554,8 +559,8 @@ export default function Loyalty({ loyalty, plan, onUpgrade, onClose }) {
       <div className="px-4 pt-4 pb-6 space-y-4">
         <div className="grid grid-cols-3 gap-3">
           <StatBox label={t("loyalty.customers")} value={stats.total}               color="text-slate-700 dark:text-white" />
-          <StatBox label="Points Given" value={stats.totalPts.toLocaleString()}     color="text-green-600 dark:text-green-400" />
-          <StatBox label="Cashback"     value={fmtN(stats.totalCash)}              color="text-blue-600 dark:text-blue-400" />
+          <StatBox label={t("business.loyalty.pointsGiven")} value={stats.totalPts.toLocaleString()}     color="text-green-600 dark:text-green-400" />
+          <StatBox label={t("business.loyalty.cashback")} value={fmtN(stats.totalCash)}              color="text-blue-600 dark:text-blue-400" />
         </div>
 
         <div className="relative">
@@ -569,7 +574,7 @@ export default function Loyalty({ loyalty, plan, onUpgrade, onClose }) {
         </div>
 
         {loyaltyLoading ? (
-          <div className="text-center py-12 text-slate-400 text-sm">Loading…</div>
+          <div className="text-center py-12 text-slate-400 text-sm">{t("common.loading")}</div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-14">
             <div className="w-14 h-14 bg-green-100 dark:bg-green-900/30 rounded-2xl flex items-center justify-center mx-auto mb-3">
@@ -593,11 +598,11 @@ export default function Loyalty({ loyalty, plan, onUpgrade, onClose }) {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="font-semibold text-slate-800 dark:text-white text-sm truncate">{c.customer_name}</span>
-                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${tier.bg} ${tier.color}`}>{tier.label}</span>
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${tier.bg} ${tier.color}`}>{t(tier.key)}</span>
                     </div>
                     <div className="flex items-center gap-3 mt-0.5">
                       <span className="text-xs font-mono text-slate-400">{c.loyalty_id}</span>
-                      <span className="text-xs font-bold text-green-600 dark:text-green-400">{c.points_balance || 0} pts</span>
+                      <span className="text-xs font-bold text-green-600 dark:text-green-400">{t("business.loyalty.pts", { n: c.points_balance || 0 })}</span>
                       {Number(c.cashback_balance || 0) > 0 && (
                         <span className="text-xs font-bold text-blue-600 dark:text-blue-400">{fmtN(c.cashback_balance)}</span>
                       )}

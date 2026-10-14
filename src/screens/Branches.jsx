@@ -11,6 +11,32 @@ import { useT } from "../contexts/LanguageContext";
 
 const MEDALS = ["🥇", "🥈", "🥉"];
 
+// Stored values shown on screen → text keys (unknown values show as stored)
+const STATUS_KEYS = {
+  pending:        "business.branches.statusPending",
+  partially_paid: "business.branches.statusPartiallyPaid",
+  overdue:        "business.branches.statusOverdue",
+  active:         "business.branches.statusActive",
+  inactive:       "business.branches.statusInactive",
+  suspended:      "business.branches.statusSuspended",
+};
+const MOVE_KEYS = {
+  restock:    "business.branches.moveRestock",
+  sale:       "business.branches.moveSale",
+  adjustment: "business.branches.moveAdjustment",
+};
+const FREQ_KEYS = {
+  daily:   "business.branches.freqDaily",
+  weekly:  "business.branches.freqWeekly",
+  monthly: "business.branches.freqMonthly",
+};
+const ROLE_KEYS = {
+  staff:   "business.branches.roleStaff",
+  cashier: "business.branches.roleCashier",
+  manager: "business.branches.roleManager",
+};
+const labelOf = (t, map, v) => (map[v] ? t(map[v]) : v);
+
 function monthStr() {
   const n = new Date();
   return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}`;
@@ -60,20 +86,20 @@ function BranchModal({ branch, staffList, onClose, onSave }) {
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
 
   const handleSave = async () => {
-    if (!f.name.trim()) { setErr("Branch name is required"); return; }
+    if (!f.name.trim()) { setErr(t("business.branches.errNameRequired")); return; }
     setSaving(true); setErr("");
     const ok = await onSave(f);
     setSaving(false);
     if (ok) onClose();
-    else setErr("Could not save branch. Try again.");
+    else setErr(t("business.branches.errSaveFailed"));
   };
 
   return (
     <Modal title={isEdit ? t("branch.editBranch") : t("branch.newBranch")} onClose={onClose}>
       <div className="space-y-4">
         {err && <p className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">{err}</p>}
-        <LabeledInput label={t("branch.branchName")} value={f.name}    onChange={v => set("name", v)}    placeholder="e.g. Lekki Branch" />
-        <LabeledInput label={t("branch.address")}    value={f.address} onChange={v => set("address", v)} placeholder="Street, city, state" />
+        <LabeledInput label={t("branch.branchName")} value={f.name}    onChange={v => set("name", v)}    placeholder={t("business.branches.namePlaceholder")} />
+        <LabeledInput label={t("branch.address")}    value={f.address} onChange={v => set("address", v)} placeholder={t("business.branches.addressPlaceholder")} />
         <LabeledInput label={t("branch.phone")}      value={f.phone}   onChange={v => set("phone", v)}   placeholder="08012345678" type="tel" />
         {staffList.length > 0 && (
           <div>
@@ -163,7 +189,7 @@ function OverviewTab({ transactions, credits }) {
       {/* Recent credits */}
       {openCr.length > 0 && (
         <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-100 dark:border-slate-700">
-          <SectionHead title="Open Credits" />
+          <SectionHead title={t("branch.openCredits")} />
           <div className="space-y-2">
             {openCr.slice(0, 5).map(c => (
               <div key={c.id} className="flex items-center gap-3">
@@ -172,12 +198,12 @@ function OverviewTab({ transactions, credits }) {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">{c.customer_name}</p>
-                  <p className="text-[10px] text-slate-400 capitalize">{c.status}</p>
+                  <p className="text-[10px] text-slate-400 capitalize">{labelOf(t, STATUS_KEYS, c.status)}</p>
                 </div>
                 <span className="text-sm font-extrabold text-amber-600 dark:text-amber-400 tabular flex-shrink-0">{fmt(c.outstanding || 0)}</span>
               </div>
             ))}
-            {openCr.length > 5 && <p className="text-xs text-slate-400 text-center mt-1">+{openCr.length - 5} more</p>}
+            {openCr.length > 5 && <p className="text-xs text-slate-400 text-center mt-1">{t("business.branches.moreCount", { n: openCr.length - 5 })}</p>}
           </div>
         </div>
       )}
@@ -185,17 +211,17 @@ function OverviewTab({ transactions, credits }) {
       {/* Recent transactions */}
       {recent.length > 0 && (
         <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-100 dark:border-slate-700">
-          <SectionHead title="Recent Transactions" />
+          <SectionHead title={t("business.branches.recentTransactions")} />
           <div className="space-y-2">
-            {recent.map(t => (
-              <div key={t.id} className="flex items-center gap-3">
-                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${t.type === "in" ? "bg-green-500" : "bg-red-400"}`} />
+            {recent.map(tx => (
+              <div key={tx.id} className="flex items-center gap-3">
+                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${tx.type === "in" ? "bg-green-500" : "bg-red-400"}`} />
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">{t.item_name || t.category || "Transaction"}</p>
-                  <p className="text-[10px] text-slate-400">{t.transaction_date}</p>
+                  <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">{tx.item_name || tx.category || t("business.branches.transaction")}</p>
+                  <p className="text-[10px] text-slate-400">{tx.transaction_date}</p>
                 </div>
-                <span className={`text-sm font-extrabold tabular flex-shrink-0 ${t.type === "in" ? "text-green-600 dark:text-green-400" : "text-red-500"}`}>
-                  {t.type === "in" ? "+" : "−"}{fmt(t.amount)}
+                <span className={`text-sm font-extrabold tabular flex-shrink-0 ${tx.type === "in" ? "text-green-600 dark:text-green-400" : "text-red-500"}`}>
+                  {tx.type === "in" ? "+" : "−"}{fmt(tx.amount)}
                 </span>
               </div>
             ))}
@@ -205,7 +231,7 @@ function OverviewTab({ transactions, credits }) {
 
       {transactions.length === 0 && (
         <div className="text-center py-10 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700">
-          <p className="text-slate-400 text-sm font-semibold">No transactions yet</p>
+          <p className="text-slate-400 text-sm font-semibold">{t("business.branches.noTransactions")}</p>
         </div>
       )}
     </div>
@@ -214,6 +240,7 @@ function OverviewTab({ transactions, credits }) {
 
 // ── Stock tab ─────────────────────────────────────────────────────────────
 function StockTab({ products, movements }) {
+  const t = useT();
   const totalItems  = products.reduce((s, p) => s + (p.quantity || 0), 0);
   const totalValue  = products.reduce((s, p) => s + (p.selling_price || 0) * (p.quantity || 0), 0);
   const lowStock    = products.filter(p => (p.quantity || 0) <= (p.low_stock_threshold || 0));
@@ -224,9 +251,9 @@ function StockTab({ products, movements }) {
       {/* Summary strip */}
       <div className="grid grid-cols-3 gap-2">
         {[
-          { label: "Products",   value: products.length, color: "text-violet-600 dark:text-violet-400" },
-          { label: "Total Units", value: totalItems,     color: "text-blue-600 dark:text-blue-400"    },
-          { label: "Low Stock",  value: lowStock.length, color: lowStock.length > 0 ? "text-red-500 dark:text-red-400" : "text-green-600 dark:text-green-400" },
+          { label: t("business.branches.products"),   value: products.length, color: "text-violet-600 dark:text-violet-400" },
+          { label: t("business.branches.totalUnits"), value: totalItems,     color: "text-blue-600 dark:text-blue-400"    },
+          { label: t("business.branches.lowStock"),  value: lowStock.length, color: lowStock.length > 0 ? "text-red-500 dark:text-red-400" : "text-green-600 dark:text-green-400" },
         ].map(({ label, value, color }) => (
           <div key={label} className="bg-white dark:bg-slate-800 rounded-2xl p-3 border border-slate-100 dark:border-slate-700 text-center shadow-sm">
             <p className={`text-lg font-extrabold tabular ${color}`}>{value}</p>
@@ -236,14 +263,14 @@ function StockTab({ products, movements }) {
       </div>
 
       <div className="bg-white dark:bg-slate-800 rounded-2xl p-3.5 border border-slate-100 dark:border-slate-700 flex items-center justify-between">
-        <p className="text-xs text-slate-400">Total Stock Value</p>
+        <p className="text-xs text-slate-400">{t("business.branches.totalStockValue")}</p>
         <p className="text-sm font-extrabold text-violet-600 dark:text-violet-400 tabular">{fmt(totalValue)}</p>
       </div>
 
       {/* Low stock alert */}
       {lowStock.length > 0 && (
         <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/60 rounded-2xl px-4 py-3">
-          <p className="text-xs font-bold text-red-600 dark:text-red-400 mb-1">{lowStock.length} item{lowStock.length !== 1 ? "s" : ""} running low</p>
+          <p className="text-xs font-bold text-red-600 dark:text-red-400 mb-1">{t(lowStock.length !== 1 ? "business.branches.lowItemsMany" : "business.branches.lowItemsOne", { n: lowStock.length })}</p>
           <div className="flex flex-wrap gap-1.5">
             {lowStock.map(p => (
               <span key={p.id} className="text-[10px] bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 font-semibold px-2 py-0.5 rounded-full">
@@ -257,7 +284,7 @@ function StockTab({ products, movements }) {
       {/* Product list */}
       {products.length > 0 ? (
         <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 overflow-hidden">
-          <div className="px-4 pt-4 pb-2"><SectionHead title="Products" /></div>
+          <div className="px-4 pt-4 pb-2"><SectionHead title={t("business.branches.products")} /></div>
           <div className="divide-y divide-slate-100 dark:divide-slate-700/60">
             {products.map(p => {
               const pct = p.low_stock_threshold > 0 ? Math.min(100, Math.round((p.quantity / Math.max(p.low_stock_threshold * 3, p.quantity)) * 100)) : 100;
@@ -271,9 +298,9 @@ function StockTab({ products, movements }) {
                     </div>
                     <div className="text-right flex-shrink-0">
                       <p className={`text-sm font-extrabold tabular ${isLow ? "text-red-500" : "text-slate-700 dark:text-slate-200"}`}>
-                        {p.quantity || 0} units
+                        {t("business.branches.units", { n: p.quantity || 0 })}
                       </p>
-                      <p className="text-[10px] text-slate-400">{fmt(p.selling_price || 0)} each</p>
+                      <p className="text-[10px] text-slate-400">{t("business.branches.each", { price: fmt(p.selling_price || 0) })}</p>
                     </div>
                   </div>
                   <div className="h-1.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
@@ -286,14 +313,14 @@ function StockTab({ products, movements }) {
         </div>
       ) : (
         <div className="text-center py-10 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700">
-          <p className="text-slate-400 text-sm font-semibold">No stock items for this branch</p>
+          <p className="text-slate-400 text-sm font-semibold">{t("business.branches.noStock")}</p>
         </div>
       )}
 
       {/* Recent movements */}
       {recent.length > 0 && (
         <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-100 dark:border-slate-700">
-          <SectionHead title="Recent Stock Movements" />
+          <SectionHead title={t("business.branches.recentMovements")} />
           <div className="space-y-2">
             {recent.map(m => {
               const prod = products.find(p => p.id === m.product_id);
@@ -302,8 +329,8 @@ function StockTab({ products, movements }) {
                 <div key={m.id} className="flex items-center gap-2.5">
                   <div className={`w-2 h-2 rounded-full flex-shrink-0 ${isIn ? "bg-green-500" : "bg-red-400"}`} />
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">{prod?.product_name || "Unknown product"}</p>
-                    <p className="text-[10px] text-slate-400 capitalize">{m.type} · {new Date(m.created_at).toLocaleDateString("en-NG")}</p>
+                    <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">{prod?.product_name || t("business.branches.unknownProduct")}</p>
+                    <p className="text-[10px] text-slate-400 capitalize">{labelOf(t, MOVE_KEYS, m.type)} · {new Date(m.created_at).toLocaleDateString("en-NG")}</p>
                   </div>
                   <span className={`text-xs font-extrabold flex-shrink-0 ${isIn ? "text-green-600 dark:text-green-400" : "text-red-500"}`}>
                     {isIn ? "+" : "−"}{Math.abs(m.quantity)}
@@ -320,6 +347,7 @@ function StockTab({ products, movements }) {
 
 // ── Ajo tab ───────────────────────────────────────────────────────────────
 function AjoTab({ asoClients }) {
+  const t = useT();
   const total      = asoClients.reduce((s, c) => s + (c.current_balance || 0), 0);
   const totalSaved = asoClients.reduce((s, c) => s + (c.total_saved     || 0), 0);
   const active     = asoClients.filter(c => c.status === "active").length;
@@ -333,19 +361,19 @@ function AjoTab({ asoClients }) {
       <div className="rounded-3xl px-5 py-5 text-white relative overflow-hidden shadow-lg bg-[linear-gradient(145deg,#7c3aed_0%,#6d28d9_55%,#4c1d95_100%)]">
         <div className="absolute -top-8 -right-8 w-28 h-28 rounded-full bg-white/5 pointer-events-none" />
         <div className="relative">
-          <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-0.5">Total Balance</p>
+          <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-0.5">{t("business.branches.totalBalance")}</p>
           <AmountDisplay amount={total} size="hero" align="left" className="text-white mb-3" />
           <div className="grid grid-cols-3 divide-x divide-white/20">
             <div className="pr-3 min-w-0">
-              <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider">Total Saved</p>
+              <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider">{t("business.branches.totalSaved")}</p>
               <AmountDisplay amount={totalSaved} size="small" align="left" className="text-green-200" />
             </div>
             <div className="px-3">
-              <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider">Clients</p>
+              <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider">{t("business.branches.clients")}</p>
               <p className="text-sm font-extrabold">{asoClients.length}</p>
             </div>
             <div className="pl-3">
-              <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider">Active</p>
+              <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider">{t("branch.active")}</p>
               <p className="text-sm font-extrabold">{active}</p>
             </div>
           </div>
@@ -354,13 +382,13 @@ function AjoTab({ asoClients }) {
 
       {overdue.length > 0 && (
         <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/60 rounded-2xl px-4 py-3">
-          <p className="text-xs font-bold text-red-600 dark:text-red-400">{overdue.length} contribution{overdue.length !== 1 ? "s" : ""} overdue</p>
+          <p className="text-xs font-bold text-red-600 dark:text-red-400">{t(overdue.length !== 1 ? "business.branches.overdueMany" : "business.branches.overdueOne", { n: overdue.length })}</p>
         </div>
       )}
 
       {asoClients.length > 0 ? (
         <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 overflow-hidden">
-          <div className="px-4 pt-4 pb-2"><SectionHead title="Clients" /></div>
+          <div className="px-4 pt-4 pb-2"><SectionHead title={t("business.branches.clients")} /></div>
           <div className="divide-y divide-slate-100 dark:divide-slate-700/60">
             {asoClients.map(c => {
               const initials = (c.full_name || "?")[0].toUpperCase();
@@ -376,11 +404,11 @@ function AjoTab({ asoClients }) {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-semibold text-slate-800 dark:text-white truncate">{c.full_name}</p>
-                    <p className="text-[10px] text-slate-400 capitalize">{c.contribution_frequency} · {fmt(c.contribution_amount || 0)}</p>
+                    <p className="text-[10px] text-slate-400 capitalize">{labelOf(t, FREQ_KEYS, c.contribution_frequency)} · {fmt(c.contribution_amount || 0)}</p>
                   </div>
                   <div className="text-right flex-shrink-0">
                     <p className="text-sm font-extrabold text-violet-600 dark:text-violet-400 tabular">{fmt(c.current_balance || 0)}</p>
-                    {isOverdue && <p className="text-[9px] text-red-500 font-bold">Overdue</p>}
+                    {isOverdue && <p className="text-[9px] text-red-500 font-bold">{t("business.branches.overdue")}</p>}
                   </div>
                 </div>
               );
@@ -389,7 +417,7 @@ function AjoTab({ asoClients }) {
         </div>
       ) : (
         <div className="text-center py-10 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700">
-          <p className="text-slate-400 text-sm font-semibold">No Ajo clients for this branch</p>
+          <p className="text-slate-400 text-sm font-semibold">{t("business.branches.noAjoClients")}</p>
         </div>
       )}
     </div>
@@ -398,6 +426,7 @@ function AjoTab({ asoClients }) {
 
 // ── People tab ────────────────────────────────────────────────────────────
 function PeopleTab({ staff, managerId, loading }) {
+  const t = useT();
   const manager  = staff.find(s => s.id === managerId);
   const others   = staff.filter(s => s.id !== managerId);
 
@@ -407,7 +436,7 @@ function PeopleTab({ staff, managerId, loading }) {
       <div className={`bg-white dark:bg-slate-800 rounded-2xl border shadow-sm overflow-hidden ${isManager ? "border-violet-200 dark:border-violet-700" : "border-slate-100 dark:border-slate-700"}`}>
         {isManager && (
           <div className="px-4 py-2 bg-violet-600">
-            <p className="text-[10px] font-bold text-white uppercase tracking-widest">Branch Manager</p>
+            <p className="text-[10px] font-bold text-white uppercase tracking-widest">{t("branch.manager")}</p>
           </div>
         )}
         <div className="p-4">
@@ -422,15 +451,15 @@ function PeopleTab({ staff, managerId, loading }) {
             </div>
             <div className="flex-1 min-w-0">
               <p className="font-extrabold text-slate-800 dark:text-white truncate">{s.full_name}</p>
-              <p className="text-xs text-slate-400 capitalize mt-0.5">{(s.role || "staff").replace(/_/g, " ")}</p>
+              <p className="text-xs text-slate-400 capitalize mt-0.5">{ROLE_KEYS[s.role || "staff"] ? t(ROLE_KEYS[s.role || "staff"]) : (s.role || "staff").replace(/_/g, " ")}</p>
               <span className={`inline-block text-[9px] font-bold px-2 py-0.5 rounded-full mt-1 ${s.status === "active" ? "bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400" : "bg-red-100 text-red-500"}`}>
-                {s.status || "active"}
+                {labelOf(t, STATUS_KEYS, s.status || "active")}
               </span>
             </div>
           </div>
           <div className="divide-y divide-slate-100 dark:divide-slate-700/60">
-            <InfoRow label="Phone" value={s.phone} />
-            <InfoRow label="Email" value={s.email} />
+            <InfoRow label={t("branch.phone")} value={s.phone} />
+            <InfoRow label={t("business.branches.email")} value={s.email} />
           </div>
         </div>
       </div>
@@ -449,8 +478,8 @@ function PeopleTab({ staff, managerId, loading }) {
     return (
       <div className="px-4 pt-4 pb-6">
         <div className="text-center py-12 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700">
-          <p className="text-slate-400 text-sm font-semibold">No staff assigned to this branch</p>
-          <p className="text-slate-400 text-xs mt-1">Assign staff from the Staff Management section</p>
+          <p className="text-slate-400 text-sm font-semibold">{t("business.branches.noStaff")}</p>
+          <p className="text-slate-400 text-xs mt-1">{t("business.branches.noStaffHint")}</p>
         </div>
       </div>
     );
@@ -466,6 +495,7 @@ function PeopleTab({ staff, managerId, loading }) {
 
 // ── Branch detail page ────────────────────────────────────────────────────
 function BranchDetail({ branch, transactions, credits, asoClients, allProducts, allMovements, staffMap, onClose, onEdit, onDelete, onReport, userId }) {
+  const t = useT();
   const [tab,          setTab]          = useState("overview");
   const [branchStaff,  setBranchStaff]  = useState([]);
   const [loadingStaff, setLoadingStaff] = useState(false);
@@ -488,10 +518,10 @@ function BranchDetail({ branch, transactions, credits, asoClients, allProducts, 
   }, [branch?.id, userId]);
 
   const TABS = [
-    { id: "overview", label: "Overview" },
-    { id: "stock",    label: "Stock"    },
+    { id: "overview", label: t("business.branches.tabOverview") },
+    { id: "stock",    label: t("business.branches.tabStock") },
     { id: "ajo",      label: "Ajo"      },
-    { id: "people",   label: "People"   },
+    { id: "people",   label: t("business.branches.tabPeople") },
   ];
 
   const managerName = branch.manager_id ? (staffMap[branch.manager_id] || null) : null;
@@ -508,8 +538,8 @@ function BranchDetail({ branch, transactions, credits, asoClients, allProducts, 
         <div className="flex-1 min-w-0">
           <h2 className="font-extrabold text-slate-800 dark:text-white truncate text-sm">{branch.name}</h2>
           <p className="text-[10px] text-slate-400">
-            {managerName ? `Manager: ${managerName}` : "No manager assigned"}
-            {!branch.is_active && " · Inactive"}
+            {managerName ? t("business.branches.managerLabel", { name: managerName }) : t("business.branches.noManagerAssigned")}
+            {!branch.is_active && ` · ${t("branch.inactive")}`}
           </p>
         </div>
         <button onClick={() => setShowEditModal(true)}
@@ -523,17 +553,17 @@ function BranchDetail({ branch, transactions, credits, asoClients, allProducts, 
           <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
             <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
           </svg>
-          Report
+          {t("business.branches.report")}
         </button>
       </div>
 
       {/* Tab bar */}
       <div className="bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 flex-shrink-0">
         <div className="flex gap-0">
-          {TABS.map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)}
-              className={`px-3 py-3 text-xs font-bold border-b-2 transition-colors ${tab === t.id ? "border-violet-600 text-violet-600 dark:text-violet-400 dark:border-violet-400" : "border-transparent text-slate-400 dark:text-slate-500"}`}>
-              {t.label}
+          {TABS.map(tb => (
+            <button key={tb.id} onClick={() => setTab(tb.id)}
+              className={`px-3 py-3 text-xs font-bold border-b-2 transition-colors ${tab === tb.id ? "border-violet-600 text-violet-600 dark:text-violet-400 dark:border-violet-400" : "border-transparent text-slate-400 dark:text-slate-500"}`}>
+              {tb.label}
             </button>
           ))}
         </div>
@@ -623,7 +653,7 @@ export default function Branches({ store, onClose, userId, inventory = {}, onRep
               <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
             </svg>
           </button>
-          <h1 className="text-base font-bold text-slate-800 dark:text-white">Branch Management</h1>
+          <h1 className="text-base font-bold text-slate-800 dark:text-white">{t("business.branches.management")}</h1>
         </div>
         <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
           <div className="w-24 h-24 bg-violet-50 dark:bg-violet-900/20 rounded-full flex items-center justify-center mb-5">
@@ -632,9 +662,9 @@ export default function Branches({ store, onClose, userId, inventory = {}, onRep
               <polyline points="9 22 9 12 15 12 15 22" />
             </svg>
           </div>
-          <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-2">Branch Management</h2>
+          <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-2">{t("business.branches.management")}</h2>
           <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 max-w-xs leading-relaxed">
-            Run multiple business locations from one dashboard. Compare performance, assign staff, and track sales per branch. {planAvailableText("branches")}
+            {t("business.branches.upsellBody")} {planAvailableText("branches")}
           </p>
           {canSellPlans() && (
             <button onClick={onUpgrade} className="bg-violet-600 hover:bg-violet-700 text-white px-6 py-3 rounded-2xl font-bold text-sm active:scale-95 transition shadow-md">
@@ -653,7 +683,7 @@ export default function Branches({ store, onClose, userId, inventory = {}, onRep
 
   const handleDelete = async () => {
     if (!selected) return;
-    if (!window.confirm(`Remove "${selected.name}"? Transactions tagged to this branch will be untagged, not deleted.`)) return;
+    if (!window.confirm(t("business.branches.confirmRemove", { name: selected.name }))) return;
     await deleteBranch(selected.id);
     closeDetail();
   };
@@ -703,7 +733,7 @@ export default function Branches({ store, onClose, userId, inventory = {}, onRep
           <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
             <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
           </svg>
-          New
+          {t("business.branches.new")}
         </button>
       </div>
 
@@ -712,19 +742,19 @@ export default function Branches({ store, onClose, userId, inventory = {}, onRep
         <div className="rounded-3xl px-5 py-5 text-white relative overflow-hidden shadow-lg bg-[linear-gradient(145deg,#7c3aed_0%,#6d28d9_55%,#4c1d95_100%)]">
           <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full bg-white/5 pointer-events-none" />
           <div className="relative">
-            <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-0.5">All Branches · This Month</p>
+            <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-0.5">{t("business.branches.allBranchesMonth")}</p>
             <AmountDisplay amount={totalSalesMonth} size="hero" align="left" className="text-white mb-3" />
             <div className="grid grid-cols-3 divide-x divide-white/20">
               <div className="pr-3 min-w-0">
-                <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider">Active</p>
+                <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider">{t("branch.active")}</p>
                 <p className="text-sm font-extrabold">{branches.filter(b => b.is_active !== false).length}</p>
               </div>
               <div className="px-3 min-w-0">
-                <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider">Open Credits</p>
+                <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider">{t("branch.openCredits")}</p>
                 <p className="text-sm font-extrabold text-amber-200">{credits.filter(c => c.status !== "paid").length}</p>
               </div>
               <div className="pl-3 min-w-0">
-                <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider">Ajo Balance</p>
+                <p className="text-[9px] font-bold text-white/60 uppercase tracking-wider">{t("business.branches.ajoBalance")}</p>
                 <AmountDisplay amount={asoClients.reduce((s, c) => s + (c.current_balance || 0), 0)} size="small" align="left" className="text-green-200" />
               </div>
             </div>
@@ -734,7 +764,7 @@ export default function Branches({ store, onClose, userId, inventory = {}, onRep
         {/* Performance ranking */}
         {ranked.length > 0 && (
           <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-4 border border-slate-100 dark:border-slate-700">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Branch Ranking — This Month</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">{t("business.branches.ranking")}</p>
             <div className="space-y-2.5">
               {ranked.map((b, i) => {
                 const stats = branchStats[b.id] || {};
@@ -772,8 +802,8 @@ export default function Branches({ store, onClose, userId, inventory = {}, onRep
                 <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" /><polyline points="9 22 9 12 15 12 15 22" />
               </svg>
             </div>
-            <p className="font-bold text-slate-600 dark:text-slate-300 text-sm">No branches yet</p>
-            <p className="text-xs text-slate-400 mt-1">Tap New to create your first branch</p>
+            <p className="font-bold text-slate-600 dark:text-slate-300 text-sm">{t("business.branches.noBranches")}</p>
+            <p className="text-xs text-slate-400 mt-1">{t("business.branches.noBranchesHint")}</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -794,7 +824,7 @@ export default function Branches({ store, onClose, userId, inventory = {}, onRep
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-extrabold text-slate-800 dark:text-white text-sm truncate">{b.name}</span>
-                        {b.is_active === false && <span className="text-[9px] bg-red-100 text-red-500 font-bold px-1.5 py-0.5 rounded-full">Inactive</span>}
+                        {b.is_active === false && <span className="text-[9px] bg-red-100 text-red-500 font-bold px-1.5 py-0.5 rounded-full">{t("branch.inactive")}</span>}
                       </div>
                       <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                         {b.address && <span className="text-[10px] text-slate-400 truncate max-w-[100px]">{b.address}</span>}
@@ -813,9 +843,9 @@ export default function Branches({ store, onClose, userId, inventory = {}, onRep
                   {/* Stats row */}
                   <div className="grid grid-cols-4 divide-x divide-slate-50 dark:divide-slate-700/60 px-1 py-2.5">
                     {[
-                      { label: "Sales",   value: fmt(stats.salesMonth || 0),    color: "text-green-600 dark:text-green-400" },
-                      { label: "Profit",  value: fmt(profit),                    color: profit >= 0 ? "text-blue-600 dark:text-blue-400" : "text-red-500" },
-                      { label: "Credits", value: stats.openCredits || 0,          color: "text-amber-600 dark:text-amber-400" },
+                      { label: t("business.branches.sales"),   value: fmt(stats.salesMonth || 0),    color: "text-green-600 dark:text-green-400" },
+                      { label: t("business.branches.profit"),  value: fmt(profit),                    color: profit >= 0 ? "text-blue-600 dark:text-blue-400" : "text-red-500" },
+                      { label: t("business.branches.credits"), value: stats.openCredits || 0,          color: "text-amber-600 dark:text-amber-400" },
                       { label: "Ajo",     value: fmt(stats.ajoBalance || 0),      color: "text-violet-600 dark:text-violet-400" },
                     ].map(({ label, value, color }) => (
                       <div key={label} className="text-center px-1">
@@ -826,11 +856,11 @@ export default function Branches({ store, onClose, userId, inventory = {}, onRep
                   </div>
                   {/* Bottom meta */}
                   <div className="px-4 py-2 bg-slate-50/60 dark:bg-slate-700/20 flex items-center gap-3 text-[10px] text-slate-400 flex-wrap">
-                    <span>{stats.txCount || 0} transactions</span>
+                    <span>{t("business.branches.txCount", { n: stats.txCount || 0 })}</span>
                     <span className="text-slate-200 dark:text-slate-600">·</span>
-                    <span>{stats.stockItems || 0} stock items</span>
+                    <span>{t("business.branches.stockItems", { n: stats.stockItems || 0 })}</span>
                     <span className="text-slate-200 dark:text-slate-600">·</span>
-                    <span>{stats.ajoClients || 0} Ajo clients</span>
+                    <span>{t("business.branches.ajoClients", { n: stats.ajoClients || 0 })}</span>
                   </div>
                 </button>
               );
@@ -847,8 +877,8 @@ export default function Branches({ store, onClose, userId, inventory = {}, onRep
               </svg>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-slate-700 dark:text-slate-200">Head Office</p>
-              <p className="text-[10px] text-slate-400 mt-0.5">{hqTx.length} transactions · {hqCr.length} credits (unassigned)</p>
+              <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{t("business.branches.headOffice")}</p>
+              <p className="text-[10px] text-slate-400 mt-0.5">{t("business.branches.hqMeta", { tx: hqTx.length, cr: hqCr.length })}</p>
             </div>
             <p className="text-sm font-extrabold text-slate-600 dark:text-slate-300 tabular">
               {fmt(hqTx.filter(t => t.type === "in").reduce((s, t) => s + t.amount, 0))}

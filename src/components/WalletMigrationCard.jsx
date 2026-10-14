@@ -1,8 +1,9 @@
 import { useState } from "react";
 import Icon from "./Icon";
 import { cleanBankName } from "./WalletPanel";
-import WalletIdFields from "./WalletIdFields";
+import WalletIdFields, { walletIdErrorText } from "./WalletIdFields";
 import { walletIdError } from "../utils/walletId";
+import { useT } from "../contexts/LanguageContext";
 
 const fmtDay = (ms) => new Date(ms).toLocaleDateString("en-GB", { day: "numeric", month: "long", timeZone: "Africa/Lagos" });
 
@@ -18,6 +19,7 @@ export default function WalletMigrationCard({ api, testMode = false, className =
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [done, setDone] = useState(null);      // { number, bank } once the move has gone through
+  const t = useT();
 
   const state = api?.accountState;
   const retired = state === "retired";
@@ -25,21 +27,21 @@ export default function WalletMigrationCard({ api, testMode = false, className =
   const submit = async () => {
     setErr("");
     const idErr = walletIdError(bvn, nin, testMode);
-    if (idErr) { setErr(idErr); return; }
+    if (idErr) { setErr(walletIdErrorText(idErr, t)); return; }
     setBusy(true);
     try {
       const r = await api.migrateAccount(bvn, nin, selfie);
       // Only a wallet the server actually MOVED has a new number. If it answered with the existing one (the platform
       // switched back to the old account since this screen loaded), say so instead of calling that number "new".
       if (r?.migrated !== true && r?.account !== "business") {
-        setErr("Your new account number isn't available yet — nothing has changed on your wallet. Please try again later.");
+        setErr(t("wallet.migrate.notYet"));
         api.refresh?.();
         return;
       }
       setDone({ number: r?.account_number || "", bank: cleanBankName(r?.account_bank) });
       setBvn(""); setNin("");
     } catch (e) {
-      setErr(e?.message || "Could not get your new number. Please try again.");
+      setErr(e?.message || t("wallet.migrate.failed"));
     } finally {
       setBusy(false);
     }
@@ -50,20 +52,20 @@ export default function WalletMigrationCard({ api, testMode = false, className =
       <div className={`rounded-3xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 p-5 ${className}`}>
         <div className="flex items-center gap-2">
           <Icon name="check" size={16} className="text-emerald-600 dark:text-emerald-400" />
-          <p className="text-[14px] font-extrabold text-emerald-800 dark:text-emerald-200">Your new account number is ready</p>
+          <p className="text-[14px] font-extrabold text-emerald-800 dark:text-emerald-200">{t("wallet.migrate.ready")}</p>
         </div>
         {done.number && (
           <p className="mt-2 text-[26px] leading-none font-extrabold tracking-[0.12em] text-slate-900 dark:text-slate-50 tabular-nums">{done.number}</p>
         )}
         {done.bank && <p className="mt-1.5 text-[13px] font-semibold text-slate-600 dark:text-slate-300">{done.bank}</p>}
         <p className="mt-3 text-[12px] text-emerald-700 dark:text-emerald-300 leading-relaxed">
-          Use this number from now on.
-          {api.graceUntilMs && !retired ? ` Your old number keeps working until ${fmtDay(api.graceUntilMs)}.` : ""}
-          {" "}Your balance and history haven't changed.
+          {t("wallet.migrate.useFromNow")}
+          {api.graceUntilMs && !retired ? t("wallet.migrate.oldWorksUntil", { date: fmtDay(api.graceUntilMs) }) : ""}
+          {" "}{t("wallet.migrate.unchanged")}
         </p>
         <button onClick={() => { setDone(null); onDone?.(); }}
           className="mt-3 w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[13px]">
-          Done
+          {t("common.done")}
         </button>
       </div>
     );
@@ -84,30 +86,29 @@ export default function WalletMigrationCard({ api, testMode = false, className =
       <div className="flex items-center gap-2">
         <Icon name="wallet" size={16} className={head} />
         <p className={`text-[14px] font-extrabold ${head}`}>
-          {retired ? "Your old account number has stopped working" : "Your wallet has a new account number"}
+          {retired ? t("wallet.migrate.stoppedTitle") : t("wallet.migrate.newTitle")}
         </p>
       </div>
       <p className={`mt-1.5 text-[12px] leading-relaxed ${body}`}>
         {retired
-          ? "Transfers to your old number no longer reach your wallet. Get your new number to receive money again — your balance and history are safe."
+          ? t("wallet.migrate.stoppedBody")
           : api.graceUntilMs
-            ? `Your current number keeps working until ${fmtDay(api.graceUntilMs)}${api.graceDaysLeft ? ` (${api.graceDaysLeft} day${api.graceDaysLeft === 1 ? "" : "s"} left)` : ""}. Get your new number now — it takes a minute.`
-            : "Your current number keeps working for a short while. Get your new number now — it takes a minute."}
+            ? t("wallet.migrate.graceUntil", { date: fmtDay(api.graceUntilMs), left: api.graceDaysLeft ? (api.graceDaysLeft === 1 ? t("wallet.migrate.dayLeft") : t("wallet.migrate.daysLeft", { n: api.graceDaysLeft })) : "" })
+            : t("wallet.migrate.graceShort")}
       </p>
 
       {!testMode && (
         <div className="mt-3">
           <WalletIdFields bvn={bvn} nin={nin} onBvn={setBvn} onNin={setNin} selfie={selfie} onSelfie={setSelfie} inputClass={input} />
           <p className="mt-1.5 text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-            Your BVN or NIN opens your new account with our banking partner and isn't stored by KudiAI. The name and date of birth on it
-            must match your profile. Enter it only here in the app.
+            {t("wallet.migrate.idNote")}
           </p>
         </div>
       )}
       {err && <p className="mt-2 text-[12px] text-red-600 dark:text-red-400">{err}</p>}
       <button onClick={submit} disabled={busy || api?.busy}
         className={`mt-3 w-full py-3 rounded-2xl text-white font-bold text-[14px] disabled:opacity-50 transition-colors ${btn}`}>
-        {busy ? "Getting your new number…" : "Get my new number"}
+        {busy ? t("wallet.migrate.getting") : t("wallet.migrate.get")}
       </button>
     </div>
   );

@@ -6,7 +6,7 @@ import HolidayCap, { useHolidayCap } from "../components/HolidayCap";
 import { AuthShell, AuthCard } from "../components/AuthShell";
 import { Capacitor } from "@capacitor/core";
 import { Browser } from "@capacitor/browser";
-import { useT } from "../contexts/LanguageContext";
+import { useT, tNow } from "../contexts/LanguageContext";
 import LegalScreen from "./LegalScreen";
 import { saveGoogleWalletChoice, saveGoogleBusinessChoice, clearGoogleSignupChoices } from "../utils/googleWalletSignup";
 import { useSavingBusinesses, SavingBusinessPicker, TermsAgreement, GoogleMark, WalletDetailsFields } from "../components/auth/SignupParts";
@@ -76,7 +76,7 @@ function BgLayout({ children, center = false }) {
         </div>
         <div>
           <p className="text-white font-extrabold text-lg leading-tight tracking-wide drop-shadow-lg">KudiAI Track</p>
-          <p className="text-white/80 text-[11px] leading-tight font-medium">Business · Savings · Bills</p>
+          <p className="text-white/80 text-[11px] leading-tight font-medium">{t("auth2.brandLine")}</p>
         </div>
       </div>
 
@@ -181,8 +181,8 @@ function OtpScreen({ email, onBack, onVerified, otpType = "signup", onSubmit, in
         // Any message mentioning "expired" → code timed out; anything else → code is wrong.
         const msg = (verifyErr.message || "").toLowerCase();
         const errMsg = (msg.includes("token has expired") || msg.includes("otp expired") || msg.includes("expired"))
-          ? "This code has expired — request a new one"
-          : "Incorrect code — please check and try again";
+          ? t("auth2.codeExpired")
+          : t("auth2.codeIncorrect");
         if (isMounted.current) { setError(errMsg); onFail?.(); setLoading(false); }
         return;
       }
@@ -240,7 +240,7 @@ function OtpScreen({ email, onBack, onVerified, otpType = "signup", onSubmit, in
             {t("auth.checkEmail")}
           </h1>
           <p className="text-sm mt-2 leading-relaxed text-slate-500">
-            We sent a 6-digit code to<br />
+            {t("auth.codeSentTo")}<br />
             <span className="font-semibold text-indigo-400 dark:text-indigo-300">{email}</span>
           </p>
         </div>
@@ -301,7 +301,7 @@ function OtpScreen({ email, onBack, onVerified, otpType = "signup", onSubmit, in
           {/* Resend / countdown */}
           <div className="mt-4 text-center">
             {countdown > 0 ? (
-              <p className="text-xs text-slate-500">Resend code in {countdown}s</p>
+              <p className="text-xs text-slate-500">{t("auth2.resendIn", { n: countdown })}</p>
             ) : (
               <button
                 onClick={handleResend}
@@ -325,7 +325,7 @@ function OtpScreen({ email, onBack, onVerified, otpType = "signup", onSubmit, in
       </button>
 
       <p className="text-center text-xs mt-4 text-slate-400 dark:text-slate-600">
-        © Amaya &amp; Co. Technologies. All Rights Reserved.
+        {t("auth2.rightsReserved")}
       </p>
     </AuthShell>
   );
@@ -345,6 +345,10 @@ function getPasswordStrength(pw) {
   if (score === 4) return { label: "Good",  color: "bg-blue-500",   text: "text-blue-600",   bars: 3 };
   return               { label: "Strong", color: "bg-emerald-500", text: "text-emerald-600", bars: 4 };
 }
+
+// Display text for a strength label (the label itself stays English — it is only an id here)
+const STRENGTH_SHORT = { Weak: "auth2.strengthWeak", Fair: "auth2.strengthFair", Good: "auth2.strengthGood", Strong: "auth2.strengthStrong" };
+const STRENGTH_LONG = { Weak: "auth2.pwWeak", Fair: "auth2.pwFair", Good: "auth2.pwGood", Strong: "auth2.pwStrong" };
 
 /* ── Eye icon ──────────────────────────────────────────────────────── */
 function EyeIcon({ open }) {
@@ -396,7 +400,7 @@ export default function Auth() {
   // Listen for auth errors dispatched by useAuth while this component is already mounted
   useEffect(() => {
     const handler = (e) => {
-      setError(e.detail || "Login failed. Please try again.");
+      setError(e.detail || tNow("auth2.loginFailed"));
       setLoading(false); // Reset so user can retry after a routing error
     };
     window.addEventListener("kuditrack_auth_error", handler);
@@ -412,21 +416,21 @@ export default function Auth() {
     const oauthError = params.get("error");
     const oauthDesc  = params.get("error_description");
     if (oauthError) {
-      setError(oauthDesc ? oauthDesc.replace(/\+/g, " ") : "Google sign-in failed. Please try again.");
+      setError(oauthDesc ? oauthDesc.replace(/\+/g, " ") : tNow("auth2.googleFailed"));
       window.history.replaceState(null, "", window.location.pathname);
       return;
     }
     if (params.has("code")) {
       // A ?code= means we just came back from OAuth. Auth should unmount quickly if the
       // exchange succeeds. If we're still here after 3 s, the exchange silently failed.
-      const t = setTimeout(() => {
+      const timer = setTimeout(() => {
         const still = new URLSearchParams(window.location.search);
         if (still.has("code")) {
           window.history.replaceState(null, "", window.location.pathname);
-          setError("Google sign-in could not be completed. Please try again.");
+          setError(tNow("auth2.googleIncomplete"));
         }
       }, 3000);
-      return () => clearTimeout(t);
+      return () => clearTimeout(timer);
     }
   }, []);
 
@@ -467,15 +471,15 @@ export default function Auth() {
     let keepLoading = false;
     try {
       if (mode === "register" && password.length < 8) {
-        setError("Password must be at least 8 characters.");
+        setError(t("auth2.pwMin8"));
         return;
       }
       if (mode === "register" && password !== confirmPass) {
-        setError("Passwords do not match. Please check and try again.");
+        setError(t("auth2.pwMismatchCheck"));
         return;
       }
       if (mode === "register" && !agreedToTerms) {
-        setError("Please agree to the Terms & Conditions and Privacy Policy to continue.");
+        setError(t("auth2.agreeTerms"));
         return;
       }
       if (mode === "login") {
@@ -488,7 +492,7 @@ export default function Auth() {
             const { data: orgMemberCheck } = await supabase
               .from("org_members").select("id").eq("email", email.trim().toLowerCase()).maybeSingle();
             if (orgMemberCheck) {
-              setError("Your account needs to be verified. Please log in with the temporary password your admin gave you.");
+              setError(t("auth2.orgMemberVerify"));
               return;
             }
             const { error: otpErr } = await supabase.auth.signInWithOtp({
@@ -514,20 +518,20 @@ export default function Auth() {
           supabase.from("aso_clients").select("id").eq("email", email.trim().toLowerCase()).maybeSingle(),
         ]);
         if (staffCheck) {
-          setError("This email is registered as a staff member account and cannot be used to create a business account.");
+          setError(t("auth2.staffEmailTaken"));
           setLoading(false);
           return;
         }
         if (ajoCheck) {
           setError(regType === "client"
-            ? "This email is already registered as a savings client."
-            : "This email is registered as a savings client account and cannot be used to create a business account.");
+            ? t("auth2.clientEmailTaken")
+            : t("auth2.clientEmailNoBusiness"));
           setLoading(false);
           return;
         }
 
         if (regType === "client") {
-          if (!clientBusinessId) { setError("Select a business to register with."); setLoading(false); return; }
+          if (!clientBusinessId) { setError(t("auth2.selectBusiness")); setLoading(false); return; }
           // useAuth needs this after signUp/OTP-confirm creates the session — by
           // which point this component has already unmounted, so it can't just
           // hold it in memory.
@@ -573,14 +577,14 @@ export default function Auth() {
         }
       } else {
         // Validate the new password fields (collected on the forgot form)
-        if (newPassword.length < 8) { setError("New password must be at least 8 characters."); return; }
-        if (newPassword !== newConfirmPass) { setError("Passwords do not match."); return; }
+        if (newPassword.length < 8) { setError(t("auth2.newPwMin8")); return; }
+        if (newPassword !== newConfirmPass) { setError(t("auth2.pwMismatch")); return; }
 
         // Respect localStorage lockout — user may have hit 3 wrong OTPs in a previous attempt
         const ld = getLockoutState(email);
         if (ld.lockedUntil && Date.now() < ld.lockedUntil) {
           const minLeft = Math.ceil((ld.lockedUntil - Date.now()) / 60000);
-          setError(`Too many failed attempts. Please wait ${minLeft} minute${minLeft !== 1 ? "s" : ""} before trying again.`);
+          setError(t(minLeft !== 1 ? "auth2.tooManyMinutes" : "auth2.tooManyMinute", { n: minLeft }));
           return;
         }
 
@@ -589,7 +593,7 @@ export default function Auth() {
         if (!sameCheckErr) {
           // Matches the current password — sign out the temporary session and reject
           await supabase.auth.signOut({ scope: "local" }).catch(() => {});
-          setError("Your new password must be different from your current password.");
+          setError(t("auth2.pwMustDiffer"));
           return;
         }
 
@@ -661,7 +665,7 @@ export default function Auth() {
           authSub.unsubscribe();
           clearGoogleSignupChoices();
           window.dispatchEvent(new CustomEvent("kuditrack_auth_error", {
-            detail: "Google sign-in was cancelled or failed. Please try again.",
+            detail: t("auth2.googleCancelled"),
           }));
         });
 
@@ -716,8 +720,8 @@ export default function Auth() {
   };
 
   const googleAsWallet = () => {
-    if (!clientBusinessId) { setGoogleSheetErr("Select the business you're saving with."); return; }
-    if (!agreedToTerms)    { setGoogleSheetErr("Please agree to the Terms & Conditions and Privacy Policy to continue."); return; }
+    if (!clientBusinessId) { setGoogleSheetErr(t("auth2.selectSavingBusiness")); return; }
+    if (!agreedToTerms)    { setGoogleSheetErr(t("auth2.agreeTerms")); return; }
     clearGoogleSignupChoices();
     saveGoogleWalletChoice({ businessId: clientBusinessId, phone });
     setGoogleSheet(null);
@@ -750,10 +754,10 @@ export default function Auth() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
               </svg>
             </div>
-            <h2 className="text-lg font-bold text-gray-800 mb-2">Too Many Attempts</h2>
+            <h2 className="text-lg font-bold text-gray-800 mb-2">{t("auth2.tooManyTitle")}</h2>
             <p className="text-sm text-gray-500 mb-6">
-              You entered the wrong code 3 times.<br />
-              Please wait <span className="font-semibold text-red-600">{minLeft} minute{minLeft !== 1 ? "s" : ""}</span> before trying again.
+              {t("auth2.wrongCode3")}<br />
+              {t("auth2.waitPre")}<span className="font-semibold text-red-600">{t(minLeft !== 1 ? "auth2.minutesCount" : "auth2.minuteCount", { n: minLeft })}</span>{t("auth2.waitPost")}
             </p>
             <button
               onClick={() => {
@@ -765,7 +769,7 @@ export default function Auth() {
               }}
               className="w-full py-3 rounded-xl text-white font-bold text-sm bg-gray-800 border-0 cursor-pointer"
             >
-              Back to Sign In
+              {t("auth.backToSignIn")}
             </button>
           </div>
         </BgLayout>
@@ -794,7 +798,7 @@ export default function Auth() {
             // Surface a clear message rather than the raw error.
             const msg = (updateErr.message || "").toLowerCase();
             const friendlyMsg = (msg.includes("different") || msg.includes("same") || msg.includes("password"))
-              ? "Your new password must be different from your current password."
+              ? t("auth2.pwMustDiffer")
               : friendlyError(updateErr);
             const err = new Error(friendlyMsg);
             err.__friendly = friendlyMsg;
@@ -805,7 +809,7 @@ export default function Auth() {
           await supabase.auth.signOut({ scope: "global" });
           setNewPassword(""); setNewConfirmPass(""); setResetOtpError("");
           setMode("login");
-          setInfo("Password updated successfully. Please sign in with your new password.");
+          setInfo(t("auth2.pwUpdated"));
         }}
         onFail={() => {
           // Increment attempt count in localStorage so lockout survives app refresh (Bug 4)
@@ -860,15 +864,15 @@ export default function Auth() {
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
-              Open a Kudi Wallet Account instead
+              {t("auth2.walletInstead")}
             </button>
-            <h2 className="text-lg font-bold text-gray-800 dark:text-white mt-2">Create a business account</h2>
-            <p className="text-xs text-gray-500 dark:text-slate-400">For shop owners and savings collectors: sales, stock, staff, Ajo clients and a business wallet.</p>
+            <h2 className="text-lg font-bold text-gray-800 dark:text-white mt-2">{t("auth2.createBusinessTitle")}</h2>
+            <p className="text-xs text-gray-500 dark:text-slate-400">{t("auth2.createBusinessSub")}</p>
           </div>
         ) : (
           <div className="mb-5">
-            <h2 className="text-lg font-bold text-gray-800 dark:text-white">Open your Kudi Wallet Account</h2>
-            <p className="text-xs text-gray-500 dark:text-slate-400">Send and receive money, pay bills and save — free to open.</p>
+            <h2 className="text-lg font-bold text-gray-800 dark:text-white">{t("auth2.openWalletTitle")}</h2>
+            <p className="text-xs text-gray-500 dark:text-slate-400">{t("auth2.openWalletSub")}</p>
           </div>
         )
       )}
@@ -885,7 +889,7 @@ export default function Auth() {
             {t("auth.backToSignIn")}
           </button>
           <h2 className="text-lg font-bold text-gray-800 dark:text-white mt-2">{t("auth.resetPassword")}</h2>
-          <p className="text-xs text-gray-500 dark:text-slate-400">Enter your new password, then we'll send a 6-digit verification code to your email.</p>
+          <p className="text-xs text-gray-500 dark:text-slate-400">{t("auth2.resetIntro")}</p>
         </div>
       )}
 
@@ -904,7 +908,7 @@ export default function Auth() {
         {mode === "register" && (
           <div>
             <label className="block text-[11px] font-semibold text-gray-400 mb-1.5 uppercase tracking-wider">
-              {regType === "client" ? "Full Name" : t("auth.fullName")}
+              {t("auth.fullName")}
             </label>
             <input
               type="text" required value={name}
@@ -918,7 +922,7 @@ export default function Auth() {
         {mode === "register" && regType === "client" && (
           <>
             <div>
-              <label className="block text-[11px] font-semibold text-gray-400 mb-1.5 uppercase tracking-wider">Phone</label>
+              <label className="block text-[11px] font-semibold text-gray-400 mb-1.5 uppercase tracking-wider">{t("auth2.phone")}</label>
               <input
                 type="tel" value={phone}
                 onChange={(e) => setPhone(e.target.value)}
@@ -948,7 +952,7 @@ export default function Auth() {
               <input
                 type={showPw ? "text" : "password"} required value={password}
                 onChange={(e) => setPass(e.target.value)}
-                placeholder={mode === "register" ? "Min. 8 characters" : "••••••••"}
+                placeholder={mode === "register" ? t("auth2.min8") : "••••••••"}
                 minLength={mode === "register" ? 8 : undefined}
                 className="w-full border border-gray-200 dark:border-slate-600 rounded-xl px-4 py-3 pr-11 text-sm text-gray-900 dark:text-white bg-gray-50 dark:bg-slate-700 focus:bg-white dark:focus:bg-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:focus:ring-brand-500/40 focus:border-transparent transition-all"
               />
@@ -957,7 +961,7 @@ export default function Auth() {
                 onClick={() => setShowPw(v => !v)}
                 className="absolute right-0 top-0 h-full w-11 flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
                 tabIndex={-1}
-                aria-label={showPw ? "Hide password" : "Show password"}
+                aria-label={showPw ? t("auth2.hidePw") : t("auth2.showPw")}
               >
                 <EyeIcon open={showPw} />
               </button>
@@ -973,7 +977,7 @@ export default function Auth() {
                       <div key={i} className={`h-1 flex-1 rounded-full transition-all duration-300 ${i <= s.bars ? s.color : "bg-gray-200"}`} />
                     ))}
                   </div>
-                  <p className={`text-[11px] font-semibold ${s.text}`}>{s.label} password</p>
+                  <p className={`text-[11px] font-semibold ${s.text}`}>{t(STRENGTH_LONG[s.label])}</p>
                 </div>
               );
             })()}
@@ -981,7 +985,7 @@ export default function Auth() {
             {/* Hint — only on register, before typing */}
             {mode === "register" && password.length === 0 && (
               <p className="mt-1.5 text-[11px] text-gray-400">
-                Use 8+ characters with uppercase, numbers & symbols for a strong password.
+                {t("auth2.pwHint")}
               </p>
             )}
           </div>
@@ -995,7 +999,7 @@ export default function Auth() {
               <input
                 type={showConfirmPw ? "text" : "password"} required value={confirmPass}
                 onChange={(e) => setConfirmPass(e.target.value)}
-                placeholder="Re-enter your password"
+                placeholder={t("auth2.reenterPw")}
                 className={`w-full border rounded-xl px-4 py-3 pr-11 text-sm text-gray-900 dark:text-white bg-gray-50 dark:bg-slate-800 focus:bg-white dark:focus:bg-slate-700 focus:outline-none focus:ring-2 focus:border-transparent transition-all ${
                   confirmPass.length > 0
                     ? confirmPass === password
@@ -1009,14 +1013,14 @@ export default function Auth() {
                 onClick={() => setShowConfirmPw(v => !v)}
                 className="absolute right-0 top-0 h-full w-11 flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
                 tabIndex={-1}
-                aria-label={showConfirmPw ? "Hide password" : "Show password"}
+                aria-label={showConfirmPw ? t("auth2.hidePw") : t("auth2.showPw")}
               >
                 <EyeIcon open={showConfirmPw} />
               </button>
             </div>
             {confirmPass.length > 0 && (
               <p className={`mt-1.5 text-[11px] font-semibold ${confirmPass === password ? "text-emerald-600" : "text-red-500"}`}>
-                {confirmPass === password ? "✓ Passwords match" : "✗ Passwords do not match"}
+                {confirmPass === password ? t("auth2.pwMatch") : t("auth2.pwNoMatch")}
               </p>
             )}
           </div>
@@ -1026,12 +1030,12 @@ export default function Auth() {
         {isForgot && (
           <>
             <div>
-              <label className="block text-[11px] font-semibold text-gray-400 mb-1.5 uppercase tracking-wider">New Password</label>
+              <label className="block text-[11px] font-semibold text-gray-400 mb-1.5 uppercase tracking-wider">{t("auth2.newPassword")}</label>
               <div className="relative">
                 <input
                   type={showNewPw ? "text" : "password"} required value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="Min. 8 characters" minLength={8}
+                  placeholder={t("auth2.min8")} minLength={8}
                   className="w-full border border-gray-200 dark:border-slate-600 rounded-xl px-4 py-3 pr-11 text-sm text-gray-900 dark:text-white bg-gray-50 dark:bg-slate-800 focus:bg-white dark:focus:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
                 />
                 <button type="button" onClick={() => setShowNewPw(v => !v)}
@@ -1048,18 +1052,18 @@ export default function Auth() {
                         <div key={b} className={`h-1 flex-1 rounded-full transition-all duration-300 ${b <= s.bars ? s.color : "bg-gray-200"}`} />
                       ))}
                     </div>
-                    <span className={`text-[11px] font-semibold ${s.text}`}>{s.label}</span>
+                    <span className={`text-[11px] font-semibold ${s.text}`}>{t(STRENGTH_SHORT[s.label])}</span>
                   </div>
                 );
               })()}
             </div>
             <div>
-              <label className="block text-[11px] font-semibold text-gray-400 mb-1.5 uppercase tracking-wider">Confirm New Password</label>
+              <label className="block text-[11px] font-semibold text-gray-400 mb-1.5 uppercase tracking-wider">{t("auth2.confirmNewPassword")}</label>
               <div className="relative">
                 <input
                   type={showNewConfirmPw ? "text" : "password"} required value={newConfirmPass}
                   onChange={(e) => setNewConfirmPass(e.target.value)}
-                  placeholder="Repeat new password" minLength={8}
+                  placeholder={t("auth2.repeatNewPw")} minLength={8}
                   className={`w-full border rounded-xl px-4 py-3 pr-11 text-sm text-gray-900 dark:text-white bg-gray-50 dark:bg-slate-800 focus:bg-white dark:focus:bg-slate-700 focus:outline-none focus:ring-2 focus:border-transparent transition-all ${
                     newConfirmPass.length > 0
                       ? newConfirmPass === newPassword ? "border-emerald-400 focus:ring-emerald-500" : "border-red-300 focus:ring-red-400"
@@ -1073,7 +1077,7 @@ export default function Auth() {
               </div>
               {newConfirmPass.length > 0 && (
                 <p className={`mt-1.5 text-[11px] font-semibold ${newConfirmPass === newPassword ? "text-emerald-600" : "text-red-500"}`}>
-                  {newConfirmPass === newPassword ? "✓ Passwords match" : "✗ Passwords do not match"}
+                  {newConfirmPass === newPassword ? t("auth2.pwMatch") : t("auth2.pwNoMatch")}
                 </p>
               )}
             </div>
@@ -1101,7 +1105,7 @@ export default function Auth() {
             ? t("auth.pleaseWait")
             : mode === "login"    ? t("auth.signIn")
             : mode === "register" ? t("auth.createAccount")
-            : "Send Reset Code"}
+            : t("auth2.sendResetCode")}
         </button>
       </form>
 
@@ -1116,9 +1120,9 @@ export default function Auth() {
               <div className="w-10 h-1 rounded-full bg-gray-200 dark:bg-slate-700 mx-auto mb-4 sm:hidden" />
 
               <>
-                  <h2 id="google-sheet-title" className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2"><GoogleMark /> Open your Kudi Wallet Account</h2>
+                  <h2 id="google-sheet-title" className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2"><GoogleMark /> {t("auth2.openWalletTitle")}</h2>
                   <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">
-                    Your name and email come from Google. Tell us who you're saving with.
+                    {t("auth2.googleSheetIntro")}
                   </p>
                   <div className="mt-4 space-y-3.5">
                     <WalletDetailsFields phone={phone} onPhone={setPhone}
@@ -1133,11 +1137,11 @@ export default function Auth() {
                       disabled={loading || businessesLoading || !clientBusinessId || !agreedToTerms}
                       className="w-full flex items-center justify-center gap-3 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-60 text-white font-bold rounded-xl py-3.5 text-sm transition-colors shadow-sm">
                       <span className="bg-white rounded-md p-0.5 flex"><GoogleMark className="w-4 h-4" /></span>
-                      Continue with Google
+                      {t("auth.continueGoogle")}
                     </button>
                     <button type="button" onClick={() => setGoogleSheet(null)}
                       className="w-full py-2.5 text-sm font-semibold text-gray-500 dark:text-slate-400">
-                      Cancel
+                      {t("common.cancel")}
                     </button>
                   </div>
                 </>
@@ -1176,8 +1180,8 @@ export default function Auth() {
             </svg>
           </span>
           <span className="flex-1 min-w-0">
-            <span className="block text-sm font-bold text-gray-800 dark:text-white">Own a business? Create a business account</span>
-            <span className="block text-[11px] text-gray-500 dark:text-slate-400">Track sales, stock, staff and Ajo savings clients</span>
+            <span className="block text-sm font-bold text-gray-800 dark:text-white">{t("auth2.ownBusiness")}</span>
+            <span className="block text-[11px] text-gray-500 dark:text-slate-400">{t("auth2.ownBusinessSub")}</span>
           </span>
           <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
