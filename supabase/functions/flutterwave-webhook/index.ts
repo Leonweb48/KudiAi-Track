@@ -508,8 +508,12 @@ serve(async (req) => {
       // the rail — take the first that looks right.
       const bankObj  = (data.bank ?? {}) as Record<string, unknown>;
       const metaObj  = (data.meta ?? {}) as Record<string, unknown>;
+      // v4 API (2026-10): the NIP session id is the bank's "proof" in payment_information — often still empty here,
+      // in which case the 30-minute transfer recheck fills it in later.
+      const payInfo  = (data.payment_information ?? {}) as Record<string, unknown>;
+      const proofVal = typeof payInfo.proof === "object" && payInfo.proof ? (payInfo.proof as Record<string, unknown>).session_id : payInfo.proof;
       const sessionId = String(
-        data.session_id || data.nip_session_id || data.reference_number ||
+        data.session_id || data.nip_session_id || proofVal || payInfo.session_id || data.reference_number ||
         metaObj.session_id || metaObj.sessionId || metaObj.nip_session_id || "",
       ).trim();
       const bankNm = String(bankObj.name || "").trim();

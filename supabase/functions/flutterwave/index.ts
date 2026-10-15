@@ -820,7 +820,36 @@ serve(async (req) => {
             flw_status: t ? String(t.status || "") : "not found", provider: t ? providerSays(t) : null });
         }
       }
-      return json({ ok: true, apply, refund_missing: refundMissing, force_refund_pending: forcePending, open: out.length, transfers: out, failed_recent: failed,
+      // NIP session ids (2026-10-15): Flutterwave's v4 transfer webhook arrives with payment_information.proof empty, so
+      // successful bank transfers had no Session ID — the reference a receiving bank traces a missing credit with. Ask
+      // Flutterwave again for recent ones and save the proof when it has appeared. Only fills in a reference, never money;
+      // output is counts and field names only (logs are public).
+      const sessions = { checked: 0, found: 0, payment_information_keys: [] as string[] };
+      try {
+        const { data: noSess } = await sb.from("wallet_withdrawals").select("id, flw_transfer_id")
+          .eq("status", "successful").is("session_id", null).not("flw_transfer_id", "is", null)
+          .gt("created_at", new Date(Date.now() - 7 * 864e5).toISOString()).order("created_at", { ascending: false }).limit(12);
+        for (const wd of noSess ?? []) {
+          let t: Record<string, unknown> | null = null;
+          for (const acct of accts) {
+            const r = await flwFetch(`/transfers/${encodeURIComponent(String(wd.flw_transfer_id))}`, { account: acct });
+            const d = (r.data ?? {}) as Record<string, unknown>;
+            if (r.ok && (d.data || d.id)) { t = (d.data ?? d) as Record<string, unknown>; break; }
+          }
+          sessions.checked++;
+          if (!t) continue;
+          const pi = (t.payment_information ?? {}) as Record<string, unknown>;
+          if (!sessions.payment_information_keys.length) sessions.payment_information_keys = Object.keys(pi).slice(0, 10);
+          const asText = (v: unknown) => v == null ? "" : String(typeof v === "object" ? ((v as Record<string, unknown>).session_id ?? (v as Record<string, unknown>).reference ?? "") : v).trim();
+          const cand = [pi.proof, pi.session_id, pi.sessionId, t.session_id, t.nip_session_id,
+            (t.provider_response as Record<string, unknown> | undefined)?.session_id, (t.meta as Record<string, unknown> | undefined)?.session_id]
+            .map(asText).find((v) => /^[A-Za-z0-9-]{10,60}$/.test(v));
+          if (!cand) continue;
+          const { error } = await sb.from("wallet_withdrawals").update({ session_id: cand }).eq("id", wd.id).is("session_id", null);
+          if (!error) sessions.found++;
+        }
+      } catch { /* a reference lookup must never break the recheck */ }
+      return json({ ok: true, apply, refund_missing: refundMissing, force_refund_pending: forcePending, open: out.length, transfers: out, failed_recent: failed, sessions,
         list_sizes: Object.fromEntries(Object.entries(listCache).map(([k, v]) => [k, v.length])), list_item_keys: sampleKeys });
     }
 
