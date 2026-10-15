@@ -522,6 +522,8 @@ serve(async (req) => {
         if (!isConfigured(a)) { report[key] = { configured: false }; continue; }
         const inBand: Record<string, Agg> = {}, outBand: Record<string, Agg> = {};
         const feeParts: Record<string, { count: number; total: number }> = {};
+        // every deposit in range by day + status (not only successful ones) — spots deposits pending/held at Flutterwave
+        const inByStatus: Record<string, { count: number; amount: number }> = {};
         let inErr = "", outErr = "", inSeen = 0, outSeen = 0, outPagesRepeat = false;
         const seenIds = new Set<string>();   // the transfer list may ignore the page number — count each transfer once
         const inRange = (iso: unknown) => { const d = String(iso ?? "").slice(0, 10); return d >= from && d <= to; };
@@ -536,6 +538,10 @@ serve(async (req) => {
             for (const c of list) {
               inSeen++;
               if (older(c.created_datetime)) { past = true; continue; }
+              if (inRange(c.created_datetime)) {
+                const k = `${String(c.created_datetime ?? "").slice(0, 10)} ${String(c.status ?? "?").toLowerCase()}`;
+                const e = (inByStatus[k] ??= { count: 0, amount: 0 }); e.count++; e.amount += num(c.amount);
+              }
               if (!inRange(c.created_datetime) || String(c.status ?? "").toLowerCase() !== "succeeded" && String(c.status ?? "").toLowerCase() !== "successful") continue;
               const amount = num(c.amount);
               let fee = 0;
@@ -572,7 +578,7 @@ serve(async (req) => {
         } catch (e) { outErr = (e as Error).message.slice(0, 80); }
         report[key] = {
           api: "v4",
-          money_in: { by_amount: tidy(inBand), fee_parts: Object.fromEntries(Object.entries(feeParts).map(([k, v]) => [k, { count: v.count, total: r2(v.total) }])),
+          money_in: { by_day_status: Object.fromEntries(Object.entries(inByStatus).sort().map(([k, v]) => [k, { count: v.count, amount: r2(v.amount) }])), by_amount: tidy(inBand), fee_parts: Object.fromEntries(Object.entries(feeParts).map(([k, v]) => [k, { count: v.count, total: r2(v.total) }])),
                       rows_read: inSeen, error: inErr || null },
           money_out: { by_amount_and_status: tidy(outBand), rows_read: outSeen, only_newest_page: outPagesRepeat, error: outErr || null },
         };
