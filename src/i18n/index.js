@@ -21,9 +21,10 @@ import walletpanel from "./walletpanel";
 import auth2 from "./auth";
 import messages from "./messages";
 import invite from "./invite";
+import visual from "./visual";
 
 export const ALL_TRANSLATIONS = Object.assign({}, BASE, common, home, sales, credit, ajo, stock, finance, bills, wallet,
-  invoices, settings, business, account, client, circles, walletpanel, auth2, messages, invite);
+  invoices, settings, business, account, client, circles, walletpanel, auth2, messages, invite, visual);
 
 const fill = (text, vars) => (vars && typeof text === "string")
   ? text.replace(/\{(\w+)\}/g, (m, k) => (vars[k] !== undefined && vars[k] !== null ? String(vars[k]) : m))

@@ -3,6 +3,7 @@ import { useLanguage, useT } from "../contexts/LanguageContext";
 import { buildContext } from "../utils/buildContext";
 import { askGemini } from "../utils/gemini";
 import { speakText } from "../utils/tts";
+import { AssistantAvatar, AssistantHero } from "../components/AssistantVisuals";
 
 const SPEECH_LANG = { en: "en-NG", pidgin: "en-NG", ha: "ha-NG", ig: "ig-NG", yo: "yo-NG" };
 
@@ -190,9 +191,7 @@ export default function AIAssistant({ store, inventory, branches = [], invoices 
       <div
         className="flex items-center gap-3 px-4 py-3 bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 shadow-sm flex-shrink-0"
         style={{ paddingTop: "calc(0.75rem + env(safe-area-inset-top, 0px))" }}>
-        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center flex-shrink-0">
-          <span className="text-base leading-none">✨</span>
-        </div>
+        <AssistantAvatar size={38} />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-bold text-slate-800 dark:text-white leading-tight">{t("account.ai.businessAssistant")}</p>
           <p className="text-[10px] text-slate-400 dark:text-slate-500">{t("account.ai.poweredBy")}</p>
@@ -248,12 +247,11 @@ export default function AIAssistant({ store, inventory, branches = [], invoices 
 
       {/* ── Chat messages ── */}
       <div ref={listRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+        {messages.length <= 1 && <AssistantHero portal="owner" />}
         {messages.map((m, idx) => (
           <div key={idx} className={`flex items-end gap-2 ${m.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
             {m.role === "assistant" && (
-              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center flex-shrink-0 mb-0.5">
-                <span className="text-[11px] leading-none">✨</span>
-              </div>
+              <AssistantAvatar size={28} badge={false} className="mb-0.5" />
             )}
             <div className={`max-w-[82%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${
               m.role === "user"

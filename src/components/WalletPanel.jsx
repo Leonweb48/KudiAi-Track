@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Icon from "./Icon";
+import GlassIcon, { GLASS } from "./GlassIcon";
 import TransactionPinModal from "./TransactionPinModal";
 import BankSelect from "./shared/BankSelect";
 import BankLogo from "./shared/BankLogo";
@@ -135,21 +136,20 @@ export function WalletMiniAction({ onClick, d, label }) {
 }
 
 // ── quick-action circle ────────────────────────────────────────────────────
+// Each action keeps its own colour so the row reads at a glance (iOS-style glass tiles).
+const ACTION_GLASS = { plus: GLASS.brand, send: GLASS.blue, "arrow-down": GLASS.teal, bills: GLASS.amber, card: GLASS.violet };
+
 export function ActionButton({ icon, label, onClick, disabled, tone = "brand", badge }) {
-  const ring = tone === "brand"
-    ? "bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400"
-    : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300";
+  const colors = ACTION_GLASS[icon] || (tone === "brand" ? GLASS.brand : GLASS.slate);
   return (
     <button type="button" onClick={onClick} disabled={disabled}
       className="relative flex flex-col items-center gap-1.5 flex-1 min-w-0 disabled:opacity-60 active:scale-95 transition-transform">
       {badge && (
-        <span className="absolute -top-1 right-1.5 text-[8px] font-extrabold uppercase tracking-wide px-1.5 py-[1px] rounded-full bg-slate-700 dark:bg-slate-600 text-white">
+        <span className="absolute z-10 -top-1 right-1.5 text-[8px] font-extrabold uppercase tracking-wide px-1.5 py-[1px] rounded-full bg-slate-700 dark:bg-slate-600 text-white">
           {badge}
         </span>
       )}
-      <span className={`w-[52px] h-[52px] rounded-2xl flex items-center justify-center ${ring}`}>
-        <Icon name={icon} size={21} />
-      </span>
+      <GlassIcon name={icon} colors={colors} size={52} iconSize={22} />
       <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 truncate max-w-full">{label}</span>
     </button>
   );

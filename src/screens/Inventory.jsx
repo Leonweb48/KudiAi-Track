@@ -11,6 +11,8 @@ import { canDo, featureLimit, getLowestPlanWithFeature } from "../utils/plans";
 import { useT } from "../contexts/LanguageContext";
 import { getLang, speakConfirmation } from "../utils/i18n";
 import AssignRecordModal from "../components/AssignRecordModal";
+import GlassIcon, { GLASS } from "../components/GlassIcon";
+import PhotoHero from "../components/PhotoHero";
 
 const CATEGORIES = [
   "Electronics", "Clothing", "Food & Beverages", "Cosmetics",
@@ -957,10 +959,7 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
         {lowStock.length > 0 && (
           <button onClick={() => setCatFilter("low_stock")}
             className="w-full mb-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl px-4 py-3 flex items-center gap-3 text-left active:scale-[0.99] transition">
-            <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" className="text-amber-500 flex-shrink-0">
-              <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
-              <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-            </svg>
+            <GlassIcon d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z|M12 9v4|M12 17h.01" colors={GLASS.amber} size={38} iconSize={18} />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-bold text-amber-700 dark:text-amber-400">{t(lowStock.length > 1 ? "stock.lowBannerMany" : "stock.lowBannerOne", { n: lowStock.length })}</p>
               <p className="text-xs text-amber-600/70 dark:text-amber-500/70 mt-0.5 truncate">{lowStock.slice(0,3).map(p => p.product_name).join(", ")}{lowStock.length > 3 ? "…" : ""}</p>
@@ -980,23 +979,17 @@ export default function Inventory({ inventory, isOwner = true, canAdd, plan = "s
 
         {/* Empty state */}
         {!loading && products.length === 0 && (
-          <div className="text-center py-14">
-            <div className="w-20 h-20 bg-green-50 dark:bg-green-900/20 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg width={36} height={36} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" className="text-green-500">
-                <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/>
-                <polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>
-              </svg>
-            </div>
-            <p className="text-slate-600 dark:text-slate-300 font-bold text-sm mb-1">{t("stock.noProductsYet")}</p>
-            <p className="text-xs text-slate-400 dark:text-slate-500 mb-5">
-              {canAddStock ? t("stock.addFirstHint") : t("stock.noneAddedYet")}
-            </p>
-            {canAddStock && (
-              <button onClick={openAddForm}
-                className="px-5 py-2.5 bg-brand-500 text-white font-bold text-sm rounded-xl active:scale-95 transition">
-                {t("stock.addFirstProduct")}
-              </button>
-            )}
+          <div className="py-4">
+            <PhotoHero img="/img/people/stock.webp" title={t("visual.stockTitle")} height={140}
+              sub={canAddStock ? t("stock.addFirstHint") : t("stock.noneAddedYet")} from="#8b5cf6" to="#4c1d95">
+              {canAddStock && (
+                <button onClick={openAddForm}
+                  className="mt-3 px-4 py-2 bg-white text-violet-700 font-black text-[12px] rounded-full shadow active:scale-95 transition">
+                  {t("stock.addFirstProduct")}
+                </button>
+              )}
+            </PhotoHero>
+            <p className="text-center text-xs text-slate-400 dark:text-slate-500 mt-3">{t("visual.stockSub")}</p>
           </div>
         )}
 

@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import Icon from "./Icon";
+import GlassIcon, { GLASS } from "./GlassIcon";
 import { useT } from "../contexts/LanguageContext";
 import { InviteBanner } from "./invite/InviteEarn";
+
+const MORE_GLASS = { finance: GLASS.navy, insights: GLASS.violet, wallet: GLASS.brand, settings: GLASS.slate };
 
 const ITEMS = [
   { id: "finance",  icon: "finance",  tkey: "nav.finance"    },
@@ -92,9 +94,7 @@ export default function MoreSheet({ open, onClose, onNavigate, showWallet = fals
               onClick={() => go(item.id)}
               className="w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800 active:bg-slate-100 dark:active:bg-slate-700 transition-colors text-left"
             >
-              <div className="w-10 h-10 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center flex-shrink-0">
-                <Icon name={item.icon} size={20} className="text-slate-600 dark:text-slate-300" />
-              </div>
+              <GlassIcon name={item.icon} colors={MORE_GLASS[item.id] || GLASS.slate} size={42} iconSize={20} />
               <span className="text-[15px] font-semibold text-slate-800 dark:text-slate-100 flex-1">
                 {item.tkey ? t(item.tkey) : item.label}
               </span>

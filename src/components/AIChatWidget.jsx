@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useLanguage, useT } from "../contexts/LanguageContext";
 import { buildContext } from "../utils/buildContext";
 import { askGemini } from "../utils/gemini";
+import { AssistantAvatar, AssistantHero } from "./AssistantVisuals";
 
 const LS_POS    = "kt_ai_fab_pos";
 const LS_HIDDEN = "kt_ai_widget_hidden";
@@ -266,11 +267,11 @@ export default function AIChatWidget({
           <div
             onMouseDown={onFabPointerDown}
             onTouchStart={onFabPointerDown}
-            className="w-[52px] h-[52px] rounded-full shadow-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-white cursor-grab active:cursor-grabbing touch-none"
+            className="w-[56px] h-[56px] rounded-full shadow-xl flex items-center justify-center cursor-grab active:cursor-grabbing touch-none"
             role="button"
             aria-label={t("account.ai.openAssistant")}
           >
-            <span className="text-xl leading-none select-none">🤖</span>
+            <AssistantAvatar size={56} className="pointer-events-none" />
           </div>
 
           {/* Hide button — always visible, small corner chip */}
@@ -297,9 +298,7 @@ export default function AIChatWidget({
           >
             {/* Header */}
             <div className="flex items-center gap-2.5 px-4 py-3 border-b border-slate-100 dark:border-slate-700 flex-shrink-0">
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center flex-shrink-0">
-                <span className="text-sm leading-none">✨</span>
-              </div>
+              <AssistantAvatar size={34} />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-bold text-slate-800 dark:text-white leading-tight">{t("account.ai.widgetTitle")}</p>
                 <p className="text-[10px] text-brand-500 dark:text-brand-400 font-medium">{t("account.ai.poweredBy")}</p>
@@ -332,12 +331,11 @@ export default function AIChatWidget({
 
             {/* Messages */}
             <div ref={listRef} className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
+              {messages.length <= 1 && <AssistantHero portal={portal === "ajo_member" || (portalContext && portal === "owner") ? "client" : "owner"} compact />}
               {messages.map((m, i) => (
                 <div key={i} className={`flex items-end gap-2 ${m.role === "user" ? "flex-row-reverse" : ""}`}>
                   {m.role === "assistant" && (
-                    <div className="w-6 h-6 rounded-full bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center flex-shrink-0 self-end">
-                      <span className="text-[10px] leading-none">✨</span>
-                    </div>
+                    <AssistantAvatar size={24} badge={false} className="self-end" />
                   )}
                   <div className={`max-w-[82%] px-3 py-2 rounded-2xl text-xs leading-relaxed ${
                     m.role === "user"

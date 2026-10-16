@@ -15,6 +15,7 @@ import { compute, computeCapital } from "../lib/profitEngine";
 import { supabase } from "../utils/supabase";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
 import { useT } from "../contexts/LanguageContext";
+import GlassIcon, { GLASS } from "../components/GlassIcon";
 
 /* ── Period config ───────────────────────────────────────────────────────────── */
 // label = translation key
@@ -25,32 +26,42 @@ const PERIODS = [
   { key: "year",  label: "finance.periodYear"  },
 ];
 
+/* ── Cut-out person on the P&L card (hidden if the photo can't load) ── */
+function FinanceHeroPhoto() {
+  const [ok, setOk] = useState(true);
+  if (!ok) return null;
+  return (
+    <img src="/img/people/finance.webp" alt="" onError={() => setOk(false)}
+      className="pointer-events-none absolute right-1 top-[44px] h-[132px] w-auto object-contain drop-shadow-[0_10px_16px_rgba(0,0,0,.35)]" />
+  );
+}
+
 /* ── Finance tool tiles (icons only — backgrounds via card language); label = translation key ── */
 const FINANCE_TILES = [
   {
     id: "credit", label: "finance.tileCredit",
     icon: "M2 8a2 2 0 012-2h16a2 2 0 012 2v9a2 2 0 01-2 2H4a2 2 0 01-2-2V8z|M2 11h20|M6 15h3",
-    bg: "bg-rose-100 dark:bg-rose-900/30", color: "#e11d48",
+    g: GLASS.rose, bg: "bg-rose-100 dark:bg-rose-900/30", color: "#e11d48",
   },
   {
     id: "ajo", label: "finance.tileAjo",
     icon: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2|M9 11a4 4 0 100-8 4 4 0 000 8|M23 21v-2a4 4 0 00-3-3.87|M16 3.13a4 4 0 010 7.75",
-    bg: "bg-brand-100 dark:bg-brand-900/30", color: "#3DA829",
+    g: GLASS.brand, bg: "bg-brand-100 dark:bg-brand-900/30", color: "#3DA829",
   },
   {
     id: "loan", label: "finance.tileLoan",
     icon: "M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6",
-    bg: "bg-emerald-100 dark:bg-emerald-900/30", color: "#059669",
+    g: GLASS.emerald, bg: "bg-emerald-100 dark:bg-emerald-900/30", color: "#059669",
   },
   {
     id: "org", label: "finance.tileOrg",
     icon: "M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z|M9 22V12h6v10",
-    bg: "bg-amber-100 dark:bg-amber-900/30", color: "#d97706",
+    g: GLASS.amber, bg: "bg-amber-100 dark:bg-amber-900/30", color: "#d97706",
   },
   {
     id: "invoices", label: "finance.tileInvoices",
     icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2|M9 5a2 2 0 002 2h2a2 2 0 002-2|M9 5a2 2 0 012-2h2a2 2 0 012 2|M9 13h6|M9 17h4",
-    bg: "bg-pink-100 dark:bg-pink-900/30", color: "#ec4899",
+    g: GLASS.pink, bg: "bg-pink-100 dark:bg-pink-900/30", color: "#ec4899",
   },
 ];
 
@@ -1165,8 +1176,11 @@ export default function Finance({
           ))}
         </div>
 
+        {/* Person photo — sits on the right of the amount, behind nothing important */}
+        <FinanceHeroPhoto />
+
         {/* Net P&L or Net Cash — lens-aware */}
-        <div className="relative mb-1">
+        <div className="relative mb-1 pr-[92px]">
           {(() => {
             const lensNet = lens === "profit" ? netPL : cashNet;
             return (
@@ -1196,7 +1210,7 @@ export default function Finance({
         )}
 
         {/* 7-day sparkline */}
-        <div className="mt-2 opacity-80">
+        <div className="relative mt-2 mr-[104px] opacity-80">
           <Sparkline data={sparkData} />
         </div>
       </div>
@@ -1331,9 +1345,7 @@ export default function Finance({
             onClick={() => hasCreditAccess ? openSection("credit") : onUpgrade?.()}
             className="flex flex-col gap-1.5 bg-slate-50 dark:bg-slate-700/50 rounded-2xl p-3.5 active:scale-95 transition text-left border border-slate-100 dark:border-slate-700/30 min-h-[44px]">
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-rose-100 dark:bg-rose-900/30 flex items-center justify-center flex-shrink-0">
-                <Svg d={FINANCE_TILES[0].icon} size={13} color="#e11d48" sw={2} />
-              </div>
+              <GlassIcon d={FINANCE_TILES[0].icon} colors={FINANCE_TILES[0].g} size={30} iconSize={14} />
               <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
                 {hasCreditAccess ? t("finance.tileCredit") : `🔒 ${t("finance.tileCredit")}`}
               </p>
@@ -1354,9 +1366,7 @@ export default function Finance({
             onClick={() => openSection("ajo")}
             className="flex flex-col gap-1.5 bg-slate-50 dark:bg-slate-700/50 rounded-2xl p-3.5 active:scale-95 transition text-left border border-slate-100 dark:border-slate-700/30 min-h-[44px]">
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-brand-100 dark:bg-brand-900/30 flex items-center justify-center flex-shrink-0">
-                <Svg d={FINANCE_TILES[1].icon} size={13} color="#3DA829" sw={2} />
-              </div>
+              <GlassIcon d={FINANCE_TILES[1].icon} colors={FINANCE_TILES[1].g} size={30} iconSize={14} />
               <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400">{t("finance.tileAjo")}</p>
             </div>
             <AmountDisplay amount={ajoBalance} size="small" align="left" />
@@ -1371,9 +1381,7 @@ export default function Finance({
           {FINANCE_TILES.slice(2).filter(tile => (tile.id !== "loan" || loansEnabled) && (tile.id !== "org" || coopEnabled)).map(tile => (
             <button key={tile.id} onClick={() => openSection(tile.id)}
               className="flex flex-col items-center gap-1.5 py-3 rounded-2xl bg-slate-50 dark:bg-slate-700/50 active:scale-95 transition border border-slate-100 dark:border-slate-700/30 min-h-[44px]">
-              <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${tile.bg}`}>
-                <Svg d={tile.icon} size={15} color={tile.color} sw={2} />
-              </div>
+              <GlassIcon d={tile.icon} colors={tile.g} size={38} iconSize={17} />
               <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400 text-center leading-tight px-1">
                 {t(tile.label)}
               </span>

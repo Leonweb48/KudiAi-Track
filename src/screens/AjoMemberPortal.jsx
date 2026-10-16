@@ -59,6 +59,9 @@ import InviteEarn, { InviteBanner, InvitePromoModal } from "../components/invite
 import { useInviteClaim } from "../hooks/useInvite";
 import { useHistoryStep } from "../hooks/useHistoryStep";
 import { promoDue, markPromoSeen, naira } from "../utils/invite";
+import GlassIcon, { GLASS } from "../components/GlassIcon";
+import PhotoHero from "../components/PhotoHero";
+import { AssistantAvatar } from "../components/AssistantVisuals";
 
 async function ajoFn(action, body = {}) {
   const { data, error } = await supabase.functions.invoke("ajo-portal", {
@@ -1455,15 +1458,11 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], contribu
   );
 }
 // ── Quick Actions (Staff Portal style) ────────────────────────────────────
-function ActionBtn({ label, icon, bg, onClick }) {
+function ActionBtn({ label, icon, g = GLASS.brand, onClick }) {
   return (
     <button onClick={onClick}
       className="flex flex-col items-center gap-2 active:scale-90 transition-transform duration-150">
-      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-md ${bg}`}>
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          {icon.split("|").map((d, i) => <path key={i} d={d} />)}
-        </svg>
-      </div>
+      <GlassIcon d={icon} colors={g} size={56} iconSize={23} />
       <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 text-center leading-tight max-w-[60px]">{label}</span>
     </button>
   );
@@ -1471,12 +1470,12 @@ function ActionBtn({ label, icon, bg, onClick }) {
 
 // ── Bill service tiles for Quick Services grid ─────────────────────────────
 const QUICK_SERVICES = [
-  { id: "airtime",     labelKey: "client.svcAirtime",     g1: "#ef4444", g2: "#dc2626", d: "M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81 19.79 19.79 0 01.25 2.18 2 2 0 012.22 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" },
-  { id: "data",        labelKey: "client.svcData",        g1: "#3b82f6", g2: "#1d4ed8", d: "M1 6l11-4 11 4|M1 12l11-4 11 4|M1 18l11-4 11 4" },
-  { id: "electricity", labelKey: "client.svcElectricity", g1: "#f59e0b", g2: "#d97706", d: "M13 2L3 14h9l-1 8 10-12h-9l1-8z" },
-  { id: "cable",       labelKey: "client.svcCable",       g1: "#8b5cf6", g2: "#6d28d9", d: "M2 7a2 2 0 012-2h16a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V7z|M12 19v3|M8 22h8" },
-  { id: "betting",     labelKey: "client.svcBetting",     g1: "#10b981", g2: "#059669", d: "M12 2a10 10 0 100 20A10 10 0 0012 2z|M12 8v4l3 3" },
-  { id: "more",        labelKey: "client.svcMore",        g1: "#6366f1", g2: "#4f46e5", d: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2|M9 5a2 2 0 002 2h2a2 2 0 002-2|M9 5a2 2 0 012-2h2a2 2 0 012 2|M9 13h6|M9 17h4" },
+  { id: "airtime",     labelKey: "client.svcAirtime",     glass: "red", g1: "#ef4444", g2: "#dc2626", d: "M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81 19.79 19.79 0 01.25 2.18 2 2 0 012.22 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" },
+  { id: "data",        labelKey: "client.svcData",        glass: "blue", g1: "#3b82f6", g2: "#1d4ed8", d: "M1 6l11-4 11 4|M1 12l11-4 11 4|M1 18l11-4 11 4" },
+  { id: "electricity", labelKey: "client.svcElectricity", glass: "amber", g1: "#f59e0b", g2: "#d97706", d: "M13 2L3 14h9l-1 8 10-12h-9l1-8z" },
+  { id: "cable",       labelKey: "client.svcCable",       glass: "violet", g1: "#8b5cf6", g2: "#6d28d9", d: "M2 7a2 2 0 012-2h16a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V7z|M12 19v3|M8 22h8" },
+  { id: "betting",     labelKey: "client.svcBetting",     glass: "emerald", g1: "#10b981", g2: "#059669", d: "M12 2a10 10 0 100 20A10 10 0 0012 2z|M12 8v4l3 3" },
+  { id: "more",        labelKey: "client.svcMore",        glass: "indigo", g1: "#6366f1", g2: "#4f46e5", d: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2|M9 5a2 2 0 002 2h2a2 2 0 002-2|M9 5a2 2 0 012-2h2a2 2 0 012 2|M9 13h6|M9 17h4" },
 ];
 
 // ── Contribution calendar ─────────────────────────────────────────────────
@@ -2278,30 +2277,9 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
         <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{fmtLocaleDate(lang)}</p>
       </div>
 
-      {/* AI insight chip — AMP-19: SVG icon, brand-tinted */}
+      {/* AI insight chip — KudiAI assistant face, brand-tinted */}
       <div className="bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-800/50 rounded-2xl px-4 py-3 flex items-center gap-3">
-        <div className="w-9 h-9 rounded-xl bg-brand-100 dark:bg-brand-900/40 flex items-center justify-center flex-shrink-0">
-          {insightData.type === "fire" && (
-            <svg viewBox="0 0 24 24" fill="none" width="18" height="18" stroke="#3DA829" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-              <path d="M8.5 14.5A2.5 2.5 0 0011 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 11-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 002.5 3z" />
-            </svg>
-          )}
-          {insightData.type === "up" && (
-            <svg viewBox="0 0 24 24" fill="none" width="18" height="18" stroke="#3DA829" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" /><polyline points="17 6 23 6 23 12" />
-            </svg>
-          )}
-          {insightData.type === "star" && (
-            <svg viewBox="0 0 24 24" fill="none" width="18" height="18" stroke="#3DA829" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-            </svg>
-          )}
-          {insightData.type === "tip" && (
-            <svg viewBox="0 0 24 24" fill="none" width="18" height="18" stroke="#3DA829" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" />
-            </svg>
-          )}
-        </div>
+        <AssistantAvatar size={38} />
         <p className="text-[13px] font-semibold text-brand-700 dark:text-brand-200 leading-snug">{insightData.text}</p>
       </div>
 
@@ -2462,26 +2440,26 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
             <ActionBtn
               label={t("ajoPt.payContribBtn")}
               icon="M1 4h22|M1 10h22|M3 20h18a1 1 0 001-1V5a1 1 0 00-1-1H3a1 1 0 00-1 1v14a1 1 0 001 1z"
-              bg="bg-gradient-to-br from-brand-500 to-brand-600"
+              g={GLASS.brand}
               onClick={onPayClick}
             />
           )}
           <ActionBtn
             label={t("ajo.withdrawal")}
             icon="M12 19V5|M5 12l7 7 7-7"
-            bg="bg-gradient-to-br from-brand-500 to-brand-600"
+            g={GLASS.orange}
             onClick={onWithdrawClick}
           />
           <ActionBtn
             label={t("ajoPt.makeDeposit")}
             icon="M12 5v14|M5 12l7-7 7 7"
-            bg="bg-gradient-to-br from-brand-500 to-brand-600"
+            g={GLASS.green}
             onClick={onDepositClick}
           />
           <ActionBtn
             label={t("home.payBills")}
             icon="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2|M9 5a2 2 0 002 2h2a2 2 0 002-2|M9 13h6|M9 17h4"
-            bg="bg-gradient-to-br from-blue-500 to-blue-600"
+            g={GLASS.blue}
             onClick={onBillsClick}
           />
         </div>
@@ -2512,14 +2490,12 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
               </button>
             </div>
             {activeCycles.length === 0 && (
-              <div className="bg-white dark:bg-slate-800 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 p-5 text-center">
-                <p className="text-[13px] font-bold text-slate-700 dark:text-slate-200 mb-1">{t("client.noSavingsCardYet")}</p>
-                <p className="text-[12px] text-slate-400 dark:text-slate-500 mb-3">{t("client.openOneToBuild")}</p>
+              <PhotoHero img="/img/people/saver.webp" title={t("visual.saverTitle")} sub={t("client.openOneToBuild")} from="#f59e0b" to="#b45309" height={132}>
                 <button onClick={() => setShowOpenCycle(true)}
-                  className="px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-xl font-bold text-[12px] transition active:scale-[0.98]">
+                  className="mt-3 px-4 py-2 bg-white text-amber-700 rounded-full font-black text-[12px] shadow active:scale-[0.97] transition">
                   {t("client.openFirstCard")}
                 </button>
-              </div>
+              </PhotoHero>
             )}
             {showOpenCycle && (
               <OpenCycleSheet client={client} cycleCount={cycles.length} onClose={() => setShowOpenCycle(false)} />
@@ -2554,12 +2530,7 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
           {QUICK_SERVICES.filter(s => s.id !== "betting" || bettingVisible).map(s => (
             <button key={s.id} onClick={onBillsClick}
               className="flex flex-col items-center gap-1.5 active:scale-95 transition-transform">
-              <div className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm"
-                style={{ background: `linear-gradient(135deg,${s.g1},${s.g2})` }}>
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  {s.d.split("|").map((p, i) => <path key={i} d={p} />)}
-                </svg>
-              </div>
+              <GlassIcon d={s.d} colors={GLASS[s.glass]} size={54} iconSize={22} />
               <span className="text-[10px] font-semibold text-slate-600 dark:text-slate-400 text-center leading-tight">{t(s.labelKey)}</span>
             </button>
           ))}

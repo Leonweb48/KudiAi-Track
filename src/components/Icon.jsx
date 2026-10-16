@@ -3,7 +3,7 @@
  * All icons use a 24x24 viewBox with stroke-based rendering.
  */
 
-const PATHS = {
+export const PATHS = {
   finance:  "M3 22h18 M6 18v-7 M10 18v-7 M14 18v-7 M18 18v-7 M2 11l10-8 10 8",
   home:     "M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z M9 22V12h6v10",
   txn:      "M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6",

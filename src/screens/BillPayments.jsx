@@ -34,23 +34,25 @@ import { HistoryAvatar } from "../components/shared/HistoryRow";
 import { shareVoucherPDF } from "../utils/printVouchers";
 import { shareFile } from "../utils/shareFile";
 import { receiptShareText } from "../utils/verifyLink";
+import GlassIcon, { GLASS } from "../components/GlassIcon";
+import PhotoHero from "../components/PhotoHero";
 
 /* ─── Service catalogue ───────────────────────────────────────────────────── */
 
 const CATS = [
-  { id: "airtime",        label: "Airtime",        tileCls: "from-red-500 to-red-700",         iconCls: "bg-red-500"     },
-  { id: "data",           label: "Data Bundle",    tileCls: "from-blue-500 to-blue-700",        iconCls: "bg-blue-500"    },
-  { id: "cable",          label: "Cable TV",       tileCls: "from-violet-500 to-violet-700",    iconCls: "bg-violet-500"  },
-  { id: "electricity",    label: "Electricity",    tileCls: "from-amber-400 to-amber-600",      iconCls: "bg-amber-500"   },
-  { id: "betting",        label: "Betting Wallet", tileCls: "from-emerald-500 to-emerald-700",  iconCls: "bg-emerald-500" },
-  { id: "waec",           label: "WAEC ePin",      tileCls: "from-cyan-500 to-cyan-700",        iconCls: "bg-cyan-500"    },
-  { id: "jamb",           label: "JAMB ePin",      tileCls: "from-orange-400 to-orange-600",    iconCls: "bg-orange-500"  },
-  { id: "spectranet",     label: "Spectranet",     tileCls: "from-indigo-500 to-indigo-700",    iconCls: "bg-indigo-500"  },
-  { id: "smile",          label: "Smile 4G",       tileCls: "from-pink-500 to-pink-700",        iconCls: "bg-pink-500"    },
-  { id: "print-airtime",  label: "Print Airtime",  tileCls: "from-slate-500 to-slate-600",      iconCls: "bg-slate-500",  wholesale: true },
-  { id: "print-data",     label: "Print Data",     tileCls: "from-slate-500 to-slate-600",      iconCls: "bg-slate-500",  wholesale: true },
-  { id: "airtime-bundle", label: "Bundle Set",     tileCls: "from-violet-600 to-violet-900",    iconCls: "bg-violet-700", enterprise: true },
-  { id: "business-loan",  label: "Business Loan",  tileCls: "from-emerald-600 to-emerald-900",  iconCls: "bg-emerald-700",loan: true },
+  { id: "airtime",        label: "Airtime",        tileCls: "from-red-500 to-red-700",         g: GLASS.red, iconCls: "bg-red-500"     },
+  { id: "data",           label: "Data Bundle",    tileCls: "from-blue-500 to-blue-700",        g: GLASS.blue, iconCls: "bg-blue-500"    },
+  { id: "cable",          label: "Cable TV",       tileCls: "from-violet-500 to-violet-700",    g: GLASS.violet, iconCls: "bg-violet-500"  },
+  { id: "electricity",    label: "Electricity",    tileCls: "from-amber-400 to-amber-600",      g: GLASS.amber, iconCls: "bg-amber-500"   },
+  { id: "betting",        label: "Betting Wallet", tileCls: "from-emerald-500 to-emerald-700",  g: GLASS.emerald, iconCls: "bg-emerald-500" },
+  { id: "waec",           label: "WAEC ePin",      tileCls: "from-cyan-500 to-cyan-700",        g: GLASS.cyan, iconCls: "bg-cyan-500"    },
+  { id: "jamb",           label: "JAMB ePin",      tileCls: "from-orange-400 to-orange-600",    g: GLASS.orange, iconCls: "bg-orange-500"  },
+  { id: "spectranet",     label: "Spectranet",     tileCls: "from-indigo-500 to-indigo-700",    g: GLASS.indigo, iconCls: "bg-indigo-500"  },
+  { id: "smile",          label: "Smile 4G",       tileCls: "from-pink-500 to-pink-700",        g: GLASS.pink, iconCls: "bg-pink-500"    },
+  { id: "print-airtime",  label: "Print Airtime",  tileCls: "from-slate-500 to-slate-600",      g: GLASS.slate, iconCls: "bg-slate-500",  wholesale: true },
+  { id: "print-data",     label: "Print Data",     tileCls: "from-slate-500 to-slate-600",      g: GLASS.slate, iconCls: "bg-slate-500",  wholesale: true },
+  { id: "airtime-bundle", label: "Bundle Set",     tileCls: "from-violet-600 to-violet-900",    g: GLASS.purple, iconCls: "bg-violet-700", enterprise: true },
+  { id: "business-loan",  label: "Business Loan",  tileCls: "from-emerald-600 to-emerald-900",  g: GLASS.green, iconCls: "bg-emerald-700",loan: true },
 ];
 
 // Display names for the services in the chosen language. CATS[].label stays English: it goes into receipts, emails and stored rows.
@@ -3208,6 +3210,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
 
       <div className="px-4 pt-4 space-y-4">
 
+        <PhotoHero img="/img/people/bills.webp" title={t("visual.billsTitle")} sub={t("visual.billsSub")} from="#3b82f6" to="#1e3a8a" />
 
         {/* Cashback balance widget */}
         {userEmailCB && (
@@ -3296,13 +3299,13 @@ export default function BillPayments({ store, plan, session = null, staffName = 
               const badge  = pausedBundle ? t("bills.badgePaused") : lockedEnterprise ? reqPlanLabel : lockedWholesale ? reqPlanLabel : c.loan && !loansEnabled ? t("bills.badgeSoon") : lockedLoan && !isEnterprise ? reqPlanLabel : lockedLoan ? t("bills.badge4mo") : null;
               return (
                 <button key={c.id} onClick={() => openSheet(c.id)} disabled={locked}
-                  className={`rounded-2xl p-4 flex flex-col items-center gap-2 shadow-sm active:scale-95 transition-all duration-150 text-white relative bg-gradient-to-br ${c.tileCls} ${locked ? "opacity-50 cursor-not-allowed" : ""}`}>
+                  className={`rounded-2xl px-2 pt-3.5 pb-3 flex flex-col items-center gap-2 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 shadow-[0_6px_16px_-10px_rgba(15,23,42,.35)] active:scale-95 transition-all duration-150 relative ${locked ? "opacity-50 cursor-not-allowed" : ""}`}>
                   {badge && (
-                    <span className="absolute top-1.5 right-1.5 bg-white/30 rounded-full px-1.5 py-0.5 text-[8px] font-black tracking-wide">{badge}</span>
+                    <span className="absolute top-1.5 right-1.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-200 rounded-full px-1.5 py-0.5 text-[8px] font-black tracking-wide">{badge}</span>
                   )}
-                  <Ico d={CAT_ICONS[c.id]} size={26} c="rgba(255,255,255,0.95)" />
-                  <p className="text-[11px] font-bold text-center leading-tight">{CAT_LABELS[c.id] || c.label}</p>
-                  {count > 0 && <p className="text-[9px] font-semibold bg-white/25 px-1.5 py-0.5 rounded-full">{count}</p>}
+                  <GlassIcon d={CAT_ICONS[c.id]} colors={c.g} size={50} iconSize={22} />
+                  <p className="text-[11px] font-bold text-center leading-tight text-slate-700 dark:text-slate-200">{CAT_LABELS[c.id] || c.label}</p>
+                  {count > 0 && <p className="text-[9px] font-semibold bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 px-1.5 py-0.5 rounded-full">{count}</p>}
                 </button>
               );
             })}

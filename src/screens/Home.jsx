@@ -18,6 +18,7 @@ import TabCardDuoSlot from "../components/slots/TabCardDuoSlot";
 import OffersSection from "../components/slots/OffersSection";
 import AnnouncementBarSlot from "../components/slots/AnnouncementBarSlot";
 import { InviteBanner } from "../components/invite/InviteEarn";
+import GlassIcon, { GLASS } from "../components/GlassIcon";
 import ProfileCompletionBanner from "../components/ProfileCompletionBanner";
 import PaidProfileBanner from "../components/PaidProfileBanner";
 import ProfileCompleteFlow from "../components/ProfileCompleteFlow";
@@ -65,12 +66,12 @@ const P = {
 /* Mic tile gets brand treatment; service tiles keep category-identifier colors via Tailwind.
    `label` is a translation key, shown with t(s.label). */
 const BILL_SERVICES = [
-  { id: "mic",         label: "bill.micSale",     brand: true,  mic: true },
-  { id: "airtime",     label: "bill.airtime",     bg: "from-red-500 to-red-600",        icon: "M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81a19.79 19.79 0 01-3.07-8.67A2 2 0 012 .82h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" },
-  { id: "data",        label: "bill.data",        bg: "from-blue-500 to-blue-700",       icon: "M1 6l11-4 11 4|M1 12l11-4 11 4|M1 18l11-4 11 4" },
-  { id: "electricity", label: "bill.electricity", bg: "from-amber-400 to-amber-600",     icon: "M13 2L3 14h9l-1 8 10-12h-9l1-8z" },
-  { id: "cable",       label: "bill.cableTV",      bg: "from-violet-500 to-violet-700",   icon: "M2 7a2 2 0 012-2h16a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V7z|M12 19v3|M8 22h8" },
-  { id: "betting",     label: "bill.betting",      bg: "from-emerald-500 to-emerald-600", icon: "M12 2a10 10 0 100 20A10 10 0 0012 2z|M12 8v4l3 3" },
+  { id: "mic",         label: "bill.micSale",     brand: true,  mic: true, g: GLASS.brand },
+  { id: "airtime",     label: "bill.airtime",     g: GLASS.red,    icon: "M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81a19.79 19.79 0 01-3.07-8.67A2 2 0 012 .82h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" },
+  { id: "data",        label: "bill.data",        g: GLASS.blue,   icon: "M1 6l11-4 11 4|M1 12l11-4 11 4|M1 18l11-4 11 4" },
+  { id: "electricity", label: "bill.electricity", g: GLASS.amber,  icon: "M13 2L3 14h9l-1 8 10-12h-9l1-8z" },
+  { id: "cable",       label: "bill.cableTV",      g: GLASS.violet, icon: "M2 7a2 2 0 012-2h16a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V7z|M12 19v3|M8 22h8" },
+  { id: "betting",     label: "bill.betting",      g: GLASS.emerald, icon: "M12 2a10 10 0 100 20A10 10 0 0012 2z|M12 8v4l3 3" },
 ];
 
 /* getTxStyle and TxRow are imported from components/shared/TxRow */
@@ -244,10 +245,10 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
 
   /* Quick actions — tap destinations frozen per Gate 0 ruling 6 */
   const PRIMARY_ACTIONS = [
-    { label: t("home.recordSale"),     icon: P.in,      action: () => onQuickAction?.("transactions", "in")                   },
-    { label: t("home.newInvoice"),     icon: P.invoice, action: () => onQuickAction?.("finance", "invoices")                  },
-    { label: t("home.payBills"),       icon: P.report,  action: () => onQuickAction?.("bills")                                },
-    { label: t("home.receivePayment"), icon: P.bank,    action: () => onQuickAction?.("transactions", "in", "debt repayment") },
+    { label: t("home.recordSale"),     icon: P.in,      g: GLASS.green,  action: () => onQuickAction?.("transactions", "in")                   },
+    { label: t("home.newInvoice"),     icon: P.invoice, g: GLASS.purple, action: () => onQuickAction?.("finance", "invoices")                  },
+    { label: t("home.payBills"),       icon: P.report,  g: GLASS.blue,   action: () => onQuickAction?.("bills")                                },
+    { label: t("home.receivePayment"), icon: P.bank,    g: GLASS.amber,  action: () => onQuickAction?.("transactions", "in", "debt repayment") },
   ];
 
   return (
@@ -565,9 +566,7 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
           {PRIMARY_ACTIONS.map(a => (
             <button key={a.label} onClick={a.action}
               className="flex flex-col items-center gap-2 active:scale-90 transition-transform duration-150 min-h-[44px] min-w-[44px] text-navy dark:text-white">
-              <div className="w-14 h-14 rounded-full flex items-center justify-center shadow-sm bg-brand-50 dark:bg-navy/40">
-                <Svg d={a.icon} size={22} color="currentColor" sw={2} />
-              </div>
+              <GlassIcon d={a.icon} colors={a.g} size={56} iconSize={24} />
               <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400 text-center leading-tight max-w-[60px]">
                 {a.label}
               </span>
@@ -587,15 +586,7 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
               <button key={s.id}
                 onClick={() => s.mic ? onVoiceOpen?.() : onQuickAction?.("bills", s.id)}
                 className="flex flex-col items-center gap-2 active:scale-90 transition-transform duration-150">
-                <div
-                  className={`w-12 h-12 rounded-2xl flex items-center justify-center shadow-sm ${s.bg ? `bg-gradient-to-br ${s.bg}` : ""}`}
-                  style={s.brand ? { background: "linear-gradient(135deg,var(--brand-green),var(--brand-green-dark))" } : undefined}
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-                    stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    {(s.mic ? P.mic : s.icon).split("|").map((d, i) => <path key={i} d={d} />)}
-                  </svg>
-                </div>
+                <GlassIcon d={s.mic ? P.mic : s.icon} colors={s.g} size={50} iconSize={21} />
                 <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 text-center leading-tight">
                   {t(s.label)}
                 </span>
@@ -626,18 +617,19 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
         )}
         <button
           onClick={() => { localStorage.setItem("kt_ai_intro_seen", "1"); setShowAITip(false); onAIOpen?.(); }}
-          className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-3xl shadow-card border border-slate-100 dark:border-slate-700/50 active:scale-[0.98] transition-transform duration-150"
+          className="relative w-full overflow-hidden flex items-end rounded-3xl shadow-card active:scale-[0.98] transition-transform duration-150 min-h-[118px]"
           style={{ background: "linear-gradient(135deg,var(--brand-green),var(--brand-green-dark))" }}>
-          <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center flex-shrink-0">
-            <span className="text-xl leading-none">✨</span>
+          <span className="pointer-events-none absolute -right-10 -top-12 w-44 h-44 rounded-full bg-white/10" />
+          <span className="pointer-events-none absolute right-16 -bottom-16 w-32 h-32 rounded-full bg-white/10" />
+          <div className="relative flex-1 min-w-0 text-left px-4 py-4 self-center">
+            <span className="inline-flex items-center gap-1 rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-extrabold text-white tracking-wide">✨ AI</span>
+            <p className="mt-1.5 text-[16px] font-black text-white leading-tight">{t("home.aiAssistant")}</p>
+            <p className="text-[11.5px] text-green-50/90 mt-0.5 max-w-[22ch]">{t("home.aiAssistantSub")}</p>
+            <span className="mt-2.5 inline-flex items-center gap-1 rounded-full bg-white text-[#2a8a1a] text-[12px] font-extrabold px-3 py-1 shadow">
+              {t("visual.askNow")} <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="M9 18l6-6-6-6" /></svg>
+            </span>
           </div>
-          <div className="flex-1 min-w-0 text-left">
-            <p className="text-[15px] font-black text-white leading-tight">{t("home.aiAssistant")}</p>
-            <p className="text-[11px] text-green-100 mt-0.5">{t("home.aiAssistantSub")}</p>
-          </div>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" className="opacity-70 flex-shrink-0">
-            <path d="M9 18l6-6-6-6" />
-          </svg>
+          <img src="/img/people/assistant.webp" alt="" className="relative h-[124px] w-auto object-contain object-bottom mr-1 drop-shadow-[0_8px_14px_rgba(0,0,0,.25)]" />
         </button>
       </div>
 
