@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import Icon from "./Icon";
 import { useT } from "../contexts/LanguageContext";
+import { InviteBanner } from "./invite/InviteEarn";
 
 const ITEMS = [
   { id: "finance",  icon: "finance",  tkey: "nav.finance"    },
@@ -8,7 +9,7 @@ const ITEMS = [
   { id: "settings", icon: "settings", tkey: "settings.title" },
 ];
 
-export default function MoreSheet({ open, onClose, onNavigate, showWallet = false }) {
+export default function MoreSheet({ open, onClose, onNavigate, showWallet = false, inviteCfg = null, onOpenInvite }) {
   const t = useT();
   const items = showWallet
     ? [...ITEMS.slice(0, 2), { id: "wallet", icon: "wallet", tkey: "settings.acct.more.wallet" }, ...ITEMS.slice(2)]
@@ -106,6 +107,11 @@ export default function MoreSheet({ open, onClose, onNavigate, showWallet = fals
             </button>
           ))}
         </div>
+
+        {/* Invite & Earn — same banner as Home */}
+        {inviteCfg && onOpenInvite && (
+          <InviteBanner portal="owner" cfg={inviteCfg} className="mt-4" onOpen={() => { onClose(); onOpenInvite(); }} />
+        )}
       </div>
     </>
   );

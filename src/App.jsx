@@ -837,6 +837,8 @@ export default function App() {
             onClose={() => setMoreSheetOpen(false)}
             onNavigate={setTab}
             showWallet={walletEnabled}
+            inviteCfg={inviteCfg}
+            onOpenInvite={() => setShowInvite(true)}
           />
 
           {voiceOpen && (
