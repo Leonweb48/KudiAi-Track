@@ -984,10 +984,10 @@ function MoneySummaryRow({ label1, val1, label2, val2, loading, highlightVal2 = 
 
 function MoneyCycleCard({ cycle, saved, net, availableNow, withdrawn, locked, lockReason, selected, onSelect, mode, children }) {
   const t = useT();
-  // Paying in: the badge is the card's own status (the pay sheet passes locked={false} for every card, which used to
-  // label a brand-new active card "Complete"). Withdrawing: locked = still running.
-  const paying = mode === "pay" || mode === "deposit";
-  const showActive = paying ? cycle.status !== "completed" : locked;
+  // The badge is the card's own status. `locked` only says whether money can come out yet: percentage cards can be
+  // withdrawn from at any time (locked={false}), and reading that as "Complete" labelled every running card Complete
+  // in the withdrawal sheet (the pay sheet had the same bug, fixed in 83c9d1d).
+  const showActive = locked || !["completed", "settled"].includes(cycle.status);
   return (
     <div className={`mb-2 rounded-xl border-2 transition overflow-hidden ${
       selected
@@ -5129,7 +5129,7 @@ function AjoMemberBillsWrapper({ client, ownerInfo, session, wallet }) {
       staffName={client?.full_name || null}
       staffEmail={client?.email || session?.user?.email || null}
       businessName={ownerInfo?.business_name || ""}
-      excludeCats={["print-airtime", "print-data"]}
+      excludeCats={["print-airtime", "print-data", "airtime-bundle", "business-loan"]}
       walletOnly
     />
   );
@@ -6217,7 +6217,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
             { label: t("aiChip.mySavings")         || "My Balance",           q: "What is my current savings balance?" },
             { label: t("portal.nextPayment")        || "Next Contribution",    q: "When is my next contribution due?" },
             { label: t("portal.history")            || "Contribution History", q: "Show my recent contribution history" },
-            { label: t("aiChip.coopBenefits")       || "Savings Goal",        q: "How am I doing with my savings goal?" },
+            { label: t("client.chipGoal")           || "Savings Goal",        q: "How am I doing with my savings goal?" },
             { label: t("client.chipTips", { base: t("aiChip.mySavings") }) || "Savings Tips", q: "Give me tips to save more consistently" },
           ]}
           inputPlaceholder={t("aiChip.ajoPlaceholder") || "Ask about your savings…"}

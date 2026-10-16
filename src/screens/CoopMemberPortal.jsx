@@ -2070,7 +2070,7 @@ function MemberBillsTab({ member, org, autoService = null, onAutoOpened = null }
       pointsEnabled
       staffName={member.full_name}
       staffEmail={member.email}
-      excludeCats={["print-airtime", "print-data"]}
+      excludeCats={["print-airtime", "print-data", "airtime-bundle", "business-loan"]}
       businessName={org.name}
       autoService={autoService}
       onAutoOpened={onAutoOpened}

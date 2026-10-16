@@ -234,9 +234,12 @@ export default function AIChatWidget({
 
   // ── FAB position style ────────────────────────────────────────────────────
 
+  // The button sits above the page and bottom nav (40) but UNDER sheets and modals (50+), so it never covers a
+  // wallet sheet, a receipt or the More menu. Its own chat panel below stays at 55.
+  const FAB_Z = 45;
   const fabStyle = {
     position: "fixed",
-    zIndex: 55,
+    zIndex: FAB_Z,
     bottom: fabPos.bottom,
     ...(fabPos.side === "right" ? { right: colOffset + 16 } : { left: colOffset + 16 }),
   };
@@ -247,7 +250,7 @@ export default function AIChatWidget({
     return (
       <button
         onClick={showWidget}
-        style={{ position: "fixed", zIndex: 55, bottom: fabPos.bottom, ...(fabPos.side === "right" ? { right: colOffset } : { left: colOffset }) }}
+        style={{ position: "fixed", zIndex: FAB_Z, bottom: fabPos.bottom, ...(fabPos.side === "right" ? { right: colOffset } : { left: colOffset }) }}
         className={`w-6 h-12 bg-gradient-to-b from-brand-500 to-brand-700 text-white flex items-center justify-center shadow-lg ${fabPos.side === "right" ? "rounded-l-xl" : "rounded-r-xl"}`}
         aria-label={t("account.ai.showAssistant")}
       >
