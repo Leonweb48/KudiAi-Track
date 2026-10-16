@@ -20,6 +20,16 @@ import { useT } from "../contexts/LanguageContext";
 // how often a repeat transfer runs (stored value → label key)
 const FREQ_KEYS = { daily: "wallet.freq.daily", weekly: "wallet.freq.weekly", monthly: "wallet.freq.monthly" };
 
+// Cut-out person on the balance card (hidden if the photo can't load).
+function WalletHeroPhoto() {
+  const [ok, setOk] = useState(true);
+  if (!ok) return null;
+  return (
+    <img src="/img/people/wallet.webp" alt="" onError={() => setOk(false)}
+      className="pointer-events-none absolute right-12 bottom-0 h-[132px] w-auto object-contain drop-shadow-[0_10px_16px_rgba(0,0,0,.35)]" />
+  );
+}
+
 export default function Wallet({ session, store }) {
   const userId = session?.user?.id || null;
   const navigate = useNavigate();
@@ -132,14 +142,15 @@ export default function Wallet({ session, store }) {
 
       <div className="px-4 space-y-4">
         {/* balance */}
-        <div className="rounded-[28px] p-6 text-white relative overflow-hidden shadow-hero"
+        <div className="rounded-[28px] p-6 min-h-[172px] text-white relative overflow-hidden shadow-hero"
           style={{ background: "linear-gradient(150deg,var(--navy) 0%,var(--navy-mid) 50%,var(--navy-dark) 100%)" }}>
           <div className="absolute -top-16 -right-12 w-48 h-48 rounded-full bg-white/[0.06]" />
           <div className="absolute -bottom-16 -left-10 w-52 h-52 rounded-full bg-white/[0.05]" />
-          <div className="relative">
+          <WalletHeroPhoto />
+          <div className="relative pr-[96px]">
             <div className="flex items-center justify-between">
               <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/55">{t("wallet.availableBalance")}</p>
-              <button onClick={toggleHidden} className="w-9 h-9 -mr-1.5 -mt-1 flex items-center justify-center rounded-xl bg-white/10 active:bg-white/20">
+              <button onClick={toggleHidden} className="w-9 h-9 -mr-[96px] -mt-1 relative z-10 flex items-center justify-center rounded-xl bg-white/10 active:bg-white/20">
                 <Icon name="eye" size={14} className="text-white" />
               </button>
             </div>
