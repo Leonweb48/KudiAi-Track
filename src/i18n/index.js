@@ -20,9 +20,10 @@ import circles from "./circles";
 import walletpanel from "./walletpanel";
 import auth2 from "./auth";
 import messages from "./messages";
+import invite from "./invite";
 
 export const ALL_TRANSLATIONS = Object.assign({}, BASE, common, home, sales, credit, ajo, stock, finance, bills, wallet,
-  invoices, settings, business, account, client, circles, walletpanel, auth2, messages);
+  invoices, settings, business, account, client, circles, walletpanel, auth2, messages, invite);
 
 const fill = (text, vars) => (vars && typeof text === "string")
   ? text.replace(/\{(\w+)\}/g, (m, k) => (vars[k] !== undefined && vars[k] !== null ? String(vars[k]) : m))

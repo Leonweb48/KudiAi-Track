@@ -360,7 +360,7 @@ function LanguageModal({ current, userId, onClose }) {
 
 
 /* ── Main component ───────────────────────────────────────────────── */
-export default function Settings({ store, session, plan = "starter", onUpgrade, onStaffManagement, lock, onLoyalty, onBranches, onCoops }) {
+export default function Settings({ store, session, plan = "starter", onUpgrade, onStaffManagement, lock, onLoyalty, onBranches, onCoops, inviteCfg, onInvite }) {
   const { profile, setProfile } = store;
   const { lang: langCode }      = useLanguage();
   const t                       = useT();
@@ -868,6 +868,14 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
       {/* ── FEATURES ───────────────────────────────────────────────── */}
       <SectionLabel>{t("settings.main.features")}</SectionLabel>
       <SettingsCard>
+        {inviteCfg && onInvite && (
+          <Row
+            icon={<span className="text-[18px]" aria-hidden="true">🎁</span>}
+            label={t("invite.title")}
+            sub={t("invite.settingsSub", { amount: `₦${Math.round(inviteCfg.maxKobo / 100).toLocaleString("en-NG")}` })}
+            onClick={onInvite}
+          />
+        )}
         <Row
           icon={<GiftIcon />}
           label={t("settings.main.loyalty")}

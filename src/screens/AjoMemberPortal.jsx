@@ -55,6 +55,10 @@ import EsusuRotationDashboard from "../components/EsusuRotationDashboard";
 import LegalScreen from "./LegalScreen";
 import PeerEsusuScreen, { ActiveCirclesOnHome } from "./PeerEsusuScreen";
 import { DeleteAccountLink } from "../components/shared/DeleteAccountSheet";
+import InviteEarn, { InviteBanner, InvitePromoModal } from "../components/invite/InviteEarn";
+import { useInviteClaim } from "../hooks/useInvite";
+import { useHistoryStep } from "../hooks/useHistoryStep";
+import { promoDue, markPromoSeen, naira } from "../utils/invite";
 
 async function ajoFn(action, body = {}) {
   const { data, error } = await supabase.functions.invoke("ajo-portal", {
@@ -3712,7 +3716,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
 }
 
 // ── Me tab (Staff Portal structure) ───────────────────────────────────────
-function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onProfileUpdate, contributions = [], cycles = [], onOpenStatements }) {
+function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onProfileUpdate, contributions = [], cycles = [], onOpenStatements, inviteCfg, onOpenInvite }) {
   const t = useT();
   const { walletEnabled: tierWalletEnabled } = usePlatformConfig();
   const { lang, changeLang } = useLanguage();
@@ -4602,6 +4606,17 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
           <SectionLabel>{t("client.walletTier")}</SectionLabel>
           <WalletTierCard userId={client?.client_user_id || session?.user?.id} enabled
             prefill={{ fullName: client?.full_name || "", address: client?.address || "", state: client?.state || "", lga: client?.lga || "" }} />
+        </div>
+      )}
+
+      {/* Invite & Earn */}
+      {inviteCfg && onOpenInvite && (
+        <div className="px-4 mb-5">
+          <SectionLabel>{t("invite.title")}</SectionLabel>
+          <SettingsCard>
+            <Row iconCls="bg-amber-50 dark:bg-amber-900/20" icon={<span className="text-[18px]" aria-hidden="true">🎁</span>}
+              label={t("invite.title")} sub={t("invite.settingsSub", { amount: naira(inviteCfg.maxKobo) })} onClick={onOpenInvite} />
+          </SettingsCard>
         </div>
       )}
 
@@ -5611,6 +5626,18 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
   const [walletSheet,      setWalletSheet]      = useState(null); // "fund" | "transfer" | "receive" | null
   // The Statements screen: null (closed) or { tab: "savings" | "wallet" | "monthly", month?: "YYYY-MM", from?: "wallet" }
   const [statementsView,   setStatementsView]   = useState(null);
+  // Invite & Earn
+  const { inviteCfg } = usePlatformConfig();
+  const [showInvite,  setShowInvite]  = useState(false);
+  const [invitePromo, setInvitePromo] = useState(false);
+  const [inviteToast, setInviteToast] = useState("");
+  const closeInvite = useHistoryStep(showInvite && !!inviteCfg, () => setShowInvite(false));
+  useInviteClaim(inviteCfg ? session?.user?.id : null, "client", ({ inviterName }) => setInviteToast(inviterName || " "));
+  useEffect(() => {
+    if (!inviteCfg || !promoDue(7)) return undefined;
+    const id = setTimeout(() => { setInvitePromo(true); markPromoSeen(); }, 6000);
+    return () => clearTimeout(id);
+  }, [inviteCfg]);
   // Session-scoped, not permanent — the nudge reappears next visit so it stays
   // a reminder rather than a one-time dismiss (mirrors ajo_balance_hidden below).
   const [walletBannerDismissed, setWalletBannerDismissed] = useState(
@@ -5867,6 +5894,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
 
   const [circleToOpen, setCircleToOpen] = useState(null);   // a circle a notification tap asked to open
   usePushNotifications(session?.user?.id ?? null, (dl) => {
+    if (dl?.openInvite) setShowInvite(true);
     if (dl?.openWallet) setShowWallet(true);
     if (dl?.openStatements) setStatementsView({ tab: "monthly", month: typeof dl.month === "string" ? dl.month : "" });
     if (!dl?.tab) return;
@@ -5903,6 +5931,7 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
             <NotificationCenter
               userId={client?.client_user_id ?? session?.user?.id ?? null}
               onNavigate={(dl) => {
+                if (dl?.openInvite) setShowInvite(true);
                 if (dl?.openWallet) setShowWallet(true);
                 if (dl?.openStatements) setStatementsView({ tab: "monthly", month: typeof dl.month === "string" ? dl.month : "" });
                 if (!dl?.tab) return;
@@ -6007,7 +6036,12 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
               contributions={contributions}
               cycles={cycles}
               onOpenStatements={() => setStatementsView({ tab: "savings" })}
+              inviteCfg={inviteCfg}
+              onOpenInvite={() => setShowInvite(true)}
             />
+          )}
+          {tab === "home" && inviteCfg && (
+            <div className="px-4 pt-1 pb-3"><InviteBanner portal="client" cfg={inviteCfg} onOpen={() => setShowInvite(true)} /></div>
           )}
           {!client && tab === "home" && <SkeletonHome />}
           {!client && tab === "bills" && <SkeletonBills />}
@@ -6138,6 +6172,22 @@ export default function AjoMemberPortal({ session, ajoClient, pinLock }) {
             wallet={wallet.wallet} payRequest={wallet.payRequest} testMode={walletTestMode} api={wallet}
             businessName={client?.full_name} ownerName={client?.full_name} />
         </>
+      )}
+      {showInvite && inviteCfg && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-50 dark:bg-slate-900">
+          <InviteEarn portal="client" onClose={closeInvite}
+            onOpenWallet={() => { setShowInvite(false); setShowWallet(true); }} />
+        </div>
+      )}
+      {invitePromo && inviteCfg && !showInvite && (
+        <InvitePromoModal cfg={inviteCfg} onClose={() => setInvitePromo(false)}
+          onInvite={() => { setInvitePromo(false); setShowInvite(true); }} />
+      )}
+      {inviteToast && inviteCfg && (
+        <button onClick={() => { setInviteToast(""); setShowInvite(true); }}
+          className="fixed left-1/2 -translate-x-1/2 top-[max(16px,env(safe-area-inset-top))] z-[130] w-[calc(100%-32px)] max-w-md rounded-2xl bg-[#0b1640] text-white px-4 py-3.5 text-left text-[13.5px] font-semibold shadow-2xl">
+          🎁 {tNow("invite.claimed", { name: inviteToast.trim() || "a friend", bonus: naira(inviteCfg.friendBonusKobo) })}
+        </button>
       )}
       {statementsView && clientId && (
         <div className="fixed inset-0 z-50 bg-white dark:bg-slate-900 overflow-y-auto">

@@ -30,7 +30,7 @@ import {
 } from "./utils/paidCompliance";
 import { buildContext }      from "./utils/buildContext";
 import { hasChosenLang, setLang, markLangChosen } from "./utils/i18n";
-import { useLanguage as useLangCtx } from "./contexts/LanguageContext";
+import { useLanguage as useLangCtx, tNow } from "./contexts/LanguageContext";
 import { Browser }           from "@capacitor/browser";
 import { StatusBar, Style }  from "@capacitor/status-bar";
 import { Capacitor }         from "@capacitor/core";
@@ -56,6 +56,10 @@ import BvnVerificationReturn from "./screens/BvnVerificationReturn";
 import VerifyReceipt         from "./screens/VerifyReceipt";
 import DeleteAccountPage      from "./screens/DeleteAccountPage";
 import { canSellPlans }       from "./utils/platform";
+import InviteEarn, { InvitePromoModal } from "./components/invite/InviteEarn";
+import { useInviteClaim }    from "./hooks/useInvite";
+import { useHistoryStep }    from "./hooks/useHistoryStep";
+import { promoDue, markPromoSeen } from "./utils/invite";
 // ── Lazy imports — split into separate chunks, loaded on first use ────────────
 // Heavy screen chunks (jsPDF + html2canvas live in Reports; AI SDK in AIAssistant)
 const Reports        = lazyWithRetry(() => import("./screens/Reports"));
@@ -219,7 +223,20 @@ export default function App() {
   const pinLock = usePinLock(userId);
 
   // Feature flags — fetched once per session from platform_config table, no rebuild to toggle
-  const { coopEnabled, walletEnabled, walletTestMode, configLoading } = usePlatformConfig();
+  const { coopEnabled, walletEnabled, walletTestMode, configLoading, inviteCfg } = usePlatformConfig();
+
+  // Invite & Earn — the full page, the weekly "new way to earn" popup, and the welcome note after a friend's code is claimed
+  const [showInvite,   setShowInvite]   = useState(false);
+  const [invitePromo,  setInvitePromo]  = useState(false);
+  const [inviteToast,  setInviteToast]  = useState("");
+  const closeInvite = useHistoryStep(showInvite && !!inviteCfg, () => setShowInvite(false));
+  useInviteClaim(status === "ready" && inviteCfg ? userId : null, "owner",
+    ({ inviterName }) => setInviteToast(inviterName || " "));
+  useEffect(() => {
+    if (status !== "ready" || !inviteCfg || !promoDue(7)) return undefined;
+    const id = setTimeout(() => { setInvitePromo(true); markPromoSeen(); }, 6000);
+    return () => clearTimeout(id);
+  }, [status, inviteCfg]);
 
   // Wallet account-number move: anyone whose wallet still has a number on the OLD bank account must get a new one at login
   // (see hooks/useWalletMigrationGate.js). Owners, staff, branch managers and Ajo/Esusu clients have wallets; coop members,
@@ -244,6 +261,7 @@ export default function App() {
     publishDeepLink(dl);
     navigate(target === "home" ? "/" : `/${target}`, opts.replace ? { replace: true } : undefined);
     // the monthly reports notification / email: open Reports on that part and month
+    if (dl.openInvite) setShowInvite(true);
     if (dl.openReports) setShowReports({ view: String(dl.openReports), month: typeof dl.month === "string" ? dl.month : "" });
   }, [navigate]);
 
@@ -662,7 +680,9 @@ export default function App() {
                     onVoiceOpen={() => setVoiceOpen(true)}
                     onAIOpen={() => setShowAI(true)}
                     onGoVerification={() => navigate("/verification")}
-                    onGoSettings={() => navigate("/settings")} />,
+                    onGoSettings={() => navigate("/settings")}
+                    inviteCfg={inviteCfg}
+                    onOpenInvite={() => setShowInvite(true)} />,
     transactions: <S><Transactions
                     store={{ ...store, addTransaction: addTransactionWithLoyalty }}
                     plan={plan}
@@ -726,7 +746,9 @@ export default function App() {
                     lock={pinLock}
                     onLoyalty={() => setShowLoyalty(true)}
                     onBranches={() => setShowBranches(true)}
-                    onCoops={() => setShowCoop(true)} /></S>,
+                    onCoops={() => setShowCoop(true)}
+                    inviteCfg={inviteCfg}
+                    onInvite={() => setShowInvite(true)} /></S>,
   };
 
   return (
@@ -868,6 +890,24 @@ export default function App() {
           onReport={(filteredStore) => setBranchReport(filteredStore)}
           onClose={() => setShowBranches(false)}
         /></S>
+      )}
+
+      {/* Invite & Earn — full-screen overlay, z-60 */}
+      {showInvite && inviteCfg && (
+        <div className="fixed inset-0 z-[60] overflow-y-auto bg-slate-50 dark:bg-slate-900">
+          <S><InviteEarn portal="owner" onClose={closeInvite}
+            onOpenWallet={walletEnabled ? () => { setShowInvite(false); navigate("/wallet"); } : undefined} /></S>
+        </div>
+      )}
+      {invitePromo && inviteCfg && !showInvite && (
+        <InvitePromoModal cfg={inviteCfg} onClose={() => setInvitePromo(false)}
+          onInvite={() => { setInvitePromo(false); setShowInvite(true); }} />
+      )}
+      {inviteToast && inviteCfg && (
+        <button onClick={() => { setInviteToast(""); setShowInvite(true); }}
+          className="fixed left-1/2 -translate-x-1/2 top-[max(16px,env(safe-area-inset-top))] z-[130] w-[calc(100%-32px)] max-w-md rounded-2xl bg-[#0b1640] text-white px-4 py-3.5 text-left text-[13.5px] font-semibold shadow-2xl">
+          🎁 {tNow("invite.claimed", { name: inviteToast.trim() || "a friend", bonus: `₦${Math.round(inviteCfg.friendBonusKobo / 100).toLocaleString("en-NG")}` })}
+        </button>
       )}
 
       {/* Loyalty program — full-screen overlay, z-60 */}

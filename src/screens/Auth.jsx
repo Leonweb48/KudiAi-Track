@@ -7,6 +7,7 @@ import { AuthShell, AuthCard } from "../components/AuthShell";
 import { Capacitor } from "@capacitor/core";
 import { Browser } from "@capacitor/browser";
 import { useT, tNow } from "../contexts/LanguageContext";
+import { getPendingInvite, setPendingInvite, normalizeInviteCode } from "../utils/invite";
 import LegalScreen from "./LegalScreen";
 import { saveGoogleWalletChoice, saveGoogleBusinessChoice, clearGoogleSignupChoices } from "../utils/googleWalletSignup";
 import { useSavingBusinesses, SavingBusinessPicker, TermsAgreement, GoogleMark, WalletDetailsFields } from "../components/auth/SignupParts";
@@ -383,6 +384,9 @@ export default function Auth() {
   const [confirmPass,   setConfirmPass]  = useState("");
   const [name,          setName]         = useState("");
   const [phone,               setPhone]              = useState("");
+  // Invite & Earn: prefilled from a friend's kudiai.app/?invite= link (index.js keeps it), or typed by hand
+  const [inviteCode,    setInviteCode]   = useState(() => getPendingInvite());
+  const inviteFromLink = useState(() => !!getPendingInvite())[0];
   const [showPw,        setShowPw]       = useState(false);
   const [showConfirmPw, setShowConfirmPw] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
@@ -532,6 +536,7 @@ export default function Auth() {
 
         if (regType === "client") {
           if (!clientBusinessId) { setError(t("auth2.selectBusiness")); setLoading(false); return; }
+          if (normalizeInviteCode(inviteCode)) setPendingInvite(inviteCode);
           // useAuth needs this after signUp/OTP-confirm creates the session — by
           // which point this component has already unmounted, so it can't just
           // hold it in memory.
@@ -541,7 +546,7 @@ export default function Auth() {
           const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
             email: email.trim().toLowerCase(),
             password,
-            options: { data: { full_name: name, account_type: "ajo_client" } },
+            options: { data: { full_name: name, account_type: "ajo_client", ...(normalizeInviteCode(inviteCode) ? { invite_code: normalizeInviteCode(inviteCode) } : {}) } },
           });
           if (signUpErr) { localStorage.removeItem(PENDING_AJO_REG_KEY); throw signUpErr; }
 
@@ -561,10 +566,11 @@ export default function Auth() {
           return;
         }
 
+        if (normalizeInviteCode(inviteCode)) setPendingInvite(inviteCode);
         const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
           email: email.trim().toLowerCase(),
           password,
-          options: { data: { full_name: name } },
+          options: { data: { full_name: name, ...(normalizeInviteCode(inviteCode) ? { invite_code: normalizeInviteCode(inviteCode) } : {}) } },
         });
         if (signUpErr) throw signUpErr;
 
@@ -1091,6 +1097,22 @@ export default function Auth() {
               className="text-xs text-emerald-600 hover:underline font-medium">
               {t("auth.forgotPassword")}
             </button>
+          </div>
+        )}
+
+        {/* Invite code — register only (optional) */}
+        {mode === "register" && (
+          <div>
+            <label className="block text-[11px] font-semibold text-gray-400 mb-1.5 uppercase tracking-wider">{t("invite.codeLabel")}</label>
+            <input
+              type="text" value={inviteCode} autoCapitalize="characters" autoComplete="off" maxLength={16}
+              onChange={(e) => setInviteCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))}
+              placeholder={t("invite.codePlaceholder")}
+              className="w-full border border-gray-200 dark:border-slate-600 rounded-xl px-4 py-3 text-sm font-mono tracking-[0.15em] text-gray-900 dark:text-white bg-gray-50 dark:bg-slate-800 focus:bg-white dark:focus:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+            />
+            {inviteFromLink && inviteCode && (
+              <p className="mt-1.5 text-[11px] font-semibold text-emerald-600">{t("invite.codeFromLink")}</p>
+            )}
           </div>
         )}
 

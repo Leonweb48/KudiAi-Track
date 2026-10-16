@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../utils/supabase";
 import { bettingVisible } from "../utils/platform";
+import { inviteConfigFromPlatform } from "../utils/invite";
 
 // Module-level cache: fetched once per session, reused across all hook calls.
 // 2026-10-14: a failed fetch (offline start, weak signal) used to be cached as {} for the WHOLE session — the wallet
@@ -62,6 +63,8 @@ export function usePlatformConfig() {
 
   return {
     coopEnabled: config?.coop_module_enabled === "true",
+    // Invite & Earn (referral rewards) — null when platform_config.referral_enabled is not "true"; amounts come from the same table.
+    inviteCfg: inviteConfigFromPlatform(config),
     ckDiscounts,                                            // { airtime:{NET:pct}, epin:{NET:pct}, epin_live:{}, ... }
     enterpriseFeePct: Number(config?.enterprise_bill_fee_pct ?? "0.01") || 0.01,
     walletEnabled: config?.wallet_enabled === "true",

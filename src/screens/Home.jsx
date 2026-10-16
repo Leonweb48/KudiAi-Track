@@ -17,7 +17,7 @@ import TabCardQuadSlot from "../components/slots/TabCardQuadSlot";
 import TabCardDuoSlot from "../components/slots/TabCardDuoSlot";
 import OffersSection from "../components/slots/OffersSection";
 import AnnouncementBarSlot from "../components/slots/AnnouncementBarSlot";
-import ReferralCard from "../components/ReferralCard";
+import { InviteBanner } from "../components/invite/InviteEarn";
 import ProfileCompletionBanner from "../components/ProfileCompletionBanner";
 import PaidProfileBanner from "../components/PaidProfileBanner";
 import ProfileCompleteFlow from "../components/ProfileCompleteFlow";
@@ -115,7 +115,7 @@ function SalesForecastCard({ prediction, t, balanceHidden }) {
 }
 
 /* ── Main ────────────────────────────────────────────────────────── */
-export default function Home({ store, inventory, invoiceHook, plan, setTab, onQuickAction, onVoiceOpen, onAIOpen, onGoVerification, onGoSettings }) {
+export default function Home({ store, inventory, invoiceHook, plan, setTab, onQuickAction, onVoiceOpen, onAIOpen, onGoVerification, onGoSettings, inviteCfg, onOpenInvite }) {
   const { transactions, credits, asoClients, debtPayments, profile, loading } = store;
   const t = useT();
 
@@ -748,8 +748,8 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
         })()}
       </div>
 
-      {/* ── Refer & Earn ────────────────────────────────────────── */}
-      <ReferralCard />
+      {/* ── Invite & Earn ───────────────────────────────────────── */}
+      {inviteCfg && onOpenInvite && <InviteBanner portal="owner" cfg={inviteCfg} onOpen={onOpenInvite} />}
 
       {/* ── Partner Offers ───────────────────────────────────────── */}
       <OffersSection

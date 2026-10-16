@@ -10,6 +10,7 @@ import { consumeAdminAccessLink, AdminAccessBannerHost } from "./utils/adminAcce
 import NewDeviceSelfiePrompt from "./components/NewDeviceSelfiePrompt";
 import IosInstallPrompt from "./components/IosInstallPrompt";
 import AppErrorBoundary from "./components/AppErrorBoundary";
+import { captureInviteFromUrl } from "./utils/invite";
 
 // Key used to carry a downloaded bundle ID across the WebView reload boundary.
 // localStorage persists across webView.loadUrl() calls (same https://localhost origin).
@@ -62,6 +63,7 @@ async function boot() {
 
   // Admin portal "access account" link: sign in as the customer before the app reads the session (web only).
   if (!Capacitor.isNativePlatform()) await consumeAdminAccessLink();
+  captureInviteFromUrl();   // kudiai.app/?invite=CODE → kept until the new account claims it
 
   const root = ReactDOM.createRoot(document.getElementById("root"));
   root.render(
