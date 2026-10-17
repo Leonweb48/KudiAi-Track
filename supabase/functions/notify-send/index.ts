@@ -321,6 +321,38 @@ async function pushToUser(
   }));
 }
 
+// ── Is the caller the service role? ──────────────────────────────────────────
+// Never a plain string compare: the admin portal and other callers may hold a different copy of the service key (an
+// older service JWT, or a new-format sb_secret_ key) than this function's env — the compare refused every admin
+// broadcast. Proof instead: only a real service key can call a service-only RPC. Results are cached per key.
+const serviceProof = new Map<string, boolean>();
+async function isServiceCall(token: string, url: string, envKey: string): Promise<boolean> {
+  if (!token) return false;
+  if (envKey && token === envKey) return true;
+  if (serviceProof.has(token)) return serviceProof.get(token)!;
+  let candidate = token.startsWith("sb_secret_");
+  if (!candidate && token.split(".").length === 3) {
+    try {
+      const p = JSON.parse(atob((token.split(".")[1] || "").replace(/-/g, "+").replace(/_/g, "/")));
+      candidate = p?.role === "service_role";
+    } catch { candidate = false; }
+  }
+  let ok = false;
+  if (candidate) {
+    try {
+      const r = await fetch(`${url}/rest/v1/rpc/owner_report_candidates`, {   // REVOKEd from PUBLIC/anon/authenticated
+        method: "POST",
+        headers: { apikey: token, Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ p_month: "2000-01-01", p_limit: 0 }),
+      });
+      ok = r.ok;
+    } catch { ok = false; }
+  }
+  if (serviceProof.size > 20) serviceProof.clear();
+  serviceProof.set(token, ok);
+  return ok;
+}
+
 // ── Main handler ─────────────────────────────────────────────────────────────
 
 Deno.serve(async (req) => {
@@ -332,7 +364,7 @@ Deno.serve(async (req) => {
 
   const authHeader  = req.headers.get("Authorization") ?? "";
   const callerToken = authHeader.replace("Bearer ", "").trim();
-  const isServiceRole = callerToken === serviceKey;
+  const isServiceRole = await isServiceCall(callerToken, supabaseUrl, serviceKey);
 
   const sb = createClient(supabaseUrl, serviceKey);
 
@@ -349,8 +381,10 @@ Deno.serve(async (req) => {
 
   // ── register-token ─────────────────────────────────────────────────────────
   if (action === "register-token") {
-    const userId = callerId ?? (body.userId as string);
-    if (!userId) return json({ error: "userId required" }, 400);
+    // A signed-in user registers their OWN device; only the service role may name another user.
+    // (Before: an anonymous call could attach its phone to anyone's account and receive their notifications.)
+    const userId = callerId ?? (isServiceRole ? (body.userId as string) : null);
+    if (!userId) return json({ error: "auth required" }, 401);
     const { token, platform = "android" } = body as { token: string; platform?: string };
     if (!token) return json({ error: "token required" }, 400);
     const { error: upErr } = await sb.from("push_tokens").upsert(
@@ -549,6 +583,8 @@ Deno.serve(async (req) => {
     };
 
     if (!userId || !type || !titleIn) return json({ error: "userId, type, title required" }, 400);
+    // Anonymous callers (the public anon key) used to fall straight through the cross-user guard below.
+    if (!isServiceRole && !callerId) return json({ error: "auth required" }, 401);
     const image = isServiceRole ? safeImage(imageIn) : null;
 
     let title    = titleIn;

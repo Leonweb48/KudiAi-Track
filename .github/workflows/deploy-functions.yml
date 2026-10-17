@@ -60,7 +60,7 @@ jobs:
           deploy paystack
           deploy peyflex
           deploy pin-manager
-          deploy notify-send
+          deploy notify-send          --no-verify-jwt
           deploy sms-send
           deploy ajo-wallet-reminders
           deploy ajo-overdue-reminders --no-verify-jwt
