@@ -512,7 +512,9 @@ Deno.serve(async (req) => {
     const rows = targets.map((id) => ({
       user_id: id, type: cat === "promotions" ? "promotion" : "announcement", category: cat === "promotions" ? "promotions" : "permissions",
       title, body: text || null, deep_link: link, priority: doPush ? "high" : "normal",
-      dedupe_key: ref ? `broadcast_${ref}` : null, notif_count: 1, notif_total: 0, origin: "edge", image_url: image,
+      // per person: dedupe_key is unique across ALL users while unread (notifications_dedupe partial index), so one shared
+      // key let only the first person's bell row in — the other 28 of 29 were refused as duplicates (2026-10-17).
+      dedupe_key: ref ? `broadcast_${ref}:${id}` : null, notif_count: 1, notif_total: 0, origin: "edge", image_url: image,
     }));
     let inserted = 0, skipped = 0;
     for (let i = 0; i < rows.length; i += 200) {
@@ -546,7 +548,7 @@ Deno.serve(async (req) => {
       if (ref && reached.length) {
         for (let i = 0; i < reached.length; i += 200) {
           await sb.from("notifications").update({ last_push_at: new Date().toISOString() })
-            .eq("dedupe_key", `broadcast_${ref}`).in("user_id", reached.slice(i, i + 200));
+            .in("dedupe_key", reached.slice(i, i + 200).map((id) => `broadcast_${ref}:${id}`));
         }
       }
     }
