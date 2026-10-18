@@ -583,7 +583,8 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
   const cap = Math.min(balanceKobo, maxKobo, dailyCapKobo > 0 ? dailyLeftKobo : Infinity);
 
   // The fee for THIS transfer, shown before the customer confirms (wallet_bank_transfer_quote: the price for the amount,
-  // or free within their allowance — 3 a day for personal wallets, by plan a month for businesses). The server decides
+  // or free within their allowance — businesses by plan a month; clients/personal wallets pay Flutterwave's own fee on every
+  // bank transfer, no free ones, since 2026-10-18). The server decides
   // the actual charge the same way when the bank accepts the transfer.
   const [quote, setQuote] = useState(null);
   useEffect(() => {
@@ -602,7 +603,7 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
   const freeNote = quote
     ? (quote.free
         ? t(quote.period === "day" ? "walletpanel.freeNoteDay" : "walletpanel.freeNoteMonth", { left: Math.max(Number(quote.free_left) - 1, 0), allowance: quote.allowance })
-        : `${quote.allowance > 0 ? t(quote.period === "day" ? "walletpanel.freeUsedDay" : "walletpanel.freeUsedMonth", { allowance: quote.allowance }) : ""}${t("walletpanel.priceList")}`)
+        : `${quote.allowance > 0 ? t(quote.period === "day" ? "walletpanel.freeUsedDay" : "walletpanel.freeUsedMonth", { allowance: quote.allowance }) : ""}${t(quote.tier === "personal" ? "walletpanel.priceListPersonal" : "walletpanel.priceList")}`)
     : "";
 
   const doTransfer = async (pin) => {

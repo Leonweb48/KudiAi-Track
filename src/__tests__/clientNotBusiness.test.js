@@ -52,7 +52,9 @@ describe("AI context", () => {
     expect(ctx).toMatch(/SAVINGS BALANCE: ₦5,000/);   // one naira sign, not "₦₦"
     expect(ctx).not.toMatch(/₦₦/);
     expect(ctx).toMatch(/APP GUIDE/);
-    expect(ctx).toMatch(/3 free bank transfers a day/);
+    expect(ctx).toMatch(/no free transfers/);             // clients pay Flutterwave's own fee (2026-10-18)
+    expect(ctx).toMatch(/always free for clients/);
+    expect(ctx).not.toMatch(/Business bank transfer fee/);
     expect(ctx).toMatch(/Save as beneficiary/);
     expect(ctx).not.toMatch(/Refunds and discounts/);   // owner-only guide lines stay out
   });
@@ -67,6 +69,7 @@ describe("AI context", () => {
     expect(ctx.split("\n")[0]).toMatch(/^BUSINESS OWNER PORTAL \| Business: Shop/);
     expect(ctx).toMatch(/Refunds and discounts/);
     expect(ctx).toMatch(/Offline: sales, expenses/);
-    expect(ctx).not.toMatch(/3 free bank transfers a day/);
+    expect(ctx).toMatch(/Business bank transfer fee/);
+    expect(ctx).not.toMatch(/Client bank transfer fee/);
   });
 });

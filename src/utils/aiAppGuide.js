@@ -5,10 +5,16 @@
 import { canSellPlans } from "./platform";
 
 const FEES = [
-  "Bank transfer fee: ₦10 below ₦5,000; ₦25 from ₦5,000 to ₦9,999; ₦35 from ₦10,000 to ₦50,000; ₦60 above ₦50,000.",
   "Stamp duty: ₦50 on bank transfers of ₦10,000 or more (a government charge we collect).",
-  "Moving money between KudiAI wallets is free.",
   "If a bank transfer fails, the amount and the stamp duty come back to the wallet; the transfer fee is kept.",
+];
+const BUSINESS_FEES = [
+  "Business bank transfer fee: ₦10 below ₦5,000; ₦25 from ₦5,000 to ₦9,999; ₦35 from ₦10,000 to ₦50,000; ₦60 above ₦50,000.",
+  "Moving money between KudiAI wallets (for example Ajo payouts): the first 3 a day are free, then ₦10 below ₦10,000 or ₦50 for ₦10,000 or more.",
+];
+const CLIENT_FEES = [
+  "Client bank transfer fee (exactly what our payment partner Flutterwave charges us, no free transfers): ₦10 up to ₦5,000; ₦25 from ₦5,000.01 to ₦50,000; ₦50 above ₦50,000.",
+  "Moving money between KudiAI wallets (savings payments, circle contributions, receiving payouts) is always free for clients. Deposits are free.",
 ];
 
 const COMMON = [
@@ -31,13 +37,14 @@ const OWNER = [
   "Offline: sales, expenses, credit sales, restocks/stock changes and profile edits work with no internet and sync by themselves when the connection is back (the bar under the header shows what is waiting). Bills, wallet transfers and Ajo money actions need internet. The wallet shows the last known balance offline.",
   "Wallet: the business gets its own account number that customers can pay into; send to any Nigerian bank.",
   ...FEES,
+  ...BUSINESS_FEES,
   canSellPlans()
     ? "Free bank transfers each month by plan: Free 0, Standard 10, Premium 30. From 1 November 2026 money paid INTO a business wallet has a fee: Free plan 1% (max ₦200), Standard 0.5% (max ₦100), Premium free."
     : "Some free bank transfers each month come with the business's plan. From 1 November 2026 a small fee, depending on the plan, applies to money paid into a business wallet (see Wallet). Plans are not sold in the Android app — never tell the user to buy or upgrade a plan in the app.",
   canSellPlans()
     ? "Paid plans (Standard, Premium) last 30 days (monthly) or 365 days (yearly) and do NOT renew by themselves. Reminders come 3 days and 1 day before the end date. After it, the features keep working for 3 more days, then the account moves to the Free plan; all records stay. Renew from Settings -> Plan -> 'Renew' (paid from the KudiAI Wallet); renewing early adds the new period after the current end date, so no days are lost."
     : "Paid plans do NOT renew by themselves: reminders come 3 days and 1 day before the end date; after it the features keep working for 3 more days, then the account moves to the Free plan (records stay). Renewing is done on the kudiai.app website, not in the Android app.",
-  "Savings card fees: a percentage of withdrawals (each client's own %, or the business default % set on the Ajo screen) or no fee. First-period cards (collector keeps the first period) are no longer offered for new cards; cards already open keep their terms.",
+  "Savings card fees: a percentage of withdrawals from the card (each client's own %, or the business default % set on the Ajo screen) or no fee. Withdrawals from an esusu or a savings group have no fee. A card's commission counts the withdrawal fees already taken on it, so a card is never charged twice. First-period cards (collector keeps the first period) are no longer offered for new cards; cards already open keep their terms.",
   "Ajo/Esusu: add clients, savings cards, groups and esusu rotations; approving a client's withdrawal pays it straight into the client's KudiAI wallet (the business wallet must have enough). A withdrawal the owner records directly is a CASH payout: nothing moves between wallets, and the savings money stays in the owner's wallet to cover the cash. Reversing a wallet-paid contribution sends the money back to the client's wallet.",
   "Also: invoices, staff with set permissions, branches, loyalty points/cashback for repeat customers, reports and PDF exports, and Statements & monthly reports (sent on the 1st of each month).",
   "Settings: daily brief on/off, dark mode, language, delete account (the wallet must be empty first).",
@@ -46,9 +53,10 @@ const OWNER = [
 const CLIENT = [
   "Wallet: the client has their own KudiAI wallet with an account number; top it up by bank transfer from any bank (free). Contributions are paid from the wallet into their savings.",
   ...FEES,
-  "Personal and savings wallets get 3 free bank transfers a day.",
+  ...CLIENT_FEES,
   "Savings: see the balance, next due date and history; ask for a withdrawal — when the business approves it the money is paid into the client's wallet. Fees are listed under Me -> My Fees. A statement is sent on the 1st of every month (Statements).",
-  "Savings cards: the client can open more than one card; the collector's fee is a percentage set by the business (shown on the card).",
+  "Savings cards: the client can open more than one card; the collector's fee is a percentage of card withdrawals set by the business (shown on the card). Withdrawals from an esusu or a savings group have no fee.",
+  "Esusu payouts made by the business go into the client's savings balance, not straight to the wallet; to move the money to the wallet, request a withdrawal and the business approves it.",
   "Savings circles: the client can start or join a circle with friends; the organiser can set a fee per payout.",
   "Offline: the app opens with the last saved balance and history; payments, transfers and bills need internet.",
   "If something looks wrong with a payment, open it in History and report a problem, or use the support form in Help.",
