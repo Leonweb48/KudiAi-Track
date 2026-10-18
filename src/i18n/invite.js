@@ -31,7 +31,7 @@ const T = {
   "invite.stJoined":     { en: "Joined · wallet not open yet", pidgin: "Don join · wallet never open", ha: "Ya shiga · bai buɗe walat ba tukuna", ig: "Abanyela · emepebeghị walet", yo: "Ti darapọ̀ · kò tíì ṣí wọ́lẹ́ẹ̀tì" },
   "invite.stSpend":      { en: "Spent {spent} of {min}", pidgin: "Don spend {spent} out of {min}", ha: "Ya kashe {spent} cikin {min}", ig: "Emefuola {spent} n'ime {min}", yo: "Ó ti ná {spent} nínú {min}" },
   "invite.stPaid":       { en: "Reward paid", pidgin: "Reward don pay", ha: "An biya lada", ig: "Akwụọla ụgwọ ọrụ", yo: "A ti san èrè" },
-  "invite.stWaiting":    { en: "Qualified · reward on its way", pidgin: "E don qualify · reward dey come", ha: "Ya cancanta · lada na zuwa", ig: "Ọ ruru eru · ụgwọ ọrụ na-abịa", yo: "Ó ti tóótun · èrè ń bọ̀" },
+  "invite.stWaiting":    { en: "Qualified · being checked, then paid", pidgin: "E don qualify · we dey check am, then we go pay", ha: "Ya cancanta · ana dubawa, sannan a biya", ig: "Ọ ruru eru · a na-enyocha ya, mgbe ahụ a ga-akwụ ụgwọ", yo: "Ó ti tóótun · à ń ṣàyẹ̀wò rẹ̀, lẹ́yìn náà a ó sanwó" },
   "invite.stBonusOnly":  { en: "Qualified · week's rewards already earned", pidgin: "E qualify · you don collect this week reward finish", ha: "Ya cancanta · an riga an samu ladar mako", ig: "Ọ ruru eru · enwetala ụgwọ ọrụ izu a", yo: "Ó tóótun · o ti gba èrè ọ̀sẹ̀ yìí tán" },
   "invite.stExpired":    { en: "Expired", pidgin: "E don expire", ha: "Ya ƙare", ig: "Agafeela", yo: "Ó ti parí" },
   "invite.stRejected":   { en: "Not eligible", pidgin: "E no qualify", ha: "Bai cancanta ba", ig: "Erughị eru", yo: "Kò tóótun" },

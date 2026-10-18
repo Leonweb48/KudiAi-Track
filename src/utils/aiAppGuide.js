@@ -26,7 +26,7 @@ const COMMON = [
   "Security: an app PIN to open the app and a transaction PIN to move money; 'Forgot PIN' resets it. Never share a PIN or OTP — KudiAI staff never ask for them.",
   "Notifications: the bell shows every alert; each kind (money, savings, stock, offers and more) can be switched off in notification settings.",
   "Help: the Help screen has answers and a support ticket form.",
-  "Invite & Earn: Home banner, Settings (owner) or Me (client) -> Invite & Earn shows the user's invite code and link. A friend who signs up with it, opens a KudiAI wallet and spends at least N2,000 from it (transfers, bills, plan payments or savings contributions) within 7 days earns the inviter N500, N700 and N1,000 for the 1st, 2nd and 3rd friend in each 7-day campaign (up to N2,200), and the friend gets a N200 welcome bonus. Rewards are paid into the KudiAI wallet (an open wallet is needed). Money sent to the friend does not count; the same BVN can't earn twice. Amounts can change.",
+  "Invite & Earn: Home banner, Settings (owner) or Me (client) -> Invite & Earn shows the user's invite code and link. A friend who signs up with it, opens a KudiAI wallet and spends at least N2,000 from it (transfers, bills, plan payments or savings contributions) within 7 days earns the inviter N500, N700 and N1,000 for the 1st, 2nd and 3rd friend in each 7-day campaign (up to N2,200), and the friend gets a N200 welcome bonus. Each qualified invite is checked by the KudiAI team first; once approved, rewards are paid into the KudiAI wallet (an open wallet is needed). Money sent to the friend does not count; the same BVN can't earn twice. Amounts can change.",
 ];
 
 const OWNER = [
