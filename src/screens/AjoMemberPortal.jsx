@@ -1751,7 +1751,8 @@ function WithdrawRequestModal({ client, cycles = [], clientGroups = [], rotation
   const selectedCycleObj = cycles.find(cy => cy.id === selectedCycleId);
   const activePctCycle   = (selectedCycleObj?.commission_model === "percent" ? selectedCycleObj : null)
     || cycles.find(cy => cy.status === "active" && cy.commission_model === "percent");
-  const pctFee    = activePctCycle ? (activePctCycle.commission_percent || 0) : 0;
+  // A card's fee % applies to card withdrawals only — esusu / savings-group withdrawals carry no fee (owner's rule 2026-10-18)
+  const pctFee    = activeTab === "personal" && activePctCycle ? (activePctCycle.commission_percent || 0) : 0;
   const amtNum    = parseFloat(amount) || 0;
   const feeAmt    = (amtNum * pctFee) / 100;
   const netAmt    = amtNum - feeAmt;
@@ -2568,7 +2569,7 @@ function OverviewTab({ client, myUserId, contributions, cycles = [], rotationsDa
             <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">{t("client.fees")}</p>
             {client.commission_model === "percent" ? (
               <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                {client.ajo_group_id ? t("client.groupWithdrawalFee") : t("client.withdrawalFeeColon")} <span className="text-brand-500 dark:text-brand-400 font-bold">{t("client.pctOfAmount", { pct: client.commission_percent || 0 })}</span>
+                {t("client.withdrawalFeeColon")} <span className="text-brand-500 dark:text-brand-400 font-bold">{t("client.pctOfAmount", { pct: client.commission_percent || 0 })}</span>
               </p>
             ) : client.commission_model === "first_period" ? (
               <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
@@ -4129,14 +4130,8 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
             <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 overflow-hidden">
               <p className="px-4 pt-3 pb-2 text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest border-b border-slate-50 dark:border-slate-700/30">{t("ajoPt.groupWithdrawFee")}</p>
               <div className="px-4 py-4">
-                {client?.commission_model === "percent" ? (
-                  <>
-                    <p className="text-2xl font-extrabold text-slate-800 dark:text-white tabular-nums">{client.commission_percent || 0}%</p>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t("client.groupFeePct", { pct: client.commission_percent || 0 })}</p>
-                  </>
-                ) : (
-                  <p className="text-sm font-semibold text-green-600 dark:text-green-400">{t("common.noData")}</p>
-                )}
+                {/* group / esusu withdrawals carry no fee — a card's % is for that card only */}
+                <p className="text-sm font-semibold text-green-600 dark:text-green-400">{t("ajo.feeNone")}</p>
               </div>
             </div>
           )}

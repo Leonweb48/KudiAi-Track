@@ -745,7 +745,9 @@ serve(async (req) => {
         .order("created_at", { ascending: true })
         .limit(1)
         .maybeSingle();
-      const feePercent = activePctCycle ? (activePctCycle.commission_percent || 0) : 0;
+      // A card's % is for card withdrawals only — esusu / savings-group withdrawals carry no fee (owner's rule
+      // 2026-10-18; ajo_record_withdrawal applies the same rule when the request is approved).
+      const feePercent = !reqGroupId && activePctCycle ? (activePctCycle.commission_percent || 0) : 0;
       const feeType    = "withdrawal_fee";
       const feeAmount  = (amount * feePercent) / 100;
       const netAmount  = amount - feeAmount;

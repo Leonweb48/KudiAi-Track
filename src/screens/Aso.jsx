@@ -3436,7 +3436,8 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
           )}
 
           {action === "withdraw" && (() => {
-            const wFeePercent = selected.commission_model === "percent" ? (selected.commission_percent || 0) : 0;
+            // card withdrawals only: esusu / savings-group withdrawals carry no fee (owner's rule 2026-10-18)
+            const wFeePercent = contributeCtx === "personal_savings" && selected.commission_model === "percent" ? (selected.commission_percent || 0) : 0;
             return (
               <div className="mb-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/60 rounded-xl px-3 py-2 space-y-0.5">
                 <p className="text-xs text-amber-600 dark:text-amber-400 font-semibold flex items-center gap-1.5">
