@@ -3868,7 +3868,15 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
     setSecBusy(true); setSecErr("");
     try {
       if (secStep === 1) {
-        // Capture old PIN, send OTP to their email, then move to OTP step
+        // Check the current PIN NOW (it used to be checked only after the new PIN was typed twice, so a wrong current PIN
+        // looked like "the new PIN is incorrect"), then send the OTP to their email.
+        const chk = await ajoFn("verify-txn-pin", { client_id: clientId, pin });
+        if (!chk?.ok) {
+          triggerSecShake();
+          setSecErr(chk?.locked ? t("ajo.profile.pinLocked") : t("client.incorrectPin"));
+          setSecBusy(false);
+          return;
+        }
         setOldTxnPin(pin);
         await ajoFn("send-txn-pin-otp", { client_id: clientId });
         setSecStep(2);

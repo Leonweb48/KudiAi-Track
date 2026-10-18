@@ -9,6 +9,32 @@ const CORS = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// ── The account transaction PIN (profiles.txn_pin_hash, set by pin-manager — same PBKDF2 format, copied from there) ──
+// A client used to have TWO "transaction PINs": the one made at sign-up (pin-manager: transfers, bills) and a separate
+// portal PIN on aso_clients (savings payments, withdrawals). Changing the PIN checked only the portal one, so a client
+// typing the PIN they actually use was told it was "incorrect" (2026-10-18). Either PIN is now accepted, and a change
+// sets both, so the client has one transaction PIN.
+async function pbkdf2Hash(pin: string): Promise<string> {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(pin), "PBKDF2", false, ["deriveBits"]);
+  const derived = await crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations: 100_000, hash: "SHA-256" }, key, 256);
+  const toB64 = (b: Uint8Array) => btoa(String.fromCharCode(...b));
+  return `pbkdf2$${toB64(salt)}$${toB64(new Uint8Array(derived))}`;
+}
+async function pbkdf2Verify(pin: string, stored: string | null | undefined): Promise<boolean> {
+  if (!stored) return false;
+  const parts = stored.split("$");
+  if (parts.length !== 3 || parts[0] !== "pbkdf2") return false;
+  const salt = Uint8Array.from(atob(parts[1]), (c) => c.charCodeAt(0));
+  const expected = Uint8Array.from(atob(parts[2]), (c) => c.charCodeAt(0));
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(pin), "PBKDF2", false, ["deriveBits"]);
+  const actual = new Uint8Array(await crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations: 100_000, hash: "SHA-256" }, key, 256));
+  if (actual.length !== expected.length) return false;
+  let diff = 0;
+  for (let i = 0; i < actual.length; i++) diff |= actual[i] ^ expected[i];
+  return diff === 0;
+}
+
 const EMAIL_TRIGGER_SECRET = Deno.env.get("EMAIL_TRIGGER_SECRET") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 const _NOTIFY_URL = `${Deno.env.get("SUPABASE_URL")}/functions/v1/notify-send`;
 const _NOTIFY_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
@@ -143,6 +169,32 @@ serve(async (req) => {
   if (_authErr || !_caller) return json({ error: "Unauthorised" }, 401);
   const callerId = _caller.id;
 
+  // The client's transaction PIN: the portal PIN (aso_clients) OR — when the client themself is calling — their account
+  // transaction PIN (profiles.txn_pin_hash). hasPin = either exists; valid = the pin matches either.
+  async function clientPinCheck(client_id: string, pin: string | null | undefined) {
+    const { data: cl } = await sb.from("aso_clients")
+      .select("portal_pin, portal_pin_hash, portal_pin_attempts, portal_pin_locked_until, client_user_id")
+      .eq("id", client_id).maybeSingle();
+    let accountHash: string | null = null;
+    if (cl?.client_user_id && cl.client_user_id === callerId) {
+      const { data: pr } = await sb.from("profiles").select("txn_pin_hash").eq("id", cl.client_user_id).maybeSingle();
+      accountHash = (pr?.txn_pin_hash as string | null) ?? null;
+    }
+    const hasPin = !!(cl?.portal_pin_hash || cl?.portal_pin || accountHash);
+    let valid = false;
+    const p = typeof pin === "string" ? pin.trim() : "";
+    if (cl && p) {
+      if (cl.portal_pin_hash) {
+        const { data: v } = await sb.rpc("verify_bcrypt_pin", { p_pin: p, p_hash: cl.portal_pin_hash });
+        valid = !!v;
+      } else if (cl.portal_pin) {
+        valid = p === cl.portal_pin;
+      }
+      if (!valid && accountHash) valid = await pbkdf2Verify(p, accountHash);
+    }
+    return { cl, hasPin, valid, accountHash };
+  }
+
   // Returns null if allowed, Response if denied
   async function requireClientAccess(client_id: string): Promise<Response | null> {
     if (!client_id) return json({ error: "client_id required" }, 400);
@@ -210,12 +262,11 @@ serve(async (req) => {
       const { client_id: _pgClientId, pin: _pgPin } = body as { client_id?: string; pin?: string };
       if (!_pgClientId) return json({ error: "client_id required" }, 400);
 
-      const { data: _pgCl } = await sb.from("aso_clients")
-        .select("portal_pin, portal_pin_hash, portal_pin_attempts, portal_pin_locked_until")
-        .eq("id", _pgClientId).maybeSingle();
+      const _pgCheck = await clientPinCheck(_pgClientId, typeof _pgPin === "string" ? _pgPin : null);
+      const _pgCl = _pgCheck.cl;
       if (!_pgCl) return json({ error: "Client not found" }, 404);
 
-      if (!_pgCl.portal_pin_hash && !_pgCl.portal_pin) {
+      if (!_pgCheck.hasPin) {
         return json({ error: "Set up your transaction PIN to continue", code: "pin_not_set" }, 400);
       }
 
@@ -227,13 +278,8 @@ serve(async (req) => {
         return json({ error: "PIN required", code: "pin_required" }, 400);
       }
 
-      let _pgValid = false;
-      if (_pgCl.portal_pin_hash) {
-        const { data: v } = await sb.rpc("verify_bcrypt_pin", { p_pin: _pgPin, p_hash: _pgCl.portal_pin_hash });
-        _pgValid = !!v;
-      } else if (_pgCl.portal_pin) {
-        _pgValid = String(_pgPin).trim() === _pgCl.portal_pin;
-      }
+      // the portal PIN or the client's own account transaction PIN (one PIN for the client — see clientPinCheck)
+      const _pgValid = _pgCheck.valid;
 
       if (!_pgValid) {
         const MAX_ATTEMPTS = 5;
@@ -1556,43 +1602,57 @@ serve(async (req) => {
     if (action === "get-txn-pin-status") {
       const { client_id } = body as { client_id: string };
       if (!client_id) return json({ error: "client_id required" }, 400);
-      const { data: cl } = await sb.from("aso_clients").select("portal_pin, portal_pin_hash").eq("id", client_id).maybeSingle();
-      return json({ pin_set: !!(cl?.portal_pin_hash || cl?.portal_pin) });
+      // set = the portal PIN OR the client's own account transaction PIN (one PIN — see clientPinCheck)
+      const { hasPin } = await clientPinCheck(client_id, null);
+      return json({ pin_set: hasPin });
     }
 
     if (action === "set-txn-pin") {
       const { client_id, old_pin, new_pin } = body as { client_id: string; old_pin?: string | null; new_pin: string };
       if (!new_pin || !/^\d{4}$/.test(new_pin)) return json({ error: "PIN must be exactly 4 digits" }, 400);
       if (!client_id) return json({ error: "client_id required" }, 400);
-      const { data: cl } = await sb.from("aso_clients").select("portal_pin, portal_pin_hash").eq("id", client_id).maybeSingle();
-      if (!cl) return json({ error: "Client not found" }, 404);
-      if (cl.portal_pin_hash) {
-        // Verify existing bcrypt hash
-        const { data: valid } = await sb.rpc("verify_bcrypt_pin", { p_pin: String(old_pin ?? ""), p_hash: cl.portal_pin_hash });
-        if (!valid) return json({ error: old_pin ? "Current PIN is incorrect" : "Current PIN is required" }, 401);
-      } else if (cl.portal_pin) {
-        // Legacy plaintext fallback (pre-migration clients)
-        if (!old_pin || String(old_pin).trim() !== cl.portal_pin) return json({ error: "Current PIN is incorrect" }, 401);
+      const chk = await clientPinCheck(client_id, old_pin ?? null);
+      if (!chk.cl) return json({ error: "Client not found" }, 404);
+      if (chk.hasPin) {
+        if (chk.cl.portal_pin_locked_until && new Date(chk.cl.portal_pin_locked_until) > new Date()) {
+          return json({ error: "PIN locked — try again later", code: "pin_locked" }, 423);
+        }
+        if (!old_pin) return json({ error: "Current PIN is required" }, 401);
+        if (!chk.valid) {
+          await sb.rpc("ajo_client_pin_fail", { p_client_id: client_id });
+          return json({ error: "Current PIN is incorrect" }, 401);
+        }
+        await sb.rpc("ajo_client_pin_reset", { p_client_id: client_id });
       }
       const { data: newHash } = await sb.rpc("hash_member_pin", { p_pin: new_pin });
       await sb.from("aso_clients").update({ portal_pin_hash: newHash, portal_pin: null, portal_pin_changed_at: new Date().toISOString() }).eq("id", client_id);
+      // ...and the account transaction PIN, so transfers/bills and savings use the same PIN from now on
+      if (chk.cl.client_user_id && chk.cl.client_user_id === callerId) {
+        await sb.from("profiles").update({
+          txn_pin_hash: await pbkdf2Hash(new_pin), txn_pin_attempts: 0, txn_pin_locked_until: null, txn_pin_lockout_count: 0,
+          txn_pin_reset_at: new Date().toISOString(),
+        }).eq("id", chk.cl.client_user_id);
+      }
       return json({ success: true });
     }
 
-    // ── Verify portal transaction PIN ──────────────────────────────────────────
+    // ── Verify the client's transaction PIN (the change-PIN screen checks the current PIN first) ──────────────
     if (action === "verify-txn-pin") {
       const { client_id, pin } = body as { client_id: string; pin: string };
       if (!client_id || !pin) return json({ error: "client_id and pin required" }, 400);
-      const { data: cl } = await sb.from("aso_clients").select("portal_pin, portal_pin_hash").eq("id", client_id).maybeSingle();
-      if (!cl) return json({ error: "Client not found" }, 404);
-      if (cl.portal_pin_hash) {
-        const { data: valid } = await sb.rpc("verify_bcrypt_pin", { p_pin: pin, p_hash: cl.portal_pin_hash });
-        if (!valid) return json({ ok: false, error: "Incorrect PIN" });
-        return json({ ok: true });
+      const chk = await clientPinCheck(client_id, pin);
+      if (!chk.cl) return json({ error: "Client not found" }, 404);
+      if (!chk.hasPin) return json({ ok: true, no_pin: true });
+      if (chk.cl.portal_pin_locked_until && new Date(chk.cl.portal_pin_locked_until) > new Date()) {
+        return json({ ok: false, locked: true });   // no `error` key: the app's ajoFn would throw instead of reading ok
       }
-      // Legacy: only plaintext portal_pin set (no hash yet)
-      if (!cl.portal_pin) return json({ ok: true, no_pin: true });
-      if (cl.portal_pin !== pin) return json({ ok: false, error: "Incorrect PIN" });
+      if (!chk.valid) {
+        // counts toward the same 5-try lockout as payments (this check used to have none — guessable)
+        const { data: f } = await sb.rpc("ajo_client_pin_fail", { p_client_id: client_id });
+        const row = (f as { attempts: number; locked: boolean }[] | null)?.[0];
+        return json({ ok: false, locked: !!row?.locked, attempts_left: Math.max(0, 5 - (row?.attempts ?? 0)) });
+      }
+      await sb.rpc("ajo_client_pin_reset", { p_client_id: client_id });
       return json({ ok: true });
     }
 
