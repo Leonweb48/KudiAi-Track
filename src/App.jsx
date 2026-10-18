@@ -21,6 +21,7 @@ import { performLogout }     from "./utils/logout";
 import { usePlatformConfig } from "./hooks/usePlatformConfig";
 import { supabase }          from "./utils/supabase";
 import { LANG_PENDING_SYNC_KEY } from "./components/auth/LoginLanguageMenu";
+import PlanEndBanner from "./components/PlanEndBanner";
 import { unlockAudio }       from "./utils/tts";
 import { canDo }             from "./utils/plans";
 import {
@@ -274,6 +275,7 @@ export default function App() {
     navigate(target === "home" ? "/" : `/${target}`, opts.replace ? { replace: true } : undefined);
     // the monthly reports notification / email: open Reports on that part and month
     if (dl.openInvite) setShowInvite(true);
+    if (dl.openPlans && canSellPlans()) setShowUpgrade(true);   // plan ending / ended reminders (subscription_expiry_sweep)
     if (dl.openReports) setShowReports({ view: String(dl.openReports), month: typeof dl.month === "string" ? dl.month : "" });
   }, [navigate]);
 
@@ -807,6 +809,8 @@ export default function App() {
             pendingCount={store.pendingCount}
             onRetry={store.reloadData}
           />
+
+          <PlanEndBanner userId={userId} plan={plan} onRenew={openUpgrade} />
 
           {canSellPlans() && upgradeAvailable && !upgradeBannerDismissed && (
             <div className="flex items-center gap-2 bg-gradient-to-r from-indigo-500 to-violet-500 text-white text-xs px-3 py-2">

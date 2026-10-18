@@ -77,7 +77,7 @@ const T = {
   "account.plan.youreOnNow": { en: "You're on {plan} now", pidgin: "You don dey on {plan} now", ha: "Yanzu kana kan {plan}", ig: "Ị nọ na {plan} ugbu a", yo: "O ti wà lórí {plan} báyìí" },
   "account.plan.freeNoChargeMade": { en: "This plan is free — no charge was made.", pidgin: "This plan na free — we no charge you.", ha: "Wannan tsari kyauta ne — ba a cire kuɗi ba.", ig: "Atụmatụ a bụ n'efu — ewepụghị ego ọ bụla.", yo: "Ètò yìí jẹ́ ọ̀fẹ́ — a kò gba owó kankan." },
   "account.plan.chargedFromWallet": { en: "₦{amount} was charged from your KudiAI Wallet.", pidgin: "₦{amount} don comot from your KudiAI Wallet.", ha: "An cire ₦{amount} daga KudiAI Wallet ɗinka.", ig: "Ewepụrụ ₦{amount} na KudiAI Wallet gị.", yo: "A ti yọ ₦{amount} láti KudiAI Wallet rẹ." },
-  "account.plan.renews": { en: "Renews {date}", pidgin: "E go renew {date}", ha: "Za a sabunta {date}", ig: "Ọ ga-emegharị {date}", yo: "Yóò di tuntun ní {date}" },
+  "account.plan.renews": { en: "Ends {date}", pidgin: "E go end {date}", ha: "Zai ƙare {date}", ig: "Ọ ga-agwụ {date}", yo: "Yóò parí ní {date}" },
   "account.plan.includedNow": { en: "What's included now:", pidgin: "Wetin dey inside now:", ha: "Abin da ke ciki yanzu:", ig: "Ihe gụnyere ugbu a:", yo: "Ohun tó wà nínú rẹ̀ báyìí:" },
   "account.plan.manageTitle": { en: "Manage your plan", pidgin: "Manage your plan", ha: "Sarrafa tsarinka", ig: "Jikwaa atụmatụ gị", yo: "Ṣàkóso ètò rẹ" },
   "account.plan.chooseTitle": { en: "Choose your plan", pidgin: "Pick your plan", ha: "Zaɓi tsarinka", ig: "Họrọ atụmatụ gị", yo: "Yan ètò rẹ" },

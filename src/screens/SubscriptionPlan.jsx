@@ -220,8 +220,14 @@ function ConfirmChangeModal({ info, busy, error, onCancel, onConfirm, onFundWall
         ) : (
           <>
             <p className="text-sm text-gray-500 dark:text-slate-400 text-center leading-relaxed">
-              {t("account.plan.switchingFrom")} <span className="font-bold text-gray-700 dark:text-slate-200">{fromPlanName}</span> {t("account.plan.switchingFromTo")}{" "}
-              <span className="font-bold text-gray-700 dark:text-slate-200">{toPlanName}</span>
+              {fromPlanName === toPlanName ? (
+                <span className="font-bold text-gray-700 dark:text-slate-200">{t("planend.renewPlan", { plan: toPlanName })}</span>
+              ) : (
+                <>
+                  {t("account.plan.switchingFrom")} <span className="font-bold text-gray-700 dark:text-slate-200">{fromPlanName}</span> {t("account.plan.switchingFromTo")}{" "}
+                  <span className="font-bold text-gray-700 dark:text-slate-200">{toPlanName}</span>
+                </>
+              )}
               {billingCycle ? ` (${cycleLabel(t, billingCycle)})` : ""}.
             </p>
             <div className="bg-gray-50 dark:bg-slate-700/40 rounded-xl px-4 py-3 text-center">
@@ -896,6 +902,24 @@ function PlanPicker({ session, onComplete, onClose, isUpgrade = false, currentPl
                         </p>
                       )}
                     </div>
+
+                    {/* Renew the same plan — plans don't renew by themselves; renewing early adds the new period after
+                        the current end date (server: wallet_pay_subscription), so no days are lost. */}
+                    {plan.price_monthly > 0 && (
+                      <>
+                        <PaidButton
+                          plan={plan}
+                          wallet={wallet}
+                          walletReady={walletReady}
+                          disabled={busy}
+                          yearly={currentBillingCycle === "yearly" && plan.price_yearly > 0}
+                          appliedCoupon={appliedCoupon}
+                          onSelect={requestPaidChange}
+                          buttonLabel={t("planend.renewPlan", { plan: plan.name })}
+                        />
+                        <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-snug">{t("planend.renewHint")}</p>
+                      </>
+                    )}
 
                     {/* Switch to yearly (only if currently monthly and plan has yearly pricing) */}
                     {plan.price_monthly > 0 && currentBillingCycle === "monthly" && plan.price_yearly > 0 && (
