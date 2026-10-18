@@ -1777,7 +1777,13 @@ serve(async (req: Request) => {
       p_turn_id:  epTurnId,
       p_owner_id: ownerId,
     });
-    if (epErr) return json({ ok: false, error: epErr.message });
+    if (epErr) {
+      // A member's savings balance is below their share of the pot (money withdrawn or charged after paying in)
+      if (/aso_clients_balance_nonneg/.test(epErr.message)) {
+        return json({ ok: false, error: "A member's savings balance is lower than what they paid into this esusu round, so the pot can't be paid out. Check that member's recent withdrawals and fees, or contact support." });
+      }
+      return json({ ok: false, error: epErr.message });
+    }
     if (!(epData as Record<string, unknown>)?.ok) return json(epData);
 
     // Payout committed — notifications are best-effort; never let a crash here hide the success
