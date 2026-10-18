@@ -95,6 +95,23 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+// True when this session was opened by an email code (signInWithOtp + verifyOtp) in the last 15 minutes. The JWT is
+// already verified by auth.getUser before this is called; this only reads its amr claim. A token without any amr claim
+// falls back to the user's last sign-in time.
+const EMAIL_CODE_METHODS = new Set(["otp", "magiclink", "email/signup", "recovery"]);
+function recentEmailCodeSignIn(jwt: string, lastSignInAt?: string | null): boolean {
+  const now = Date.now() / 1000;
+  try {
+    const part = jwt.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    const payload = JSON.parse(atob(part + "=".repeat((4 - (part.length % 4)) % 4)));
+    if (Array.isArray(payload.amr)) {
+      return payload.amr.some((m: { method?: string; timestamp?: number }) =>
+        !!m && EMAIL_CODE_METHODS.has(String(m.method)) && typeof m.timestamp === "number" && now - m.timestamp <= 15 * 60);
+    }
+  } catch { /* fall through */ }
+  return !!lastSignInAt && now - new Date(lastSignInAt).getTime() / 1000 <= 15 * 60;
+}
+
 function errorResponse(message: string): Response {
   // Always HTTP 200 — client reads success/error from body
   return jsonResponse({ success: false, error: message });
@@ -407,10 +424,16 @@ serve(async (req: Request) => {
     // Called immediately after OTP verification succeeds on the client.
     // Issues a short-lived server-side token that must accompany both reset calls.
     if (action === "authorize_pin_reset") {
-      const token = crypto.randomUUID();
+      // The server checks the email code was really just entered: the session must come from an email-code sign-in
+      // in the last 15 minutes (the JWT's amr claim). Before, only the app enforced it, so anyone holding a logged-in
+      // session could reset both PINs without the code.
+      if (!recentEmailCodeSignIn(token, user.last_sign_in_at)) {
+        return errorResponse("Please enter the code sent to your email again, then set your new PIN.");
+      }
+      const resetToken = crypto.randomUUID();
       const expires = new Date(Date.now() + 15 * 60 * 1000).toISOString(); // 15 min
-      await updateProfile({ pin_reset_token: token, pin_reset_token_expires_at: expires });
-      return jsonResponse({ success: true, reset_token: token });
+      await updateProfile({ pin_reset_token: resetToken, pin_reset_token_expires_at: expires });
+      return jsonResponse({ success: true, reset_token: resetToken });
     }
 
     // ── reset_app_pin ─────────────────────────────────────────────────────────

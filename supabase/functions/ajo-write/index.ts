@@ -1890,7 +1890,7 @@ serve(async (req: Request) => {
       const winnerAuthId = clientAuthIdMap[b.client_id] || await resolveClientUserId(sb, b.client_id);
       await notifyUser(sb, winnerAuthId, {
         type: "payout_received", title: "Esusu Payout Received",
-        body: `₦${Number(b.amount).toLocaleString("en-NG")} has been credited to your account`,
+        body: `₦${Number(b.amount).toLocaleString("en-NG")} has been added to your savings. To move it to your KudiAI Wallet, request a withdrawal.`,
         priority: "high", deepLink: { tab: "contributions" }, category: "savings",
       });
     }
