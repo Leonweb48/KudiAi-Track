@@ -196,6 +196,21 @@ serve(async (req: Request) => {
       if (updateError) throw new Error(`DB update failed: ${updateError.message}`);
     }
 
+    // An Ajo/Esusu client also has a savings PIN on their client record (ajo-portal: contributions, withdrawals).
+    // When their transaction PIN is changed or reset here, set that one too so they only ever have one PIN —
+    // and a reset PIN can't leave the old savings PIN still working.
+    async function syncClientSavingsPin(newPin: string): Promise<void> {
+      const { data: rows } = await adminClient.from("aso_clients").select("id").eq("client_user_id", user!.id);
+      if (!rows?.length) return;
+      const { data: hash, error: hashErr } = await adminClient.rpc("hash_member_pin", { p_pin: newPin });
+      if (hashErr || !hash) { console.error("pin-manager: savings PIN hash failed", hashErr?.message); return; }
+      const { error } = await adminClient.from("aso_clients").update({
+        portal_pin_hash: hash, portal_pin: null, portal_pin_changed_at: new Date().toISOString(),
+        portal_pin_attempts: 0, portal_pin_locked_until: null,
+      }).eq("client_user_id", user!.id);
+      if (error) console.error("pin-manager: savings PIN sync failed", error.message);
+    }
+
     // ── check_status ──────────────────────────────────────────────────────────
     if (action === "check_status") {
       const appLocked = isLocked(profile.app_pin_locked_until);
@@ -384,6 +399,7 @@ serve(async (req: Request) => {
         txn_pin_lockout_count: 0,
         txn_pin_reset_at: new Date().toISOString(),
       });
+      await syncClientSavingsPin(params.new_pin as string);
       return jsonResponse({ success: true });
     }
 
@@ -414,8 +430,9 @@ serve(async (req: Request) => {
         app_pin_attempts: 0,
         app_pin_locked_until: null,
         app_pin_lockout_count: 0,
-        pin_reset_token: null,
-        pin_reset_token_expires_at: null,
+        // The reset token is NOT cleared here: the forgot-PIN flow sets the transaction PIN next with the same
+        // token (clearing it here made that step always fail "Invalid or expired reset token"). reset_txn_pin,
+        // the last step, clears it; otherwise it expires on its own after 15 minutes.
       });
       return jsonResponse({ success: true });
     }
@@ -441,6 +458,7 @@ serve(async (req: Request) => {
         pin_reset_token: null,
         pin_reset_token_expires_at: null,
       });
+      await syncClientSavingsPin(params.new_pin as string);
       return jsonResponse({ success: true });
     }
 
