@@ -1,0 +1,72 @@
+name: PIN reset probe
+
+# Checks pin-manager's authorize_pin_reset end to end with a throwaway user (deleted at the end): a session opened by
+# an email code must be allowed, a password session must be refused. Prints only methods, ages and yes/no results.
+on: workflow_dispatch
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Probe
+        env:
+          SB_URL: ${{ secrets.REACT_APP_SUPABASE_URL }}
+          SB_ANON: ${{ secrets.REACT_APP_SUPABASE_ANON_KEY }}
+          SB_SERVICE: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          mkdir -p /tmp/probe && cd /tmp/probe
+          npm init -y >/dev/null && npm i @supabase/supabase-js@2.45.4 >/dev/null 2>&1
+          cat > probe.mjs <<'EOF'
+          import { createClient } from "@supabase/supabase-js";
+          import crypto from "crypto";
+          const admin = createClient(process.env.SB_URL, process.env.SB_SERVICE, { auth: { persistSession: false } });
+          const email = `pin-probe-${Date.now()}@example.com`;
+          const password = crypto.randomBytes(18).toString("base64url") + "A1!";
+          const amr = (jwt) => {
+            const p = JSON.parse(Buffer.from(jwt.split(".")[1], "base64url").toString());
+            return (p.amr || []).map((m) => `${m.method}(${Math.round(Date.now() / 1000 - m.timestamp)}s ago)`).join(", ") || "none";
+          };
+          const authorize = async (jwt) => {
+            const r = await fetch(`${process.env.SB_URL}/functions/v1/pin-manager`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${jwt}`, apikey: process.env.SB_ANON, "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "authorize_pin_reset" }),
+            });
+            const j = await r.json().catch(() => ({}));
+            return `http=${r.status} success=${!!j.success}${j.error ? ` error="${j.error}"` : ""}`;
+          };
+          let uid = null;
+          try {
+            const { data: cu, error: ce } = await admin.auth.admin.createUser({ email, password, email_confirm: true });
+            if (ce) throw new Error("createUser: " + ce.message);
+            uid = cu.user.id;
+
+            const pw = createClient(process.env.SB_URL, process.env.SB_ANON, { auth: { persistSession: false } });
+            const { data: ps, error: pe } = await pw.auth.signInWithPassword({ email, password });
+            if (pe) throw new Error("password sign-in: " + pe.message);
+            console.log("PASSWORD session amr:", amr(ps.session.access_token));
+            console.log("PASSWORD session authorize_pin_reset:", await authorize(ps.session.access_token));
+
+            const { data: gl, error: ge } = await admin.auth.admin.generateLink({ type: "magiclink", email });
+            if (ge) throw new Error("generateLink: " + ge.message);
+            const otp = createClient(process.env.SB_URL, process.env.SB_ANON, { auth: { persistSession: false } });
+            const { data: os, error: oe } = await otp.auth.verifyOtp({ email, token: gl.properties.email_otp, type: "email" });
+            if (oe) throw new Error("verifyOtp: " + oe.message);
+            console.log("EMAIL-CODE session amr:", amr(os.session.access_token));
+            console.log("EMAIL-CODE session authorize_pin_reset:", await authorize(os.session.access_token));
+          } catch (e) {
+            console.log("PROBE ERROR:", e.message);
+            process.exitCode = 1;
+          } finally {
+            if (uid) {
+              await admin.from("profiles").delete().eq("id", uid);
+              const { error } = await admin.auth.admin.deleteUser(uid);
+              console.log("throwaway user deleted:", !error);
+            }
+          }
+          EOF
+          node probe.mjs
