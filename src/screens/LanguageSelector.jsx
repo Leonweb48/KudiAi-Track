@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { LANGUAGES, setLang, markLangChosen } from "../utils/i18n";
+import { LANGUAGES, getLang, setLang, markLangChosen } from "../utils/i18n";
 import { supabase } from "../utils/supabase";
 import { translate } from "../i18n";
 
@@ -7,7 +7,7 @@ import { translate } from "../i18n";
 // reads the tables directly with translate(key, selected) — the stored language changes only on Continue.
 
 export default function LanguageSelector({ userId }) {
-  const [selected, setSelected] = useState("en");
+  const [selected, setSelected] = useState(getLang);   // start on the language already in use, not always English
   const [saving,   setSaving]   = useState(false);
 
   const confirm = () => {

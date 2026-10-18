@@ -11,6 +11,7 @@ import { getPendingInvite, setPendingInvite, normalizeInviteCode } from "../util
 import LegalScreen from "./LegalScreen";
 import { saveGoogleWalletChoice, saveGoogleBusinessChoice, clearGoogleSignupChoices } from "../utils/googleWalletSignup";
 import { useSavingBusinesses, SavingBusinessPicker, TermsAgreement, GoogleMark, WalletDetailsFields } from "../components/auth/SignupParts";
+import LoginLanguageMenu from "../components/auth/LoginLanguageMenu";
 
 const isNative = Capacitor.isNativePlatform();
 const SITE_HOME = "https://kudiai.app/home";
@@ -67,7 +68,7 @@ function BgLayout({ children, center = false }) {
       <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/20 to-black/90" />
 
       {/* KudiAI Track brand — top, safe area aware */}
-      <div className="relative z-10 flex-shrink-0 px-5 pb-2 flex items-center gap-3"
+      <div className="relative z-20 flex-shrink-0 px-5 pb-2 flex items-center gap-3"
         style={{ paddingTop: "max(40px, env(safe-area-inset-top, 40px))" }}>
         <div className="bg-white/90 rounded-xl p-2 shadow-lg flex-shrink-0">
           <span className="relative inline-flex">
@@ -79,6 +80,7 @@ function BgLayout({ children, center = false }) {
           <p className="text-white font-extrabold text-lg leading-tight tracking-wide drop-shadow-lg">KudiAI Track</p>
           <p className="text-white/80 text-[11px] leading-tight font-medium">{t("auth2.brandLine")}</p>
         </div>
+        <LoginLanguageMenu />
       </div>
 
       {center ? (

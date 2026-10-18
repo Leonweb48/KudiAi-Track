@@ -2,6 +2,7 @@
 // StaffFirstLogin). "auth2." so it never clashes with the older "auth." keys in utils/translations.js (still used too).
 // Keys: "auth2.<name>": { en, pidgin, ha, ig, yo }. Use {var} for values: t("auth2.x", { var }).
 const T = {
+  "auth2.chooseLanguage": { en: "Choose your language", pidgin: "Choose your language", ha: "Zaɓi harshen ku", ig: "Họọ asụsụ gị", yo: "Yan ede rẹ" },
   /* Sign-in background + OTP screen */
   "auth2.brandLine":        { en: "Business · Savings · Bills", pidgin: "Business · Savings · Bills", ha: "Kasuwanci · Ajiya · Biyan bills", ig: "Azụmaahịa · Nchekwa · Ụgwọ bills", yo: "Iṣẹ́ ajé · Ìfowópamọ́ · Bills" },
   "auth2.codeExpired":      { en: "This code has expired — request a new one", pidgin: "This code don expire — request new one", ha: "Wannan lambar ta ƙare — nemi sabuwa", ig: "Koodu a agwụla oge — rịọ nke ọhụrụ", yo: "Kóòdù yìí ti parí — béèrè tuntun" },

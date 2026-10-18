@@ -20,6 +20,7 @@ import WalletMigrationGate   from "./components/WalletMigrationGate";
 import { performLogout }     from "./utils/logout";
 import { usePlatformConfig } from "./hooks/usePlatformConfig";
 import { supabase }          from "./utils/supabase";
+import { LANG_PENDING_SYNC_KEY } from "./components/auth/LoginLanguageMenu";
 import { unlockAudio }       from "./utils/tts";
 import { canDo }             from "./utils/plans";
 import {
@@ -202,6 +203,17 @@ export default function App() {
 
   // Store
   const store = useStore(userId, null, null);
+
+  // A language picked on the sign-in page (LoginLanguageMenu) is saved to the profile once signed in, the same way the
+  // after-login language screen saves it — so it follows the person to their other devices.
+  useEffect(() => {
+    if (!userId) return;
+    let code = null;
+    try { code = localStorage.getItem(LANG_PENDING_SYNC_KEY); } catch { return; }
+    if (!code) return;
+    try { localStorage.removeItem(LANG_PENDING_SYNC_KEY); } catch { /* ignore */ }
+    Promise.resolve(supabase.from("profiles").update({ preferred_language: code }).eq("id", userId)).catch(() => null);
+  }, [userId]);
 
   // Cross-device lang sync: once the profile loads, apply server-side lang preference.
   useEffect(() => {
@@ -634,7 +646,8 @@ export default function App() {
   // ── Language selection gate — shown once per device if no preference is set ──
   // Excluded from the onboarding + subscription flows (owner hasn't set up their account yet).
   const langGateStatuses = ["ready", "staff", "branch_manager", "marketer", "organisation", "org_member", "ajo_client"];
-  if (langGateStatuses.includes(status) && !langChosen && !store.loading && !adminAccess.active) {
+  // hasChosenLang(): also picked on the sign-in page after this component mounted (LoginLanguageMenu)
+  if (langGateStatuses.includes(status) && !langChosen && !hasChosenLang() && !store.loading && !adminAccess.active) {
     return <S><LanguageSelector userId={userId} /></S>;
   }
 
