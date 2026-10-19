@@ -1291,7 +1291,8 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], contribu
           onClick={() => {
             const amt = parseFloat(customAmt);
             if (!amt || amt <= 0) { setMessage(t("client.enterValidAmount")); return; }
-            if (amt * 100 > wallet.balanceKobo) { setMessage(t("client.insufficientWallet")); return; }
+            // the payment and its Charge fee must both fit (the server refuses otherwise, 2026-10-19)
+            if (amt * 100 + (walletMoveFeeKobo || 0) > wallet.balanceKobo) { setMessage(t("client.insufficientWalletWithFee", { need: fmt((amt * 100 + (walletMoveFeeKobo || 0)) / 100), fee: fmt((walletMoveFeeKobo || 0) / 100) })); return; }
             setTxnPin({
               title: t("coopMem.confirmPaymentTitle"),
               amount: Math.round(amt * 100),
