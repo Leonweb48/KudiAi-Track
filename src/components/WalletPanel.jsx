@@ -298,8 +298,8 @@ export function BankPickerSheet({ open, onClose, banks, onPick }) {
 }
 
 // ── Fund wallet ────────────────────────────────────────────────────────────
-// The business deposit fee (Terms 4.10(a), from 1 Nov 2026): shown where a business shares its account number. Nothing for
-// Ajo clients, personal wallets or Premium businesses (their deposits are free) — the server decides (wallet_deposit_fee_quote).
+// The business deposit fee (Terms 4.10(a), every business plan since 19 Oct 2026): shown where a business shares its account number. Nothing for
+// Ajo clients or personal wallets (their deposits are free) — the server decides (wallet_deposit_fee_quote).
 const longDate = (d) => { try { return new Date(`${d}T12:00:00`).toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" }); } catch { return d; } };
 export function DepositFeeNote({ open }) {
   const t = useT();

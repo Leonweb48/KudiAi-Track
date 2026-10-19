@@ -39,8 +39,8 @@ const OWNER = [
   ...FEES,
   ...BUSINESS_FEES,
   canSellPlans()
-    ? "Free bank transfers each month by plan: Free 0, Standard 10, Premium 30. From 1 November 2026 money paid INTO a business wallet has a fee: Free plan 1% (max ₦200), Standard 0.5% (max ₦100), Premium free."
-    : "Some free bank transfers each month come with the business's plan. From 1 November 2026 a small fee, depending on the plan, applies to money paid into a business wallet (see Wallet). Plans are not sold in the Android app — never tell the user to buy or upgrade a plan in the app.",
+    ? "Free bank transfers each month by plan: Free 0, Standard 10, Premium 30. Money paid INTO a business wallet by bank transfer (top-ups and customers' payments) has a deposit fee: Free plan 1.5% (max ₦500), Standard 1% (max ₦300), Premium 0.5% (max ₦200). It shows on the deposit in wallet history."
+    : "Some free bank transfers each month come with the business's plan. Money paid into a business wallet by bank transfer has a small deposit fee that depends on the plan (shown in Wallet and on the deposit in history). Plans are not sold in the Android app — never tell the user to buy or upgrade a plan in the app.",
   canSellPlans()
     ? "Paid plans (Standard, Premium) last 30 days (monthly) or 365 days (yearly) and do NOT renew by themselves. Reminders come 3 days and 1 day before the end date. After it, the features keep working for 3 more days, then the account moves to the Free plan; all records stay. Renew from Settings -> Plan -> 'Renew' (paid from the KudiAI Wallet); renewing early adds the new period after the current end date, so no days are lost."
     : "Paid plans do NOT renew by themselves: reminders come 3 days and 1 day before the end date; after it the features keep working for 3 more days, then the account moves to the Free plan (records stay). Renewing is done on the kudiai.app website, not in the Android app.",
