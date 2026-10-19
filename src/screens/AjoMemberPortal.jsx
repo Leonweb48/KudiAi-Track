@@ -708,7 +708,7 @@ function SupportInline({ client, session }) {
 const SHAKE_CSS = `@keyframes _shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)}}.ajo-pin-shake{animation:_shake 0.5s ease}`;
 const PAD_DIGITS = [1,2,3,4,5,6,7,8,9];
 
-function AjoTxnPinModal({ hasPinSet, title, amount, description, onApprove, onCancel, onNeedPinSetup }) {
+function AjoTxnPinModal({ hasPinSet, title, amount, description, fee, onApprove, onCancel, onNeedPinSetup }) {
   const t = useT();
   const [pin, setPin] = useState("");
   const [err, setErr] = useState("");
@@ -791,12 +791,15 @@ function AjoTxnPinModal({ hasPinSet, title, amount, description, onApprove, onCa
           <div className="w-10 h-1 bg-slate-200 dark:bg-slate-700 rounded-full" />
         </div>
         <p className="text-center font-bold text-[17px] text-slate-900 dark:text-slate-100 px-6 mb-4">{title}</p>
-        {(amount != null || description) && (
+        {(amount != null || description || fee > 0) && (
           <div className="mx-4 mb-5 bg-slate-50 dark:bg-slate-800 rounded-2xl p-4">
             {amount != null && (
               <p className="text-center text-[28px] font-extrabold text-brand-500 mb-2">
                 ₦{(amount / 100).toLocaleString("en-NG", { minimumFractionDigits: 2 })}
               </p>
+            )}
+            {fee > 0 && (
+              <p className="text-center text-[12px] font-semibold text-slate-600 dark:text-slate-300 mb-1">{t("settings.pin.txn.chargeFee")}: ₦{(fee / 100).toLocaleString("en-NG", { minimumFractionDigits: 2 })}</p>
             )}
             {description && (
               <p className="text-center text-[12px] text-slate-500 dark:text-slate-400">{description}</p>
@@ -1157,6 +1160,7 @@ function MoneyEsusuSimpleCard({ group, selected, onSelect, children }) {
 }
 
 function PayContributionModal({ client, clientGroups = [], cycles = [], contributions = [], wallet, rotationsData = [], onTopUpWallet, onActivateWallet, onOpenCycle, onClose, onSuccess, onNeedPinSetup }) {
+  const { walletMoveFeeKobo } = usePlatformConfig();   // the Charge fee on a wallet-to-wallet payment
   const t = useT();
   // ── Core state (unchanged from original) ──────────────────────────────────
   const [status,          setStatus]         = useState("idle");
@@ -1292,6 +1296,7 @@ function PayContributionModal({ client, clientGroups = [], cycles = [], contribu
               title: t("coopMem.confirmPaymentTitle"),
               amount: Math.round(amt * 100),
               description: t("ajoPt.walletContribDesc"),
+              fee: walletMoveFeeKobo,
               hasPinSet: Boolean(client?.portal_pin_changed_at),
               onApprove: async (pin) => { await handlePayWallet(pin); setTxnPin(null); },
               onNeedPinSetup: () => onNeedPinSetup?.(),

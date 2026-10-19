@@ -24,7 +24,7 @@ export const WALLET_SOURCE = {
   peer_esusu_payout_sweep: { label: "Circle pot paid out",          icon: "send",       credit: false },
   transfer_fee:        { label: "Transfer fee",         icon: "wallet",     credit: false },
   cbn_levy:            { label: "Stamp duty",           icon: "wallet",     credit: false },
-  wallet_fee:          { label: "Wallet transfer fee",  icon: "wallet",     credit: false },
+  wallet_fee:          { label: "Charge fee",           icon: "wallet",     credit: false },
   deposit_fee:         { label: "Deposit fee",          icon: "wallet",     credit: false },
 };
 

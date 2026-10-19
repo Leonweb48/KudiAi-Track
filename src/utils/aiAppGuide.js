@@ -10,11 +10,11 @@ const FEES = [
 ];
 const BUSINESS_FEES = [
   "Business bank transfer fee: ₦10 below ₦5,000; ₦25 from ₦5,000 to ₦9,999; ₦35 from ₦10,000 to ₦50,000; ₦60 above ₦50,000.",
-  "Moving money between KudiAI wallets (for example Ajo payouts): the first 3 a day are free, then ₦10 below ₦10,000 or ₦50 for ₦10,000 or more.",
+  "Moving money between KudiAI wallets (for example paying a client's approved withdrawal into their wallet): a ₦10 charge fee each time, shown before the PIN.",
 ];
 const CLIENT_FEES = [
-  "Client bank transfer fee (exactly what our payment partner Flutterwave charges us, no free transfers): ₦10 up to ₦5,000; ₦25 from ₦5,000.01 to ₦50,000; ₦50 above ₦50,000.",
-  "Moving money between KudiAI wallets (savings payments, circle contributions, receiving payouts) is always free for clients. Deposits are free.",
+  "Client bank transfer fee (no free transfers): ₦10 up to ₦5,000; ₦25 from ₦5,000.01 to ₦50,000; ₦50 above ₦50,000.",
+  "Paying from the KudiAI wallet to another KudiAI wallet (savings contributions, circle contributions) has a ₦10 charge fee each time, shown before the PIN. Receiving money and deposits are free.",
 ];
 
 const COMMON = [

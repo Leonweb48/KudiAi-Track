@@ -630,6 +630,7 @@ const T = {
   "settings.pin.forgot.resend": { en: "Didn't receive it? Resend code", pidgin: "You no get am? Send code again", ha: "Ba ka samu ba? Sake aika lamba", ig: "Ọ bịaghị? Ziga koodu ọzọ", yo: "O kò rí i gbà? Tún kóòdù fi ránṣẹ́" },
   "settings.pin.txn.confirmPayment": { en: "Confirm Payment", pidgin: "Confirm Payment", ha: "Tabbatar da Biya", ig: "Kwado Ịkwụ Ụgwọ", yo: "Jẹ́rìísí Ìsanwó" },
   "settings.pin.txn.to": { en: "To", pidgin: "To", ha: "Zuwa", ig: "Nye", yo: "Sí" },
+  "settings.pin.txn.chargeFee": { en: "Charge fee", pidgin: "Charge fee", ha: "Kuɗin caji", ig: "Ụgwọ nnyefe", yo: "Owó ìdíyelé" },
   "settings.pin.txn.enterPin": { en: "Enter your transaction PIN to confirm", pidgin: "Enter your transaction PIN to confirm", ha: "Shigar da PIN na ciniki don tabbatarwa", ig: "Tinye PIN azụmahịa gị iji kwado", yo: "Tẹ PIN ìdúnàádúrà rẹ láti jẹ́rìísí" },
 
   /* ── Selfie capture, KYC consent, Terms/Privacy consent, new-device selfie ── */

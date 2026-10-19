@@ -9,6 +9,7 @@ const { PeerCircleDashboard } = require("../screens/PeerEsusuScreen");
 const { supabase } = require("../utils/supabase");
 
 jest.mock("../utils/supabase", () => ({ supabase: { functions: { invoke: jest.fn() } } }));
+jest.mock("../hooks/usePlatformConfig", () => ({ usePlatformConfig: () => ({ walletMoveFeeKobo: 1000 }) }));
 
 // A client-started circle must show the same dashboard as a business-run esusu group.
 const detail = {

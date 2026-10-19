@@ -52,8 +52,8 @@ describe("AI context", () => {
     expect(ctx).toMatch(/SAVINGS BALANCE: ₦5,000/);   // one naira sign, not "₦₦"
     expect(ctx).not.toMatch(/₦₦/);
     expect(ctx).toMatch(/APP GUIDE/);
-    expect(ctx).toMatch(/no free transfers/);             // clients pay Flutterwave's own fee (2026-10-18)
-    expect(ctx).toMatch(/always free for clients/);
+    expect(ctx).toMatch(/no free transfers/);             // clients: no free bank transfers (2026-10-18)
+    expect(ctx).toMatch(/₦10 charge fee each time/);   // wallet-to-wallet Charge fee (2026-10-19)
     expect(ctx).not.toMatch(/Business bank transfer fee/);
     expect(ctx).toMatch(/Save as beneficiary/);
     expect(ctx).not.toMatch(/Refunds and discounts/);   // owner-only guide lines stay out

@@ -86,6 +86,9 @@ export function usePlatformConfig() {
     kycEnabled: config?.kyc_youverify_enabled === "true",
     // A live selfie, compared against the BVN/NIN's own file photo, on top of the name match. Off (the default) even when kycEnabled is on.
     kycSelfieRequired: config?.kyc_selfie_required === "true",
+    // The "Charge fee" on every wallet-to-wallet payment (savings payments, circle contributions, payouts) — shown before
+    // the PIN; the server takes it (wallet_transfer_fee_kobo). 0 = no fee.
+    walletMoveFeeKobo: Number(config?.wallet_move_fee_kobo ?? "1000") || 0,
     walletMinTopupKobo: Number(config?.wallet_min_topup_kobo ?? "10000") || 10000,
     walletMaxWithdrawalKobo: Number(config?.wallet_max_withdrawal_kobo ?? "5000000") || 5000000,
     // Mirrors the server-side cap already enforced in wallet_hold_transfer

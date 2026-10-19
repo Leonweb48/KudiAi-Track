@@ -37,6 +37,7 @@ export default function TransactionPinModal({
   amount,
   recipient,
   description,
+  fee,          // kobo — the "Charge fee" this payment carries, shown before the PIN is entered
   onApprove,
   onCancel,
 }) {
@@ -140,7 +141,7 @@ export default function TransactionPinModal({
         </p>
 
         {/* Transaction summary */}
-        {(amount != null || recipient || description) && (
+        {(amount != null || recipient || description || fee > 0) && (
           <div className="bg-slate-50 dark:bg-slate-800" style={{
             margin: "0 16px 20px",
             borderRadius: 16,
@@ -155,6 +156,12 @@ export default function TransactionPinModal({
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                 <span className="text-slate-400" style={{ fontSize: 12 }}>{t("settings.pin.txn.to")}</span>
                 <span className="text-slate-800 dark:text-slate-200" style={{ fontSize: 13, fontWeight: 600 }}>{recipient}</span>
+              </div>
+            )}
+            {fee > 0 && (
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                <span className="text-slate-400" style={{ fontSize: 12 }}>{t("settings.pin.txn.chargeFee")}</span>
+                <span className="text-slate-800 dark:text-slate-200" style={{ fontSize: 13, fontWeight: 600 }}>₦{(fee / 100).toLocaleString("en-NG", { minimumFractionDigits: 2 })}</span>
               </div>
             )}
             {description && (

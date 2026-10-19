@@ -6,6 +6,7 @@ import { BottomSheet } from "../components/WalletPanel";
 import { friendlyError } from "../utils/errorMessages";
 import EsusuRotationDashboard from "../components/EsusuRotationDashboard";
 import TransactionPinModal from "../components/TransactionPinModal";
+import { usePlatformConfig } from "../hooks/usePlatformConfig";
 import { useT, tNow } from "../contexts/LanguageContext";
 
 async function peerEsusuFn(action, body = {}) {
@@ -274,6 +275,7 @@ function toRotationData(detail, memberWord = "Member") {
 
 function CircleActiveView({ detail, groupId, myUserId, reload, onChanged }) {
   const t = useT();
+  const { walletMoveFeeKobo } = usePlatformConfig();   // the Charge fee on paying in from the wallet
   const { group, members = [], is_creator: isCreator } = detail;
   const memberWord = t("circles.member");
   const data = useMemo(() => toRotationData(detail, memberWord), [detail, memberWord]);
@@ -338,7 +340,7 @@ function CircleActiveView({ detail, groupId, myUserId, reload, onChanged }) {
         </button>
       ))}
       {askPin && (
-        <TransactionPinModal title={t("circles.confirmContribution")} onApprove={payMyShare} onCancel={() => setAskPin(false)} />
+        <TransactionPinModal title={t("circles.confirmContribution")} fee={walletMoveFeeKobo} onApprove={payMyShare} onCancel={() => setAskPin(false)} />
       )}
     </div>
   );
