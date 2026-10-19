@@ -250,6 +250,7 @@ export default function EsusuRotationDashboard({
   onSkipTurn,
   onReorderTurns,
   onCloseRound,
+  onViewReceipt,   // owner: (payoutContributionId | null) => open the payout's receipt (null = the payout history)
 }) {
   const t = useT();
   const [pinFor,        setPinFor]       = useState(null); // { action, turnId?, roundId? }
@@ -566,6 +567,12 @@ export default function EsusuRotationDashboard({
           counterparty={payoutResult._overlay.counterparty}
           note={payoutResult._overlay.note}
           onPrimary={() => setPayoutResult(null)}
+          secondaryLabel={onViewReceipt ? ((payoutResult.beneficiaries || []).length > 1 ? t("ajo.rot.viewReceipts") : t("ajo.rot.shareReceipt")) : undefined}
+          onSecondary={onViewReceipt ? () => {
+            const winners = payoutResult.beneficiaries || [];
+            setPayoutResult(null);
+            onViewReceipt(winners.length === 1 ? winners[0].payout_id : null);
+          } : undefined}
         />
       )}
 
@@ -660,7 +667,14 @@ export default function EsusuRotationDashboard({
                     </p>
                   )}
                   {turn.status === "paid" && turn.payout_contribution_id && (
-                    <p className="text-[10px] text-green-600 dark:text-green-400 mt-0.5 font-semibold">{t("ajo.rot.potPaidOut")}</p>
+                    isOwner && onViewReceipt ? (
+                      <button onClick={() => onViewReceipt(turn.payout_contribution_id)}
+                        className="text-[10px] text-green-600 dark:text-green-400 mt-0.5 font-semibold underline underline-offset-2">
+                        {t("ajo.rot.potPaidOut")} · {t("ajo.rot.receipt")}
+                      </button>
+                    ) : (
+                      <p className="text-[10px] text-green-600 dark:text-green-400 mt-0.5 font-semibold">{t("ajo.rot.potPaidOut")}</p>
+                    )
                   )}
                   {turn.status === "skipped" && turn.skip_reason && (
                     <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">{t("ajo.rot.skippedReason", { reason: turn.skip_reason })}</p>

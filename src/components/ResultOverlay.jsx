@@ -31,6 +31,7 @@ function fmtAmt(n) {
  *  reason      string  — failure message shown in red box
  *  primaryLabel string — button label, default "Done"
  *  onPrimary   () => void
+ *  secondaryLabel / onSecondary — optional second button above the main one (e.g. "Share receipt")
  *  onRetry     () => void — if provided, shows "Try Again" button
  */
 export default function ResultOverlay({
@@ -42,6 +43,8 @@ export default function ResultOverlay({
   reason,
   primaryLabel,
   onPrimary,
+  secondaryLabel,
+  onSecondary,
   onRetry,
 }) {
   const t     = useT();
@@ -142,6 +145,14 @@ export default function ResultOverlay({
               className="w-full py-3.5 rounded-2xl text-white font-black text-sm active:scale-[0.98] transition-transform bg-red-500"
             >
               {t("settings.notif.result.tryAgain")}
+            </button>
+          )}
+          {onSecondary && secondaryLabel && (
+            <button
+              onClick={onSecondary}
+              className="w-full py-3.5 rounded-2xl text-white font-black text-sm active:scale-[0.98] transition-transform bg-brand-500"
+            >
+              {secondaryLabel}
             </button>
           )}
           <button

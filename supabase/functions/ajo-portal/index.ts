@@ -303,9 +303,10 @@ serve(async (req) => {
       const { owner_id: _oid } = body as { owner_id: string };
       if (!_oid || callerId !== _oid) return json({ error: "Forbidden" }, 403);
     }
-    if (action === "get-rotation") {
+    if (action === "get-rotation" || action === "get-esusu-history") {
       const { group_id: _gid, client_id: _gcid } =
         body as { group_id?: string; client_id?: string };
+      if (action === "get-esusu-history" && (!_gid || _gcid)) return json({ error: "group_id required" }, 400);
       if (_gcid) {
         const denied = await requireClientAccess(_gcid);
         if (denied) return denied;
@@ -1245,6 +1246,69 @@ serve(async (req) => {
     }
 
     // ── Get group rotation data (owner + member portal) ──────────────────
+    // ── Esusu payout history (owner / staff): every round of a group with its payouts, newest round first. Each payout
+    //    carries the esusu_payout row's stored KDT reference and balance_after, so the app can show and share a
+    //    verifiable receipt (kudiai.app/verify already reads these rows as "Esusu payout").
+    if (action === "get-esusu-history") {
+      const { group_id: ehGroupId } = body as { group_id: string };
+      const { data: ehGroup } = await sb.from("ajo_groups")
+        .select("id, name, group_mode, contribution_amount, owner_id").eq("id", ehGroupId).maybeSingle();
+      if (!ehGroup) return json({ error: "Group not found" }, 404);
+
+      const { data: ehRounds } = await sb.from("ajo_group_rounds")
+        .select("*").eq("group_id", ehGroupId).order("round_number", { ascending: false }).limit(60);
+      const roundIds = (ehRounds || []).map((r: { id: string }) => r.id);
+      const { data: ehTurns } = roundIds.length
+        ? await sb.from("ajo_group_turns")
+            .select("id, round_id, position, client_id, status, payout_contribution_id, expected_payout_date")
+            .in("round_id", roundIds).in("status", ["paid", "skipped"])
+        : { data: [] };
+      type Turn = { id: string; round_id: string; position: number; client_id: string; status: string; payout_contribution_id: string | null; expected_payout_date: string | null };
+      const turns = (ehTurns || []) as Turn[];
+
+      const payoutIds = turns.map(t => t.payout_contribution_id).filter(Boolean) as string[];
+      const clientIds = Array.from(new Set(turns.map(t => t.client_id)));
+      const [{ data: ehPays }, { data: ehClients }] = await Promise.all([
+        payoutIds.length
+          ? sb.from("ajo_contributions")
+              .select("id, aso_client_id, amount, type, status, payment_method, contribution_context, group_id, notes, receipt_ref, balance_after, created_at")
+              .in("id", payoutIds)
+          : Promise.resolve({ data: [] }),
+        clientIds.length
+          ? sb.from("aso_clients").select("id, full_name, phone").in("id", clientIds)
+          : Promise.resolve({ data: [] }),
+      ]);
+      const payById = new Map(((ehPays || []) as Array<Record<string, unknown>>).map(p => [p.id as string, p]));
+      const nameById = new Map(((ehClients || []) as Array<{ id: string; full_name: string; phone?: string }>).map(c => [c.id, c]));
+
+      const rounds = ((ehRounds || []) as Array<Record<string, unknown>>).map(r => {
+        const rTurns = turns.filter(t => t.round_id === r.id).sort((a, b) => a.position - b.position);
+        const payouts = rTurns.filter(t => t.status === "paid" && t.payout_contribution_id && payById.has(t.payout_contribution_id))
+          .map(t => {
+            const pay = payById.get(t.payout_contribution_id as string) as Record<string, unknown>;
+            const cl = nameById.get(t.client_id);
+            // members paid out together (multi-winner batch) share the same moment
+            const together = rTurns.filter(o => o.status === "paid" && o.payout_contribution_id
+              && (payById.get(o.payout_contribution_id) as Record<string, unknown> | undefined)?.created_at === pay.created_at).length;
+            return {
+              turn_id: t.id, position: t.position, client_id: t.client_id,
+              client_name: cl?.full_name || "", client_phone: cl?.phone || null,
+              winners_together: Math.max(together, 1),
+              ...pay,
+            };
+          });
+        return {
+          id: r.id, round_number: r.round_number, status: r.status, started_at: r.started_at ?? r.created_at,
+          ended_at: r.completed_at ?? null,
+          turns_total: rTurns.length, skipped: rTurns.filter(t => t.status === "skipped").length,
+          total_paid: payouts.reduce((a, p) => a + Number((p as Record<string, unknown>).amount || 0), 0),
+          payouts,
+        };
+      });
+
+      return json({ group: { id: ehGroup.id, name: ehGroup.name, contribution_amount: ehGroup.contribution_amount }, rounds });
+    }
+
     if (action === "get-rotation") {
       const { group_id: grGroupId, client_id: grClientId } =
         body as { group_id?: string; client_id?: string };

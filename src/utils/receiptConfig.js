@@ -274,6 +274,43 @@ export function buildAsoContributionReceipt(contribution, clientName, businessNa
   };
 }
 
+// ── Esusu payout (owner side — Esusu payout history, or straight after Pay Out) ─────────────
+// `payout` is one item from ajo-portal get-esusu-history: the esusu_payout row (id, amount, created_at, receipt_ref,
+// balance_after, status) plus client_name, position and winners_together. The pot goes to the member's savings balance.
+export function buildEsusuPayoutReceipt(payout, { groupName, roundNumber, businessName, biz } = {}) {
+  const status = payout.status === 'pending' ? 'pending' : 'success';
+  const { ref, hasRef, image, pdf } = receiptFilenames(payout.id, payout.created_at, 'Esusu Payout', payout.receipt_ref);
+  const balanceAfter = numOrNull(payout.balance_after);
+  const together = Number(payout.winners_together || 1);
+  const turn = [roundNumber ? `Round ${roundNumber}` : null, payout.position ? `Position ${payout.position}` : null].filter(Boolean).join(', ');
+
+  return {
+    title:     'Esusu Payout',
+    direction: 'in',
+    status,
+    amount:    payout.amount,
+    datetime:  formatReceiptDateTime(payout.created_at),
+    fields: [
+      { label: 'Transaction Type', value: 'Esusu Payout' },
+      payout.client_name && { label: 'Paid to',       value: payout.client_name },
+      groupName          && { label: 'Esusu group',   value: groupName },
+      turn               && { label: 'Turn',          value: turn },
+      together > 1       && { label: 'Shared turn',   value: `${together} members paid this turn` },
+                            { label: 'Paid into',     value: 'Savings balance' },
+      balanceAfter != null && { label: 'Balance After', value: fmtAmt(balanceAfter) },
+                            { label: 'Reference',     value: ref, copy: hasRef },
+    ].filter(Boolean),
+    businessName,
+    issuedBy:      businessName,
+    fees:          0,
+    receiptRef:    ref,
+    filenames:     { image, pdf },
+    processorName: null,
+    iconType:      'ajo',
+    ...meta(payout, { hasRef, balanceAfter, biz }),
+  };
+}
+
 // ── Ajo withdrawal request (from AjoMemberPortal screen) ─────────────────────
 export function buildAjoWithdrawalReceipt(req, clientName, businessName) {
   const statusMap = { pending: 'pending', approved: 'success', rejected: 'failed' };

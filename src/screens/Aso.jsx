@@ -5,6 +5,7 @@ import Modal  from "../components/shared/Modal";
 import Field  from "../components/shared/Field";
 import Badge  from "../components/shared/Badge";
 import TransactionDetailModal from "../components/shared/TransactionDetailModal";
+import EsusuPayoutHistory from "../components/EsusuPayoutHistory";
 import { buildAsoContributionReceipt, buildAsoClientReceipt, bizFromProfile } from "../utils/receiptConfig";
 import { ClientProfile } from "../components/shared/ClientProfile";
 import { supabase } from "../utils/supabase";
@@ -952,6 +953,8 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
   const [archiveSafetyLoading, setArchiveSafetyLoading] = useState(null); // grp.id being checked
   // Rotation management
   const [showRotation,   setShowRotation]   = useState(null); // group object
+  const [rotationView,   setRotationView]   = useState("rotation"); // "rotation" | "history" (payout history + receipts)
+  const [openPayoutId,   setOpenPayoutId]   = useState(null);       // a payout whose receipt the history opens at once
   const [rotationData,   setRotationData]   = useState(null);
   const [rotationLoading, setRotationLoading] = useState(false);
 
@@ -1403,6 +1406,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
 
   const openRotation = (grp) => {
     setShowRotation(grp);
+    setRotationView("rotation"); setOpenPayoutId(null);
     setRotationData(null);
     loadRotation(grp.id);
   };
@@ -4852,8 +4856,13 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
               </div>
               <div className="flex-1">
                 <p className="font-extrabold text-slate-800 dark:text-white text-sm">{showRotation.name}</p>
-                <p className="text-[10px] text-slate-400">{t("ajo.esusuRotation")}</p>
+                <p className="text-[10px] text-slate-400">{rotationView === "history" ? t("ajo.rot.payoutHistory") : t("ajo.esusuRotation")}</p>
               </div>
+              <button
+                onClick={() => { setOpenPayoutId(null); setRotationView(v => v === "history" ? "rotation" : "history"); }}
+                className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-[11px] font-bold text-slate-600 dark:text-slate-200 whitespace-nowrap">
+                {rotationView === "history" ? t("ajo.rot.backToRotation") : t("ajo.rot.payoutHistory")}
+              </button>
               <button onClick={() => setShowRotation(null)} className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-500">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="w-3.5 h-3.5">
                   <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -4862,18 +4871,30 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
             </div>
 
             <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-              <EsusuRotationDashboard
-                data={rotationData}
-                loading={rotationLoading}
-                isOwner={isOwner}
-                myClientId={null}
-                onRefresh={() => loadRotation(showRotation.id)}
-                onStartRound={handleStartRound}
-                onExecutePayout={handleExecutePayout}
-                onSkipTurn={handleSkipTurn}
-                onReorderTurns={handleReorderTurns}
-                onCloseRound={handleCloseRound}
-              />
+              {rotationView === "history" ? (
+                <EsusuPayoutHistory
+                  groupId={showRotation.id}
+                  groupName={showRotation.name}
+                  businessName={profile?.business_name || profile?.owner_name || ""}
+                  biz={bizFromProfile(profile)}
+                  openPayoutId={openPayoutId}
+                  onOpened={() => setOpenPayoutId(null)}
+                />
+              ) : (
+                <EsusuRotationDashboard
+                  data={rotationData}
+                  loading={rotationLoading}
+                  isOwner={isOwner}
+                  myClientId={null}
+                  onRefresh={() => loadRotation(showRotation.id)}
+                  onStartRound={handleStartRound}
+                  onExecutePayout={handleExecutePayout}
+                  onSkipTurn={handleSkipTurn}
+                  onReorderTurns={handleReorderTurns}
+                  onCloseRound={handleCloseRound}
+                  onViewReceipt={(payoutId) => { setOpenPayoutId(payoutId || null); setRotationView("history"); }}
+                />
+              )}
               <div className="h-4" />
             </div>
           </div>

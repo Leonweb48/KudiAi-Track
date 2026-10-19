@@ -803,6 +803,19 @@ const T = {
   "ajo.defaultPctHelp":   { en: "Savings cards use a percentage fee. This % is used for a new card when the client has no fee % of their own. Cards already open don't change.", pidgin: "Savings cards dey use percentage fee. This % na wetin new card go use when customer no get im own fee %. Cards wey don open no go change.", ha: "Katunan ajiya suna amfani da kuɗin kashi. Ana amfani da wannan % don sabon kati idan abokin ciniki ba shi da nasa %. Katunan da aka riga aka buɗe ba za su canza ba.", ig: "Kaadị nchekwa na-eji ụgwọ pasentị. A na-eji % a maka kaadị ọhụrụ mgbe onye ahịa enweghị % nke ya. Kaadị emeghere agaghị agbanwe.", yo: "Káàdì ìfipamọ́ ń lo owó ìdá-ọgọ́rùn-ún. A ń lo % yìí fún káàdì tuntun nígbà tí oníbàárà kò ní % tirẹ̀. Káàdì tí a ti ṣí kò ní yí padà." },
   "ajo.defaultPctRange":  { en: "Enter a % between 0 and 100.", pidgin: "Put % wey dey between 0 and 100.", ha: "Shigar da % tsakanin 0 da 100.", ig: "Tinye % n'etiti 0 na 100.", yo: "Tẹ % láàrin 0 àti 100." },
   "ajo.defaultPctFailed": { en: "Couldn't save the default %. Try again.", pidgin: "We no fit save the default %. Try again.", ha: "Ba a iya ajiye tsohon % ba. Sake gwadawa.", ig: "Enweghị ike ịchekwa % ndabere. Nwaa ọzọ.", yo: "A kò lè fi % àkọ́kọ́ pamọ́. Gbìyànjú lẹ́ẹ̀kan sí i." },
+  // Esusu payout history + receipts (owner, 2026-10-19)
+  "ajo.rot.payoutHistory": { en: "Payout history", pidgin: "Payout history", ha: "Tarihin biya", ig: "Akụkọ ịkwụ ụgwọ", yo: "Ìtàn ìsanwó" },
+  "ajo.rot.backToRotation": { en: "Rotation", pidgin: "Rotation", ha: "Juyawa", ig: "Ntụgharị", yo: "Ìyípo" },
+  "ajo.rot.shareReceipt": { en: "Share receipt", pidgin: "Share receipt", ha: "Raba rasit", ig: "Kesaa nnata", yo: "Pín ìwé-ẹ̀rí" },
+  "ajo.rot.viewReceipts": { en: "View receipts", pidgin: "See receipts", ha: "Duba rasit", ig: "Lee nnata", yo: "Wo àwọn ìwé-ẹ̀rí" },
+  "ajo.rot.receipt": { en: "Receipt", pidgin: "Receipt", ha: "Rasit", ig: "Nnata", yo: "Ìwé-ẹ̀rí" },
+  "ajo.rot.noPayoutsYet": { en: "No payouts yet", pidgin: "No payout yet", ha: "Babu biya tukuna", ig: "Enweghị ịkwụ ụgwọ ọ bụla", yo: "Kò tíì sí ìsanwó" },
+  "ajo.rot.noPayoutsYetBody": { en: "Each payout and its receipt appears here after you tap Pay Out.", pidgin: "Every payout and im receipt go show here after you tap Pay Out.", ha: "Kowane biya da rasit ɗinsa za su bayyana a nan bayan ka danna Biya.", ig: "Ịkwụ ụgwọ ọ bụla na nnata ya ga-apụta ebe a mgbe ị pịrị Kwụọ.", yo: "Ìsanwó kọ̀ọ̀kan àti ìwé-ẹ̀rí rẹ̀ yóò hàn níbí lẹ́yìn tí o bá tẹ Sanwó." },
+  "ajo.rot.historyLoadFailed": { en: "Couldn't load the payout history. Try again.", pidgin: "We no fit load the payout history. Try again.", ha: "Ba a iya loda tarihin biya ba. Sake gwadawa.", ig: "Enweghị ike ibudata akụkọ ịkwụ ụgwọ. Nwaa ọzọ.", yo: "A kò lè gbé ìtàn ìsanwó jáde. Gbìyànjú lẹ́ẹ̀kan sí i." },
+  "ajo.rot.roundInProgress": { en: "In progress", pidgin: "E still dey run", ha: "Ana ci gaba", ig: "Na-aga n'ihu", yo: "Ń lọ lọ́wọ́" },
+  "ajo.rot.roundCompleted": { en: "Completed", pidgin: "E don finish", ha: "An kammala", ig: "Emechara", yo: "Ó ti parí" },
+  "ajo.rot.roundClosedShort": { en: "Closed", pidgin: "E don close", ha: "An rufe", ig: "Emechiela", yo: "A ti tì í" },
+  "ajo.rot.paidOutTotal": { en: "Paid out {amount}", pidgin: "Don pay {amount}", ha: "An biya {amount}", ig: "Akwụọla {amount}", yo: "A ti san {amount}" },
 };
 
 export default T;
