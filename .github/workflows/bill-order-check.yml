@@ -22,24 +22,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb   # v1 (pinned)
-        with:
-          version: 2.107.0
       - name: Verify
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          REF: ${{ secrets.SUPABASE_PROJECT_ID }}
+          URL: ${{ secrets.REACT_APP_SUPABASE_URL }}
+          KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           RID: ${{ inputs.request_id }}
           SVC: ${{ inputs.service }}
         run: |
           set -euo pipefail
           [[ "$RID" =~ ^KDT-[A-Z]+-[0-9A-Za-z-]{6,40}$ ]] || { echo "bad request_id"; exit 1; }
           [[ "$SVC" =~ ^[a-z-]{3,20}$ ]] || { echo "bad service"; exit 1; }
-          FN="https://${REF}.supabase.co/functions/v1/clubkonnect"
-          SRK=$(supabase projects api-keys --project-ref "$REF" -o json | jq -r '.[] | select(.name=="service_role") | .api_key')
-          echo "::add-mask::$SRK"
+          # the function compares the bearer with the service key it was deployed with (same secret as bill-charge-sweep)
           BODY=$(jq -nc --arg r "$RID" --arg s "$SVC" '{action:"verify", requestId:$r, service:$s}')
-          curl -sS -m 90 -o out.json -w 'HTTP     %{http_code}\n' -X POST "$FN" -H "Content-Type: application/json" -H "Authorization: Bearer $SRK" -d "$BODY" || true
+          curl -sS -m 90 -o out.json -w 'HTTP     %{http_code}\n' -X POST "$URL/functions/v1/clubkonnect" -H "Content-Type: application/json" -H "Authorization: Bearer $KEY" -H "apikey: $KEY" -d "$BODY" || true
           echo "VERDICT  $(jq -r '.status // "no-status"' out.json 2>/dev/null || echo unreadable)"
           echo "PROVIDER $(jq -r '.provider // "clubkonnect"' out.json 2>/dev/null || true)"
           echo "MESSAGE  $(jq -r '.message // empty' out.json 2>/dev/null | head -c 60 | tr -cd 'A-Za-z0-9 _:.-')"
