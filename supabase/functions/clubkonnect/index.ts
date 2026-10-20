@@ -415,6 +415,18 @@ function queryNotFound(q: Record<string, unknown>): boolean {
          rawU.includes("INVALID_REQUESTID");
 }
 
+// ClubKonnect's lookup answers TRANSACTION_BEYOND_30_DAYS for a RequestID it has no record of — seen 2026-10-20 for an
+// order placed that morning (the network dropped the purchase call), while orders before and after it came back
+// ORDER_COMPLETED through the same lookup. Read as "no order" ONLY when our own RequestID (KDT-…-<ms timestamp>) shows
+// the order is under 25 days old; a genuinely old order keeps the unclear verdict (never refund what may have gone through).
+function beyond30MeansNoOrder(q: Record<string, unknown>, rid: string): boolean {
+  if (!JSON.stringify(q ?? {}).toUpperCase().includes("BEYOND_30")) return false;
+  const m = /-(\d{13})(?:\D|$)/.exec(rid || "");
+  if (!m) return false;
+  const ageDays = (Date.now() - Number(m[1])) / 864e5;
+  return ageDays > -1 && ageDays < 25;
+}
+
 // Ground truth for the fallback: does an order exist for this RequestID, and in what state? Never throws.
 async function lookupOrder(apiKey: string, requestId: string): Promise<Lookup> {
   let q: Record<string, unknown>;
@@ -1650,6 +1662,9 @@ serve(async (req) => {
       // No order exists for this id — genuinely nothing was placed (same test the purchase fallback relies on)
       if (queryNotFound(q)) {
         return { status: "NOT_FOUND", requestId: rid, _raw: q };
+      }
+      if (!orderId && beyond30MeansNoOrder(q, rid)) {
+        return { status: "NOT_FOUND", requestId: rid, message: "no order at the provider", _raw: q };
       }
 
       // Explicit failure / cancellation

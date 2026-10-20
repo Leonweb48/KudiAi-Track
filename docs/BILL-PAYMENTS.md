@@ -75,6 +75,10 @@ comes; when it never does (app closed, line dropped, a retry under a new referen
 min) asks the provider by the charge's own reference after 30 minutes: delivered → settled, confirmed no order or
 refused → refunded and the customer told, unclear → left alone (rule 1) with an admin alert after 48 hours.
 Electricity charges are only settled there; the electricity sweep owns their refunds.
+ClubKonnect's lookup answers `TRANSACTION_BEYOND_30_DAYS` for a RequestID it never received (2026-10-20: a morning
+order whose purchase call the network dropped, while orders around it came back `ORDER_COMPLETED`). That counts as "no
+order" only when our RequestID's own timestamp is under 25 days old; for an older order it stays unclear.
+To check one order by hand: the **Bill order check** workflow (`bill-order-check.yml`) prints only the verdict.
 
 ### 4. Every purchase needs proof of payment, and a coupon can be that proof
 

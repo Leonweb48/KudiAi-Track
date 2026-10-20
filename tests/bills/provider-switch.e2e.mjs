@@ -279,6 +279,14 @@ reset(); rid = ref();
 r = await call({ action: "verify", requestId: rid, service: "airtime" });
 ok(r?.status === "NOT_FOUND" && !vtLog.length, "verify of an order with no claim row → ClubKonnect only (legacy)", J([r, vtLog]));
 
+// ClubKonnect says TRANSACTION_BEYOND_30_DAYS for a RequestID it never received (2026-10-20)
+reset({ queries: [{ status: "TRANSACTION_BEYOND_30_DAYS" }] }); rid = `KDT-BILL-${Date.now() - 3600_000}`;
+r = await call({ action: "verify", requestId: rid, service: "airtime" });
+ok(r?.status === "NOT_FOUND", "'beyond 30 days' for an order WE placed an hour ago → no order at the provider (refundable)", J(r));
+reset({ queries: [{ status: "TRANSACTION_BEYOND_30_DAYS" }] }); rid = ref();   // a 2025 timestamp: genuinely old
+r = await call({ action: "verify", requestId: rid, service: "airtime" });
+ok(r?.status !== "NOT_FOUND" && r?.status !== "FAILED", "'beyond 30 days' for a genuinely old order → still unclear (held)", J(r));
+
 console.log(fails ? `\n${fails} of ${checks} checks FAILED` : `\nall ${checks} checks passed`);
 if (fails) console.log("--- function log tail ---\n" + fnLog.slice(-3000));
 cleanup();
