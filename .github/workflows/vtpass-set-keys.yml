@@ -6,6 +6,9 @@ name: VTpass live keys
 #                       (and VTPASS_LIVE_PUBLIC_KEY if set) into the clubkonnect function's VTPASS_* secrets, sets
 #                       VTPASS_ENV=live, redeploys the function, then checks VTpass accepts the keys (a free lookup of
 #                       an order that can't exist — nothing is bought) and prints the provider status.
+#   install-sandbox-keys — copies the SANDBOX keys (VTPASS_SANDBOX_API_KEY / _SECRET_KEY / _PUBLIC_KEY) into the
+#                       function and sets VTPASS_ENV=sandbox: play money only, VTpass serves NO customer (any live
+#                       setting is switched off). For the free probes and tests.
 #   disable-live      — sets VTPASS_ENV=sandbox: VTpass stops serving customers at once (keys stay in place). Orders
 #                       already placed on VTpass are then held for confirmation until it is turned back on.
 #
@@ -19,7 +22,7 @@ on:
       action:
         description: What to do
         type: choice
-        options: [install-live-keys, disable-live]
+        options: [install-live-keys, install-sandbox-keys, disable-live]
         default: install-live-keys
 
 permissions:
@@ -43,6 +46,9 @@ jobs:
           API_KEY: ${{ secrets.VTPASS_LIVE_API_KEY }}
           SECRET_KEY: ${{ secrets.VTPASS_LIVE_SECRET_KEY }}
           PUBLIC_KEY: ${{ secrets.VTPASS_LIVE_PUBLIC_KEY }}
+          SB_API_KEY: ${{ secrets.VTPASS_SANDBOX_API_KEY }}
+          SB_SECRET_KEY: ${{ secrets.VTPASS_SANDBOX_SECRET_KEY }}
+          SB_PUBLIC_KEY: ${{ secrets.VTPASS_SANDBOX_PUBLIC_KEY }}
         run: |
           set -euo pipefail
           umask 077
@@ -52,6 +58,11 @@ jobs:
             printf 'VTPASS_API_KEY=%s\nVTPASS_SECRET_KEY=%s\n' "$API_KEY" "$SECRET_KEY" >> vt.env
             [ -z "$PUBLIC_KEY" ] || printf 'VTPASS_PUBLIC_KEY=%s\n' "$PUBLIC_KEY" >> vt.env
             echo 'VTPASS_ENV=live' >> vt.env
+          elif [ "$ACTION" = "install-sandbox-keys" ]; then
+            [ -n "$SB_API_KEY" ] && [ -n "$SB_SECRET_KEY" ] || { echo "Set the VTPASS_SANDBOX_API_KEY and VTPASS_SANDBOX_SECRET_KEY repository secrets first."; exit 1; }
+            printf 'VTPASS_API_KEY=%s\nVTPASS_SECRET_KEY=%s\n' "$SB_API_KEY" "$SB_SECRET_KEY" >> vt.env
+            [ -z "$SB_PUBLIC_KEY" ] || printf 'VTPASS_PUBLIC_KEY=%s\n' "$SB_PUBLIC_KEY" >> vt.env
+            echo 'VTPASS_ENV=sandbox' >> vt.env
           else
             echo 'VTPASS_ENV=sandbox' >> vt.env
           fi
