@@ -70,6 +70,41 @@ export function bgExamPrices(d: BgResult | null | undefined): Record<string, { r
   return out;
 }
 
+// ── Electricity (owner, 2026-10-21) ──────────────────────────────────────────────────────────────────────────────
+// Bigisub's disco codes are the same words as VTpass's serviceIDs (VT_ELECTRIC). It adds a fixed service charge to every
+// payment (₦100 on 2026-10-21, `service_charge` in its providers list), charged to US — the customer pays the face amount.
+export const BG_ELEC_FEE_DEFAULT = 100;
+export const bgElecVerifyBody = (company: string, meterNo: string, meterType: "prepaid" | "postpaid") =>
+  ({ company, meter_no: meterNo, meter_type: meterType });
+export const bgElecBody = (company: string, meterNo: string, meterType: "prepaid" | "postpaid", phone: string, amount: number, name: string, pin: string) =>
+  ({ company, meter_no: meterNo, meter_type: meterType, phone_number: phone, amount, Customer_name: name, pin });
+/** Bigisub's discos: code → minimum amounts and its service charge. */
+export function bgElecProviders(d: BgResult | null | undefined): Record<string, { minPrepaid: number; minPostpaid: number; fee: number }> {
+  const list = (data(d).providers ?? []) as Record<string, unknown>[];
+  const out: Record<string, { minPrepaid: number; minPostpaid: number; fee: number }> = {};
+  for (const p of Array.isArray(list) ? list : []) {
+    const code = String(p.code ?? "").trim();
+    if (!code) continue;
+    const fee = Number(p.service_charge);
+    out[code] = { minPrepaid: Number(p.min_amount_prepaid) || 0, minPostpaid: Number(p.min_amount_postpaid) || 0, fee: Number.isFinite(fee) && fee >= 0 ? fee : BG_ELEC_FEE_DEFAULT };
+  }
+  return out;
+}
+/** A meter check: the name to pay with, a clear "no such meter", or no answer. */
+export function bgElecCustomer(d: BgResult | null | undefined): { kind: "ok"; name: string; address: string } | { kind: "invalid" } | { kind: "unavailable" } {
+  if (!d || d._unreachable || typeof d._raw === "string") return { kind: "unavailable" };
+  const http = Number(d._http) || 0;
+  const name = String(data(d).customer_name ?? "").trim();
+  if (d.success === true && name.length >= 3 && !/invalid/i.test(name)) return { kind: "ok", name, address: String(data(d).customer_address ?? "").trim() };
+  if (http === 404 || (http === 400 && !ACCOUNT_WORDS.test(`${d.message ?? ""} ${JSON.stringify(d.errors ?? "")}`))) return { kind: "invalid" };
+  return { kind: "unavailable" };
+}
+/** The token and units in a pay reply or a requery answer ("" when none; postpaid has none by nature). */
+export function bgElecToken(d: BgResult | null | undefined): { token: string; units: string } {
+  const blank = (v: unknown) => { const s = String(v ?? "").trim(); return !s || /^(n\/?a|null|undefined|none)$/i.test(s) ? "" : s; };
+  return { token: blank(data(d).token), units: blank(data(d).units) };
+}
+
 const data = (d: BgResult | null | undefined) => ((d?.data ?? {}) as Record<string, unknown>);
 /** Bigisub's own id for an order (purchase reply `transaction_id`, history/status `tranx_id`). */
 export const bgTxnId = (d: BgResult | null | undefined): string =>
@@ -130,7 +165,8 @@ export function classifyBgLookup(d: BgResult | null | undefined): BgState | "not
 
 // ── Finding an order in the history when its purchase reply was lost ───────────────────────────────────────────────
 export interface BgHistoryRow { tranx_id: string; unique_element: string; status: string; service_type: string; date_created: string; transaction_amount?: string; transaction_type?: string }
-export interface BgOrderKey { phone: string; service: "airtime" | "data" | "exam"; sentAtMs: number; amount?: number; planLabel?: string }
+/** `phone`: the number the order went to — for electricity, the meter number (its history's unique_element). */
+export interface BgOrderKey { phone: string; service: "airtime" | "data" | "exam" | "electricity"; sentAtMs: number; amount?: number; planLabel?: string }
 export type BgFind = { kind: "found"; tranxId: string; state: BgState | null } | { kind: "none" } | { kind: "ambiguous" } | { kind: "unknown" };
 
 /** History timestamps are Africa/Lagos wall time with no zone ("2026-10-13T17:04:11"). */

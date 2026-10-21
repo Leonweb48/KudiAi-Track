@@ -16,11 +16,11 @@ import {
 } from "../_shared/vtpass.ts";
 import {
   BG_SERVICES, bgVerify, buyAcrossProviders, classifyVt, combineVerdicts, DEFAULT_PROVIDER_CONFIG, isProvider, parseProviderConfig, PROVIDER_LABEL, providerOrder,
-  vtCostKobo, vtMessage, vtProbeVerdict, vtVerify, VT_SERVICES, type BuyDeps, type BuyOutcome, type Provider, type ProviderConfig, type ProviderVerdict,
+  UNAVAILABLE_MSG, vtCostKobo, vtMessage, vtProbeVerdict, vtVerify, VT_SERVICES, type BuyDeps, type BuyOutcome, type Provider, type ProviderConfig, type ProviderVerdict,
   type SwitchEvent,
 } from "../_shared/billProvider.ts";
 import {
-  BG_EXAMS, bgAirtimeBody, bgCall, bgConfigured, bgDataBody, bgExamBody, bgExamPins, bgExamPrices, bgHistoryRows, bgNetwork, bgPlanId, bgStatus, bgWalletHealth,
+  BG_ELEC_FEE_DEFAULT, BG_EXAMS, bgAirtimeBody, bgCall, bgElecBody, bgElecCustomer, bgElecProviders, bgElecToken, bgElecVerifyBody, bgConfigured, bgDataBody, bgExamBody, bgExamPins, bgExamPrices, bgHistoryRows, bgNetwork, bgPlanId, bgStatus, bgWalletHealth,
   classifyBgLookup, digits as bgDigits, isBgPlan, lagosDate, matchHistory, parseBgPlans, type BgCreds, type BgFetch, type BgFind, type BgOrderKey, type BgResult,
 } from "../_shared/bigisub.ts";
 import { pickCheaperPlans } from "../_shared/planMatch.ts";
@@ -736,7 +736,7 @@ async function providerConfig(): Promise<ProviderConfig> {
   if (provCfgCache && Date.now() - provCfgCache.at < 60_000) return provCfgCache.cfg;
   try {
     const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
-    const { data, error } = await db.from("platform_config").select("key, value").in("key", ["bill_provider", "bill_provider_failover", "bill_provider_bigisub"]);
+    const { data, error } = await db.from("platform_config").select("key, value").in("key", ["bill_provider", "bill_provider_failover", "bill_provider_bigisub", "bill_bigisub_first"]);
     if (error) throw error;
     const m: Record<string, string> = {};
     for (const r of (data ?? []) as { key: string; value: string }[]) m[r.key] = r.value;
@@ -932,19 +932,26 @@ async function bgVerifyOrder(svc: string, rid: string, claim: ClaimRow | null): 
     const meta = claim?.bgMeta;
     const sentAtMs = Date.parse(String(meta?.sent_at ?? ""));
     if (!meta?.phone || !Number.isFinite(sentAtMs)) return out("UNKNOWN", { message: "no Bigisub record of this order" });
-    const f = await bgFindOrder(rid, { phone: meta.phone, service: (meta.service === "data" ? "data" : svc === "data" ? "data" : "airtime"), sentAtMs });
+    const f = await bgFindOrder(rid, { phone: meta.phone, service: (meta.service === "data" || meta.service === "electricity" ? meta.service : svc === "data" ? "data" : "airtime"), sentAtMs, amount: Number(meta.amount) || undefined });
     if (f.kind === "none") return out(Date.now() - sentAtMs > 30 * 60_000 ? "NOT_FOUND" : "PENDING", { message: "not in Bigisub's history" });
     if (f.kind !== "found") return out(f.kind === "ambiguous" ? "PENDING" : "UNKNOWN", { message: `history ${f.kind}` });
     id = f.tranxId;
     await bgStore(rid, { bg_tranx_id: id });
   }
-  let st = classifyBgLookup(await bgCall(bgFetch, BG, "GET", `/anubis/transactions/${encodeURIComponent(id)}/`, undefined, 20_000));
-  if (st === "pending" || st === "unknown") {
+  // Electricity: the requery carries the token, so it is asked first.
+  const isElec = svc === "electricity" || claim?.bgMeta?.service === "electricity";
+  let st: ReturnType<typeof classifyBgLookup> = "unknown", elec = { token: "", units: "" };
+  if (isElec) {
+    const rq = await bgCall(bgFetch, BG, "POST", `/anubis/transactions/${encodeURIComponent(id)}/requery/`, {}, 30_000);
+    st = classifyBgLookup(rq); elec = bgElecToken(rq);
+  }
+  if (st === "unknown") st = classifyBgLookup(await bgCall(bgFetch, BG, "GET", `/anubis/transactions/${encodeURIComponent(id)}/`, undefined, 20_000));
+  if (!isElec && (st === "pending" || st === "unknown")) {
     const rq = classifyBgLookup(await bgCall(bgFetch, BG, "POST", `/anubis/transactions/${encodeURIComponent(id)}/requery/`, {}, 30_000));
     if (rq !== "unknown") st = rq;
   }
   const v = bgVerify(st);
-  return out(v, { reference: id, message: v === "SUCCESS" ? "ORDER_COMPLETED" : v.toLowerCase() });
+  return out(v, { reference: id, ...(isElec ? elec : {}), message: v === "SUCCESS" ? "ORDER_COMPLETED" : v.toLowerCase() });
 }
 
 /** Record what we are about to send to Bigisub — only when nothing was recorded for this order yet (atomic). */
@@ -976,7 +983,41 @@ async function bgFindOrder(rid: string, key: BgOrderKey): Promise<BgFind> {
   }
   return matchHistory(rows, key, taken);
 }
-type BgOrder = { path: string; body: Record<string, unknown>; phone: string; service: "airtime" | "data" | "exam"; amount?: number };
+type BgOrder = { path: string; body: Record<string, unknown>; phone: string; service: "airtime" | "data" | "exam" | "electricity"; amount?: number };
+
+// Bigisub's discos (minimum amounts, service charge), cached 10 minutes.
+let bgElecCache: { at: number; list: ReturnType<typeof bgElecProviders> } | null = null;
+async function bgElecProviderList() {
+  if (bgElecCache && Date.now() - bgElecCache.at < 10 * 60_000) return bgElecCache.list;
+  const list = bgElecProviders(await bgCall(bgFetch, BG, "GET", "/bills/electricity/providers/", undefined, 15_000));
+  if (Object.keys(list).length) bgElecCache = { at: Date.now(), list };
+  return list;
+}
+/** The order's claim row when Bigisub is where it lives now (the last provider it was sent to), else null. */
+async function bigisubClaim(rid: string): Promise<ClaimRow | null> {
+  const c = await readClaim(rid);
+  return c && c !== "error" && c.providers[c.providers.length - 1] === "bigisub" ? c : null;
+}
+
+/**
+ * A Bigisub electricity outcome as the app's electricity answer: SUCCESS with the token (prepaid) or none (postpaid);
+ * a prepaid order without its token yet → PENDING under OUR reference, which electricity-query and the sweep resolve
+ * through the claim row; a postpaid order still processing → the usual "confirming" hold; failed → a clean refusal.
+ */
+async function bgElecAnswer(out: Extract<BuyOutcome, { via: "bigisub" }>, rid: string, mt: "prepaid" | "postpaid", amt: number, fee: number, userId: string | null) {
+  if (out.state === "failed") return json({ error: out.message, _provider: "bigisub" });
+  if (out.state === "delivered") {
+    afterResponse(recordBillCost("electricity", rid, userId, out.data, async () => ({ costKobo: Math.round((amt + fee) * 100), faceKobo: Math.round(amt * 100), basis: "provider_reported", estimated: false }), { provider: "bigisub" }));
+    let { token, units } = bgElecToken(out.data);
+    if (mt === "prepaid" && !token && out.tranxId) {
+      ({ token, units } = bgElecToken(await bgCall(bgFetch, BG, "POST", `/anubis/transactions/${encodeURIComponent(out.tranxId)}/requery/`, {}, 30_000)));
+    }
+    if (mt === "prepaid" && !token) return json({ status: "PENDING", reference: rid, token: "", message: "ORDER_COMPLETED_NO_TOKEN", provider: "bigisub" });
+    return json({ status: "SUCCESS", reference: out.tranxId || rid, token, units, message: "ORDER_COMPLETED", provider: "bigisub" });
+  }
+  if (mt === "postpaid") return json({ error: PENDING_STATUS, _provider: "bigisub" });
+  return json({ status: "PENDING", reference: rid, token: "", message: "ORDER_RECEIVED", provider: "bigisub" });
+}
 
 // Bigisub's exam prices (education services), cached 10 minutes.
 let bgExamCache: { at: number; prices: ReturnType<typeof bgExamPrices> } | null = null;
@@ -1490,6 +1531,11 @@ serve(async (req) => {
       const { company, meterNo, meterType } = body as { company: string; meterNo: string; meterType: string };
       if (!company || !meterNo || !meterType) return json({ error: "company, meterNo and meterType required" });
       const sid = VT_ELECTRIC[company], mt = vtMeterType(meterType);
+      if (sid && mt && (await providerConfig()).bigisubFirst?.has("electricity") && (await bgReady())) {
+        const who = bgElecCustomer(await bgCall(bgFetch, BG, "POST", "/bills/electricity/verify/", bgElecVerifyBody(sid, meterNo.trim(), mt), 20_000));
+        if (who.kind === "ok") return json({ customer_name: who.name, customer_address: who.address || null });
+        // no answer, or Bigisub doesn't know the meter: the usual check decides
+      }
       const r = await checkCustomer("electricity",
         sid && mt ? () => vtCheckCustomer(sid, meterNo.trim(), mt) : null,
         async () => {
@@ -1577,15 +1623,30 @@ serve(async (req) => {
       // ClubKonnect or VTpass (the admin's main provider, with failover — an electricity order is amount-based, so it can
       // move either way). ClubKonnect's answer carries on through its own token logic below, exactly as before.
       const sid = VT_ELECTRIC[company], mt = vtMeterType(meterType);
+      // Bigisub (electricity's main provider when set, else a backup) pays only with the name from its own meter check,
+      // and only from its disco's minimum amount — without either it simply isn't in this order's list.
+      let elecOrder: Provider[] = sid && mt ? await providerOrderFor("electricity") : ["clubkonnect"];
+      let bgElec: BgOrder | null = null, bgFee = BG_ELEC_FEE_DEFAULT;
+      if (sid && mt && elecOrder.includes("bigisub")) {
+        const prov = (await bgElecProviderList())[sid];
+        if (prov) bgFee = prov.fee;
+        const who = prov && amt >= (mt === "prepaid" ? prov.minPrepaid : prov.minPostpaid)
+          ? bgElecCustomer(await bgCall(bgFetch, BG, "POST", "/bills/electricity/verify/", bgElecVerifyBody(sid, meterNo.trim(), mt), 20_000)) : null;
+        if (who?.kind === "ok") {
+          bgElec = { path: "/bills/electricity/pay/", body: bgElecBody(sid, meterNo.trim(), mt, phone.replace(/\D/g, ""), amt, who.name, BG.pin), phone: meterNo.trim(), service: "electricity", amount: amt };
+        } else elecOrder = elecOrder.filter((p) => p !== "bigisub");
+        if (!elecOrder.length) return json({ error: UNAVAILABLE_MSG });
+      }
       const pd = providerDeps("electricity", rid, ELECTRICITY_K,
         () => ckBuy("electricity", "APIElectricityV1.asp", {
           APIKey: ELECTRICITY_K, ElectricCompany: company, MeterType: meterType,
           MeterNo: meterNo, Amount: String(amount), PhoneNo: phone.replace(/\D/g, ""),
           RequestID: rid, CallBackURL: "https://kudiai.app/",
         }),
-        sid && mt ? vtElectricBody(sid, meterNo.trim(), mt, amt, phone.replace(/\D/g, "")) : null);
-      const bought = await buyAcrossProviders("electricity", sid && mt ? await providerOrderFor("electricity") : ["clubkonnect"], pd);
+        sid && mt ? vtElectricBody(sid, meterNo.trim(), mt, amt, phone.replace(/\D/g, "")) : null, bgElec);
+      const bought = await buyAcrossProviders("electricity", elecOrder, pd);
       if (bought.via === "none") return json({ error: bought.message });
+      if (bought.via === "bigisub") return await bgElecAnswer(bought, rid, mt ?? "prepaid", amt, bgFee, callerUser?.id ?? null);
       if (bought.via === "vtpass") {
         const ref = String(bought.data.requestId ?? pd.vtRid());
         if (bought.state === "failed") return json({ error: bought.message, _provider: "vtpass", _vt: { code: vtCode(bought.data) || null } });
@@ -1695,7 +1756,7 @@ serve(async (req) => {
         const ageMin = Math.round((Date.now() - Date.parse(r.created_at)) / 60000);
         const item: Record<string, unknown> = { at: r.created_at, ageMin };
         items.push(item);
-        let token = "", units = "", dead = false, why = "";
+        let token = "", units = "", dead = false, why = "", bgc: ClaimRow | null = null;
         try {
           if (!orderId) { item.result = "no order id on record"; sum.waiting++; continue; }
           if (VT_REF.test(orderId)) {
@@ -1703,6 +1764,10 @@ serve(async (req) => {
             const rq = await vtCall(vtFetch, VT, "POST", "/requery", { request_id: orderId }, 20_000);
             token = vtElectricToken(rq); units = String(vtElectricUnits(rq) ?? "");
             if (!token && (classifyVt(rq) === "failed" || vtCode(rq) === "019")) { dead = true; why = `vtpass ${vtCode(rq) || "failed"}`; }
+          } else if (/^KDT-BILL-/.test(orderId) && (bgc = await bigisubClaim(orderId))) {
+            const v = await bgVerifyOrder("electricity", orderId, bgc);
+            token = String(v.token ?? ""); units = String(v.units ?? "");
+            if (!token && v.status === "FAILED") { dead = true; why = "bigisub failed"; }
           } else {
             const by: Record<string, string> = /^KDT-BILL-/.test(orderId) ? { RequestID: orderId } : { OrderID: orderId };
             const q = await ck("APIQueryV1.asp", { APIKey: ELECTRICITY_K, ...by }, { retries: 1, timeoutMs: 15000 });
@@ -1786,6 +1851,15 @@ serve(async (req) => {
         if (st === "delivered") return json({ status: "PENDING", reference: orderId, token: "", message: "ORDER_COMPLETED_NO_TOKEN" });
         if (st === "failed" || vtCode(rq) === "019") return json({ status: "CANCELLED", reference: orderId, token: "", message: vtMessage(rq) });
         return json({ status: "PENDING", reference: orderId, token: "", message: st === "pending" ? "ORDER_RECEIVED" : "CHECKING" });
+      }
+      // An order that lives on Bigisub (its pending answer carries OUR reference): Bigisub's record decides. Never
+      // cancelled for being missing from its history — only Bigisub saying it failed cancels it.
+      const bgc = /^KDT-BILL-/.test(orderId) ? await bigisubClaim(orderId) : null;
+      if (bgc) {
+        const v = await bgVerifyOrder("electricity", orderId, bgc);
+        if (v.token) return json({ status: "SUCCESS", reference: String(v.reference || orderId), token: v.token, units: v.units, message: "ORDER_COMPLETED" });
+        if (v.status === "FAILED") return json({ status: "CANCELLED", reference: orderId, token: "", message: ELEC_DEAD_MSG });
+        return json({ status: "PENDING", reference: orderId, token: "", message: v.status === "SUCCESS" ? "ORDER_COMPLETED_NO_TOKEN" : "ORDER_RECEIVED" });
       }
       const by: Record<string, string> = /^KDT-BILL-/.test(orderId) ? { RequestID: orderId } : { OrderID: orderId };
       const q = await ck("APIQueryV1.asp", { APIKey: ELECTRICITY_K, ...by }, { retries: 1, timeoutMs: 15000 });
@@ -2924,10 +2998,22 @@ serve(async (req) => {
       }
       // VTpass takes it (ClubKonnect's wallet and discounts don't apply; an empty VTpass wallet moves the order back).
       if (available[0] === "vtpass") return json({ ok: true, balance: null, provider: "vtpass", discounts: { airtime: {}, epin: {} } });
-      if (available[0] === "bigisub") return json({ ok: true, balance: null, provider: "bigisub", discounts: { airtime: {}, epin: {} } });
+      let bgShort = false;
+      if (available[0] === "bigisub") {
+        const h = await bgHealthState();
+        const need = cost + (cat === "electricity" ? BG_ELEC_FEE_DEFAULT : 0);
+        if (h.balance === null || h.balance >= need) return json({ ok: true, balance: null, provider: "bigisub", discounts: { airtime: {}, epin: {} } });
+        bgShort = true;
+        afterResponse(sendBillAlert({ type: "warning", title: "Bigisub wallet is low",
+          what: `A ${cat} order of ₦${cost.toLocaleString("en-NG")} couldn't go through Bigisub (the main provider for ${cat}): its wallet can't cover it, so ClubKonnect is used. Top up the Bigisub wallet.`,
+          hint: "bigisub.ng → Fund wallet.", emailHint: "bigisub.ng → Fund wallet." }, { svc: cat, outcome: "bigisub-wallet-low", detail: "" }));
+        if (!available.includes("clubkonnect")) return json({ ok: false, reason: "wallet_low", message: "This service is temporarily unavailable. Please try again later — you have not been charged." });
+        // ClubKonnect backs it up: its own checks below decide
+      }
       const vtBackup = available.includes("vtpass");   // a ClubKonnect refusal for an empty wallet would move the order to VTpass
       // Bigisub backs up airtime the same way; data only once its plans are what the customer sees (catalogueProvider).
-      const bgBackup = available.includes("bigisub") && (cat === "airtime" || (cat === "data" && (await catalogueProvider("data")) === "bigisub"));
+      const bgBackup = !bgShort && available.includes("bigisub") && (cat === "airtime" || (cat === "data" && (await catalogueProvider("data")) === "bigisub")
+        || (cat === "electricity" && ((await bgHealthState()).balance ?? 0) >= cost + BG_ELEC_FEE_DEFAULT));
 
       const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
       const { data: cfgRows } = await sb.from("platform_config").select("key, value").in("key", ["ck_discounts", "ck_discounts_updated", "ck_wallet_min_buffer"]);

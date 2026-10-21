@@ -30,6 +30,7 @@ const ckSrv = http.createServer((req, res) => {
   if (mode === "lowwallet") return send(200, { status: "INSUFFICIENT_BALANCE" });
   if (mode === "badnumber") return send(200, { status: "INVALID_MOBILENUMBER" });
   if (mode === "ok") return send(200, { statuscode: "100", status: "ORDER_RECEIVED", orderid: `CK-${path}`, requestid: p.RequestID });
+  if (mode === "elec-token") return send(200, { statuscode: "200", status: "ORDER_COMPLETED", orderid: "CK-ELEC", metertoken: "99998888777766665555" });
   return send(200, {});
 });
 
@@ -73,6 +74,25 @@ const bgSrv = http.createServer((req, res) => {
       if (bgMode === "lost-none") { bgOrders.delete(id); bgHistory.shift(); return send(500, "<html>Server Error (500)</html>"); }
       return send(201, { success: true, data: { transaction_id: id, reference: `ref${bgN}`, status, amount: svc === "data" ? 450 : body.amount }, message: "ok" });
     }
+    if (P === "/bills/electricity/providers/") return send(200, { success: true, data: { providers: [
+      { name: "Ikeja Electric - IKEDC", code: "ikeja-electric", min_amount_prepaid: 1000, min_amount_postpaid: 500, service_charge: 100, service_charge_type: "fixed" },
+      { name: "IBEDC", code: "ibadan-electric", min_amount_prepaid: 2000, min_amount_postpaid: 2000, service_charge: 100, service_charge_type: "fixed" }] } });
+    if (P === "/bills/electricity/verify/") {
+      bgLog.push(`meter:${body.company}:${body.meter_no}:${body.meter_type}`);
+      if (body.meter_no === "0000000000") return send(404, { success: false, message: "Meter not found" });
+      return send(200, { success: true, data: { customer_name: "ADA OBI", customer_address: "1 Allen Ave", meter_number: body.meter_no, meter_type: body.meter_type } });
+    }
+    if (P === "/bills/electricity/pay/") {
+      bgLog.push(`elec:${body.company}:${body.meter_no}:${body.amount}:${body.Customer_name}:pin=${body.pin === PIN}`);
+      if (body.pin !== PIN) return send(400, { success: false, message: "Invalid transaction PIN" });
+      if (bgMode === "poor") return send(402, { success: false, message: "Insufficient balance" });
+      const id = `ElecT${++bgN}`;
+      const status = bgMode === "processing" ? "processing" : "successful";
+      const token = status === "successful" && body.meter_type === "prepaid" ? "1234-5678-9012-3456-7890" : "";
+      bgOrders.set(id, { status, svc: "electricity", token: token || "5555-4444-3333-2222-1111" });
+      bgHistory.unshift({ tranx_id: id, unique_element: body.meter_no, status, service_type: "electricity", date_created: lagosNow(), transaction_amount: String(body.amount + 100) });
+      return send(201, { success: true, data: { transaction_id: id, status, amount: body.amount, service_charge: 100, total_amount: body.amount + 100, ...(token ? { token, units: "45.2kWh" } : {}) }, message: "ok" });
+    }
     if (P === "/financial/transactions/") {
       bgLog.push(`history:${u.searchParams.get("unique_element")}:${u.searchParams.get("transaction_type")}`);
       const ue = u.searchParams.get("unique_element");
@@ -84,7 +104,8 @@ const bgSrv = http.createServer((req, res) => {
       const o = bgOrders.get(decodeURIComponent(m[1]));
       if (!o) return send(404, { success: false, message: "Transaction not found" });
       const st = m[2] ? (bgLookupStatus ?? o.status) : o.status;   // a status read shows what Bigisub last stored; a requery asks the network
-      return send(200, { success: true, data: m[2] ? { tranx_id: m[1], old_status: o.status, new_status: st } : { tranx_id: m[1], status: st } });
+      const tok = m[2] && o.svc === "electricity" && st === "successful" ? { token: o.token, units: "12.5kWh" } : {};
+      return send(200, { success: true, data: m[2] ? { tranx_id: m[1], old_status: o.status, new_status: st, ...tok } : { tranx_id: m[1], status: st } });
     }
     send(404, { success: false, message: "Not found" });
   });
@@ -320,6 +341,50 @@ ok(!bgLog.some((x) => x.startsWith("exam:")), "WAEC registration never goes to B
 config = { ...BASE_CFG, bill_provider_bigisub: "false" }; await fresh(); reset(); rid = ref();
 r = await call({ action: "waec", examType: "neco", phone: PHONE, requestId: rid });
 ok(/aren't available/.test(r?.error || "") && !bgLog.length, "Bigisub switched off → NECO cleanly unavailable, nothing bought", J([r, bgLog]));
+
+console.log("Bigisub FIRST for airtime and electricity (owner, 2026-10-21)…");
+config = { ...BASE_CFG, bill_provider_bigisub: "true", bill_bigisub_first: "airtime,electricity" }; await fresh(); reset();
+st = await fresh();
+ok(J(st?.routing?.airtime) === J(["bigisub", "clubkonnect"]) && J(st?.routing?.electricity) === J(["bigisub", "clubkonnect"]) && J(st?.routing?.data) === J(["clubkonnect", "bigisub"]),
+  "routing: airtime and electricity → Bigisub then ClubKonnect; data unchanged", J(st?.routing));
+reset({ real: { "APIAirtimeV1.asp": "ok" } }); rid = ref();
+r = await airtime(rid);
+ok(r?.status === "SUCCESS" && r?.provider === "bigisub" && !ckLog.some((x) => x.startsWith("APIAirtimeV1")), "airtime bought on Bigisub, ClubKonnect not used", J([r, ckLog]));
+reset({ real: { "APIAirtimeV1.asp": "ok" }, bgMode: "poor" }); rid = ref();
+r = await airtime(rid);
+ok(r?.status === "SUCCESS" && r?.provider !== "bigisub" && ckLog.some((x) => x.startsWith("APIAirtimeV1")), "Bigisub's wallet can't cover it → ClubKonnect delivers", J([r, ckLog]));
+const elec = (o, x = {}) => call({ action: "electricity", company: "02", meterType: "01", meterNo: "45012345678", amount: "1000", phone: PHONE, requestId: o, ...x });
+reset();
+r = await call({ action: "electricity-verify", company: "02", meterNo: "45012345678", meterType: "01" });
+ok(r?.customer_name === "ADA OBI" && bgLog.includes("meter:ikeja-electric:45012345678:prepaid") && !ckLog.some((x) => x.startsWith("APIVerifyElectricity")), "meter check asks Bigisub", J([r, bgLog, ckLog]));
+reset({ real: { "APIElectricityV1.asp": "elec-token" } }); rid = ref();
+r = await elec(rid);
+ok(r?.status === "SUCCESS" && r?.provider === "bigisub" && r?.token === "1234-5678-9012-3456-7890" && bgLog.includes(`elec:ikeja-electric:45012345678:1000:ADA OBI:pin=true`) && !ckLog.some((x) => x.startsWith("APIElectricityV1")),
+  "prepaid electricity bought on Bigisub with the checked name; token on the receipt; ClubKonnect not used", J([r, bgLog, ckLog]));
+ok(costs.some((c) => c.p_request_id === rid && c.p_cost_kobo === 110000 && c.p_face_kobo === 100000), "our real cost recorded: ₦1,000 + Bigisub's ₦100 charge", J(costs));
+reset({ real: { "APIElectricityV1.asp": "elec-token" } }); rid = ref();
+r = await call({ action: "electricity", company: "07", meterType: "01", meterNo: "45012345678", amount: "1500", phone: PHONE, requestId: rid });
+ok(r?.status === "SUCCESS" && r?.token === "99998888777766665555" && !bgLog.some((x) => x.startsWith("elec:")), "below Bigisub's disco minimum (IBEDC ₦2,000) → ClubKonnect takes it", J([r, bgLog]));
+reset({ real: { "APIElectricityV1.asp": "elec-token" }, bgMode: "poor" }); rid = ref();
+r = await elec(rid);
+ok(r?.status === "SUCCESS" && r?.token === "99998888777766665555" && J(claims.get(rid)?.providers) === J(["bigisub", "clubkonnect"]), "Bigisub's wallet can't cover it → ClubKonnect delivers", J([r, claims.get(rid)]));
+reset({ real: { "APIElectricityV1.asp": "elec-token" } }); rid = ref();
+r = await elec(rid, { meterNo: "0000000000" });
+ok(!bgLog.some((x) => x.startsWith("elec:")) && ckLog.some((x) => x.startsWith("APIElectricityV1")), "Bigisub doesn't know the meter → not paid there (ClubKonnect decides)", J([r, bgLog]));
+reset({ bgMode: "processing" }); rid = ref();
+r = await elec(rid);
+ok(r?.status === "PENDING" && r?.reference === rid && r?.provider === "bigisub", "Bigisub still processing → PENDING under our reference (the app keeps asking)", J(r));
+bgLookupStatus = "successful";
+r = await call({ action: "electricity-query", orderId: rid });
+ok(r?.status === "SUCCESS" && r?.token === "5555-4444-3333-2222-1111" && bgLog.some((x) => x.startsWith("requery:ElecT")), "electricity-query asks Bigisub → token when it's ready", J([r, bgLog]));
+reset({ bgMode: "processing" }); rid = ref();
+r = await elec(rid); bgLookupStatus = "failed";
+r = await call({ action: "electricity-query", orderId: rid });
+ok(r?.status === "CANCELLED" && !ckLog.some((x) => x.startsWith("APIQuery")), "Bigisub failed it → CANCELLED (refunded), ClubKonnect never asked", J([r, ckLog]));
+reset();
+r = await call({ action: "bill-preflight", cat: "electricity", amount: 1000 });
+ok(r?.ok === true && r?.provider === "bigisub", "preflight: electricity checks Bigisub's wallet", J(r));
+config = { ...BASE_CFG, bill_provider_bigisub: "true" }; await fresh();
 
 console.log(fails ? `\n${fails} of ${checks} checks FAILED` : `\nall ${checks} checks passed`);
 if (fails) console.log("--- function log tail ---\n" + fnLog.slice(-4000));

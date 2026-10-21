@@ -218,6 +218,22 @@ Tokens, PINs, meter/phone/account numbers, names and our ClubKonnect balance mus
   - no send stamp, no backup available, or never sent → a plain failure and refund, as before.
 - **Scope:** airtime only. A data plan belongs to the provider that listed it.
 
+### 15. Bigisub first for airtime and electricity (owner, 2026-10-21)
+
+- **Why:** ClubKonnect has been charging for bills that never arrived while it reported success.
+- **The switch:** `platform_config.bill_bigisub_first` lists the services where Bigisub is the main provider and
+  ClubKonnect its backup. It is `airtime,electricity` from migration 20270382; empty puts ClubKonnect back first.
+- **When ClubKonnect is used:** an order moves only when Bigisub confirms it placed nothing (its wallet, our keys).
+  Preflight checks Bigisub's wallet first, then ClubKonnect's.
+- **Electricity on Bigisub:**
+  - It pays with the name from Bigisub's own meter check (`/bills/electricity/verify/`), and only from its disco's
+    minimum amount. Without either, the order goes to ClubKonnect.
+  - Bigisub adds a fixed service charge, ₦100 on 2026-10-21, charged to **us**. The customer pays the face amount, and
+    the finance ledger records amount + charge.
+- **A prepaid order without its token yet:** answers PENDING under **our** reference. `electricity-query` and the sweep
+  find it through the claim row and ask Bigisub's requery, which carries the token. Only Bigisub saying the order failed
+  cancels and refunds it; being missing from its history never does.
+
 ## Tools (GitHub → Actions; all free unless stated)
 
 | Workflow | What it does |

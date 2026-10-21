@@ -1,7 +1,7 @@
 // Run: deno test supabase/functions/_shared/billProvider.bigisub.test.ts
 // Bigisub as the airtime / data BACKUP inside the provider switch (2026-10-21).
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { bgVerify, buyAcrossProviders, providerOrder, type BuyDeps, type Provider, type ProviderConfig } from "./billProvider.ts";
+import { bgVerify, buyAcrossProviders, parseProviderConfig, providerOrder, type BuyDeps, type Provider, type ProviderConfig } from "./billProvider.ts";
 import { PENDING_STATUS, type CkResult, type Lookup } from "./ckRoute.ts";
 import type { BgFind, BgResult } from "./bigisub.ts";
 
@@ -20,6 +20,21 @@ Deno.test("order: Bigisub is the last backup for airtime and data only, and only
   // ClubKonnect known down → straight to the backups that are up
   assertEquals(providerOrder("airtime", CFG, { ...st, health: { clubkonnect: "down", bigisub: "up" } }), ["bigisub"]);
   assertEquals(providerOrder("airtime", CFG, { ...st, health: { clubkonnect: "down", bigisub: "down" } }), ["clubkonnect", "bigisub"]);
+});
+
+Deno.test("order: Bigisub FIRST for the services listed in bill_bigisub_first, ClubKonnect its backup", () => {
+  const st = { vtUsable: false, bgUsable: true, health: { clubkonnect: "up" as const, bigisub: "up" as const } };
+  const first = parseProviderConfig({ bill_provider_bigisub: "true", bill_bigisub_first: " Airtime, electricity ,cable" });
+  assertEquals([...first.bigisubFirst!], ["airtime", "electricity"]);   // cable isn't a Bigisub service → ignored
+  assertEquals(providerOrder("airtime", first, st), ["bigisub", "clubkonnect"]);
+  assertEquals(providerOrder("electricity", first, st), ["bigisub", "clubkonnect"]);
+  assertEquals(providerOrder("data", first, st), ["clubkonnect", "bigisub"]);
+  assertEquals(providerOrder("cable", first, st), ["clubkonnect"]);
+  assertEquals(providerOrder("airtime", first, { ...st, health: { clubkonnect: "up", bigisub: "down" } }), ["clubkonnect"]);
+  assertEquals(providerOrder("airtime", { ...first, bigisub: false }, st), ["clubkonnect"]);   // Bigisub switched off wins
+  assertEquals(providerOrder("airtime", first, { ...st, bgUsable: false }), ["clubkonnect"]);
+  assertEquals(providerOrder("airtime", { ...first, failover: false }, st), ["bigisub"]);
+  assertEquals([...parseProviderConfig({}).bigisubFirst!], []);
 });
 
 interface W { row: Provider[] | null; ck: (CkResult | Error)[]; lookup: Lookup[]; pay: BgResult[]; find: BgFind[]; remembered: string[]; calls: string[] }

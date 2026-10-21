@@ -1,7 +1,7 @@
 // Run: deno test supabase/functions/_shared/bigisub.test.ts
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
-  bgCall, bgConfigured, bgExamPins, bgExamPrices, bgHistoryRows, bgMessage, bgNetwork, bgStatus, bgTxnId, bgWalletHealth, classifyBgLookup, classifyBgPurchase,
+  bgCall, bgConfigured, bgElecCustomer, bgElecProviders, bgElecToken, bgExamPins, bgExamPrices, bgHistoryRows, bgMessage, bgNetwork, bgStatus, bgTxnId, bgWalletHealth, classifyBgLookup, classifyBgPurchase,
   lagosDate, lagosToMs, matchHistory, parseBgPlans, BG_UNAVAILABLE, type BgHistoryRow,
 } from "./bigisub.ts";
 
@@ -127,6 +127,19 @@ Deno.test("exam PINs: the reply's pins become card details; prices from educatio
     { id: "WAEC", name: "WAEC Result Checker", type: "WAEC", regular_price: 5250, corporate_price: 5200 },
     { id: "NECO", name: "NECO Result Checker", type: "NECO", regular_price: 2500, corporate_price: 2450 }] } }),
     { WAEC: { regular: 5250, corporate: 5200, name: "WAEC Result Checker" }, NECO: { regular: 2500, corporate: 2450, name: "NECO Result Checker" } });
+});
+
+Deno.test("electricity: discos, meter check, token", () => {
+  assertEquals(bgElecProviders({ success: true, data: { providers: [
+    { code: "ikeja-electric", min_amount_prepaid: 1000, min_amount_postpaid: 500, service_charge: 100 },
+    { code: "ibadan-electric", min_amount_prepaid: 2000, min_amount_postpaid: 2000 }] } }),
+    { "ikeja-electric": { minPrepaid: 1000, minPostpaid: 500, fee: 100 }, "ibadan-electric": { minPrepaid: 2000, minPostpaid: 2000, fee: 100 } });
+  assertEquals(bgElecCustomer({ _http: 200, success: true, data: { customer_name: "JOHN DOE", customer_address: "123 Lagos St" } }), { kind: "ok", name: "JOHN DOE", address: "123 Lagos St" });
+  assertEquals(bgElecCustomer({ _http: 404, success: false, message: "Meter not found" }), { kind: "invalid" });
+  assertEquals(bgElecCustomer({ _http: 400, success: false, message: "Invalid transaction PIN" }).kind, "unavailable");   // ours, not the meter's
+  assertEquals(bgElecCustomer({ _http: 500, _raw: "<html>" }).kind, "unavailable");
+  assertEquals(bgElecToken({ success: true, data: { token: "1234-5678-9012-3456-7890", units: "45.2kWh" } }), { token: "1234-5678-9012-3456-7890", units: "45.2kWh" });
+  assertEquals(bgElecToken({ success: true, data: { token: "null" } }), { token: "", units: "" });
 });
 
 Deno.test("matchHistory for an exam order: no phone, matched by kind of service + amount + time", () => {

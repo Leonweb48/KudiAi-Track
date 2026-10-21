@@ -27,8 +27,8 @@ export const PROVIDERS: readonly Provider[] = ["clubkonnect", "vtpass", "bigisub
 export const PROVIDER_LABEL: Readonly<Record<Provider, string>> = { clubkonnect: "ClubKonnect", vtpass: "VTpass", bigisub: "Bigisub" };
 export const isProvider = (p: unknown): p is Provider => p === "clubkonnect" || p === "vtpass" || p === "bigisub";
 
-/** Services Bigisub backs up (owner, 2026-10-21): airtime and data. */
-export const BG_SERVICES: ReadonlySet<string> = new Set(["airtime", "data"]);
+/** Services Bigisub can take (owner, 2026-10-21): airtime, data and electricity. */
+export const BG_SERVICES: ReadonlySet<string> = new Set(["airtime", "data", "electricity"]);
 
 /**
  * Services VTpass can take. Betting, JAMB, Spectranet and printed PINs stay on ClubKonnect (not on VTpass's access
@@ -36,8 +36,9 @@ export const BG_SERVICES: ReadonlySet<string> = new Set(["airtime", "data"]);
  */
 export const VT_SERVICES: ReadonlySet<string> = new Set(["airtime", "data", "cable", "electricity", "waec", "smile"]);
 
-export interface ProviderConfig { primary: Provider; failover: boolean; bigisub?: boolean }
-export const DEFAULT_PROVIDER_CONFIG: ProviderConfig = { primary: "clubkonnect", failover: true, bigisub: false };
+/** `bigisubFirst`: services where Bigisub is the MAIN provider and the usual main one becomes its backup. */
+export interface ProviderConfig { primary: Provider; failover: boolean; bigisub?: boolean; bigisubFirst?: ReadonlySet<string> }
+export const DEFAULT_PROVIDER_CONFIG: ProviderConfig = { primary: "clubkonnect", failover: true, bigisub: false, bigisubFirst: new Set() };
 
 /** platform_config rows → config. Anything unrecognised keeps the default (ClubKonnect, failover on, Bigisub off). */
 export function parseProviderConfig(m: Record<string, string | null | undefined>): ProviderConfig {
@@ -47,6 +48,7 @@ export function parseProviderConfig(m: Record<string, string | null | undefined>
     primary: p === "vtpass" ? "vtpass" : "clubkonnect",
     failover: f === "false" ? false : DEFAULT_PROVIDER_CONFIG.failover,
     bigisub: String(m.bill_provider_bigisub ?? "").trim().toLowerCase() === "true",
+    bigisubFirst: new Set(String(m.bill_bigisub_first ?? "").split(",").map((x) => x.trim().toLowerCase()).filter((x) => BG_SERVICES.has(x))),
   };
 }
 
@@ -67,6 +69,16 @@ export function providerOrder(svc: string, cfg: ProviderConfig, st: ProviderStat
   const primary: Provider = cfg.primary === "vtpass" && vtOk ? "vtpass" : "clubkonnect";
   const others: Provider[] = [];
   if (primary === "vtpass") others.push("clubkonnect"); else if (vtOk) others.push("vtpass");
+  if (bgOk && cfg.bigisubFirst?.has(svc)) {
+    // Bigisub is the main provider for this service; the usual order backs it up.
+    const rest = [primary, ...others];
+    if (!cfg.failover) return ["bigisub"];
+    if (st.health.bigisub === "down") {
+      const up = rest.filter((p) => st.health[p] !== "down");
+      if (up.length) return up;
+    }
+    return ["bigisub", ...rest];
+  }
   if (bgOk) others.push("bigisub");
   if (!others.length || !cfg.failover) return [primary];
   if (st.health[primary] === "down") {

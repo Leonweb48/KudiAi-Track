@@ -75,9 +75,10 @@ const VT_FIRST: Provider[] = ["vtpass", "clubkonnect"];
 // ── Config and order ─────────────────────────────────────────────────────────────────────────────────────────────
 
 Deno.test("parseProviderConfig: defaults to ClubKonnect with failover on; only exact values change it", () => {
-  assertEquals(parseProviderConfig({}), { primary: "clubkonnect", failover: true, bigisub: false });
-  assertEquals(parseProviderConfig({ bill_provider: " VTpass ", bill_provider_failover: "false" }), { primary: "vtpass", failover: false, bigisub: false });
-  assertEquals(parseProviderConfig({ bill_provider: "paystack", bill_provider_failover: "no" }), { primary: "clubkonnect", failover: true, bigisub: false });
+  const none = new Set<string>();
+  assertEquals(parseProviderConfig({}), { primary: "clubkonnect", failover: true, bigisub: false, bigisubFirst: none });
+  assertEquals(parseProviderConfig({ bill_provider: " VTpass ", bill_provider_failover: "false" }), { primary: "vtpass", failover: false, bigisub: false, bigisubFirst: none });
+  assertEquals(parseProviderConfig({ bill_provider: "paystack", bill_provider_failover: "no" }), { primary: "clubkonnect", failover: true, bigisub: false, bigisubFirst: none });
   assertEquals(parseProviderConfig({ bill_provider_bigisub: " TRUE " }).bigisub, true);
   assertEquals(parseProviderConfig({ bill_provider_bigisub: "yes" }).bigisub, false);
 });
