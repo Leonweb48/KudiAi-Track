@@ -1,0 +1,31 @@
+name: Provider price compare
+
+# Manual only. Asks the clubkonnect function for ClubKonnect's and Bigisub's own price lists (action "price-compare",
+# read-only — nothing is bought) and keeps the answer as a PRIVATE artifact for one day. Wholesale prices are business
+# information: the JSON is never printed to the log. Download it with:  gh run download <run id> -n price-compare
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Fetch both price lists
+        env:
+          URL: ${{ secrets.REACT_APP_SUPABASE_URL }}
+          KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -euo pipefail
+          code=$(curl -sS -m 200 -o price-compare.json -w '%{http_code}' -X POST "$URL/functions/v1/clubkonnect" \
+            -H "Authorization: Bearer $KEY" -H "apikey: $KEY" -H "Content-Type: application/json" -d '{"action":"price-compare"}')
+          echo "HTTP $code, $(wc -c < price-compare.json) bytes"
+          node -e 'const j=JSON.parse(require("fs").readFileSync("price-compare.json","utf8")); const sec=(o)=>Object.entries(o||{}).map(([k,v])=>k+"="+(v&&v.error?"error":"ok")).join(" "); console.log("clubkonnect:", sec(j.clubkonnect)); console.log("bigisub:", sec(j.bigisub));'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: price-compare
+          path: price-compare.json
+          retention-days: 1

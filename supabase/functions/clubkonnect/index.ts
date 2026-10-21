@@ -1036,7 +1036,7 @@ serve(async (req) => {
   // service-role key. This function is deployed --no-verify-jwt, so the gateway does NOT check anything for us:
   // these MUST be gated here (they used to be reachable by anyone on the internet with no credentials at all).
   let callerUser: { id: string } | null = null;   // set for ordinary logged-in callers; stays null for server (service-role) calls
-  const SERVICE_ONLY = new Set(["wallet-balance", "connectivity-check", "wallet-balance-alert", "health-check", "data-probe", "refresh-ck-prices", "price-list", "route-check", "vtpass-probe", "provider-status", "vtpass-sandbox-proof", "vtpass-explore", "ck-variants", "bigisub-check", "bigisub-live-test"]);
+  const SERVICE_ONLY = new Set(["wallet-balance", "connectivity-check", "wallet-balance-alert", "health-check", "data-probe", "refresh-ck-prices", "price-list", "route-check", "vtpass-probe", "provider-status", "vtpass-sandbox-proof", "vtpass-explore", "ck-variants", "bigisub-check", "bigisub-live-test", "price-compare"]);
   // Public catalogue lookups (plan lists) stay open; purchase / write actions require the service key OR a user JWT.
   const READ_ONLY = new Set(["data-plans", "cabletv-plans", "waec-packages", "jamb-packages", "exam-price"]);
   if (CRON_ACTIONS.has(action)) {
@@ -3463,6 +3463,42 @@ serve(async (req) => {
         once("APIEPINDiscountV2.asp", PRINT_AIRTIME_K), once("APIAirtimeDiscountV1.asp", AIRTIME_K),
       ]);
       return json({ fetched_at: new Date().toISOString(), data, print_data, print_airtime, airtime });
+    }
+
+    // ── Price comparison (service-only, read-only — nothing is bought): ClubKonnect's and Bigisub's own price lists for
+    //    every bill both sell, for the "Bigisub vs ClubKonnect" comparison. Workflow "Provider price compare" keeps the
+    //    answer as a private one-day artifact (never printed). Bigisub's history is included only to read what it took for
+    //    recent airtime (its airtime discount isn't published): numbers cut to their last 4 digits, balances removed.
+    if (action === "price-compare") {
+      const NETS: Record<string, string> = { MTN: "01", Glo: "02", "9mobile": "03", Airtel: "04" };
+      const ckSafe = async (path: string, params: Record<string, string>) => { try { return await ck(path, params); } catch (e) { return { error: (e as Error).message }; } };
+      const ckData = async (key: string) => Object.fromEntries(await Promise.all(Object.entries(NETS).map(async ([n, id]) => [n, await ckSafe("APIDatabundlePlansV2.asp", { APIKey: key, MobileNetwork: id })])));
+      const bg = (path: string) => bgUsable() ? bgCall(bgFetch, BG, "GET", path, undefined, 25_000) : Promise.resolve({ error: "Bigisub not set up" });
+      const [ckDataPlans, ckEpin, ckAirtime, ckDstv, ckGotv, ckStar, ckShowmax, ckSmile, ckSpectranet, ckWaec, ckJamb] = await Promise.all([
+        ckData(DATA_K), ckSafe("APIEPINDiscountV2.asp", { APIKey: PRINT_AIRTIME_K }), ckSafe("APIAirtimeDiscountV1.asp", { APIKey: AIRTIME_K }),
+        ckSafe("APICableTVPackagesV2.asp", { APIKey: CABLETV_K, CableTV: "dstv" }), ckSafe("APICableTVPackagesV2.asp", { APIKey: CABLETV_K, CableTV: "gotv" }),
+        ckSafe("APICableTVPackagesV2.asp", { APIKey: CABLETV_K, CableTV: "startimes" }), ckSafe("APICableTVPackagesV2.asp", { APIKey: CABLETV_K, CableTV: "showmax" }),
+        ckSafe("APISmilePackagesV2.asp", { APIKey: SMILE_K }), ckSafe("APISpectranetPackagesV2.asp", { APIKey: SPECTRANET_K }),
+        ckExamCatalogue("waec"), ckExamCatalogue("jamb"),
+      ]);
+      const [bgData1, bgData2, bgData3, bgData4, bgCable, bgCablePricing, bgPins, bgElec, bgExam, bgEdu, bgSmile, bgSpectranet, bgBetting, bgHist] = await Promise.all([
+        bg("/vtu/data/plans/?network=1"), bg("/vtu/data/plans/?network=2"), bg("/vtu/data/plans/?network=3"), bg("/vtu/data/plans/?network=4"),
+        bg("/vtu/cable/plans/"), bg("/vtu/cable/pricing/"), bg("/vtu/recharge-pin/plans/"), bg("/bills/electricity/providers/"),
+        bg("/bills/result-checker/prices/"), bg("/bills/education/services/"), bg("/isp/smile/plans/"), bg("/isp/spectranet/plans/"),
+        bg("/betting/billers/"), bg("/financial/transactions/?transaction_type=airtime&status=successful&limit=50"),
+      ]);
+      const histRows = (bgHistoryRows(bgHist as BgResult) ?? []).map((r) => ({
+        service_type: r.service_type, transaction_type: String(r.transaction_type ?? "").replace(/\d{7,}/g, (m) => "…" + m.slice(-4)),
+        transaction_amount: r.transaction_amount, status: r.status, date_created: r.date_created,
+      }));
+      return json({
+        fetched_at: new Date().toISOString(),
+        clubkonnect: { data: ckDataPlans, epin_discount: ckEpin, airtime_discount: ckAirtime, cable: { dstv: ckDstv, gotv: ckGotv, startimes: ckStar, showmax: ckShowmax },
+          smile: ckSmile, spectranet: ckSpectranet, waec: ckWaec, jamb: ckJamb },
+        bigisub: { data: { MTN: bgData1, Airtel: bgData2, Glo: bgData3, "9mobile": bgData4 }, cable_plans: bgCable, cable_pricing: bgCablePricing,
+          recharge_pins: bgPins, electricity: bgElec, exam: bgExam, education: bgEdu, smile: bgSmile, spectranet: bgSpectranet, betting: bgBetting,
+          airtime_history: histRows },
+      });
     }
 
     // ── Wallet balance + commission (admin dashboard) ──────────────────────────
