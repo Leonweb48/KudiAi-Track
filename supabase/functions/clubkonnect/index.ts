@@ -1802,7 +1802,7 @@ serve(async (req) => {
       const sum = { dryRun, checked: 0, settled: 0, refunded: 0, waiting: 0, alerted: 0, errors: 0 };
       const items: Record<string, unknown>[] = [];
       const svcOf = (n: string) => /data/i.test(n) ? "data" : /electric|prepaid|postpaid|meter/i.test(n) ? "electricity"
-        : /dstv|gotv|startimes|cable/i.test(n) ? "cable" : /bet/i.test(n) ? "betting" : /waec/i.test(n) ? "waec"
+        : /dstv|gotv|startimes|cable/i.test(n) ? "cable" : /bet/i.test(n) ? "betting" : /waec|neco|nabteb|result checker|exam/i.test(n) ? "waec"
         : /jamb/i.test(n) ? "jamb" : /smile/i.test(n) ? "smile" : /spectranet/i.test(n) ? "spectranet" : "airtime";
       for (const r of (rows ?? []) as { id: string; user_id: string | null; amount_kobo: number; reference: string | null; narration: string | null; created_at: string }[]) {
         sum.checked++;
