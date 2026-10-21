@@ -113,6 +113,8 @@ const T = {
   "bills.examType":      { en: "Exam Type *", pidgin: "Exam Type *", ha: "Nau'in Jarrabawa *", ig: "Ụdị Ule *",   yo: "Irú Ìdánwò *" },
   "bills.selectExamType": { en: "Select exam type…", pidgin: "Choose exam type…", ha: "Zaɓi nau'in jarrabawa…", ig: "Họrọ ụdị ule…", yo: "Yan irú ìdánwò…" },
   "bills.waecDirect":    { en: "WAEC Direct (Scratch Card)", pidgin: "WAEC Direct (Scratch Card)", ha: "WAEC Direct (Katin Kankare)", ig: "WAEC Direct (Kaadị Nhacha)", yo: "WAEC Direct (Káàdì Ìhá)" },
+  "bills.necoChecker":   { en: "NECO Result Checker", pidgin: "NECO Result Checker", ha: "Mai duba sakamakon NECO", ig: "Onye nlele nsonaazụ NECO", yo: "Ayẹ̀wò èsì NECO" },
+  "bills.nabtebChecker": { en: "NABTEB Result Checker", pidgin: "NABTEB Result Checker", ha: "Mai duba sakamakon NABTEB", ig: "Onye nlele nsonaazụ NABTEB", yo: "Ayẹ̀wò èsì NABTEB" },
   "bills.waecRegistration": { en: "WAEC Registration", pidgin: "WAEC Registration", ha: "Rijistar WAEC", ig: "Ndebanye aha WAEC", yo: "Ìforúkọsílẹ̀ WAEC" },
   "bills.utmeNoMock":    { en: "UTME (No Mock)", pidgin: "UTME (No Mock)", ha: "UTME (Babu Mock)", ig: "UTME (Enweghị Mock)", yo: "UTME (Láìsí Mock)" },
   "bills.utmeMock":      { en: "UTME with Mock", pidgin: "UTME with Mock", ha: "UTME da Mock", ig: "UTME na Mock", yo: "UTME pẹ̀lú Mock" },

@@ -22,7 +22,10 @@ const ckSrv = http.createServer((req, res) => {
   ckLog.push(`${path}#${p.RequestID ?? ""}`);
   if (path === "APIQueryV1.asp") return send(200, { status: "INVALID_REQUESTID" });
   if (path === "APIWalletBalanceV1.asp") return send(200, { WalletBalance: ckBalance });
-  if (path === "APIDatabundlePlansV2.asp") return send(200, { MOBILE_NETWORK: { MTN: [{ ID: "01", PRODUCT: [{ PRODUCT_ID: "500", PRODUCT_NAME: "500 MB - 30 days (SME)", PRODUCT_AMOUNT: "140" }] }] } });
+  if (path === "APIDatabundlePlansV2.asp") return send(200, { MOBILE_NETWORK: { MTN: [{ ID: "01", PRODUCT: [{ PRODUCT_ID: "500", PRODUCT_NAME: "500 MB - 30 days (SME)", PRODUCT_AMOUNT: "140" },
+    { PRODUCT_ID: "1000", PRODUCT_NAME: "1 GB - Weekly (SME)", PRODUCT_AMOUNT: "410" }] }] } });
+  if (path === "APIWAECPackagesV2.asp") return send(200, { EXAM_TYPE: [{ PRODUCT_CODE: "waecdirect", PRODUCT_DESCRIPTION: "WAEC Result Checker PIN", PRODUCT_AMOUNT: "5350" }] });
+  if (path === "APIWAECV1.asp" && real[path] === "ok") return send(200, { statuscode: "100", status: "ORDER_RECEIVED", orderid: "CK-WAEC", carddetails: "Serial No:CKS1, PIN: CKPIN1" });
   const mode = real[path];
   if (mode === "lowwallet") return send(200, { status: "INSUFFICIENT_BALANCE" });
   if (mode === "badnumber") return send(200, { status: "INVALID_MOBILENUMBER" });
@@ -43,7 +46,19 @@ const bgSrv = http.createServer((req, res) => {
     if (P === "/financial/wallet/balance/") return send(200, { success: true, data: { balance: 9000, user_type: "Corporate" } });
     if (P === "/vtu/data/plans/") return send(200, { success: true, data: [
       { id: 298, network: 1, plantype: "SME", size: 1, plan_volume: "GB", validity: "7days", amount: 455, plan_amount: 455, corporate_amount: 450, plan_disabled: false },
-      { id: 299, network: 1, plantype: "SME", size: 2, plan_volume: "GB", validity: "30 days", amount: 900, corporate_amount: 880, plan_disabled: true }] });
+      { id: 299, network: 1, plantype: "SME", size: 2, plan_volume: "GB", validity: "30 days", amount: 900, corporate_amount: 880, plan_disabled: true },
+      { id: 310, network: 1, plantype: "SME", size: 500, plan_volume: "MB", validity: "30 days", amount: 120, corporate_amount: 100, plan_disabled: false }] });
+    if (P === "/bills/education/services/") return send(200, { success: true, data: { services: [
+      { id: "WAEC", name: "WAEC Result Checker", type: "WAEC", regular_price: 5250, corporate_price: 5200 },
+      { id: "NECO", name: "NECO Result Checker", type: "NECO", regular_price: 2500, corporate_price: 2450 },
+      { id: "NABTEB", name: "NABTEB Result Checker", type: "NABTEB", regular_price: 1000, corporate_price: 955 }] } });
+    if (P === "/bills/result-checker/purchase/") {
+      bgLog.push(`exam:${body.exam}:${body.quantity}:pin=${body.pin_code === PIN}`);
+      if (body.pin_code !== PIN) return send(400, { success: false, message: "Invalid transaction PIN" });
+      if (bgMode === "poor") return send(402, { success: false, message: "Insufficient balance" });
+      const id = `EduT${++bgN}`;
+      return send(201, { success: true, data: { transaction_id: id, status: "successful", exam_type: body.exam, quantity: 1, unit_price: 5200, total_amount: 5200, pins: [`${body.exam}-PIN-${bgN}`] } });
+    }
     if (P === "/vtu/airtime/purchase/" || P === "/vtu/data/purchase/") {
       const svc = P.includes("airtime") ? "airtime" : "data";
       bgLog.push(`buy:${svc}:${body.phone_number}:${body.amount ?? body.plan}:pin=${body.pin === PIN}`);
@@ -210,7 +225,7 @@ ok(r?.status === "FAILED" && bgLog.some((x) => x.startsWith("requery:")), "verif
 console.log("data…");
 reset({ ckBalance: "900" }); await fresh();
 r = await call({ action: "data-plans", network: "MTN" });
-ok(r?._provider === "bigisub" && r?.plans?.length === 1 && r.plans[0].plan_id === "bg:298" && r.plans[0].plan_amount === 455 && r.plans[0].cost_amount === 450,
+ok(r?._provider === "bigisub" && !r.plans.some((p) => p.plan_id === "bg:299") && r.plans.find((p) => p.plan_id === "bg:298")?.plan_amount === 455 && r.plans.find((p) => p.plan_id === "bg:298")?.cost_amount === 450,
   "ClubKonnect wallet under ₦1,500 → Bigisub's plans (disabled ones out), sold at its public price, our cost its corporate price", J(r));
 reset({ ckBalance: "900" }); rid = ref();
 r = await call({ action: "data", phone: PHONE, network: "MTN", planId: "bg:298", requestId: rid });
@@ -219,12 +234,45 @@ ok(r?.status === "SUCCESS" && r?.provider === "bigisub" && bgLog.includes(`buy:d
 ok(costs.some((c) => c.p_provider === "bigisub" || J(c).includes("bigisub")) || costs.length >= 1, "data cost recorded for the finance ledger", J(costs));
 reset({ ckBalance: "500000" }); await fresh();
 r = await call({ action: "data-plans", network: "MTN" });
-ok(r?._provider !== "bigisub" && r?.plans?.some((p) => p.plan_id === "500"), "ClubKonnect wallet fine → ClubKonnect's plans as before", J(r));
+ok(r?._provider !== "bigisub" && r?.plans?.some((p) => p.plan_id === "1000"), "ClubKonnect wallet fine → ClubKonnect's list (with cheaper Bigisub plans swapped in, checked below)", J(r));
 r = await call({ action: "bill-preflight", cat: "airtime", network: "MTN", amount: 100 });
 ok(r?.ok === true, "preflight: airtime open", J(r));
 reset({ ckBalance: "50" }); await fresh();
 r = await call({ action: "bill-preflight", cat: "airtime", network: "MTN", amount: 100 });
 ok(r?.ok === true && r?.provider === "bigisub", "preflight: ClubKonnect wallet can't cover it → still open, Bigisub will take it", J(r));
+
+console.log("cheapest provider per data plan…");
+reset({ ckBalance: "500000" }); await fresh();
+r = await call({ action: "data-plans", network: "MTN" });
+const p500 = r?.plans?.find((p) => p.plan_id === "bg:310"), p1g = r?.plans?.find((p) => p.plan_id === "1000");
+ok(!!p500 && p500.plan_amount === 140 && p500.cost_amount === 100 && p500.replaces === "500" && !r.plans.some((p) => p.plan_id === "500"),
+  "500MB/30 days: Bigisub ₦100 < ClubKonnect ₦140 → Bigisub's plan shown at the SAME customer price (₦140)", J(r?.plans));
+ok(!!p1g && !r.plans.some((p) => p.plan_id === "bg:298"), "1GB weekly: Bigisub isn't ₦5+ cheaper → ClubKonnect's plan stays", J(r?.plans));
+r = await call({ action: "bill-preflight", cat: "data", network: "MTN", amount: 140, planId: "bg:310" });
+ok(r?.ok === true && r?.provider === "bigisub", "preflight for a Bigisub plan checks Bigisub's wallet", J(r));
+
+console.log("exam PINs…");
+reset(); await fresh();
+r = await call({ action: "exam-price", exam: "waec", examType: "waecdirect" });
+ok(r?.amount === 5350 && r?.provider === "bigisub", "WAEC price: we keep charging ClubKonnect's ₦5,350 while Bigisub sells it to us for ₦5,200", J(r));
+r = await call({ action: "exam-price", exam: "waec", examType: "neco" });
+ok(r?.amount === 2500 && r?.provider === "bigisub", "NECO price from Bigisub (₦2,500)", J(r));
+reset({ real: { "APIWAECV1.asp": "ok" } }); rid = ref();
+r = await call({ action: "waec", examType: "waecdirect", phone: PHONE, requestId: rid });
+ok(r?.status === "SUCCESS" && r?.provider === "bigisub" && /PIN: WAEC-PIN-/.test(r?.cardDetails || "") && !ckLog.some((x) => x.startsWith("APIWAECV1")),
+  "WAEC result checker bought on Bigisub first, PIN on the receipt, ClubKonnect not used", J([r, bgLog, ckLog]));
+reset({ real: { "APIWAECV1.asp": "ok" }, bgMode: "poor" }); rid = ref();
+r = await call({ action: "waec", examType: "waecdirect", phone: PHONE, requestId: rid });
+ok(r?.status === "SUCCESS" && /CKPIN1/.test(r?.cardDetails || "") && ckLog.some((x) => x.startsWith("APIWAECV1")), "Bigisub's wallet empty → WAEC falls back to ClubKonnect", J([r, ckLog]));
+reset(); rid = ref();
+r = await call({ action: "waec", examType: "nabteb", phone: PHONE, requestId: rid });
+ok(r?.status === "SUCCESS" && /NABTEB-PIN-/.test(r?.cardDetails || "") && bgLog.includes("exam:NABTEB:1:pin=true"), "NABTEB bought on Bigisub", J([r, bgLog]));
+reset({ real: { "APIWAECV1.asp": "ok" } }); rid = ref();
+r = await call({ action: "waec", examType: "waec-registration", phone: PHONE, requestId: rid });
+ok(!bgLog.some((x) => x.startsWith("exam:")), "WAEC registration never goes to Bigisub", J([r, bgLog]));
+config = { ...BASE_CFG, bill_provider_bigisub: "false" }; await fresh(); reset(); rid = ref();
+r = await call({ action: "waec", examType: "neco", phone: PHONE, requestId: rid });
+ok(/aren't available/.test(r?.error || "") && !bgLog.length, "Bigisub switched off → NECO cleanly unavailable, nothing bought", J([r, bgLog]));
 
 console.log(fails ? `\n${fails} of ${checks} checks FAILED` : `\nall ${checks} checks passed`);
 if (fails) console.log("--- function log tail ---\n" + fnLog.slice(-4000));

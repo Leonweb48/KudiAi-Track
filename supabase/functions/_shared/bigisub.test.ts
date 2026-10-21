@@ -1,7 +1,7 @@
 // Run: deno test supabase/functions/_shared/bigisub.test.ts
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
-  bgCall, bgConfigured, bgHistoryRows, bgMessage, bgNetwork, bgStatus, bgTxnId, bgWalletHealth, classifyBgLookup, classifyBgPurchase,
+  bgCall, bgConfigured, bgExamPins, bgExamPrices, bgHistoryRows, bgMessage, bgNetwork, bgStatus, bgTxnId, bgWalletHealth, classifyBgLookup, classifyBgPurchase,
   lagosDate, lagosToMs, matchHistory, parseBgPlans, BG_UNAVAILABLE, type BgHistoryRow,
 } from "./bigisub.ts";
 
@@ -117,4 +117,24 @@ Deno.test("bgCall: sends the token header, never throws", async () => {
   assertEquals(r, { success: true, _http: 200 });
   const dead = await bgCall(() => Promise.reject(new Error("boom")), { token: "t", pin: "1" }, "GET", "/x");
   assertEquals(dead._unreachable, true);
+});
+
+Deno.test("exam PINs: the reply's pins become card details; prices from education services", () => {
+  assertEquals(bgExamPins({ success: true, data: { pins: ["WRC-1234567890"] } }), "PIN: WRC-1234567890");
+  assertEquals(bgExamPins({ success: true, data: { pins: ["A1", "B2"] } }), "PIN: A1 | PIN: B2");
+  assertEquals(bgExamPins({ success: true, data: {} }), "");
+  assertEquals(bgExamPrices({ success: true, data: { services: [
+    { id: "WAEC", name: "WAEC Result Checker", type: "WAEC", regular_price: 5250, corporate_price: 5200 },
+    { id: "NECO", name: "NECO Result Checker", type: "NECO", regular_price: 2500, corporate_price: 2450 }] } }),
+    { WAEC: { regular: 5250, corporate: 5200, name: "WAEC Result Checker" }, NECO: { regular: 2500, corporate: 2450, name: "NECO Result Checker" } });
+});
+
+Deno.test("matchHistory for an exam order: no phone, matched by kind of service + amount + time", () => {
+  const sent = Date.parse("2026-10-21T15:00:00Z");
+  const rows: BgHistoryRow[] = [
+    { tranx_id: "Edu1", unique_element: "", status: "successful", service_type: "education", date_created: "2026-10-21T16:00:20", transaction_amount: "5200.00", transaction_type: "WAEC Result Checker x1" },
+    { tranx_id: "Air9", unique_element: "08031234567", status: "successful", service_type: "airtime", date_created: "2026-10-21T16:00:30", transaction_amount: "99" },
+  ];
+  assertEquals(matchHistory(rows, { phone: "", service: "exam", sentAtMs: sent, amount: 5200 }), { kind: "found", tranxId: "Edu1", state: "delivered" });
+  assertEquals(matchHistory(rows, { phone: "", service: "exam", sentAtMs: sent, amount: 2450 }).kind, "none");
 });

@@ -187,6 +187,16 @@ Tokens, PINs, meter/phone/account numbers, names and our ClubKonnect balance mus
     to 15 minutes after sending.
   - Exactly one match means found. No match or several matches means **held** (rule 1).
   - `verify` calls it `NOT_FOUND` only when the order is still missing from the history 30 minutes after sending.
+- **Cheapest plan wins (data):** the ClubKonnect list is priced as usual, then any plan Bigisub sells with the same size
+  and the same days for at least ₦5 less (and no more than the customer price, and within Bigisub's balance) is swapped
+  for Bigisub's plan at the **same customer price** (`pickCheaperPlans` in `_shared/planMatch.ts`). The swapped plan
+  buys on Bigisub only.
+- **Exam PINs:** WAEC result checker buys on Bigisub first (₦5,200 to us vs ClubKonnect's ₦5,350). The customer price
+  stays the higher of the two. If Bigisub refuses before placing anything, the order falls back to ClubKonnect. NECO and
+  NABTEB are sold through Bigisub only; when Bigisub is off or empty they show as unavailable and nobody is charged. WAEC
+  registration and JAMB never go to Bigisub. Bigisub returns the PINs only in the purchase reply: if that reply is lost,
+  the order is found in its history but stays **pending** with an admin alert, so support can fetch the PINs.
+- **Failover must be on** (`bill_provider_failover=true`, migration 20270378) for any of this to move an order.
 - **Secrets:** every purchase needs the account's 4-digit PIN (`BIGISUB_PIN`) as well as the token (`BIGISUB_TOKEN`).
   Both are installed only by the **Bigisub keys** workflow, from repository secrets.
 

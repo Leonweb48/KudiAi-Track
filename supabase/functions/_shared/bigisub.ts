@@ -48,6 +48,28 @@ export const bgAirtimeBody = (network: number, phone: string, amount: number, pi
 export const bgDataBody = (network: number, planId: number, phone: string, pin: string) =>
   ({ network, plan: planId, phone_number: phone, pin, ported_number: false });
 
+// ── Exam result checker PINs (WAEC, NECO, NABTEB) ────────────────────────────────────────────────────────────────
+/** Our exam type codes (the app's) → Bigisub's exam code. WAEC REGISTRATION isn't sold by Bigisub. */
+export const BG_EXAMS: Readonly<Record<string, string>> = { waecdirect: "WAEC", neco: "NECO", nabteb: "NABTEB" };
+export const bgExamBody = (exam: string, pin: string, quantity: 1 | 2 | 5 = 1) => ({ exam, quantity, pin_code: pin });
+/** The PINs from an exam purchase reply, as the receipt's card details ("PIN: …"); "" when none came back. */
+export function bgExamPins(d: BgResult | null | undefined): string {
+  const pins = data(d).pins;
+  const list = (Array.isArray(pins) ? pins : []).map((x) => String(typeof x === "object" && x ? (x as Record<string, unknown>).pin ?? JSON.stringify(x) : x).trim()).filter(Boolean);
+  return list.map((p) => `PIN: ${p}`).join(" | ");
+}
+/** Bigisub's exam prices (education services): { WAEC: { regular, corporate }, … }. */
+export function bgExamPrices(d: BgResult | null | undefined): Record<string, { regular: number; corporate: number; name: string }> {
+  const list = ((data(d).services ?? []) as Record<string, unknown>[]);
+  const out: Record<string, { regular: number; corporate: number; name: string }> = {};
+  for (const s of Array.isArray(list) ? list : []) {
+    const id = String(s.id ?? s.type ?? "").toUpperCase();
+    const regular = Number(s.regular_price), corporate = Number(s.corporate_price ?? s.regular_price);
+    if (id && regular > 0) out[id] = { regular, corporate: corporate > 0 ? corporate : regular, name: String(s.name ?? id) };
+  }
+  return out;
+}
+
 const data = (d: BgResult | null | undefined) => ((d?.data ?? {}) as Record<string, unknown>);
 /** Bigisub's own id for an order (purchase reply `transaction_id`, history/status `tranx_id`). */
 export const bgTxnId = (d: BgResult | null | undefined): string =>
@@ -108,7 +130,7 @@ export function classifyBgLookup(d: BgResult | null | undefined): BgState | "not
 
 // ── Finding an order in the history when its purchase reply was lost ───────────────────────────────────────────────
 export interface BgHistoryRow { tranx_id: string; unique_element: string; status: string; service_type: string; date_created: string; transaction_amount?: string; transaction_type?: string }
-export interface BgOrderKey { phone: string; service: "airtime" | "data"; sentAtMs: number; amount?: number; planLabel?: string }
+export interface BgOrderKey { phone: string; service: "airtime" | "data" | "exam"; sentAtMs: number; amount?: number; planLabel?: string }
 export type BgFind = { kind: "found"; tranxId: string; state: BgState | null } | { kind: "none" } | { kind: "ambiguous" } | { kind: "unknown" };
 
 /** History timestamps are Africa/Lagos wall time with no zone ("2026-10-13T17:04:11"). */
@@ -126,8 +148,15 @@ export const digits = (s: string) => String(s ?? "").replace(/\D/g, "").replace(
 export function matchHistory(rows: BgHistoryRow[], key: BgOrderKey, taken: ReadonlySet<string> = new Set()): BgFind {
   const phone = digits(key.phone);
   const fits = rows.filter((r) => {
-    if (digits(r.unique_element) !== phone || taken.has(r.tranx_id)) return false;
-    if (String(r.service_type ?? "").toLowerCase() !== key.service) return false;
+    if (taken.has(r.tranx_id)) return false;
+    if (key.service === "exam") {
+      // an exam order carries no phone number: same kind of service and the same amount instead
+      if (!/edu|exam|result|checker|waec|neco|nabteb/i.test(`${r.service_type ?? ""} ${r.transaction_type ?? ""}`)) return false;
+      if (key.amount && Math.abs(Number(r.transaction_amount) - key.amount) > 1) return false;
+    } else {
+      if (digits(r.unique_element) !== phone) return false;
+      if (String(r.service_type ?? "").toLowerCase() !== key.service) return false;
+    }
     const t = lagosToMs(r.date_created);
     return Number.isFinite(t) && t >= key.sentAtMs - 60_000 && t <= key.sentAtMs + 15 * 60_000;
   });

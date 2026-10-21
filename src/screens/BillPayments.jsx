@@ -45,7 +45,7 @@ const CATS = [
   { id: "cable",          label: "Cable TV",       tileCls: "from-violet-500 to-violet-700",    g: GLASS.violet, iconCls: "bg-violet-500"  },
   { id: "electricity",    label: "Electricity",    tileCls: "from-amber-400 to-amber-600",      g: GLASS.amber, iconCls: "bg-amber-500"   },
   { id: "betting",        label: "Betting Wallet", tileCls: "from-emerald-500 to-emerald-700",  g: GLASS.emerald, iconCls: "bg-emerald-500" },
-  { id: "waec",           label: "WAEC ePin",      tileCls: "from-cyan-500 to-cyan-700",        g: GLASS.cyan, iconCls: "bg-cyan-500"    },
+  { id: "waec",           label: "Exam PINs",      tileCls: "from-cyan-500 to-cyan-700",        g: GLASS.cyan, iconCls: "bg-cyan-500"    },
   { id: "jamb",           label: "JAMB ePin",      tileCls: "from-orange-400 to-orange-600",    g: GLASS.orange, iconCls: "bg-orange-500"  },
   { id: "spectranet",     label: "Spectranet",     tileCls: "from-indigo-500 to-indigo-700",    g: GLASS.indigo, iconCls: "bg-indigo-500"  },
   { id: "smile",          label: "Smile 4G",       tileCls: "from-pink-500 to-pink-700",        g: GLASS.pink, iconCls: "bg-pink-500"    },
@@ -105,9 +105,13 @@ const BETTING_COMPANIES = [
   { code: "product-merry-bet",  name: "MerryBet"   },
 ];
 
+// Exam PINs (2026-10-21): WAEC result checker (bought on Bigisub first), WAEC registration (ClubKonnect), NECO and
+// NABTEB result checkers (Bigisub only). The server picks the provider; the price comes from "exam-price".
 const WAEC_TYPES = [
   { code: "waecdirect",       name: "WAEC Direct (Scratch Card)" },
   { code: "waec-registration", name: "WAEC Registration"         },
+  { code: "neco",             name: "NECO Result Checker"        },
+  { code: "nabteb",           name: "NABTEB Result Checker"      },
 ];
 
 const JAMB_TYPES = [
@@ -118,7 +122,7 @@ const JAMB_TYPES = [
 
 // Display names for the exam choices (the English names above go into the stored item name).
 const EXAM_TYPE_KEYS = {
-  waecdirect: "bills.waecDirect", "waec-registration": "bills.waecRegistration",
+  waecdirect: "bills.waecDirect", "waec-registration": "bills.waecRegistration", neco: "bills.necoChecker", nabteb: "bills.nabtebChecker",
   "utme-no-mock": "bills.utmeNoMock", "utme-mock": "bills.utmeMock", de: "bills.directEntry",
 };
 
@@ -2374,6 +2378,8 @@ export default function BillPayments({ store, plan, session = null, staffName = 
             network: form.network || undefined,
             denom:   form.denom || undefined,
             amount:  chargeAmount,
+            planId:  form.planId || undefined,     // a Bigisub plan ("bg:…") is checked against Bigisub's wallet
+            examType: form.examType || undefined,  // WAEC / NECO / NABTEB result checkers go through Bigisub
           },
         });
         if (pf && pf.ok === false) {
@@ -2690,7 +2696,8 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       } else if (cat === "waec") {
         const r = await ckPurchase(ck, "waec", { examType: f.examType, phone: f.phone }, ref);
         apiRef = r.reference; cardDetails = r.cardDetails || "";
-        itemName = `WAEC ${WAEC_TYPES.find(t => t.code === f.examType)?.name || f.examType}`; customerRef = f.phone;
+        { const wName = WAEC_TYPES.find(t => t.code === f.examType)?.name || f.examType; itemName = /^(WAEC|NECO|NABTEB)\b/.test(wName) ? wName : `WAEC ${wName}`; }
+        customerRef = f.phone;
         note = `Phone: ${f.phone}${cardDetails ? ` | ${cardDetails}` : ""}${apiRef ? ` | Ref: ${apiRef}` : ""}`;
 
       } else if (cat === "jamb") {

@@ -20,9 +20,10 @@ import {
   type SwitchEvent,
 } from "../_shared/billProvider.ts";
 import {
-  bgAirtimeBody, bgCall, bgConfigured, bgDataBody, bgHistoryRows, bgNetwork, bgPlanId, bgWalletHealth, classifyBgLookup, digits as bgDigits,
-  isBgPlan, lagosDate, matchHistory, parseBgPlans, type BgCreds, type BgFetch, type BgFind, type BgOrderKey, type BgResult,
+  BG_EXAMS, bgAirtimeBody, bgCall, bgConfigured, bgDataBody, bgExamBody, bgExamPins, bgExamPrices, bgHistoryRows, bgNetwork, bgPlanId, bgStatus, bgWalletHealth,
+  classifyBgLookup, digits as bgDigits, isBgPlan, lagosDate, matchHistory, parseBgPlans, type BgCreds, type BgFetch, type BgFind, type BgOrderKey, type BgResult,
 } from "../_shared/bigisub.ts";
+import { pickCheaperPlans } from "../_shared/planMatch.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -826,7 +827,7 @@ async function claimProvider(rid: string, svc: string, provider: Provider, expec
     return providers.length ? { providers, vtRequestId: r?.vt_request_id ?? null } : null;
   } catch (e) { console.warn(`[provider] claim failed for ${rid}:`, (e as Error).message); return null; }
 }
-type ClaimRow = { providers: Provider[]; vtRequestId: string | null; bgTranxId?: string | null; bgMeta?: { phone?: string; service?: string; sent_at?: string } | null };
+type ClaimRow = { providers: Provider[]; vtRequestId: string | null; bgTranxId?: string | null; bgMeta?: { phone?: string; service?: string; sent_at?: string; amount?: number | null } | null };
 async function readClaim(rid: string): Promise<ClaimRow | null | "error"> {
   try {
     const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
@@ -870,7 +871,7 @@ async function bgStore(rid: string, patch: Record<string, unknown>): Promise<voi
 async function bgFindOrder(rid: string, key: BgOrderKey): Promise<BgFind> {
   if (!bgUsable() || !Number.isFinite(key.sentAtMs)) return { kind: "unknown" };
   const qs = new URLSearchParams({
-    unique_element: bgDigits(key.phone), transaction_type: key.service,
+    ...(key.service === "exam" ? {} : { unique_element: bgDigits(key.phone), transaction_type: key.service }),
     date_from: lagosDate(key.sentAtMs - 120_000), date_to: lagosDate(key.sentAtMs + 16 * 60_000), limit: "100",
   });
   const rows = bgHistoryRows(await bgCall(bgFetch, BG, "GET", `/financial/transactions/?${qs}`, undefined, 20_000));
@@ -886,7 +887,21 @@ async function bgFindOrder(rid: string, key: BgOrderKey): Promise<BgFind> {
   }
   return matchHistory(rows, key, taken);
 }
-type BgOrder = { path: string; body: Record<string, unknown>; phone: string; service: "airtime" | "data" };
+type BgOrder = { path: string; body: Record<string, unknown>; phone: string; service: "airtime" | "data" | "exam"; amount?: number };
+
+// Bigisub's exam prices (education services), cached 10 minutes.
+let bgExamCache: { at: number; prices: ReturnType<typeof bgExamPrices> } | null = null;
+async function bgExamPriceList() {
+  if (bgExamCache && Date.now() - bgExamCache.at < 10 * 60_000) return bgExamCache.prices;
+  const prices = bgExamPrices(await bgCall(bgFetch, BG, "GET", "/bills/education/services/", undefined, 15_000));
+  if (Object.keys(prices).length) bgExamCache = { at: Date.now(), prices };
+  return prices;
+}
+/** Bigisub switched on, set up and not known down (its wallet ≥ ₦50) — it may take an order of its own. */
+async function bgReady(): Promise<boolean> {
+  if (!bgUsable() || !(await providerConfig()).bigisub) return false;
+  return (await bgHealthState()).state !== "down";
+}
 
 /**
  * Wiring for one order: the claim (keeping the STORED VTpass request_id for retries), the ClubKonnect purchase and
@@ -902,10 +917,10 @@ function providerDeps(svc: string, rid: string, ckKey: string, ckCall: () => Pro
     ...(bg && bgUsable() ? {
       bgPay: async (): Promise<BgResult> => {
         bgSentAt = Date.now();
-        await bgStore(rid, { bg_meta: { phone: bgDigits(bg.phone), service: bg.service, sent_at: new Date(bgSentAt).toISOString() } });
+        await bgStore(rid, { bg_meta: { phone: bgDigits(bg.phone), service: bg.service, amount: bg.amount ?? null, sent_at: new Date(bgSentAt).toISOString() } });
         return bgCall(bgFetch, BG, "POST", bg.path, bg.body, 60_000);
       },
-      bgFind: () => bgFindOrder(rid, { phone: bg.phone, service: bg.service, sentAtMs: bgSentAt }),
+      bgFind: () => bgFindOrder(rid, { phone: bg.phone, service: bg.service, sentAtMs: bgSentAt, amount: bg.amount }),
       bgRemember: (id: string) => bgStore(rid, { bg_tranx_id: id }),
     } : {}),
     claim: async (p, expect) => {
@@ -987,6 +1002,17 @@ const VT_REF = /^\d{12}KDT[A-Za-z0-9]*$/;
 
 /** A Bigisub outcome as the purchase answer the app and webhooks already understand (pending = PENDING_STATUS → held). */
 function bgAnswer(cat: string, out: Extract<BuyOutcome, { via: "bigisub" }>, rid: string, userId: string | null) {
+  if (out.state === "delivered" && cat === "waec") {
+    const cardDetails = bgExamPins(out.data);
+    if (!cardDetails) {
+      // Bought, but the PINs didn't come back (a lost reply found in its history): hold, and have support fetch them.
+      afterResponse(sendBillAlert({ type: "error", title: "Exam PINs to retrieve from Bigisub",
+        what: `An exam PIN order was bought on Bigisub but its PINs didn't reach us. Get them from Bigisub (transaction ${out.tranxId || "unknown"}) and send them to the customer.`,
+        hint: "Bigisub dashboard → History.", emailHint: "Bigisub dashboard → History." }, { svc: "waec", outcome: "pins-missing", detail: out.tranxId || rid }));
+      return json({ error: PENDING_STATUS, _provider: "bigisub" });
+    }
+    return json({ status: "SUCCESS", reference: out.tranxId || rid, cardDetails, message: "ORDER_COMPLETED", provider: "bigisub" });
+  }
   if (out.state === "delivered") {
     // Data: Bigisub reports what it charged us; airtime cost is left to the finance estimate.
     const charged = Number((out.data.data as Record<string, unknown> | undefined)?.amount);
@@ -1188,6 +1214,15 @@ serve(async (req) => {
       // What customers pay: the owner's selling price (Print Data: minus the print discount), not the provider price. cost_amount keeps the provider price.
       const cfg = await priceConfig();
       const priced = applyDataPrices(plans, network, cfg.selling, { print: isPrint, printDiscountPct: cfg.printPct });
+      // Cheapest provider per plan (owner, 2026-10-21): where Bigisub sells the same plan for less, show Bigisub's at the
+      // same customer price — it then buys on Bigisub ("bg:" id). Only while Bigisub is on, up and can pay for it.
+      if (!isPrint && (await bgReady())) {
+        const bgNet = bgNetwork(network);
+        const bgList = bgNet ? parseBgPlans(await bgCall(bgFetch, BG, "GET", `/vtu/data/plans/?network=${bgNet}`, undefined, 15_000), bgNet) : [];
+        const mixed = pickCheaperPlans(priced, bgList, { bgBalance: (await bgHealthState()).balance });
+        const swapped = mixed.filter((p) => "replaces" in p).length;
+        if (swapped) return json({ plans: mixed, _count: mixed.length, _sample: _sampleProduct, _bigisub: swapped });
+      }
       return json({ plans: priced, _count: priced.length, _sample: _sampleProduct });
     }
 
@@ -1705,6 +1740,23 @@ serve(async (req) => {
       const out = (status: string, extra: Record<string, unknown> = {}) => ({ status, requestId: rid, provider: "bigisub", ...extra });
       if (!bgUsable()) return out("UNKNOWN", { message: "Bigisub is not set up" });
       let id = claim?.bgTranxId ?? "";
+      if (svc === "waec" || claim?.bgMeta?.service === "exam") {
+        const meta = claim?.bgMeta;
+        const sentAtMs = Date.parse(String(meta?.sent_at ?? ""));
+        if (!Number.isFinite(sentAtMs)) return out("UNKNOWN", { message: "no Bigisub record of this order" });
+        const qs = new URLSearchParams({ date_from: lagosDate(sentAtMs - 120_000), date_to: lagosDate(sentAtMs + 16 * 60_000), limit: "100" });
+        const rows = bgHistoryRows(await bgCall(bgFetch, BG, "GET", `/financial/transactions/?${qs}`, undefined, 20_000));
+        if (!rows) return out("UNKNOWN", { message: "history unreadable" });
+        const hit = id ? rows.find((r) => r.tranx_id === id) : undefined;
+        const f: BgFind = hit ? { kind: "found", tranxId: id, state: bgStatus(hit.status) } : id ? { kind: "none" }
+          : matchHistory(rows, { phone: "", service: "exam", sentAtMs, amount: Number(meta?.amount) || undefined });
+        if (f.kind === "none") return out(Date.now() - sentAtMs > 30 * 60_000 ? "NOT_FOUND" : "PENDING", { message: "not in Bigisub's history" });
+        if (f.kind !== "found") return out(f.kind === "ambiguous" ? "PENDING" : "UNKNOWN", { message: `history ${f.kind}` });
+        if (!id) await bgStore(rid, { bg_tranx_id: f.tranxId });
+        // delivered, but the PINs only come in the purchase reply — hold; support gets them from Bigisub
+        if (f.state === "delivered") return out("PENDING", { reference: f.tranxId, message: "bought on Bigisub — PINs to be retrieved by support" });
+        return out(bgVerify(f.state), { reference: f.tranxId });
+      }
       if (!id) {
         const meta = claim?.bgMeta;
         const sentAtMs = Date.parse(String(meta?.sent_at ?? ""));
@@ -1990,6 +2042,21 @@ serve(async (req) => {
       const exam = String((body as { exam?: unknown }).exam ?? "").toLowerCase().trim();
       const examType = String((body as { examType?: unknown }).examType ?? "").trim();
       if ((exam !== "waec" && exam !== "jamb") || !examType) return json({ error: "exam (waec or jamb) and examType required" });
+      // WAEC result checker, NECO and NABTEB through Bigisub (owner, 2026-10-21): WAEC keeps the price we already charge
+      // (ClubKonnect's), so Bigisub's lower cost is our margin; NECO / NABTEB sell at Bigisub's public price.
+      if (exam === "waec" && BG_EXAMS[examType] && (await bgReady())) {
+        const bp = (await bgExamPriceList())[BG_EXAMS[examType]];
+        if (bp) {
+          if (examType === "waecdirect") {
+            const ckp = findExamProduct((await ckExamCatalogue("waec")).products, examType);
+            return json({ amount: Math.max(ckp?.amount ?? bp.regular, bp.regular), name: ckp?.name ?? bp.name, provider: "bigisub" });
+          }
+          return json({ amount: bp.regular, name: bp.name, provider: "bigisub" });
+        }
+      }
+      if (exam === "waec" && (examType === "neco" || examType === "nabteb")) {
+        return json({ error: `${examType.toUpperCase()} PINs aren't on sale right now. Please check back later.` });
+      }
       if (exam === "waec" && VT_WAEC[examType] && (await catalogueProvider("waec")) === "vtpass") {
         const w = VT_WAEC[examType];
         const hit = (await vtCatalogue(w.serviceID)).find((p) => vtPlanCode(p.plan_id) === w.variation);
@@ -2018,12 +2085,23 @@ serve(async (req) => {
       const vb = vtWaecBody(examType, phone.replace(/\D/g, ""));
       // ClubKonnect's own code for the product (it spells registration "waec-registraion", the app "waec-registration")
       const ckCode = providerExamCode((await ckExamCatalogue("waec")).products, examType);
+      // Bigisub first for the WAEC result checker (cheaper), and the only seller of NECO / NABTEB; ClubKonnect / VTpass
+      // stay the fallback for WAEC (only once Bigisub confirms it placed nothing) and the only ones for WAEC registration.
+      const bgExam = BG_EXAMS[examType];
+      const bgOk = !!bgExam && (await bgReady());
+      const bgOnly = examType === "neco" || examType === "nabteb";
+      if (bgOnly && !bgOk) return json({ error: `${examType.toUpperCase()} PINs aren't available right now. Please try again later — you have not been charged.` });
+      const base: Provider[] = vb ? await providerOrderFor("waec") : ["clubkonnect"];
+      const examOrder: Provider[] = bgOnly ? ["bigisub"] : bgOk ? ((await providerConfig()).failover ? ["bigisub", ...base] : ["bigisub"]) : base;
+      const bgCost = bgExam ? (await bgExamPriceList())[bgExam]?.corporate : undefined;
       const pd = providerDeps("waec", rid, WAEC_K,
         () => ckBuy("waec", "APIWAECV1.asp", {
           APIKey: WAEC_K, ExamType: ckCode,
           PhoneNo: phone.replace(/\D/g, ""), RequestID: rid, CallBackURL: "https://kudiai.app/",
-        }), vb);
-      const out = await buyAcrossProviders("waec", vb ? await providerOrderFor("waec") : ["clubkonnect"], pd);
+        }), vb,
+        bgExam ? { path: "/bills/result-checker/purchase/", body: bgExamBody(bgExam, BG.pin), phone: phone.replace(/\D/g, ""), service: "exam", amount: bgCost } : null);
+      const out = await buyAcrossProviders("waec", examOrder, pd);
+      if (out.via === "bigisub") return bgAnswer("waec", out, rid, callerUser?.id ?? null);
       if (out.via !== "clubkonnect") return vtAnswer("waec", out, rid, callerUser?.id ?? null, pd.vtRid());
       const data = out.data;
       if (!isOk(data)) return json({ error: (await ckFailedOrHeld(data, WAEC_K, rid)) === "hold" ? PENDING_STATUS : errMsg(data, "WAEC ePin purchase failed"), _raw: data });
@@ -2727,6 +2805,21 @@ serve(async (req) => {
       };
       const cost = Number(amount) || 0;
       if (!cat || cost <= 0) return json({ ok: false, reason: "bad_request", message: "Invalid request." });
+      // A Bigisub data plan, NECO / NABTEB, or WAEC while Bigisub sells it: Bigisub's wallet decides, not ClubKonnect's.
+      const pfPlan = String((body as { planId?: unknown }).planId ?? "");
+      const pfExam = String((body as { examType?: unknown }).examType ?? "");
+      if ((cat === "data" && isBgPlan(pfPlan)) || (cat === "waec" && BG_EXAMS[pfExam])) {
+        const h = await bgHealthState();
+        const can = (await bgReady()) && h.balance !== null && h.balance >= cost * 0.9;
+        if (can) return json({ ok: true, balance: null, provider: "bigisub", discounts: { airtime: {}, epin: {} } });
+        if (isBgPlan(pfPlan) || pfExam === "neco" || pfExam === "nabteb") {
+          if (h.balance !== null && h.balance < cost) afterResponse(sendBillAlert({ type: "warning", title: "Bigisub wallet is low",
+            what: `A ${cat} order of ₦${cost.toLocaleString("en-NG")} couldn't go through Bigisub: its wallet can't cover it. Top up the Bigisub wallet.`,
+            hint: "bigisub.ng → Fund wallet.", emailHint: "bigisub.ng → Fund wallet." }, { svc: cat, outcome: "bigisub-wallet-low", detail: "" }));
+          return json({ ok: false, reason: "wallet_low", message: "This service is temporarily unavailable. Please try again later — you have not been charged." });
+        }
+        // WAEC result checker: Bigisub can't take it → ClubKonnect's own checks below decide
+      }
 
       // Outage check: is ClubKonnect's purchase route for this service actually up? If it's crashing (as on
       // 2026-09-28) the customer would be debited, the order would fail and they'd be refunded — stop BEFORE charging

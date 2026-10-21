@@ -448,7 +448,7 @@ export const TRANSLATIONS = {
   /* Bill payment service labels (extended) */
   "bill.dataBundle":      { en:"Data Bundle",       pidgin:"Data Bundle",       ha:"Ƙungiyar Bayanai",     ig:"Ngwugwu Data",       yo:"Àkójọ Data"             },
   "bill.bettingWallet":   { en:"Betting Wallet",    pidgin:"Betting Wallet",    ha:"Akwatin Caca",         ig:"Akpa Ntụkọ",         yo:"Àpo Tẹtẹ"               },
-  "bill.waecEPin":        { en:"WAEC ePin",         pidgin:"WAEC ePin",         ha:"WAEC ePin",            ig:"WAEC ePin",          yo:"WAEC ePin"              },
+  "bill.waecEPin":        { en:"Exam PINs",         pidgin:"Exam PINs",         ha:"PIN na jarrabawa",     ig:"PIN ule",            yo:"PIN ìdánwò"             },
   "bill.jambEPin":        { en:"JAMB ePin",         pidgin:"JAMB ePin",         ha:"JAMB ePin",            ig:"JAMB ePin",          yo:"JAMB ePin"              },
   "bill.spectranet":      { en:"Spectranet",        pidgin:"Spectranet",        ha:"Spectranet",           ig:"Spectranet",         yo:"Spectranet"             },
   "bill.smile4g":         { en:"Smile 4G",          pidgin:"Smile 4G",          ha:"Smile 4G",             ig:"Smile 4G",           yo:"Smile 4G"               },
