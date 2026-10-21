@@ -3,7 +3,7 @@ import { supabase } from "../utils/supabase";
 import { fmt, fmtDate } from "../utils/helpers";
 import TransactionDetailModal from "./shared/TransactionDetailModal";
 import { buildEsusuPayoutReceipt } from "../utils/receiptConfig";
-import { useT } from "../contexts/LanguageContext";
+import { useT, tNow } from "../contexts/LanguageContext";
 
 // Owner / staff: every round of one esusu group with its payouts (ajo-portal get-esusu-history), newest first. Each payout
 // opens the shareable receipt (image / PDF / share, verifiable at kudiai.app/verify). `openPayoutId` opens that payout's
@@ -14,18 +14,20 @@ export default function EsusuPayoutHistory({ groupId, groupName, businessName, b
   const [error,   setError]   = useState("");
   const [receipt, setReceipt] = useState(null);   // { payout, roundNumber }
 
+  // Load once per group. (`t` must NOT be a dependency: useT returns a new function on every render, which made this
+  // refetch after every load and throw the result away — the history never appeared.)
   useEffect(() => {
     let live = true;
     setRounds(null); setError("");
     supabase.functions.invoke("ajo-portal", { body: { action: "get-esusu-history", group_id: groupId } })
       .then(({ data, error: e }) => {
         if (!live) return;
-        if (e || data?.error) { setError(t("ajo.rot.historyLoadFailed")); return; }
+        if (e || data?.error) { setError(tNow("ajo.rot.historyLoadFailed")); return; }
         setRounds(data?.rounds || []);
       })
-      .catch(() => { if (live) setError(t("ajo.rot.historyLoadFailed")); });
+      .catch(() => { if (live) setError(tNow("ajo.rot.historyLoadFailed")); });
     return () => { live = false; };
-  }, [groupId, t]);
+  }, [groupId]);
 
   useEffect(() => {
     if (!openPayoutId || !rounds) return;
