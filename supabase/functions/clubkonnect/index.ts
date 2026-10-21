@@ -153,12 +153,22 @@ const FAIL_PATTERNS = [
   "INVALID_KEY", "INVALID KEY", "INVALID USER", "UNAUTHORIZED",
 ];
 
+// ClubKonnect's final record of an airtime order the network never answered: status ORDER_COMPLETED but statuscode 201
+// and remark "Network Unresponsive" — nothing was delivered (2026-10-21: ₦200 MTN airtime shown as successful). A good
+// status word must not win over that code / remark.
+function ckNotDelivered(q: Record<string, unknown> | null | undefined): boolean {
+  const code = String(q?.statuscode ?? q?.StatusCode ?? "").trim();
+  const remark = String(q?.remark ?? q?.Remark ?? "").toUpperCase();
+  return code === "201" || /UNRESPONSIVE|UNSUCCESS|NOT SUCCESS|NOT DELIVERED|FAILED|DECLINED/.test(remark);
+}
+
 function isOk(data: Record<string, unknown>): boolean {
   const code = String(data?.statuscode ?? data?.StatusCode ?? "").trim();
   const stat = String(data?.status ?? data?.Status ?? "").toUpperCase().trim();
 
   // Explicit failure — override any good statuscode
   if (FAIL_PATTERNS.some(p => stat.includes(p))) return false;
+  if (ckNotDelivered(data)) return false;
 
   return code === "100" || code === "200" ||
          stat === "ORDER_RECEIVED" || stat === "ORDER_COMPLETED" ||
@@ -449,7 +459,7 @@ async function lookupOrder(apiKey: string, requestId: string): Promise<Lookup> {
 function ckSaysFailed(q: Record<string, unknown> | null | undefined): boolean {
   const stat = String(q?.status ?? q?.Status ?? q?.STATUS ?? q?.transactionstatus ?? q?.TransactionStatus ?? "").toUpperCase();
   const code = String(q?.statuscode ?? q?.StatusCode ?? "").trim();
-  return code === "899" || /REFUND|REVERS|CANCEL/.test(stat) || FAIL_PATTERNS.some((p) => stat.includes(p));
+  return code === "899" || /REFUND|REVERS|CANCEL/.test(stat) || FAIL_PATTERNS.some((p) => stat.includes(p)) || ckNotDelivered(q);
 }
 
 // A lookup ClubKonnect would not run for us — our key / account refused (INVALID_CREDENTIALS…: the key is reset whenever
@@ -1629,7 +1639,95 @@ serve(async (req) => {
           }
         }
       }
-      return json({ ...sum, items });
+      // ── Delivered re-check (2026-10-21) ────────────────────────────────────────────────────────────────────────
+      // ClubKonnect first answers ORDER_RECEIVED and the app shows success; when the network never responds its final
+      // record becomes statuscode 201 "Network Unresponsive" — nothing delivered, but nobody looked again. Airtime /
+      // data orders shown as delivered 15 min – 48 h ago (recheckHours by hand, max 168) are asked about once more
+      // (bill_delivery_rechecks remembers the answer; unclear answers are asked again on a later run):
+      //   wallet-paid and the provider now says FAILED → reverse the charge to the wallet, mark the bill failed, tell
+      //     the customer and the admins;
+      //   paid another way (cashback / card) → admins are told to refund it by hand (there's no wallet charge);
+      //   NOT_FOUND after the order was shown delivered → admins are told (never refunded on its own, rule 1).
+      const rh = Math.min(Math.max(Number((b2 as { recheckHours?: unknown }).recheckHours) || 48, 1), 168);
+      const rc = { rechecked: 0, failedLate: 0, refundedLate: 0, alertedLate: 0, recheckErrors: 0 };
+      try {
+        const { data: atts } = await db.from("bill_provider_attempts").select("request_id, service, created_at")
+          .in("service", ["airtime", "data"])
+          .lt("created_at", new Date(Date.now() - 15 * 60_000).toISOString())
+          .gt("created_at", new Date(Date.now() - rh * 3600_000).toISOString())
+          .order("created_at", { ascending: true }).limit(200);
+        const ids = (atts ?? []).map((a: { request_id: string }) => a.request_id);
+        const { data: seen } = ids.length
+          ? await db.from("bill_delivery_rechecks").select("request_id, verdict").in("request_id", ids)
+          : { data: [] };
+        const final = new Set((seen ?? []).filter((x: { verdict: string }) => ["SUCCESS", "FAILED", "NOT_FOUND"].includes(x.verdict))
+          .map((x: { request_id: string }) => x.request_id));
+        const { data: charges } = ids.length
+          ? await db.from("wallet_ledger").select("id, user_id, amount_kobo, reference, status, related_txn_id")
+              .eq("source", "bill_spend").in("reference", ids)
+          : { data: [] };
+        const chargeByRef = new Map((charges ?? []).map((c: { reference: string }) => [c.reference, c as Record<string, unknown>]));
+        let budget = 25;   // provider lookups per run
+        for (const a of (atts ?? []) as Array<{ request_id: string; service: string }>) {
+          if (final.has(a.request_id) || budget <= 0) continue;
+          const ch = chargeByRef.get(a.request_id);
+          // a pending charge belongs to the stuck-charge pass above; a reversed one is already refunded
+          if (ch && ch.status !== "completed") continue;
+          if (!ch) {
+            // paid another way: skip one the app already recorded as failed at purchase time ("PS: <ref>" on its record)
+            const { count } = await db.from("transactions").select("id", { count: "exact", head: true })
+              .eq("payment_type", "bill_payment").eq("bill_status", "failed").ilike("note", `%${a.request_id}%`);
+            if (count) continue;
+          }
+          budget--; rc.rechecked++;
+          let v: Record<string, unknown>;
+          try { v = await verifyOrder(a.service, "", a.request_id); } catch { rc.recheckErrors++; continue; }
+          const st = String(v.status ?? "UNKNOWN");
+          let act = "none";
+          if (st === "FAILED") {
+            rc.failedLate++;
+            if (ch && !dryRun) {
+              const naira = (Number(ch.amount_kobo) / 100).toLocaleString("en-NG");
+              const { error } = await db.rpc("wallet_reverse_bill", { p_ledger_id: ch.id, p_reason: "Bill not delivered by the network — refunded to wallet" });
+              if (error) { rc.recheckErrors++; act = "refund-error"; }
+              else {
+                rc.refundedLate++; act = "refunded";
+                if (ch.related_txn_id) await db.from("transactions").update({ bill_status: "failed" }).eq("id", ch.related_txn_id as string);
+                await notifyCustomer(ch.user_id as string, {
+                  type: "bill_payment_failed", title: "Bill payment refunded",
+                  body: `Your ₦${naira} ${a.service} wasn't delivered by the network, so ₦${naira} is back in your wallet.`,
+                });
+              }
+            } else if (!ch && !dryRun) act = "alert-manual";
+            if (!dryRun) {
+              await db.from("admin_notifications").insert({
+                type: "warning", category: "finance",
+                title: ch ? "Bill refunded: network did not deliver" : "Bill not delivered — refund by hand",
+                message: ch
+                  ? `A ${a.service} order shown as delivered was later failed by the network (ClubKonnect: ${String(v.message ?? "failed").slice(0, 60)}). The ₦${(Number(ch.amount_kobo) / 100).toLocaleString("en-NG")} wallet charge was refunded and the customer told. Ask ClubKonnect to reverse it on their side. Ref ${a.request_id}.`
+                  : `A ${a.service} order shown as delivered was later failed by the network (ClubKonnect: ${String(v.message ?? "failed").slice(0, 60)}). It wasn't paid from a wallet (cashback or card), so refund the customer by hand and ask ClubKonnect to reverse it. Ref ${a.request_id}.`,
+                link: "/bills", metadata: { request_id: a.request_id, service: a.service, provider_status: st },
+              });
+              rc.alertedLate++;
+            }
+          } else if (st === "NOT_FOUND" && !dryRun) {
+            act = "alert-not-found";
+            await db.from("admin_notifications").insert({
+              type: "warning", category: "finance", title: "Delivered bill not found at the provider",
+              message: `A ${a.service} order the app showed as delivered isn't found at the provider any more. Check it with ClubKonnect before refunding. Ref ${a.request_id}.`,
+              link: "/bills", metadata: { request_id: a.request_id, service: a.service, provider_status: st },
+            });
+            rc.alertedLate++;
+          }
+          if (!dryRun) {
+            await db.from("bill_delivery_rechecks").upsert({ request_id: a.request_id, service: a.service, verdict: st, action: act, checked_at: new Date().toISOString() });
+          }
+        }
+      } catch (e) {
+        console.error("[bill-charge-sweep] delivered re-check:", (e as Error).message);
+        rc.recheckErrors++;
+      }
+      return json({ ...sum, ...rc, items });
     }
 
     // ClubKonnect's side of `verify`: its lookup of one order (by RequestID, or OrderID when given). Fails safe — can't

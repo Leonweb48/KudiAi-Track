@@ -279,6 +279,14 @@ reset(); rid = ref();
 r = await call({ action: "verify", requestId: rid, service: "airtime" });
 ok(r?.status === "NOT_FOUND" && !vtLog.length, "verify of an order with no claim row → ClubKonnect only (legacy)", J([r, vtLog]));
 
+// ClubKonnect's final record when the network never answered: ORDER_COMPLETED but statuscode 201 "Network Unresponsive" (2026-10-21)
+reset({ queries: [{ status: "ORDER_COMPLETED", statuscode: "201", remark: "Network Unresponsive", orderid: "999" }] }); rid = ref();
+r = await call({ action: "verify", requestId: rid, service: "airtime" });
+ok(r?.status === "FAILED", "ORDER_COMPLETED + 201 'Network Unresponsive' → FAILED (not delivered), not SUCCESS", J(r));
+reset({ queries: [{ status: "ORDER_COMPLETED", statuscode: "200", remark: "success", orderid: "998" }] }); rid = ref();
+r = await call({ action: "verify", requestId: rid, service: "airtime" });
+ok(r?.status === "SUCCESS", "ORDER_COMPLETED + 200 'success' → still SUCCESS", J(r));
+
 // ClubKonnect says TRANSACTION_BEYOND_30_DAYS for a RequestID it never received (2026-10-20)
 reset({ queries: [{ status: "TRANSACTION_BEYOND_30_DAYS" }] }); rid = `KDT-BILL-${Date.now() - 3600_000}`;
 r = await call({ action: "verify", requestId: rid, service: "airtime" });
