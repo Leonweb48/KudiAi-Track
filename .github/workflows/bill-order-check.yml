@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       request_id:
-        description: "Our RequestID, e.g. KDT-BILL-1792484501202"
+        description: "Our RequestID(s), e.g. KDT-BILL-1792484501202 — several separated by spaces or commas"
         required: true
       service:
         description: "airtime, data, cable, electricity, waec, ..."
@@ -30,14 +30,14 @@ jobs:
           SVC: ${{ inputs.service }}
         run: |
           set -euo pipefail
-          [[ "$RID" =~ ^KDT-[A-Z]+-[0-9A-Za-z-]{6,40}$ ]] || { echo "bad request_id"; exit 1; }
           [[ "$SVC" =~ ^[a-z-]{3,20}$ ]] || { echo "bad service"; exit 1; }
           # the function compares the bearer with the service key it was deployed with (same secret as bill-charge-sweep)
-          BODY=$(jq -nc --arg r "$RID" --arg s "$SVC" '{action:"verify", requestId:$r, service:$s}')
-          curl -sS -m 90 -o out.json -w 'HTTP     %{http_code}\n' -X POST "$URL/functions/v1/clubkonnect" -H "Content-Type: application/json" -H "Authorization: Bearer $KEY" -H "apikey: $KEY" -d "$BODY" || true
-          echo "VERDICT  $(jq -r '.status // "no-status"' out.json 2>/dev/null || echo unreadable)"
-          echo "PROVIDER $(jq -r '.provider // "clubkonnect"' out.json 2>/dev/null || true)"
-          echo "MESSAGE  $(jq -r '.message // empty' out.json 2>/dev/null | head -c 60 | tr -cd 'A-Za-z0-9 _:.-')"
-          echo "HAS_REF  $(jq -r 'if (.reference // "") != "" then "yes" else "no" end' out.json 2>/dev/null || true)"
-          echo "HTTP_ERR $(jq -r '.error // empty' out.json 2>/dev/null | head -c 80 | tr -cd 'A-Za-z0-9 _:.,-')"
-          echo "KEYS     $(jq -r 'keys | join(",")' out.json 2>/dev/null | head -c 120 || echo not-json)"
+          for one in $(echo "$RID" | tr ',' ' '); do
+            [[ "$one" =~ ^KDT-[A-Z]+-[0-9A-Za-z-]{6,40}$ ]] || { echo "$one  bad request_id"; continue; }
+            BODY=$(jq -nc --arg r "$one" --arg s "$SVC" '{action:"verify", requestId:$r, service:$s}')
+            code=$(curl -sS -m 90 -o out.json -w '%{http_code}' -X POST "$URL/functions/v1/clubkonnect" -H "Content-Type: application/json" -H "Authorization: Bearer $KEY" -H "apikey: $KEY" -d "$BODY" || echo 000)
+            v=$(jq -r '.status // "no-status"' out.json 2>/dev/null || echo unreadable)
+            m=$(jq -r '.message // .error // empty' out.json 2>/dev/null | head -c 60 | tr -cd 'A-Za-z0-9 _:.,-')
+            r=$(jq -r 'if (.reference // "") != "" then "ck-order-yes" else "ck-order-no" end' out.json 2>/dev/null || true)
+            echo "CHECK $one  http=$code  verdict=$v  msg=$m  $r"
+          done
