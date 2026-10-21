@@ -41,8 +41,8 @@ jobs:
             r=$(jq -r 'if (.reference // "") != "" then "ck-order-yes" else "ck-order-no" end' out.json 2>/dev/null || true)
             echo "CHECK $one  http=$code  verdict=$v  msg=$m  $r"
             # ClubKonnect's own record of the order, masked: any 7+ digit number keeps only its last 4 digits;
-            # token / PIN / card fields are never printed.
+            # token / PIN / card fields and balances are never printed.
             jq -r '(._raw // {}) | to_entries[]
-                   | select(.key | test("token|pin|card|serial|epin"; "i") | not)
+                   | select(.key | test("token|pin|card|serial|epin|balance"; "i") | not)
                    | "  ck." + .key + "=" + ((.value | tostring) | gsub("[0-9]{3,}(?<l>[0-9]{4})"; "***\(.l)"))' out.json 2>/dev/null | head -c 900 || true
           done
