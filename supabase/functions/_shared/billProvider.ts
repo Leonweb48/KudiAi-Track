@@ -13,14 +13,22 @@
 //   3. Anything that can't be confirmed either way is HELD for confirmation (the app's existing "confirming your order"
 //      path), never refunded and never sent elsewhere.
 //   4. VTpass only ever serves customers with LIVE keys — its sandbox is play money (see vtUsable).
+//   5. Bigisub (2026-10-21) is a BACKUP for airtime and data only, switched on separately (bill_provider_bigisub). It takes
+//      no reference from us, so its own transaction id is stored on the claim row, and an order whose reply was lost is
+//      found in its history (see bigisub.ts) — or held.
 // The `verify` action uses the same claim row to know which provider(s) to ask about an order.
 
 import { isProviderCrash, PENDING_STATUS, type CkResult, type Health, type Lookup } from "./ckRoute.ts";
 import { vtCode, vtTxn, vtTxnStatus, type VtResult } from "./vtpass.ts";
+import { bgMessage, bgStatus, bgTxnId, classifyBgPurchase, type BgFind, type BgResult } from "./bigisub.ts";
 
-export type Provider = "clubkonnect" | "vtpass";
-export const PROVIDERS: readonly Provider[] = ["clubkonnect", "vtpass"];
-export const PROVIDER_LABEL: Readonly<Record<Provider, string>> = { clubkonnect: "ClubKonnect", vtpass: "VTpass" };
+export type Provider = "clubkonnect" | "vtpass" | "bigisub";
+export const PROVIDERS: readonly Provider[] = ["clubkonnect", "vtpass", "bigisub"];
+export const PROVIDER_LABEL: Readonly<Record<Provider, string>> = { clubkonnect: "ClubKonnect", vtpass: "VTpass", bigisub: "Bigisub" };
+export const isProvider = (p: unknown): p is Provider => p === "clubkonnect" || p === "vtpass" || p === "bigisub";
+
+/** Services Bigisub backs up (owner, 2026-10-21): airtime and data. */
+export const BG_SERVICES: ReadonlySet<string> = new Set(["airtime", "data"]);
 
 /**
  * Services VTpass can take. Betting, JAMB, Spectranet and printed PINs stay on ClubKonnect (not on VTpass's access
@@ -28,35 +36,44 @@ export const PROVIDER_LABEL: Readonly<Record<Provider, string>> = { clubkonnect:
  */
 export const VT_SERVICES: ReadonlySet<string> = new Set(["airtime", "data", "cable", "electricity", "waec", "smile"]);
 
-export interface ProviderConfig { primary: Provider; failover: boolean }
-export const DEFAULT_PROVIDER_CONFIG: ProviderConfig = { primary: "clubkonnect", failover: true };
+export interface ProviderConfig { primary: Provider; failover: boolean; bigisub?: boolean }
+export const DEFAULT_PROVIDER_CONFIG: ProviderConfig = { primary: "clubkonnect", failover: true, bigisub: false };
 
-/** platform_config rows → config. Anything unrecognised keeps the default (ClubKonnect, failover on). */
+/** platform_config rows → config. Anything unrecognised keeps the default (ClubKonnect, failover on, Bigisub off). */
 export function parseProviderConfig(m: Record<string, string | null | undefined>): ProviderConfig {
   const p = String(m.bill_provider ?? "").trim().toLowerCase();
   const f = String(m.bill_provider_failover ?? "").trim().toLowerCase();
   return {
     primary: p === "vtpass" ? "vtpass" : "clubkonnect",
     failover: f === "false" ? false : DEFAULT_PROVIDER_CONFIG.failover,
+    bigisub: String(m.bill_provider_bigisub ?? "").trim().toLowerCase() === "true",
   };
 }
 
 export interface ProviderState {
-  vtUsable: boolean;                    // VTpass keys present AND live (never the sandbox)
-  health: Record<Provider, Health>;     // "down" = known broken right now; "unknown" never counts against a provider
+  vtUsable: boolean;                          // VTpass keys present AND live (never the sandbox)
+  bgUsable?: boolean;                         // Bigisub token + PIN present
+  health: Partial<Record<Provider, Health>>;  // "down" = known broken right now; "unknown" never counts against a provider
 }
 
 /**
- * The providers to try for a NEW order of this service, in order. The main provider comes first unless it is known to
- * be down and the other one isn't — then the order goes straight to the other one (no point waiting for an error page).
+ * The providers to try for a NEW order of this service, in order: the main provider, then the backups (the other of
+ * ClubKonnect / VTpass, then Bigisub for airtime and data when it's switched on). When the main provider is known to be
+ * down, the order goes straight to the backups that aren't (no point waiting for an error page).
  */
 export function providerOrder(svc: string, cfg: ProviderConfig, st: ProviderState): Provider[] {
   const vtOk = st.vtUsable && VT_SERVICES.has(svc);
+  const bgOk = !!st.bgUsable && !!cfg.bigisub && BG_SERVICES.has(svc);
   const primary: Provider = cfg.primary === "vtpass" && vtOk ? "vtpass" : "clubkonnect";
-  const other: Provider | null = primary === "vtpass" ? "clubkonnect" : vtOk ? "vtpass" : null;
-  if (!other || !cfg.failover) return [primary];
-  if (st.health[primary] === "down" && st.health[other] !== "down") return [other];
-  return [primary, other];
+  const others: Provider[] = [];
+  if (primary === "vtpass") others.push("clubkonnect"); else if (vtOk) others.push("vtpass");
+  if (bgOk) others.push("bigisub");
+  if (!others.length || !cfg.failover) return [primary];
+  if (st.health[primary] === "down") {
+    const up = others.filter((p) => st.health[p] !== "down");
+    if (up.length) return up;
+  }
+  return [primary, ...others];
 }
 
 // ── How to read each provider's answer ──────────────────────────────────────────────────────────────────────────
@@ -125,6 +142,7 @@ export function vtMessage(d: VtResult | null | undefined): string {
 export type BuyOutcome =
   | { via: "clubkonnect"; data: CkResult }                                                    // handled exactly as before
   | { via: "vtpass"; state: "delivered" | "pending" | "failed"; data: VtResult; message: string }
+  | { via: "bigisub"; state: "delivered" | "pending" | "failed"; data: BgResult; message: string; tranxId: string }
   | { via: "none"; message: string };                                                         // nothing sent anywhere
 
 export type SwitchEvent =
@@ -141,6 +159,10 @@ export interface BuyDeps {
   ckLookup: () => Promise<Lookup>;        // never throws
   vtPay: () => Promise<VtResult>;         // never throws (vtCall)
   vtRequery: () => Promise<VtResult>;     // never throws
+  /** Bigisub (backup for airtime / data). Absent = the order can't go there (it's then held, never sent elsewhere). */
+  bgPay?: () => Promise<BgResult>;        // never throws (bgCall)
+  bgFind?: () => Promise<BgFind>;         // this order in Bigisub's history (for a lost reply); never throws
+  bgRemember?: (tranxId: string) => Promise<void> | void;   // store Bigisub's id on the claim row
   isOk: (d: CkResult) => boolean;
   alert: (e: SwitchEvent) => void;        // fire-and-forget
 }
@@ -194,6 +216,42 @@ async function tryVtpass(deps: BuyDeps): Promise<Attempt> {
   return { moveOn: failed, detail: detail() };
 }
 
+const bgHeld = (data: BgResult, tranxId = ""): BuyOutcome => ({ via: "bigisub", state: "pending", data, message: PENDING_STATUS, tranxId });
+
+async function tryBigisub(deps: BuyDeps): Promise<Attempt> {
+  if (!deps.bgPay) return { settled: bgHeld({ _unreachable: true, _error: "Bigisub is not set up" }) };   // claimed there earlier → hold
+  const pay = await deps.bgPay();
+  const c = classifyBgPurchase(pay);
+  const id = bgTxnId(pay);
+  if (id && (c === "delivered" || c === "pending" || c === "failed" || c === "unknown")) await deps.bgRemember?.(id);
+  if (c === "delivered") return { settled: { via: "bigisub", state: "delivered", data: pay, message: String(pay.message ?? "Purchase successful"), tranxId: id } };
+  if (c === "pending") return { settled: bgHeld(pay, id) };
+  if (c === "failed") return { settled: { via: "bigisub", state: "failed", data: pay, message: bgMessage(pay, "failed"), tranxId: id } };
+  if (c === "order") return { settled: { via: "bigisub", state: "failed", data: pay, message: bgMessage(pay, "order"), tranxId: "" } };
+  const detail = () => (pay._unreachable ? "unreachable" : typeof pay._raw === "string" ? "error page" : `HTTP ${pay._http ?? "?"} ${String(pay.message ?? "").slice(0, 60)}`);
+  if (c === "account") return { moveOn: { via: "bigisub", state: "failed", data: pay, message: UNAVAILABLE_MSG, tranxId: "" }, detail: detail() };
+
+  // No clear answer and no reference of ours: Bigisub's history is the only record of whether this order exists.
+  const f = deps.bgFind ? await deps.bgFind() : { kind: "unknown" as const };
+  if (f.kind === "found") {
+    await deps.bgRemember?.(f.tranxId);
+    if (f.state === "delivered") return { settled: { via: "bigisub", state: "delivered", data: pay, message: "Purchase successful", tranxId: f.tranxId } };
+    if (f.state === "failed") return { settled: { via: "bigisub", state: "failed", data: pay, message: bgMessage(pay, "failed"), tranxId: f.tranxId } };
+    return { settled: bgHeld(pay, f.tranxId) };
+  }
+  // Not there (yet), more than one match, or the history can't be read → hold; `verify` settles it later (rule 3).
+  return { settled: bgHeld(pay) };
+}
+
+/** A Bigisub order's state (status read / requery / history row) as a verify verdict. */
+export function bgVerify(state: ReturnType<typeof bgStatus> | "not-found" | "unknown"): VerifyState {
+  if (state === "delivered") return "SUCCESS";
+  if (state === "failed") return "FAILED";
+  if (state === "pending") return "PENDING";
+  if (state === "not-found") return "NOT_FOUND";
+  return "UNKNOWN";
+}
+
 /**
  * Buy through `order` (from providerOrder, or a single provider for a plan that belongs to one), claiming the order for
  * each provider before sending it there. See the rules at the top of this file.
@@ -214,7 +272,7 @@ export async function buyAcrossProviders(svc: string, order: Provider[], deps: B
   for (let pass = 0; pass < 2 * PROVIDERS.length; pass++) {
     const current = claimed[claimed.length - 1];
     const canMove = order.some((p) => !claimed!.includes(p));
-    const a = current === "vtpass" ? await tryVtpass(deps) : await tryClubKonnect(deps, canMove);
+    const a = current === "vtpass" ? await tryVtpass(deps) : current === "bigisub" ? await tryBigisub(deps) : await tryClubKonnect(deps, canMove);
     if ("settled" in a) return a.settled;
     deps.alert({ svc, outcome: "provider-refused", provider: current, detail: a.detail });
     const next = order.find((p) => !claimed!.includes(p));

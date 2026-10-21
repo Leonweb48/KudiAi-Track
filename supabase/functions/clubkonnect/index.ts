@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import nodemailer from "npm:nodemailer@6";
 import { bankEmail, esc, cleanSubject, naira, appLink, htmlToText, type EmailRow } from "../_shared/bankEmail.ts";
 import { parseCkAmount } from "../_shared/ckAmount.ts";
-import { networkMismatch, networkMismatchMessage } from "../_shared/app/phoneNetwork.js";
+import { detectNetwork, networkMismatch, networkMismatchMessage } from "../_shared/app/phoneNetwork.js";
 import { applyDataPrices, parseDiscountPct, parseSellingPrices, type SellingPrices } from "../_shared/dataPricing.ts";
 import { findExamProduct, parseCkExamCatalogue, providerExamCode, type ExamProduct } from "../_shared/examCatalogue.ts";
 import { checkBillGate, DEFAULT_CONFIG, PURCHASE_ACTIONS, type CouponRow, type GateConfig, type GateDeps, type GateMode } from "../_shared/billGate.ts";
@@ -15,9 +15,14 @@ import {
   vtTxnStatus, vtWaecBody, type VtCreds, type VtFetch, type VtResult,
 } from "../_shared/vtpass.ts";
 import {
-  buyAcrossProviders, classifyVt, combineVerdicts, DEFAULT_PROVIDER_CONFIG, parseProviderConfig, PROVIDER_LABEL, providerOrder, vtCostKobo, vtMessage, vtProbeVerdict, vtVerify,
-  VT_SERVICES, type BuyDeps, type BuyOutcome, type Provider, type ProviderConfig, type ProviderVerdict, type SwitchEvent,
+  BG_SERVICES, bgVerify, buyAcrossProviders, classifyVt, combineVerdicts, DEFAULT_PROVIDER_CONFIG, isProvider, parseProviderConfig, PROVIDER_LABEL, providerOrder,
+  vtCostKobo, vtMessage, vtProbeVerdict, vtVerify, VT_SERVICES, type BuyDeps, type BuyOutcome, type Provider, type ProviderConfig, type ProviderVerdict,
+  type SwitchEvent,
 } from "../_shared/billProvider.ts";
+import {
+  bgAirtimeBody, bgCall, bgConfigured, bgDataBody, bgHistoryRows, bgNetwork, bgPlanId, bgWalletHealth, classifyBgLookup, digits as bgDigits,
+  isBgPlan, lagosDate, matchHistory, parseBgPlans, type BgCreds, type BgFetch, type BgFind, type BgOrderKey, type BgResult,
+} from "../_shared/bigisub.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -47,6 +52,13 @@ const VT: VtCreds = {
   apiKey: Deno.env.get("VTPASS_API_KEY") ?? "", secretKey: Deno.env.get("VTPASS_SECRET_KEY") ?? "",
   publicKey: Deno.env.get("VTPASS_PUBLIC_KEY") ?? "", env: vtEnv(Deno.env.get("VTPASS_ENV")),
   base: Deno.env.get("VTPASS_BASE") || undefined,   // overridable for testing only — never set in prod
+};
+
+// Bigisub — the airtime / data BACKUP (see _shared/bigisub.ts, owner 2026-10-21). Token + the account's 4-digit transaction
+// PIN (workflow "Bigisub keys"); it serves orders only while platform_config.bill_provider_bigisub = "true".
+const BG: BgCreds = {
+  token: Deno.env.get("BIGISUB_TOKEN") ?? "", pin: Deno.env.get("BIGISUB_PIN") ?? "",
+  base: Deno.env.get("BIGISUB_BASE") || undefined,   // overridable for testing only — never set in prod
 };
 
 const NET_ID: Record<string, string> = {
@@ -711,13 +723,16 @@ const PREFLIGHT_ROUTE: Record<string, [string, string]> = {
 /** VTpass may serve customers only with LIVE keys — the sandbox is play money. */
 const vtUsable = () => vtConfigured(VT) && VT.env === "live";
 const vtFetch: VtFetch = (u, i) => fetch(u, i);
+/** Bigisub can serve an order once its token and PIN are set (the admin switch decides whether it does). */
+const bgUsable = () => bgConfigured(BG);
+const bgFetch: BgFetch = (u, i) => fetch(u, i);
 
 let provCfgCache: { at: number; cfg: ProviderConfig } | null = null;
 async function providerConfig(): Promise<ProviderConfig> {
   if (provCfgCache && Date.now() - provCfgCache.at < 60_000) return provCfgCache.cfg;
   try {
     const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
-    const { data, error } = await db.from("platform_config").select("key, value").in("key", ["bill_provider", "bill_provider_failover"]);
+    const { data, error } = await db.from("platform_config").select("key, value").in("key", ["bill_provider", "bill_provider_failover", "bill_provider_bigisub"]);
     if (error) throw error;
     const m: Record<string, string> = {};
     for (const r of (data ?? []) as { key: string; value: string }[]) m[r.key] = r.value;
@@ -756,13 +771,48 @@ async function ckHealth(svc: string): Promise<Health> {
   return main === "up" ? "up" : "unknown";
 }
 
+// Bigisub health from a wallet read (free): token accepted = up; refused / error page = down; an empty wallet counts as down.
+let bgHealthCache: { at: number; state: Health; balance: number | null } | null = null;
+async function bgHealthState(): Promise<{ state: Health; balance: number | null }> {
+  if (!bgUsable()) return { state: "unknown", balance: null };
+  if (bgHealthCache && Date.now() - bgHealthCache.at < 60_000) return bgHealthCache;
+  const w = bgWalletHealth(await bgCall(bgFetch, BG, "GET", "/financial/wallet/balance/", undefined, 8000));
+  const state: Health = w.health === "up" && w.balance !== null && w.balance < 50 ? "down" : w.health;
+  bgHealthCache = { at: Date.now(), state, balance: w.balance };
+  return bgHealthCache;
+}
+
+// ClubKonnect's wallet (cached a minute) — when it can't cover data orders, the data catalogue moves to Bigisub (its
+// plans buy there; a ClubKonnect plan can't move to another provider).
+let ckBalCache: { at: number; naira: number | null } | null = null;
+async function ckWalletNaira(): Promise<number | null> {
+  if (ckBalCache && Date.now() - ckBalCache.at < 60_000) return ckBalCache.naira;
+  const useKey = AIRTIME_K || DATA_K || ELECTRICITY_K || CABLETV_K || PRINT_AIRTIME_K;
+  let naira: number | null = null;
+  if (USER_ID && useKey) {
+    try {
+      const d = await ck("APIWalletBalanceV1.asp", { APIKey: useKey }, { retries: 1, timeoutMs: 12000 });
+      for (const f of ["WalletBalance", "walletbalance", "wallet_balance", "Balance", "balance", "AccountBalance", "Wallet_Balance", "WALLETBALANCE"]) {
+        const n = parseCkAmount((d as Record<string, unknown>)[f]);
+        if (n !== null) { naira = n; break; }
+      }
+    } catch { /* unknown */ }
+  }
+  ckBalCache = { at: Date.now(), naira };
+  return naira;
+}
+const DATA_TO_BIGISUB_BELOW = 1500;   // ClubKonnect wallet (₦) under which data plans come from Bigisub
+
 /** Providers to try for a NEW order of this service, in order (a retry of an existing order follows its claim instead). */
 async function providerOrderFor(svc: string): Promise<Provider[]> {
   const cfg = await providerConfig();
   const usable = vtUsable();
-  const needHealth = usable && VT_SERVICES.has(svc) && cfg.failover;
-  const [ck_, vt_]: Health[] = needHealth ? await Promise.all([ckHealth(svc), vtHealth()]) : ["unknown", "unknown"];
-  return providerOrder(svc, cfg, { vtUsable: usable, health: { clubkonnect: ck_, vtpass: vt_ } });
+  const bgOn = !!cfg.bigisub && bgUsable() && BG_SERVICES.has(svc);
+  const needHealth = cfg.failover && ((usable && VT_SERVICES.has(svc)) || bgOn);
+  const [ck_, vt_, bg_]: Health[] = needHealth
+    ? await Promise.all([ckHealth(svc), usable ? vtHealth() : Promise.resolve<Health>("unknown"), bgOn ? bgHealthState().then((h) => h.state) : Promise.resolve<Health>("unknown")])
+    : ["unknown", "unknown", "unknown"];
+  return providerOrder(svc, cfg, { vtUsable: usable, bgUsable: bgUsable(), health: { clubkonnect: ck_, vtpass: vt_, bigisub: bg_ } });
 }
 
 // The claim row (bill_provider_attempts): null when it can't be read or written.
@@ -772,21 +822,23 @@ async function claimProvider(rid: string, svc: string, provider: Provider, expec
     const { data, error } = await db.rpc("bill_provider_claim", { p_request_id: rid, p_service: svc, p_provider: provider, p_expect: expect, p_vt_request_id: vtRid });
     if (error) throw error;
     const r = data as { providers?: unknown[]; vt_request_id?: string | null } | null;
-    const providers = (r?.providers ?? []).filter((p): p is Provider => p === "clubkonnect" || p === "vtpass");
+    const providers = (r?.providers ?? []).filter(isProvider);
     return providers.length ? { providers, vtRequestId: r?.vt_request_id ?? null } : null;
   } catch (e) { console.warn(`[provider] claim failed for ${rid}:`, (e as Error).message); return null; }
 }
-async function readClaim(rid: string): Promise<{ providers: Provider[]; vtRequestId: string | null } | null | "error"> {
+type ClaimRow = { providers: Provider[]; vtRequestId: string | null; bgTranxId?: string | null; bgMeta?: { phone?: string; service?: string; sent_at?: string } | null };
+async function readClaim(rid: string): Promise<ClaimRow | null | "error"> {
   try {
     const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
-    const { data, error } = await db.from("bill_provider_attempts").select("providers, vt_request_id").eq("request_id", rid).maybeSingle();
+    const { data, error } = await db.from("bill_provider_attempts").select("*").eq("request_id", rid).maybeSingle();
     if (error) {
       if (/does not exist|schema cache|PGRST205|42P01/i.test(error.message)) return null;   // table not there yet = no claims yet
       throw error;
     }
     if (!data) return null;
-    const providers = ((data as { providers?: unknown[] }).providers ?? []).filter((p): p is Provider => p === "clubkonnect" || p === "vtpass");
-    return providers.length ? { providers, vtRequestId: (data as { vt_request_id?: string | null }).vt_request_id ?? null } : null;
+    const row = data as { providers?: unknown[]; vt_request_id?: string | null; bg_tranx_id?: string | null; bg_meta?: ClaimRow["bgMeta"] };
+    const providers = (row.providers ?? []).filter(isProvider);
+    return providers.length ? { providers, vtRequestId: row.vt_request_id ?? null, bgTranxId: row.bg_tranx_id ?? null, bgMeta: row.bg_meta ?? null } : null;
   } catch (e) { console.warn(`[provider] claim read failed for ${rid}:`, (e as Error).message); return "error"; }
 }
 
@@ -806,15 +858,56 @@ function sendSwitchAlert(e: SwitchEvent) {
   }, { svc: e.svc, outcome: e.outcome, detail: e.detail });
 }
 
+// Bigisub's id / what we sent, stored on the order's claim row (it takes no reference from us).
+async function bgStore(rid: string, patch: Record<string, unknown>): Promise<void> {
+  try {
+    const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+    const { error } = await db.from("bill_provider_attempts").update(patch).eq("request_id", rid);
+    if (error) console.warn(`[bigisub] store failed for ${rid}:`, error.message);
+  } catch (e) { console.warn(`[bigisub] store failed for ${rid}:`, (e as Error).message); }
+}
+/** This order in Bigisub's history (number + service + time), skipping ids already stored on our other orders. */
+async function bgFindOrder(rid: string, key: BgOrderKey): Promise<BgFind> {
+  if (!bgUsable() || !Number.isFinite(key.sentAtMs)) return { kind: "unknown" };
+  const qs = new URLSearchParams({
+    unique_element: bgDigits(key.phone), transaction_type: key.service,
+    date_from: lagosDate(key.sentAtMs - 120_000), date_to: lagosDate(key.sentAtMs + 16 * 60_000), limit: "100",
+  });
+  const rows = bgHistoryRows(await bgCall(bgFetch, BG, "GET", `/financial/transactions/?${qs}`, undefined, 20_000));
+  if (!rows) return { kind: "unknown" };
+  const ids = rows.map((r) => r.tranx_id).filter(Boolean);
+  const taken = new Set<string>();
+  if (ids.length) {
+    try {
+      const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+      const { data } = await db.from("bill_provider_attempts").select("request_id, bg_tranx_id").in("bg_tranx_id", ids);
+      for (const x of (data ?? []) as { request_id: string; bg_tranx_id: string }[]) if (x.request_id !== rid) taken.add(x.bg_tranx_id);
+    } catch { return { kind: "unknown" }; }
+  }
+  return matchHistory(rows, key, taken);
+}
+type BgOrder = { path: string; body: Record<string, unknown>; phone: string; service: "airtime" | "data" };
+
 /**
  * Wiring for one order: the claim (keeping the STORED VTpass request_id for retries), the ClubKonnect purchase and
- * lookup, and VTpass /pay + /requery. VTpass is refused outright unless it's live — even for an order already claimed
- * for it (then it's held, never sent to the sandbox and never elsewhere).
+ * lookup, VTpass /pay + /requery, and Bigisub (purchase, its id, its history). VTpass is refused outright unless it's
+ * live — even for an order already claimed for it (then it's held, never sent to the sandbox and never elsewhere); the
+ * same holds for Bigisub without its token and PIN.
  */
-function providerDeps(svc: string, rid: string, ckKey: string, ckCall: () => Promise<CkResult>, vtBody: Record<string, unknown> | null): BuyDeps & { vtRid: () => string } {
+function providerDeps(svc: string, rid: string, ckKey: string, ckCall: () => Promise<CkResult>, vtBody: Record<string, unknown> | null, bg: BgOrder | null = null): BuyDeps & { vtRid: () => string } {
   let vtRid = vtRequestId(rid, Date.now());
   const notLive: VtResult = { _unreachable: true, _error: "VTpass is not live" };
+  let bgSentAt = Date.now();
   return {
+    ...(bg && bgUsable() ? {
+      bgPay: async (): Promise<BgResult> => {
+        bgSentAt = Date.now();
+        await bgStore(rid, { bg_meta: { phone: bgDigits(bg.phone), service: bg.service, sent_at: new Date(bgSentAt).toISOString() } });
+        return bgCall(bgFetch, BG, "POST", bg.path, bg.body, 60_000);
+      },
+      bgFind: () => bgFindOrder(rid, { phone: bg.phone, service: bg.service, sentAtMs: bgSentAt }),
+      bgRemember: (id: string) => bgStore(rid, { bg_tranx_id: id }),
+    } : {}),
     claim: async (p, expect) => {
       const r = await claimProvider(rid, svc, p, expect, vtRid);
       if (r?.vtRequestId) vtRid = r.vtRequestId;
@@ -832,7 +925,15 @@ function providerDeps(svc: string, rid: string, ckKey: string, ckCall: () => Pro
 
 /** Where catalogues and customer checks come from right now: the provider new orders of this service go to. */
 async function catalogueProvider(svc: string): Promise<Provider> {
-  return vtUsable() ? (await providerOrderFor(svc))[0] : "clubkonnect";
+  if (!vtUsable() && !(bgUsable() && BG_SERVICES.has(svc))) return "clubkonnect";
+  const order = await providerOrderFor(svc);
+  // Data: a plan only ever buys on the provider that listed it — when ClubKonnect's wallet can't cover data orders,
+  // list Bigisub's plans instead (Bigisub must be on and up, i.e. in the order).
+  if (svc === "data" && order[0] === "clubkonnect" && order.includes("bigisub")) {
+    const bal = await ckWalletNaira();
+    if (bal !== null && bal < DATA_TO_BIGISUB_BELOW) return "bigisub";
+  }
+  return order[0] === "bigisub" && svc !== "data" && svc !== "airtime" ? "clubkonnect" : order[0];
 }
 /** VTpass's catalogue for a service in the app's plan shape (ids tagged "vt:"); [] when it can't be read. */
 async function vtCatalogue(sid: string) {
@@ -884,8 +985,21 @@ async function ckExamCatalogue(exam: "waec" | "jamb"): Promise<{ ok: boolean; pr
 // how electricity-query tells a VTpass order from a ClubKonnect one.
 const VT_REF = /^\d{12}KDT[A-Za-z0-9]*$/;
 
+/** A Bigisub outcome as the purchase answer the app and webhooks already understand (pending = PENDING_STATUS → held). */
+function bgAnswer(cat: string, out: Extract<BuyOutcome, { via: "bigisub" }>, rid: string, userId: string | null) {
+  if (out.state === "delivered") {
+    // Data: Bigisub reports what it charged us; airtime cost is left to the finance estimate.
+    const charged = Number((out.data.data as Record<string, unknown> | undefined)?.amount);
+    if (cat === "data" && Number.isFinite(charged) && charged > 0 && charged < 50_000) {
+      afterResponse(recordBillCost("data", rid, userId, out.data, async () => ({ costKobo: Math.round(charged * 100), faceKobo: Math.round(charged * 100), basis: "provider_reported", estimated: false }), { provider: "bigisub" }));
+    }
+    return json({ status: "SUCCESS", reference: out.tranxId || rid, message: "ORDER_COMPLETED", provider: "bigisub" });
+  }
+  return json({ error: out.message, _provider: "bigisub" });
+}
+
 /** A VTpass (or nothing-sent) outcome as the purchase answer the app and webhooks already understand. */
-function vtAnswer(cat: string, out: Exclude<BuyOutcome, { via: "clubkonnect" }>, rid: string, userId: string | null, vtRid = "") {
+function vtAnswer(cat: string, out: Extract<BuyOutcome, { via: "vtpass" } | { via: "none" }>, rid: string, userId: string | null, vtRid = "") {
   if (out.via === "none") return json({ error: out.message });
   if (out.state === "delivered") {
     const t = vtTxn(out.data);
@@ -922,7 +1036,7 @@ serve(async (req) => {
   // service-role key. This function is deployed --no-verify-jwt, so the gateway does NOT check anything for us:
   // these MUST be gated here (they used to be reachable by anyone on the internet with no credentials at all).
   let callerUser: { id: string } | null = null;   // set for ordinary logged-in callers; stays null for server (service-role) calls
-  const SERVICE_ONLY = new Set(["wallet-balance", "connectivity-check", "wallet-balance-alert", "health-check", "data-probe", "refresh-ck-prices", "price-list", "route-check", "vtpass-probe", "provider-status", "vtpass-sandbox-proof", "vtpass-explore", "ck-variants"]);
+  const SERVICE_ONLY = new Set(["wallet-balance", "connectivity-check", "wallet-balance-alert", "health-check", "data-probe", "refresh-ck-prices", "price-list", "route-check", "vtpass-probe", "provider-status", "vtpass-sandbox-proof", "vtpass-explore", "ck-variants", "bigisub-check", "bigisub-live-test"]);
   // Public catalogue lookups (plan lists) stay open; purchase / write actions require the service key OR a user JWT.
   const READ_ONLY = new Set(["data-plans", "cabletv-plans", "waec-packages", "jamb-packages", "exam-price"]);
   if (CRON_ACTIONS.has(action)) {
@@ -965,13 +1079,16 @@ serve(async (req) => {
       // ClubKonnect or VTpass (the admin's main provider, with failover) — see "Bill provider switch" above
       const digits = phone.replace(/\D/g, "");
       const sid = airtimeServiceId(network);
+      const bgNet = bgNetwork(network);
       const pd = providerDeps("airtime", rid, AIRTIME_K,
         () => ckBuy("airtime", "APIAirtimeV1.asp", {
           APIKey: AIRTIME_K, MobileNetwork: netId, Amount: String(amount),
           MobileNumber: digits, RequestID: rid, CallBackURL: "https://kudiai.app/",
         }),
-        sid ? vtAirtimeBody(sid, Number(amount), digits) : null);
-      const out = await buyAcrossProviders("airtime", sid ? await providerOrderFor("airtime") : ["clubkonnect"], pd);
+        sid ? vtAirtimeBody(sid, Number(amount), digits) : null,
+        bgNet ? { path: "/vtu/airtime/purchase/", body: bgAirtimeBody(bgNet, digits, Number(amount), BG.pin), phone: digits, service: "airtime" } : null);
+      const out = await buyAcrossProviders("airtime", sid || bgNet ? await providerOrderFor("airtime") : ["clubkonnect"], pd);
+      if (out.via === "bigisub") return bgAnswer("airtime", out, rid, callerUser?.id ?? null);
       if (out.via !== "clubkonnect") return vtAnswer("airtime", out, rid, callerUser?.id ?? null, pd.vtRid());
       const data = out.data;
       if (!isOk(data)) return json({ error: (await ckFailedOrHeld(data, AIRTIME_K, rid)) === "hold" ? PENDING_STATUS : errMsg(data, "Airtime purchase failed"), _raw: data });
@@ -994,6 +1111,19 @@ serve(async (req) => {
           return json({ plans: priced, _count: priced.length, _provider: "vtpass" });
         }
         console.warn(`[data-plans] VTpass catalogue empty for ${network} — showing ClubKonnect's`);   // its plans buy on ClubKonnect
+      }
+      if (!isPrint && (await catalogueProvider("data")) === "bigisub") {
+        const bgNet = bgNetwork(network);
+        const bgPlans = bgNet ? parseBgPlans(await bgCall(bgFetch, BG, "GET", `/vtu/data/plans/?network=${bgNet}`, undefined, 20_000), bgNet) : [];
+        if (bgPlans.length) {
+          const cfg = await priceConfig();
+          const retail = new Map(bgPlans.map((b) => [b.plan_id, b.retail_amount]));
+          // no owner price for a Bigisub plan → sell at Bigisub's own public price (our cost is its corporate price)
+          const priced = applyDataPrices(bgPlans, network, cfg.selling)
+            .map((p) => (p.priced ? p : { ...p, plan_amount: Math.max(p.plan_amount, retail.get(p.plan_id) ?? p.plan_amount) }));
+          return json({ plans: priced, _count: priced.length, _provider: "bigisub" });
+        }
+        console.warn(`[data-plans] Bigisub catalogue empty for ${network} — showing ClubKonnect's`);
       }
       const netId = NET_ID[network] ?? "01";
       const data = await ck("APIDatabundlePlansV2.asp", { APIKey: DATA_K, MobileNetwork: netId });
@@ -1073,15 +1203,20 @@ serve(async (req) => {
       // A plan belongs to the provider whose catalogue listed it ("vt:…" = VTpass), so the order goes there and only there.
       const digits = phone.replace(/\D/g, "");
       const vtPlan = isVtPlan(planId);
+      const bgPlan = isBgPlan(planId);   // "bg:…" = Bigisub listed it (ClubKonnect's wallet was low) — it buys there only
       const sid = dataServiceId(network);
+      const bgNet = bgNetwork(network);
       if (vtPlan && (!vtUsable() || !sid)) return json({ error: "This data plan is no longer available. Please reload the plans and try again." });
+      if (bgPlan && (!bgUsable() || !bgNet || !Number.isFinite(bgPlanId(planId)))) return json({ error: "This data plan is no longer available. Please reload the plans and try again." });
       const pd = providerDeps("data", rid, DATA_K,
         () => ckBuy("data", "APIDatabundleV1.asp", {
           APIKey: DATA_K, MobileNetwork: netId, DataPlan: planId,
           MobileNumber: digits, RequestID: rid, CallBackURL: "https://kudiai.app/",
         }),
-        vtPlan && sid ? vtDataBody(sid, vtPlanCode(planId), digits) : null);
-      const out = await buyAcrossProviders("data", vtPlan ? ["vtpass"] : ["clubkonnect"], pd);
+        vtPlan && sid ? vtDataBody(sid, vtPlanCode(planId), digits) : null,
+        bgPlan && bgNet ? { path: "/vtu/data/purchase/", body: bgDataBody(bgNet, bgPlanId(planId), digits, BG.pin), phone: digits, service: "data" } : null);
+      const out = await buyAcrossProviders("data", bgPlan ? ["bigisub"] : vtPlan ? ["vtpass"] : ["clubkonnect"], pd);
+      if (out.via === "bigisub") return bgAnswer("data", out, rid, callerUser?.id ?? null);
       if (out.via !== "clubkonnect") return vtAnswer("data", out, rid, callerUser?.id ?? null, pd.vtRid());
       const data = out.data;
       console.log(`data purchase result:`, forLog(data, 500));
@@ -1546,6 +1681,7 @@ serve(async (req) => {
       const providers: Provider[] = claimRow?.providers ?? ["clubkonnect"];
       const verdicts: ProviderVerdict[] = await Promise.all(providers.map(async (p): Promise<ProviderVerdict> => {
         if (p === "clubkonnect") { const b = await ckVerify(svc, orderId, rid); return { provider: p, state: b.status as ProviderVerdict["state"], body: b }; }
+        if (p === "bigisub") { const b = await bgVerifyOrder(svc, rid, claimRow && claimRow !== "error" ? claimRow : null); return { provider: p, state: b.status as ProviderVerdict["state"], body: b }; }
         const rq: VtResult = vtUsable()
           ? await vtCall(vtFetch, VT, "POST", "/requery", { request_id: claimRow?.vtRequestId ?? vtRequestId(rid, Date.now()) }, 30_000)
           : { _unreachable: true, _error: "VTpass is not live" };
@@ -1560,6 +1696,32 @@ serve(async (req) => {
         };
       }));
       return combineVerdicts(verdicts)!.body as Record<string, unknown>;
+    }
+
+    // Bigisub's word on one order: by its stored id (a status read; a requery while it's still processing), else found in its
+    // history by what we stored when sending. Not in the history 30 minutes after sending → NOT_FOUND (its history is the
+    // record; a pending wallet charge is then refunded by the sweep). Can't read Bigisub → UNKNOWN (held).
+    async function bgVerifyOrder(svc: string, rid: string, claim: ClaimRow | null): Promise<Record<string, unknown>> {
+      const out = (status: string, extra: Record<string, unknown> = {}) => ({ status, requestId: rid, provider: "bigisub", ...extra });
+      if (!bgUsable()) return out("UNKNOWN", { message: "Bigisub is not set up" });
+      let id = claim?.bgTranxId ?? "";
+      if (!id) {
+        const meta = claim?.bgMeta;
+        const sentAtMs = Date.parse(String(meta?.sent_at ?? ""));
+        if (!meta?.phone || !Number.isFinite(sentAtMs)) return out("UNKNOWN", { message: "no Bigisub record of this order" });
+        const f = await bgFindOrder(rid, { phone: meta.phone, service: (meta.service === "data" ? "data" : svc === "data" ? "data" : "airtime"), sentAtMs });
+        if (f.kind === "none") return out(Date.now() - sentAtMs > 30 * 60_000 ? "NOT_FOUND" : "PENDING", { message: "not in Bigisub's history" });
+        if (f.kind !== "found") return out(f.kind === "ambiguous" ? "PENDING" : "UNKNOWN", { message: `history ${f.kind}` });
+        id = f.tranxId;
+        await bgStore(rid, { bg_tranx_id: id });
+      }
+      let st = classifyBgLookup(await bgCall(bgFetch, BG, "GET", `/anubis/transactions/${encodeURIComponent(id)}/`, undefined, 20_000));
+      if (st === "pending" || st === "unknown") {
+        const rq = classifyBgLookup(await bgCall(bgFetch, BG, "POST", `/anubis/transactions/${encodeURIComponent(id)}/requery/`, {}, 30_000));
+        if (rq !== "unknown") st = rq;
+      }
+      const v = bgVerify(st);
+      return out(v, { reference: id, message: v === "SUCCESS" ? "ORDER_COMPLETED" : v.toLowerCase() });
     }
 
     // ── Stuck bill charges (pg_cron every 15 min; or by hand with the service key) ───────────────────────────────────────
@@ -2590,15 +2752,19 @@ serve(async (req) => {
         // probe paused every sale for ~36 h while ClubKonnect was taking orders. Diagnostic only now, in route-check.)
       }
       const vtDown = order.includes("vtpass") && (await vtHealth()) === "down";
-      const available = order.filter((p) => (p === "vtpass" ? !vtDown : !ckDown));
+      const bgDown = order.includes("bigisub") && (await bgHealthState()).state === "down";
+      const available = order.filter((p) => (p === "vtpass" ? !vtDown : p === "bigisub" ? !bgDown : !ckDown));
       if (!available.length) {
-        const detail = [ckDown && (order.length > 1 ? `ClubKonnect: ${ckDown}` : ckDown), vtDown && "VTpass: down"].filter(Boolean).join("; ");
+        const detail = [ckDown && (order.length > 1 ? `ClubKonnect: ${ckDown}` : ckDown), vtDown && "VTpass: down", bgDown && "Bigisub: down"].filter(Boolean).join("; ");
         afterResponse(sendRouteAlert({ svc: route?.[0] ?? cat, outcome: "blocked", detail }));
         return json({ ok: false, reason: "provider_down", message: "This service is temporarily unavailable. Please try again later — you have not been charged." });
       }
       // VTpass takes it (ClubKonnect's wallet and discounts don't apply; an empty VTpass wallet moves the order back).
       if (available[0] === "vtpass") return json({ ok: true, balance: null, provider: "vtpass", discounts: { airtime: {}, epin: {} } });
+      if (available[0] === "bigisub") return json({ ok: true, balance: null, provider: "bigisub", discounts: { airtime: {}, epin: {} } });
       const vtBackup = available.includes("vtpass");   // a ClubKonnect refusal for an empty wallet would move the order to VTpass
+      // Bigisub backs up airtime the same way; data only once its plans are what the customer sees (catalogueProvider).
+      const bgBackup = available.includes("bigisub") && (cat === "airtime" || (cat === "data" && (await catalogueProvider("data")) === "bigisub"));
 
       const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
       const { data: cfgRows } = await sb.from("platform_config").select("key, value").in("key", ["ck_discounts", "ck_discounts_updated", "ck_wallet_min_buffer"]);
@@ -2641,6 +2807,7 @@ serve(async (req) => {
           : cat === "print-data" ? "data print" : cat;
         await notifyWalletLow(balance, cost + buffer, label);
         if (vtBackup) return json({ ok: true, balance, provider: "vtpass", discounts: { airtime: disc.airtime ?? {}, epin: disc.epin ?? {} } });
+        if (bgBackup) return json({ ok: true, balance, provider: "bigisub", discounts: { airtime: {}, epin: {} } });
         return json({
           ok: false, reason: "wallet_low",
           message: "This service is temporarily unavailable. Please try again later — you have not been charged.",
@@ -2856,17 +3023,51 @@ serve(async (req) => {
     // ── Bill provider status (service-only; the admin portal's Bill provider page) ──
     // Fresh health of both providers, the switches, and where a new airtime / data order would go right now.
     // Statuses only — never keys, balances or customer data.
+    // ── Bigisub check (service-only, free): token accepted, wallet readable, plans and history readable ──────────────
+    // Yes/no answers only — never the balance, ids or numbers (CI logs are public).
+    if (action === "bigisub-check") {
+      if (!bgUsable()) return json({ configured: false, error: "BIGISUB_TOKEN / BIGISUB_PIN not set" });
+      const w = bgWalletHealth(await bgCall(bgFetch, BG, "GET", "/financial/wallet/balance/", undefined, 15_000));
+      const plans = parseBgPlans(await bgCall(bgFetch, BG, "GET", "/vtu/data/plans/?network=1", undefined, 20_000), 1);
+      const hist = bgHistoryRows(await bgCall(bgFetch, BG, "GET", `/financial/transactions/?status=successful&limit=1`, undefined, 20_000));
+      const cfg = await providerConfig();
+      return json({ configured: true, on: !!cfg.bigisub, token: w.health, walletAtLeast500: w.balance === null ? null : w.balance >= 500,
+        mtnDataPlans: plans.length, historyReadable: hist !== null });
+    }
+
+    // ── Bigisub live test (service-only): ONE small airtime (₦25–₦100) through Bigisub only, to a number set by the
+    //    workflow secret — proves token, PIN, purchase, stored id and verify end to end. Prints statuses only.
+    if (action === "bigisub-live-test") {
+      if (!bgUsable()) return json({ error: "BIGISUB_TOKEN / BIGISUB_PIN not set" });
+      const phone = String((body as { phone?: unknown }).phone ?? "").replace(/\D/g, "").replace(/^234/, "0");
+      const amount = Number((body as { amount?: unknown }).amount ?? 50);
+      const network = detectNetwork(phone);
+      const bgNet = network ? bgNetwork(network) : null;
+      if (!/^0\d{10}$/.test(phone) || !bgNet || !(amount >= 25 && amount <= 100)) return json({ error: "an 11-digit number on a known network and an amount of ₦25–₦100 are required" });
+      const testRid = `KDT-BGTEST-${Date.now()}`;
+      const pd = providerDeps("airtime", testRid, AIRTIME_K, () => Promise.reject(new Error("ClubKonnect is not used in this test")), null,
+        { path: "/vtu/airtime/purchase/", body: bgAirtimeBody(bgNet, phone, amount, BG.pin), phone, service: "airtime" });
+      const out = await buyAcrossProviders("airtime", ["bigisub"], pd);
+      const claim = await readClaim(testRid);
+      const v = await verifyOrder("airtime", "", testRid);
+      return json({
+        network, amount, via: out.via, state: out.via === "bigisub" ? out.state : null, message: out.via === "none" || out.via === "bigisub" ? out.message : null,
+        idStored: !!(claim && claim !== "error" && claim.bgTranxId), verify: v.status ?? null,
+      });
+    }
+
     if (action === "provider-status") {
-      healthCache.clear(); svcHealth = null; vtHealthCache = null; provCfgCache = null;
+      healthCache.clear(); svcHealth = null; vtHealthCache = null; provCfgCache = null; bgHealthCache = null; ckBalCache = null;
       const cfg = await providerConfig();
       const services = [...VT_SERVICES];
-      const [ckHealths, vt] = await Promise.all([Promise.all(services.map((s) => ckHealth(s))), vtHealth()]);
+      const [ckHealths, vt, bgH] = await Promise.all([Promise.all(services.map((s) => ckHealth(s))), vtHealth(), bgHealthState()]);
       const orders = await Promise.all(services.map((s) => providerOrderFor(s)));
       const rc = await routeConfig();
       return json({
         config: cfg,
         services,
         vtpass: { configured: vtConfigured(VT), env: VT.env, live: vtUsable(), health: vtConfigured(VT) ? vt : "unknown" },
+        bigisub: { configured: bgUsable(), on: !!cfg.bigisub, services: [...BG_SERVICES], health: bgH.state, walletOk: bgH.balance === null ? null : bgH.balance >= 500 },
         clubkonnect: { health: Object.fromEntries(services.map((s, i) => [s, ckHealths[i]])), healthCheckOn: rc.healthcheckOn },
         routing: Object.fromEntries(services.map((s, i) => [s, orders[i]])),
         checkedAt: new Date().toISOString(),

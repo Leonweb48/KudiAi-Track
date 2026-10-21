@@ -75,9 +75,11 @@ const VT_FIRST: Provider[] = ["vtpass", "clubkonnect"];
 // ── Config and order ─────────────────────────────────────────────────────────────────────────────────────────────
 
 Deno.test("parseProviderConfig: defaults to ClubKonnect with failover on; only exact values change it", () => {
-  assertEquals(parseProviderConfig({}), { primary: "clubkonnect", failover: true });
-  assertEquals(parseProviderConfig({ bill_provider: " VTpass ", bill_provider_failover: "false" }), { primary: "vtpass", failover: false });
-  assertEquals(parseProviderConfig({ bill_provider: "paystack", bill_provider_failover: "no" }), { primary: "clubkonnect", failover: true });
+  assertEquals(parseProviderConfig({}), { primary: "clubkonnect", failover: true, bigisub: false });
+  assertEquals(parseProviderConfig({ bill_provider: " VTpass ", bill_provider_failover: "false" }), { primary: "vtpass", failover: false, bigisub: false });
+  assertEquals(parseProviderConfig({ bill_provider: "paystack", bill_provider_failover: "no" }), { primary: "clubkonnect", failover: true, bigisub: false });
+  assertEquals(parseProviderConfig({ bill_provider_bigisub: " TRUE " }).bigisub, true);
+  assertEquals(parseProviderConfig({ bill_provider_bigisub: "yes" }).bigisub, false);
 });
 
 const st = (vtUsable: boolean, ck: ProviderState["health"]["clubkonnect"] = "up", vt: ProviderState["health"]["vtpass"] = "up"): ProviderState =>

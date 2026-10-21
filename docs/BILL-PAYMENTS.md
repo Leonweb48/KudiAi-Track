@@ -169,6 +169,27 @@ Tokens, PINs, meter/phone/account numbers, names and our ClubKonnect balance mus
 - **App code** reaches installed Android apps through the Capgo over-the-air update (`capgo-deploy.yml`). Native
   changes need a new APK.
 
+### 13. Bigisub is the backup for airtime and data (2026-10-21)
+
+- **Order of providers:** ClubKonnect first, then VTpass if it is live, then Bigisub. Only for airtime and data, and only
+  while `platform_config.bill_provider_bigisub` is `true`. It is off until the live test passes.
+- **When an order moves to Bigisub:** only after ClubKonnect confirms it placed nothing (rule 1). That means an
+  empty-wallet refusal, refused keys, or an error page whose lookup finds no order. A refusal about the number never
+  moves the order.
+- **Data:** a plan buys only on the provider that listed it. When ClubKonnect's wallet is under ₦1,500, the app lists
+  Bigisub's plans (ids `bg:…`). Our cost is Bigisub's corporate price; without an owner price we sell at Bigisub's
+  public price.
+- **Bigisub takes no reference from us and has no duplicate protection.**
+  - Its transaction id is stored on the claim row (`bill_provider_attempts.bg_tranx_id`), together with what we sent
+    (`bg_meta`). `verify` reads the order's status by that id, and requeries while it is processing; a failed requery
+    refunds Bigisub's wallet by itself.
+  - When the purchase reply is lost, the order is looked for in its history: number, service, and from 1 minute before
+    to 15 minutes after sending.
+  - Exactly one match means found. No match or several matches means **held** (rule 1).
+  - `verify` calls it `NOT_FOUND` only when the order is still missing from the history 30 minutes after sending.
+- **Secrets:** every purchase needs the account's 4-digit PIN (`BIGISUB_PIN`) as well as the token (`BIGISUB_TOKEN`).
+  Both are installed only by the **Bigisub keys** workflow, from repository secrets.
+
 ## Tools (GitHub → Actions; all free unless stated)
 
 | Workflow | What it does |
@@ -182,6 +203,8 @@ Tokens, PINs, meter/phone/account numbers, names and our ClubKonnect balance mus
 | ClubKonnect live server test | **Costs ₦50.** One real airtime order: the only proof that purchases work |
 | Bill charge sweep (by hand) | Wallet bill charges still pending after 30 min: delivered → settled, no order → refunded (dry run by default; also runs every 15 min) |
 | Client bills audit | Client-portal bills since a date, each checked with ClubKonnect (statuses only) |
+| Bill order check | One or more of our RequestIDs checked with the provider: the verdict, plus ClubKonnect's record with numbers masked |
+| Bigisub keys | Install the token and PIN, the free check, turn the backup on or off, **live-test-50 costs ₦50** |
 
 Production data is read through read-only `RAISE NOTICE` migrations (`supabase/migrations/*readout*`), following rule 11.
 
@@ -193,5 +216,6 @@ Production data is read through read-only `RAISE NOTICE` migrations (`supabase/m
 | `print-pins`, `print-pin-recovery` | Rules 1 and 11: print orders and their recovery, lookups refused for our key |
 | `electricity` | Rules 1, 2, 3 and 11: refunds, the ~23 s wait, the sweep, lookups refused for our key, no secrets in logs |
 | `route-fallback`, `provider-switch` | Rules 5, 6, 7 and 10: V1/V3 routing, ClubKonnect ⇄ VTpass, wrong-network refusals |
+| `bigisub` | Rule 13: Bigisub backs up airtime and data only when ClubKonnect placed nothing; lost replies are found in its history or held; its plans buy only there |
 | `fixed-ip-relay`, `relay-server` | Rule 8 |
 | `supabase/functions/_shared/*.test.ts` | Rule 4 and the pure logic behind the rest |

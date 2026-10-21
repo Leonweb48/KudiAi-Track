@@ -1,0 +1,110 @@
+name: Bigisub keys
+
+# Bigisub — the BACKUP bill provider for airtime and data (2026-10-21; see supabase/functions/_shared/bigisub.ts).
+#
+#   install-keys  — copies the repository secrets BIGISUB_TOKEN and BIGISUB_PIN (your Bigisub API token and 4-digit
+#                   transaction PIN) into the clubkonnect function, redeploys it and runs the free check. Bigisub stays OFF.
+#   check         — free: token accepted? wallet readable (≥ ₦500)? plans and history readable? Is the backup on?
+#   live-test-50  — buys ONE ₦50 airtime through Bigisub only, to the number in the repository secret BIGISUB_TEST_PHONE,
+#                   then verifies it. Prints statuses only.
+#   turn-on       — airtime / data orders may go to Bigisub when ClubKonnect can't take them (platform_config switch).
+#   turn-off      — stops sending new orders to Bigisub at once (orders already there are still verified).
+#   remove-keys   — deletes the two function secrets (turns it off first).
+#
+# Add the secrets in GitHub → Settings → Secrets and variables → Actions. Values are written to a 0600 file, never to a
+# command line, and never printed.
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: What to do
+        type: choice
+        options: [check, install-keys, live-test-50, turn-on, turn-off, remove-keys]
+        default: check
+
+permissions:
+  contents: read
+
+jobs:
+  bigisub:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb   # v1 (pinned)
+        with:
+          version: 2.107.0
+
+      - name: Switch off first (remove-keys)
+        if: inputs.action == 'remove-keys' || inputs.action == 'turn-off'
+        env:
+          URL: ${{ secrets.REACT_APP_SUPABASE_URL }}
+          KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -euo pipefail
+          curl -sS -m 30 -o /dev/null -w "switch off: HTTP %{http_code}\n" -X PATCH "$URL/rest/v1/platform_config?key=eq.bill_provider_bigisub" \
+            -H "apikey: $KEY" -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{"value":"false"}'
+
+      - name: Turn on
+        if: inputs.action == 'turn-on'
+        env:
+          URL: ${{ secrets.REACT_APP_SUPABASE_URL }}
+          KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -euo pipefail
+          curl -sS -m 30 -o /dev/null -w "switch on: HTTP %{http_code}\n" -X PATCH "$URL/rest/v1/platform_config?key=eq.bill_provider_bigisub" \
+            -H "apikey: $KEY" -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{"value":"true"}'
+
+      - name: Write the function secrets
+        if: inputs.action == 'install-keys' || inputs.action == 'remove-keys'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ secrets.SUPABASE_PROJECT_ID }}
+          ACTION: ${{ inputs.action }}
+          TOKEN: ${{ secrets.BIGISUB_TOKEN }}
+          PIN: ${{ secrets.BIGISUB_PIN }}
+        run: |
+          set -euo pipefail
+          if [ "$ACTION" = "remove-keys" ]; then
+            supabase secrets unset BIGISUB_TOKEN BIGISUB_PIN --project-ref "$REF" || true
+            echo "Bigisub secrets removed."
+            exit 0
+          fi
+          [ -n "$TOKEN" ] && [ -n "$PIN" ] || { echo "Set the BIGISUB_TOKEN and BIGISUB_PIN repository secrets first."; exit 1; }
+          [[ "$PIN" =~ ^[0-9]{4}$ ]] || { echo "BIGISUB_PIN must be your 4-digit Bigisub transaction PIN."; exit 1; }
+          umask 077
+          printf 'BIGISUB_TOKEN=%s\nBIGISUB_PIN=%s\n' "$TOKEN" "$PIN" > bg.env
+          supabase secrets set --env-file bg.env --project-ref "$REF"
+          rm -f bg.env
+          echo "Bigisub secrets installed (the backup stays OFF until turn-on)."
+
+      - name: Redeploy the clubkonnect function
+        if: inputs.action == 'install-keys' || inputs.action == 'remove-keys'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ secrets.SUPABASE_PROJECT_ID }}
+        run: supabase functions deploy clubkonnect --no-verify-jwt --project-ref "$REF"
+
+      - name: Check / live test
+        env:
+          URL: ${{ secrets.REACT_APP_SUPABASE_URL }}
+          KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ACTION: ${{ inputs.action }}
+          TEST_PHONE: ${{ secrets.BIGISUB_TEST_PHONE }}
+        run: |
+          set -euo pipefail
+          [ "$ACTION" = "install-keys" ] || [ "$ACTION" = "remove-keys" ] && sleep 15   # let a new deployment take traffic
+          post() { curl -sS -m 150 -X POST "$URL/functions/v1/clubkonnect" -H "Content-Type: application/json" -H "Authorization: Bearer $KEY" -H "apikey: $KEY" -d "$1" || true; }
+          if [ "$ACTION" = "live-test-50" ]; then
+            [ -n "$TEST_PHONE" ] || { echo "Set the BIGISUB_TEST_PHONE repository secret (your own number) first."; exit 1; }
+            BODY=$(jq -nc --arg p "$TEST_PHONE" '{action:"bigisub-live-test", phone:$p, amount:50}')
+            post "$BODY" > live.json
+            echo "LIVE TEST  $(jq -c '{network, amount, via, state, message, idStored, verify, error}' live.json 2>/dev/null || head -c 300 live.json)"
+            echo "(state delivered + idStored true + verify SUCCESS = Bigisub works end to end; check the phone got ₦50)"
+          fi
+          post '{"action":"bigisub-check"}' > check.json
+          echo "CHECK      $(jq -c . check.json 2>/dev/null || head -c 300 check.json)"
+          post '{"action":"provider-status"}' > status.json
+          echo "ROUTING    $(jq -c '{bigisub, airtime: .routing.airtime, data: .routing.data}' status.json 2>/dev/null || head -c 300 status.json)"
+          rm -f live.json check.json status.json
