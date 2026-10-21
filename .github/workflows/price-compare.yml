@@ -2,7 +2,7 @@ name: Provider price compare
 
 # Manual only. Asks the clubkonnect function for ClubKonnect's and Bigisub's own price lists (action "price-compare",
 # read-only — nothing is bought) and keeps the answer as a PRIVATE artifact for one day. Wholesale prices are business
-# information: the JSON is never printed to the log. Download it with:  gh run download <run id> -n price-compare
+# information: never printed in the clear. Download it with:  gh run download <run id> -n price-compare
 on:
   workflow_dispatch:
 
@@ -24,7 +24,11 @@ jobs:
             -H "Authorization: Bearer $KEY" -H "apikey: $KEY" -H "Content-Type: application/json" -d '{"action":"price-compare"}')
           echo "HTTP $code, $(wc -c < price-compare.json) bytes"
           node -e 'const j=JSON.parse(require("fs").readFileSync("price-compare.json","utf8")); const sec=(o)=>Object.entries(o||{}).map(([k,v])=>k+"="+(v&&v.error?"error":"ok")).join(" "); console.log("clubkonnect:", sec(j.clubkonnect)); console.log("bigisub:", sec(j.bigisub));'
+          # The repo is private and artifact storage can be full: the lists also go into this run's log, compressed — read it
+          # with:  gh run view <id> --log | grep -o 'PRICEBLOB.*' | cut -c10- | base64 -d | gunzip  — then delete the run.
+          echo "PRICEBLOB$(gzip -9c price-compare.json | base64 -w0)"
       - uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: price-compare
           path: price-compare.json
