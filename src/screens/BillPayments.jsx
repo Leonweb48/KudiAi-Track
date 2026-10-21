@@ -817,13 +817,14 @@ const CK_NET_ERR = /network|timeout|timed ?out|failed to fetch|failed to send a 
  */
 async function ckPurchase(clubkonnect, cat, params, ref) {
   const maxTries = cat === "electricity" ? 2 : 3;
-  let lastErr;
+  let lastErr, lastTryAt = Date.now();
   for (let i = 0; i < maxTries; i++) {
     if (i > 0) await new Promise(r => setTimeout(r, 4000 * i));
     try {
       return await clubkonnect(cat, { ...params, requestId: ref });
     } catch (e) {
       lastErr = e;
+      lastTryAt = Date.now();
       if (!CK_NET_ERR.test(e?.message || "")) throw e; // real rejection — stop
     }
   }
@@ -845,6 +846,18 @@ async function ckPurchase(clubkonnect, cat, params, ref) {
   }
   if (vr?.status === "PENDING" || vr?.status === "UNKNOWN") {
     const e = new Error("PENDING_CONFIRMATION"); e.pending = true; throw e;
+  }
+  // Airtime the provider never received: once it has been quiet for a while, ask the server to place it with the backup
+  // provider instead of failing it. The server re-checks with the provider itself before it moves anything.
+  if (cat === "airtime" && vr?.status === "NOT_FOUND") {
+    const wait = 80000 - (Date.now() - lastTryAt);
+    if (wait > 0) await new Promise(r => setTimeout(r, wait));
+    try {
+      const moved = await clubkonnect(cat, { ...params, requestId: ref, afterNoOrder: true });
+      if (moved?.status === "SUCCESS") return moved;
+    } catch (e) {
+      if (CK_NET_ERR.test(e?.message || "")) { const p = new Error("PENDING_CONFIRMATION"); p.pending = true; throw p; }
+    }
   }
   // FAILED / NOT_FOUND — genuinely did not go through
   throw lastErr || new Error(vr?.message || "Bill delivery failed");

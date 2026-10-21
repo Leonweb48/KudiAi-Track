@@ -92,7 +92,7 @@ const bgSrv = http.createServer((req, res) => {
 
 // ── fake Supabase (PostgREST) ─────────────────────────────────────────────────────────────────────────────────────
 let config = {}, alerts = [], claims = new Map(), costs = [];
-const rowOut = (rid, r) => ({ request_id: rid, providers: r.providers, vt_request_id: r.vt ?? null, bg_tranx_id: r.bg_tranx_id ?? null, bg_meta: r.bg_meta ?? null, service: r.service });
+const rowOut = (rid, r) => ({ request_id: rid, providers: r.providers, vt_request_id: r.vt ?? null, bg_tranx_id: r.bg_tranx_id ?? null, bg_meta: r.bg_meta ?? null, service: r.service, ck_last_sent_at: r.ck_last_sent_at ?? null });
 const sbSrv = http.createServer((req, res) => {
   let b = ""; req.on("data", (d) => (b += d)); req.on("end", () => {
     const u = new URL(req.url, "http://x");
@@ -109,7 +109,13 @@ const sbSrv = http.createServer((req, res) => {
     const t = /^\/rest\/v1\/(\w+)/.exec(u.pathname)?.[1];
     if (t === "bill_provider_attempts") {
       const rid = (u.searchParams.get("request_id") || "").replace(/^eq\./, "");
-      if (req.method === "PATCH") { const row = claims.get(rid); if (row) Object.assign(row, JSON.parse(b)); return send(204, null); }
+      if (req.method === "PATCH") {
+        const row = claims.get(rid);
+        const wantRows = (req.headers.prefer || "").includes("return=representation");
+        if (!row || (u.searchParams.get("bg_meta") === "is.null" && row.bg_meta != null)) return wantRows ? send(200, []) : send(204, null);
+        Object.assign(row, JSON.parse(b));
+        return wantRows ? send(200, [rowOut(rid, row)]) : send(204, null);
+      }
       const inIds = u.searchParams.get("bg_tranx_id");
       if (inIds && inIds.startsWith("in.")) {
         const ids = inIds.slice(4, -1).split(",").map((x) => x.replace(/^"|"$/g, ""));
@@ -221,6 +227,47 @@ ok(/confirm|pending|processing/i.test(r?.error || r?.message || J(r)), "Bigisub 
 bgLookupStatus = "failed";
 r = await call({ action: "verify", requestId: rid, service: "airtime" });
 ok(r?.status === "FAILED" && bgLog.some((x) => x.startsWith("requery:")), "verify: still processing → requery → failed (refunded on Bigisub's side) → FAILED", J([r, bgLog]));
+
+console.log("never bought twice on Bigisub…");
+reset({ real: { "APIAirtimeV1.asp": "lowwallet" }, bgMode: "processing" }); rid = ref();
+r = await airtime(rid);
+r = await airtime(rid);   // the app retries on the "confirming" answer
+ok(bgLog.filter((x) => x.startsWith("buy")).length === 1 && /confirm|pending/i.test(r?.error || ""), "a retry of an order Bigisub is processing is looked up, not bought again", J([r, bgLog]));
+reset({ real: { "APIAirtimeV1.asp": "lowwallet" } }); rid = ref();
+r = await airtime(rid); r = await airtime(rid);
+ok(r?.status === "SUCCESS" && bgLog.filter((x) => x.startsWith("buy")).length === 1, "a retry of an order Bigisub delivered → SUCCESS from its record, bought once", J([r, bgLog]));
+reset({ real: { "APIAirtimeV1.asp": "lowwallet" }, bgMode: "poor" }); rid = ref();
+r = await airtime(rid);
+bgMode = "ok"; r = await airtime(rid);
+ok(r?.status === "SUCCESS" && bgLog.filter((x) => x.startsWith("buy")).length === 2, "Bigisub refused (its wallet) → nothing placed, so a later retry may send it", J([r, bgLog]));
+
+console.log("ClubKonnect timed out, then confirmed no order → Bigisub (rule 14)…");
+const later = (o) => call({ action: "airtime", phone: PHONE, network: "MTN", amount: "100", requestId: o, afterNoOrder: true });
+reset(); rid = ref();
+r = await airtime(rid);   // ClubKonnect answers nothing usable and holds no order → a plain failure, claim stays with ClubKonnect
+ok(!!r?.error && J(claims.get(rid)?.providers) === J(["clubkonnect"]) && !!claims.get(rid)?.ck_last_sent_at, "the send to ClubKonnect is stamped on the order", J([r, claims.get(rid)]));
+r = await later(rid);
+ok(/confirm/i.test(r?.error || "") && !bgLog.some((x) => x.startsWith("buy")), "asked to move right after the send → held, NOT moved (ClubKonnect may still deliver)", J([r, bgLog]));
+claims.get(rid).ck_last_sent_at = new Date(Date.now() - 120_000).toISOString();
+const ckBuys = () => ckLog.filter((x) => x.startsWith("APIAirtimeV1")).length;
+const before = ckBuys();
+r = await later(rid);
+ok(r?.status === "SUCCESS" && r?.provider === "bigisub" && bgLog.filter((x) => x.startsWith("buy")).length === 1 && ckBuys() === before && ckLog.some((x) => x.startsWith("APIQueryV1")),
+  "2 minutes quiet + ClubKonnect's lookup finds no order → bought on Bigisub, not re-sent to ClubKonnect", J([r, bgLog, ckLog]));
+ok(J(claims.get(rid)?.providers) === J(["clubkonnect", "bigisub"]) && alerts.some((a) => a.title === "Bills moved to the backup provider"), "…the move is recorded and admins told", J([claims.get(rid), alerts.map((a) => a.title)]));
+r = await later(rid); const r2 = await airtime(rid);
+ok(r?.status === "SUCCESS" && r2?.status === "SUCCESS" && bgLog.filter((x) => x.startsWith("buy")).length === 1, "asking again (either way) never buys it twice", J([r, r2, bgLog]));
+reset(); rid = ref();
+r = await airtime(rid); delete claims.get(rid).ck_last_sent_at;
+r = await later(rid);
+ok(r?.error === "Airtime purchase failed. You have not been charged." && !bgLog.some((x) => x.startsWith("buy")), "no record of when ClubKonnect got it → not moved (plain failure)", J([r, bgLog]));
+r = await later(ref());
+ok(r?.error === "Airtime purchase failed. You have not been charged." && !bgLog.some((x) => x.startsWith("buy")), "an order never sent anywhere → nothing to move", J([r, bgLog]));
+config = { ...BASE_CFG, bill_provider_bigisub: "false" }; await fresh(); reset(); rid = ref();
+r = await airtime(rid); claims.get(rid).ck_last_sent_at = new Date(Date.now() - 120_000).toISOString();
+r = await later(rid);
+ok(r?.error === "Airtime purchase failed. You have not been charged." && !bgLog.some((x) => x.startsWith("buy")), "Bigisub off → not moved", J([r, bgLog]));
+config = { ...BASE_CFG, bill_provider_bigisub: "true" }; await fresh();
 
 console.log("data…");
 reset({ ckBalance: "900" }); await fresh();

@@ -163,6 +163,18 @@ export interface BuyDeps {
   bgPay?: () => Promise<BgResult>;        // never throws (bgCall)
   bgFind?: () => Promise<BgFind>;         // this order in Bigisub's history (for a lost reply); never throws
   bgRemember?: (tranxId: string) => Promise<void> | void;   // store Bigisub's id on the claim row
+  /**
+   * Was this order already sent to Bigisub (a retry)? Its state there, or null when it never was. Bigisub has no duplicate
+   * protection, so a retry is looked up, never sent again. Never throws (can't tell → "pending").
+   */
+  bgPrevious?: () => Promise<{ state: "delivered" | "failed" | "pending"; tranxId: string } | null>;
+  bgForget?: () => Promise<void> | void;   // Bigisub refused before placing anything → a later retry may send it again
+  /**
+   * Set by the server only (never from the request): ClubKonnect timed out on this order earlier and, well after the
+   * last send, its lookup confirms it holds no order — the order may go to the next provider without sending it to
+   * ClubKonnect again (rule 14).
+   */
+  ckNoOrder?: boolean;
   isOk: (d: CkResult) => boolean;
   alert: (e: SwitchEvent) => void;        // fire-and-forget
 }
@@ -176,6 +188,9 @@ const held = (data: VtResult): BuyOutcome => ({ via: "vtpass", state: "pending",
 // `canMove`: is there another provider this order could still go to? When there isn't, ClubKonnect's answer is handled
 // exactly as it was before the provider switch existed (no extra lookup).
 async function tryClubKonnect(deps: BuyDeps, canMove: boolean): Promise<Attempt> {
+  if (deps.ckNoOrder && canMove) {
+    return { moveOn: { via: "clubkonnect", data: { status: "NO_ORDER_AFTER_TIMEOUT" } }, detail: "timed out; no order at ClubKonnect after the re-check" };
+  }
   const d = await deps.ck();   // throws on a network failure: the app/webhook retry the SAME order, which stays here
   const out: BuyOutcome = { via: "clubkonnect", data: d };
   if (deps.isOk(d) || d._pending || !canMove) return { settled: out };
@@ -220,8 +235,18 @@ const bgHeld = (data: BgResult, tranxId = ""): BuyOutcome => ({ via: "bigisub", 
 
 async function tryBigisub(deps: BuyDeps): Promise<Attempt> {
   if (!deps.bgPay) return { settled: bgHeld({ _unreachable: true, _error: "Bigisub is not set up" }) };   // claimed there earlier → hold
+  // A retry of an order already sent there: Bigisub's own record answers, it is never bought twice.
+  const prev = deps.bgPrevious ? await deps.bgPrevious() : null;
+  if (prev) {
+    if (prev.state === "delivered") return { settled: { via: "bigisub", state: "delivered", data: {}, message: "Purchase successful", tranxId: prev.tranxId } };
+    if (prev.state === "failed") return { settled: { via: "bigisub", state: "failed", data: {}, message: bgMessage({}, "failed"), tranxId: prev.tranxId } };
+    return { settled: bgHeld({}, prev.tranxId) };
+  }
   const pay = await deps.bgPay();
+  if (pay._alreadySent) return { settled: bgHeld(pay) };   // another call is sending it right now
+  if (pay._notSent) return { moveOn: { via: "bigisub", state: "failed", data: pay, message: UNAVAILABLE_MSG, tranxId: "" }, detail: "not sent: the order record couldn't be written" };
   const c = classifyBgPurchase(pay);
+  if (c === "account" || c === "order") await deps.bgForget?.();   // refused before placing anything
   const id = bgTxnId(pay);
   if (id && (c === "delivered" || c === "pending" || c === "failed" || c === "unknown")) await deps.bgRemember?.(id);
   if (c === "delivered") return { settled: { via: "bigisub", state: "delivered", data: pay, message: String(pay.message ?? "Purchase successful"), tranxId: id } };

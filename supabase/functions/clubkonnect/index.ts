@@ -82,9 +82,9 @@ const reqId = () => `KDT${Date.now()}${Math.random().toString(36).slice(2, 5).to
 async function ck(
   path: string,
   params: Record<string, string>,
-  opts: { timeoutMs?: number; retries?: number } = {},
+  opts: { timeoutMs?: number; retries?: number; onSend?: () => Promise<void> } = {},
 ): Promise<Record<string, unknown>> {
-  const { timeoutMs = 45000, retries = 2 } = opts;
+  const { timeoutMs = 45000, retries = 2, onSend } = opts;
   // Never send CallBackURL. Since ~10 Oct 2026 ClubKonnect refuses every order that carries one with CALLBACK_NOT_SUPPORTED
   // (proven with free bad-network dry runs: any callback → CALLBACK_NOT_SUPPORTED, none → INVALID_MOBILENETWORK), which
   // failed every real airtime order. We never used callbacks (it pointed at the home page): orders are confirmed by lookup.
@@ -97,6 +97,7 @@ async function ck(
   let lastErr: unknown;
   for (let attempt = 0; attempt <= retries; attempt++) {
     if (attempt > 0) await new Promise(r => setTimeout(r, 1500 * attempt));
+    if (onSend) await onSend();
     const ctrl  = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
@@ -657,8 +658,10 @@ function sendRouteAlert(e: RouteAlert) {
 
 /** Every purchase goes through here: the main route, with the V3 fallback when it crashes (see _shared/ckRoute.ts). */
 function ckBuy(svc: string, path: string, params: Record<string, string>) {
+  // Airtime: every send is stamped on the order's claim row, so a later move to the backup can wait long enough (rule 14).
+  const stamp = svc === "airtime" && params.RequestID ? { onSend: () => markCkSent(params.RequestID) } : {};
   return buyWithFallback(svc, path, params, {
-    ck: (p, q) => ck(p, q), lookup: lookupOrder, config: routeConfig, isOk,
+    ck: (p, q) => ck(p, q, stamp), lookup: lookupOrder, config: routeConfig, isOk,
     alert: (e) => afterResponse(sendRouteAlert(e)),
   });
 }
@@ -827,7 +830,7 @@ async function claimProvider(rid: string, svc: string, provider: Provider, expec
     return providers.length ? { providers, vtRequestId: r?.vt_request_id ?? null } : null;
   } catch (e) { console.warn(`[provider] claim failed for ${rid}:`, (e as Error).message); return null; }
 }
-type ClaimRow = { providers: Provider[]; vtRequestId: string | null; bgTranxId?: string | null; bgMeta?: { phone?: string; service?: string; sent_at?: string; amount?: number | null } | null };
+type ClaimRow = { providers: Provider[]; vtRequestId: string | null; bgTranxId?: string | null; bgMeta?: { phone?: string; service?: string; sent_at?: string; amount?: number | null } | null; ckLastSentAt?: string | null };
 async function readClaim(rid: string): Promise<ClaimRow | null | "error"> {
   try {
     const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
@@ -837,10 +840,44 @@ async function readClaim(rid: string): Promise<ClaimRow | null | "error"> {
       throw error;
     }
     if (!data) return null;
-    const row = data as { providers?: unknown[]; vt_request_id?: string | null; bg_tranx_id?: string | null; bg_meta?: ClaimRow["bgMeta"] };
+    const row = data as { providers?: unknown[]; vt_request_id?: string | null; bg_tranx_id?: string | null; bg_meta?: ClaimRow["bgMeta"]; ck_last_sent_at?: string | null };
     const providers = (row.providers ?? []).filter(isProvider);
-    return providers.length ? { providers, vtRequestId: row.vt_request_id ?? null, bgTranxId: row.bg_tranx_id ?? null, bgMeta: row.bg_meta ?? null } : null;
+    return providers.length ? { providers, vtRequestId: row.vt_request_id ?? null, bgTranxId: row.bg_tranx_id ?? null, bgMeta: row.bg_meta ?? null, ckLastSentAt: row.ck_last_sent_at ?? null } : null;
   } catch (e) { console.warn(`[provider] claim read failed for ${rid}:`, (e as Error).message); return "error"; }
+}
+
+/** When an airtime order was last sent to ClubKonnect (each attempt). No claim row yet = nothing to stamp. */
+async function markCkSent(rid: string): Promise<void> {
+  try {
+    const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+    const { error } = await db.from("bill_provider_attempts").update({ ck_last_sent_at: new Date().toISOString() }).eq("request_id", rid);
+    if (error) console.warn(`[provider] send stamp failed for ${rid}:`, error.message);
+  } catch (e) { console.warn(`[provider] send stamp failed for ${rid}:`, (e as Error).message); }
+}
+
+// Rule 14 (2026-10-21): ClubKonnect timed out on an airtime order and the app's confirm found no order there. Asked again
+// with `afterNoOrder`, the order moves to Bigisub — but only on the SERVER's own evidence: the last send to ClubKonnect
+// (stamped by markCkSent) was at least CK_QUIET_MS ago, and ClubKonnect's lookup now says it holds no order (or failed
+// it). Anything else holds the order or keeps it where it is; the app's word alone never moves an order.
+const CK_QUIET_MS = 75_000;
+// Kept free of the app's connection words (BillPayments CK_NET_ERR), so the app takes its usual "not placed" path.
+const NOT_MOVED_MSG = "Airtime purchase failed. You have not been charged.";
+type NoOrderCheck = { kind: "move" } | { kind: "found"; reference: string } | { kind: "hold" } | { kind: "normal" } | { kind: "stay" };
+async function ckNoOrderAfterTimeout(rid: string, key: string): Promise<NoOrderCheck> {
+  const c = await readClaim(rid);
+  if (c === "error") return { kind: "hold" };
+  if (!c) return { kind: "stay" };                                              // never sent anywhere → nothing to move
+  if (c.providers[c.providers.length - 1] !== "clubkonnect") return { kind: "normal" };   // already moved → goes back there
+  if (c.providers.length !== 1) return { kind: "stay" };
+  const sent = Date.parse(String(c.ckLastSentAt ?? ""));
+  if (!Number.isFinite(sent)) return { kind: "stay" };                          // no send stamp → no evidence to move on
+  const wait = CK_QUIET_MS - (Date.now() - sent);
+  if (wait > 15_000) return { kind: "hold" };
+  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  const lk = await lookupOrder(key, rid);
+  if (lk.kind === "found-ok") return { kind: "found", reference: String(lk.q?.orderid ?? lk.q?.OrderID ?? "") };
+  if (lk.kind === "not-found" || lk.kind === "found-failed") return { kind: "move" };
+  return { kind: "hold" };
 }
 
 const SWITCH_HINT = "Admin portal → Bill provider shows both providers' health and switches the main one.";
@@ -866,6 +903,58 @@ async function bgStore(rid: string, patch: Record<string, unknown>): Promise<voi
     const { error } = await db.from("bill_provider_attempts").update(patch).eq("request_id", rid);
     if (error) console.warn(`[bigisub] store failed for ${rid}:`, error.message);
   } catch (e) { console.warn(`[bigisub] store failed for ${rid}:`, (e as Error).message); }
+}
+// Bigisub's word on one order: by its stored id (a status read; a requery while it's still processing), else found in its
+// history by what we stored when sending. Not in the history 30 minutes after sending → NOT_FOUND (its history is the
+// record; a pending wallet charge is then refunded by the sweep). Can't read Bigisub → UNKNOWN (held).
+async function bgVerifyOrder(svc: string, rid: string, claim: ClaimRow | null): Promise<Record<string, unknown>> {
+  const out = (status: string, extra: Record<string, unknown> = {}) => ({ status, requestId: rid, provider: "bigisub", ...extra });
+  if (!bgUsable()) return out("UNKNOWN", { message: "Bigisub is not set up" });
+  let id = claim?.bgTranxId ?? "";
+  if (svc === "waec" || claim?.bgMeta?.service === "exam") {
+    const meta = claim?.bgMeta;
+    const sentAtMs = Date.parse(String(meta?.sent_at ?? ""));
+    if (!Number.isFinite(sentAtMs)) return out("UNKNOWN", { message: "no Bigisub record of this order" });
+    const qs = new URLSearchParams({ date_from: lagosDate(sentAtMs - 120_000), date_to: lagosDate(sentAtMs + 16 * 60_000), limit: "100" });
+    const rows = bgHistoryRows(await bgCall(bgFetch, BG, "GET", `/financial/transactions/?${qs}`, undefined, 20_000));
+    if (!rows) return out("UNKNOWN", { message: "history unreadable" });
+    const hit = id ? rows.find((r) => r.tranx_id === id) : undefined;
+    const f: BgFind = hit ? { kind: "found", tranxId: id, state: bgStatus(hit.status) } : id ? { kind: "none" }
+      : matchHistory(rows, { phone: "", service: "exam", sentAtMs, amount: Number(meta?.amount) || undefined });
+    if (f.kind === "none") return out(Date.now() - sentAtMs > 30 * 60_000 ? "NOT_FOUND" : "PENDING", { message: "not in Bigisub's history" });
+    if (f.kind !== "found") return out(f.kind === "ambiguous" ? "PENDING" : "UNKNOWN", { message: `history ${f.kind}` });
+    if (!id) await bgStore(rid, { bg_tranx_id: f.tranxId });
+    // delivered, but the PINs only come in the purchase reply — hold; support gets them from Bigisub
+    if (f.state === "delivered") return out("PENDING", { reference: f.tranxId, message: "bought on Bigisub — PINs to be retrieved by support" });
+    return out(bgVerify(f.state), { reference: f.tranxId });
+  }
+  if (!id) {
+    const meta = claim?.bgMeta;
+    const sentAtMs = Date.parse(String(meta?.sent_at ?? ""));
+    if (!meta?.phone || !Number.isFinite(sentAtMs)) return out("UNKNOWN", { message: "no Bigisub record of this order" });
+    const f = await bgFindOrder(rid, { phone: meta.phone, service: (meta.service === "data" ? "data" : svc === "data" ? "data" : "airtime"), sentAtMs });
+    if (f.kind === "none") return out(Date.now() - sentAtMs > 30 * 60_000 ? "NOT_FOUND" : "PENDING", { message: "not in Bigisub's history" });
+    if (f.kind !== "found") return out(f.kind === "ambiguous" ? "PENDING" : "UNKNOWN", { message: `history ${f.kind}` });
+    id = f.tranxId;
+    await bgStore(rid, { bg_tranx_id: id });
+  }
+  let st = classifyBgLookup(await bgCall(bgFetch, BG, "GET", `/anubis/transactions/${encodeURIComponent(id)}/`, undefined, 20_000));
+  if (st === "pending" || st === "unknown") {
+    const rq = classifyBgLookup(await bgCall(bgFetch, BG, "POST", `/anubis/transactions/${encodeURIComponent(id)}/requery/`, {}, 30_000));
+    if (rq !== "unknown") st = rq;
+  }
+  const v = bgVerify(st);
+  return out(v, { reference: id, message: v === "SUCCESS" ? "ORDER_COMPLETED" : v.toLowerCase() });
+}
+
+/** Record what we are about to send to Bigisub — only when nothing was recorded for this order yet (atomic). */
+async function bgLock(rid: string, meta: Record<string, unknown>): Promise<"ok" | "taken" | "error"> {
+  try {
+    const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+    const { data, error } = await db.from("bill_provider_attempts").update({ bg_meta: meta }).eq("request_id", rid).is("bg_meta", null).select("request_id");
+    if (error) { console.warn(`[bigisub] record failed for ${rid}:`, error.message); return "error"; }
+    return (data ?? []).length ? "ok" : "taken";
+  } catch (e) { console.warn(`[bigisub] record failed for ${rid}:`, (e as Error).message); return "error"; }
 }
 /** This order in Bigisub's history (number + service + time), skipping ids already stored on our other orders. */
 async function bgFindOrder(rid: string, key: BgOrderKey): Promise<BgFind> {
@@ -917,11 +1006,25 @@ function providerDeps(svc: string, rid: string, ckKey: string, ckCall: () => Pro
     ...(bg && bgUsable() ? {
       bgPay: async (): Promise<BgResult> => {
         bgSentAt = Date.now();
-        await bgStore(rid, { bg_meta: { phone: bgDigits(bg.phone), service: bg.service, amount: bg.amount ?? null, sent_at: new Date(bgSentAt).toISOString() } });
+        // What we send is recorded first, and only if nothing was recorded before: one send per order, ever.
+        const lock = await bgLock(rid, { phone: bgDigits(bg.phone), service: bg.service, amount: bg.amount ?? null, sent_at: new Date(bgSentAt).toISOString() });
+        if (lock === "taken") return { _alreadySent: true };
+        if (lock === "error") return { _notSent: true };
         return bgCall(bgFetch, BG, "POST", bg.path, bg.body, 60_000);
       },
       bgFind: () => bgFindOrder(rid, { phone: bg.phone, service: bg.service, sentAtMs: bgSentAt, amount: bg.amount }),
       bgRemember: (id: string) => bgStore(rid, { bg_tranx_id: id }),
+      bgForget: () => bgStore(rid, { bg_meta: null, bg_tranx_id: null }),
+      bgPrevious: async () => {
+        const c = await readClaim(rid);
+        if (c === "error") return { state: "pending", tranxId: "" };
+        if (!c?.bgMeta && !c?.bgTranxId) return null;
+        const v = await bgVerifyOrder(svc, rid, c);
+        const id = String(v.reference ?? c.bgTranxId ?? "");
+        if (v.status === "SUCCESS") return { state: "delivered", tranxId: id };
+        if (v.status === "FAILED" || v.status === "NOT_FOUND") return { state: "failed", tranxId: id };
+        return { state: "pending", tranxId: id };
+      },
     } : {}),
     claim: async (p, expect) => {
       const r = await claimProvider(rid, svc, p, expect, vtRid);
@@ -1113,7 +1216,17 @@ serve(async (req) => {
         }),
         sid ? vtAirtimeBody(sid, Number(amount), digits) : null,
         bgNet ? { path: "/vtu/airtime/purchase/", body: bgAirtimeBody(bgNet, digits, Number(amount), BG.pin), phone: digits, service: "airtime" } : null);
-      const out = await buyAcrossProviders("airtime", sid || bgNet ? await providerOrderFor("airtime") : ["clubkonnect"], pd);
+      const airOrder: Provider[] = sid || bgNet ? await providerOrderFor("airtime") : ["clubkonnect"];
+      // Rule 14: the app's confirm found no order after ClubKonnect timed out → move it to the backup, on our own evidence.
+      if ((body as { afterNoOrder?: unknown }).afterNoOrder === true) {
+        if (!rid || !airOrder.some((p) => p !== "clubkonnect")) return json({ error: NOT_MOVED_MSG });
+        const chk = await ckNoOrderAfterTimeout(rid, AIRTIME_K);
+        if (chk.kind === "found") return json({ status: "SUCCESS", reference: chk.reference, message: "RECOVERED" });
+        if (chk.kind === "hold") return json({ error: PENDING_STATUS });
+        if (chk.kind === "stay") return json({ error: NOT_MOVED_MSG });
+        if (chk.kind === "move") pd.ckNoOrder = true;
+      }
+      const out = await buyAcrossProviders("airtime", airOrder, pd);
       if (out.via === "bigisub") return bgAnswer("airtime", out, rid, callerUser?.id ?? null);
       if (out.via !== "clubkonnect") return vtAnswer("airtime", out, rid, callerUser?.id ?? null, pd.vtRid());
       const data = out.data;
@@ -1731,49 +1844,6 @@ serve(async (req) => {
         };
       }));
       return combineVerdicts(verdicts)!.body as Record<string, unknown>;
-    }
-
-    // Bigisub's word on one order: by its stored id (a status read; a requery while it's still processing), else found in its
-    // history by what we stored when sending. Not in the history 30 minutes after sending → NOT_FOUND (its history is the
-    // record; a pending wallet charge is then refunded by the sweep). Can't read Bigisub → UNKNOWN (held).
-    async function bgVerifyOrder(svc: string, rid: string, claim: ClaimRow | null): Promise<Record<string, unknown>> {
-      const out = (status: string, extra: Record<string, unknown> = {}) => ({ status, requestId: rid, provider: "bigisub", ...extra });
-      if (!bgUsable()) return out("UNKNOWN", { message: "Bigisub is not set up" });
-      let id = claim?.bgTranxId ?? "";
-      if (svc === "waec" || claim?.bgMeta?.service === "exam") {
-        const meta = claim?.bgMeta;
-        const sentAtMs = Date.parse(String(meta?.sent_at ?? ""));
-        if (!Number.isFinite(sentAtMs)) return out("UNKNOWN", { message: "no Bigisub record of this order" });
-        const qs = new URLSearchParams({ date_from: lagosDate(sentAtMs - 120_000), date_to: lagosDate(sentAtMs + 16 * 60_000), limit: "100" });
-        const rows = bgHistoryRows(await bgCall(bgFetch, BG, "GET", `/financial/transactions/?${qs}`, undefined, 20_000));
-        if (!rows) return out("UNKNOWN", { message: "history unreadable" });
-        const hit = id ? rows.find((r) => r.tranx_id === id) : undefined;
-        const f: BgFind = hit ? { kind: "found", tranxId: id, state: bgStatus(hit.status) } : id ? { kind: "none" }
-          : matchHistory(rows, { phone: "", service: "exam", sentAtMs, amount: Number(meta?.amount) || undefined });
-        if (f.kind === "none") return out(Date.now() - sentAtMs > 30 * 60_000 ? "NOT_FOUND" : "PENDING", { message: "not in Bigisub's history" });
-        if (f.kind !== "found") return out(f.kind === "ambiguous" ? "PENDING" : "UNKNOWN", { message: `history ${f.kind}` });
-        if (!id) await bgStore(rid, { bg_tranx_id: f.tranxId });
-        // delivered, but the PINs only come in the purchase reply — hold; support gets them from Bigisub
-        if (f.state === "delivered") return out("PENDING", { reference: f.tranxId, message: "bought on Bigisub — PINs to be retrieved by support" });
-        return out(bgVerify(f.state), { reference: f.tranxId });
-      }
-      if (!id) {
-        const meta = claim?.bgMeta;
-        const sentAtMs = Date.parse(String(meta?.sent_at ?? ""));
-        if (!meta?.phone || !Number.isFinite(sentAtMs)) return out("UNKNOWN", { message: "no Bigisub record of this order" });
-        const f = await bgFindOrder(rid, { phone: meta.phone, service: (meta.service === "data" ? "data" : svc === "data" ? "data" : "airtime"), sentAtMs });
-        if (f.kind === "none") return out(Date.now() - sentAtMs > 30 * 60_000 ? "NOT_FOUND" : "PENDING", { message: "not in Bigisub's history" });
-        if (f.kind !== "found") return out(f.kind === "ambiguous" ? "PENDING" : "UNKNOWN", { message: `history ${f.kind}` });
-        id = f.tranxId;
-        await bgStore(rid, { bg_tranx_id: id });
-      }
-      let st = classifyBgLookup(await bgCall(bgFetch, BG, "GET", `/anubis/transactions/${encodeURIComponent(id)}/`, undefined, 20_000));
-      if (st === "pending" || st === "unknown") {
-        const rq = classifyBgLookup(await bgCall(bgFetch, BG, "POST", `/anubis/transactions/${encodeURIComponent(id)}/requery/`, {}, 30_000));
-        if (rq !== "unknown") st = rq;
-      }
-      const v = bgVerify(st);
-      return out(v, { reference: id, message: v === "SUCCESS" ? "ORDER_COMPLETED" : v.toLowerCase() });
     }
 
     // ── Stuck bill charges (pg_cron every 15 min; or by hand with the service key) ───────────────────────────────────────

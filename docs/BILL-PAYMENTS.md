@@ -200,6 +200,24 @@ Tokens, PINs, meter/phone/account numbers, names and our ClubKonnect balance mus
 - **Secrets:** every purchase needs the account's 4-digit PIN (`BIGISUB_PIN`) as well as the token (`BIGISUB_TOKEN`).
   Both are installed only by the **Bigisub keys** workflow, from repository secrets.
 
+### 14. Airtime that ClubKonnect timed out on moves to Bigisub (2026-10-21)
+
+- **Bigisub is never sent the same order twice.** What we send is recorded atomically before the send
+  (`bg_meta` written only while it is empty). A retry of an order already sent there gets its answer from Bigisub's
+  record (status, else history) and is never bought again. A refusal before anything was placed (our wallet, the
+  number) clears the record, so a later retry may send it.
+- **The timeout case.** ClubKonnect times out, and the app's retries and confirm find no order. The app waits until
+  80 seconds after its last try, then asks once more with `afterNoOrder: true`. The server moves the order to Bigisub
+  only on its own evidence:
+  - the last send to ClubKonnect (`bill_provider_attempts.ck_last_sent_at`, stamped on every airtime send) is at least
+    75 seconds old;
+  - ClubKonnect's lookup then says it holds no order, or that it failed it.
+- **Otherwise:**
+  - ClubKonnect has the order after all → SUCCESS;
+  - the lookup is unclear, or the send is too recent → held;
+  - no send stamp, no backup available, or never sent → a plain failure and refund, as before.
+- **Scope:** airtime only. A data plan belongs to the provider that listed it.
+
 ## Tools (GitHub → Actions; all free unless stated)
 
 | Workflow | What it does |
