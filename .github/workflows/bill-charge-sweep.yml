@@ -2,6 +2,7 @@ name: Bill charge sweep (by hand)
 
 # Runs the clubkonnect `bill-charge-sweep` by hand (it also runs on its own every 15 minutes once scheduled).
 # Wallet bill charges still pending after 30 minutes are looked up with the provider: delivered → settled;
+# airtime/data already shown as delivered are re-checked once (delivered re-check — network failed later → refunded);
 # the provider confirms no order / refused it → refunded to the wallet; unclear → left alone.
 # DRY RUN by default: reports what it would do and changes nothing. Prints date, service, the provider's answer and the
 # decision — no references, amounts or names (CI logs are public).
@@ -13,6 +14,10 @@ on:
         description: "Preview only (true) or act (false)"
         required: true
         default: "true"
+      recheck_hours:
+        description: "Delivered re-check window in hours (1-168; the 15-minute schedule uses 48)"
+        required: false
+        default: "48"
 
 permissions:
   contents: read
@@ -26,11 +31,12 @@ jobs:
           URL: ${{ secrets.REACT_APP_SUPABASE_URL }}
           KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           DRY: ${{ inputs.dry_run }}
+          RH: ${{ inputs.recheck_hours }}
         run: |
           set -uo pipefail
-          BODY=$(jq -nc --arg d "$DRY" '{action:"bill-charge-sweep", dryRun: ($d != "false")}')
+          BODY=$(jq -nc --arg d "$DRY" --arg h "${RH:-48}" '{action:"bill-charge-sweep", dryRun: ($d != "false"), recheckHours: ($h | tonumber? // 48)}')
           curl -s -m 280 -o out.json -w "HTTP %{http_code}\n" -X POST "$URL/functions/v1/clubkonnect" \
             -H "Authorization: Bearer $KEY" -H "apikey: $KEY" -H "Content-Type: application/json" -d "$BODY"
-          jq -c '{dryRun, checked, settled, refunded, waiting, alerted, errors, error}' out.json || head -c 300 out.json
+          jq -c '{dryRun, checked, settled, refunded, waiting, alerted, errors, rechecked, failedLate, refundedLate, alertedLate, recheckErrors, error}' out.json || head -c 300 out.json
           jq -r '.items[]? | "\(.at) | \(.svc) | age \(.ageMin) min | provider: \(.provider // "-") | \(.result // "-")\(if .error then " | error: " + .error else "" end)"' out.json
           rm -f out.json
