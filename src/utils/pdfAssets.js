@@ -21,18 +21,36 @@ export async function imgToBase64(url) {
   } catch { return null; }
 }
 
-export async function loadFontBase64(url) {
+// The PDF fonts, downloaded once and kept for the session (2026-10-22). Every export used to fetch both NotoSans files
+// again (1.1 MB) with a 5 s limit — on a slow line that failed, the PDF fell back to helvetica and the ₦ amounts came out
+// without their sign. The files are now subset to the characters the app prints (~98 KB each), loaded with a 20 s limit and
+// one retry, cached in memory, and preloaded when the app starts (preloadPdfFonts) so an export rarely waits at all.
+const fontCache = new Map();   // url → Promise<base64 | null>
+async function fetchFontOnce(url, ms) {
+  const ctrl = new AbortController();
+  const t    = setTimeout(() => ctrl.abort(), ms);
   try {
-    const ctrl = new AbortController();
-    const t    = setTimeout(() => ctrl.abort(), 5000);
-    const res  = await fetch(url, { signal: ctrl.signal });
-    clearTimeout(t);
+    const res = await fetch(url, { signal: ctrl.signal });
     if (!res.ok) return null;
     const bytes = new Uint8Array(await res.arrayBuffer());
     let binary  = "";
     for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
     return btoa(binary);
-  } catch { return null; }
+  } catch { return null; } finally { clearTimeout(t); }
+}
+export function loadFontBase64(url) {
+  if (!fontCache.has(url)) {
+    const p = (async () => (await fetchFontOnce(url, 20000)) || (await fetchFontOnce(url, 20000)))();
+    fontCache.set(url, p);
+    p.then((b64) => { if (!b64) fontCache.delete(url); });   // a failure is not remembered: the next export tries again
+  }
+  return fontCache.get(url);
+}
+/** Start downloading the PDF fonts in the background (called once the app has loaded). */
+export function preloadPdfFonts() {
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  loadFontBase64(`${origin}/fonts/NotoSans-Regular.ttf`);
+  loadFontBase64(`${origin}/fonts/NotoSans-Medium.ttf`);
 }
 
 /**

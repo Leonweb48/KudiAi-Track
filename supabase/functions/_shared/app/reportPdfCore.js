@@ -42,6 +42,22 @@ function resolveColor(c, row) {
   return hexToRgb(c);
 }
 
+/**
+ * Make a jsPDF document write every "₦" as "NGN " — for a document drawn in the built-in helvetica, which has no naira sign
+ * (the sign would come out blank). Covers drawing and measuring, so wrapped and right-aligned text stays in place.
+ */
+export function nairaAsNgn(doc) {
+  if (doc.__nairaAsNgn) return doc;
+  // "₦40,000.00" → "NGN 40,000.00"; a sign on its own ("Debit (₦)") → "NGN"
+  const fix = (s) => (typeof s === "string" ? s.replace(/₦(?=\s*-?\d)/g, "NGN ").replace(/₦/g, "NGN") : Array.isArray(s) ? s.map(fix) : s);
+  for (const m of ["text", "getTextWidth", "splitTextToSize", "getStringUnitWidth"]) {
+    const orig = typeof doc[m] === "function" ? doc[m].bind(doc) : null;
+    if (orig) doc[m] = (s, ...rest) => orig(fix(s), ...rest);
+  }
+  doc.__nairaAsNgn = true;
+  return doc;
+}
+
 export function fmtCurrency(amount) {
   return formatNGN(amount);
 }
@@ -108,6 +124,9 @@ export function createReportPdfCore(doc, {
       doc.addFont("NotoSans-Regular.ttf", "NotoSans", "bold");
     }
   } catch { /* fall back to helvetica */ }
+  // Without NotoSans (its file didn't load) the built-in helvetica has no ₦ and amounts came out with no sign: write
+  // "NGN " instead — in what is measured as well as what is drawn, so right-aligned amounts still line up (2026-10-22).
+  if (FONT !== "NotoSans") nairaAsNgn(doc);
 
   /** The verify QR as vector squares (one rectangle per run of dark modules in a row). */
   function drawQrMatrix(x, y, size) {

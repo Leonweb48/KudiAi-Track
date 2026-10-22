@@ -27,7 +27,7 @@
 // this file loads the assets in the browser — the KudiAI logo, NotoSans, the business's logo, the verify QR — and saves.
 
 import { savePdf } from "./pdfSave";
-import { loadImageAsset, downscaleImage } from "./pdfAssets";
+import { loadImageAsset, downscaleImage, loadFontBase64 } from "./pdfAssets";
 import { qrMatrix } from "./qrMatrix";
 import { registerStatement } from "./statementVerify";
 import { verifyShareText } from "./verifyLink";
@@ -53,20 +53,6 @@ async function imgToBase64(url) {
   } catch { return null; }
 }
 
-async function loadFontBase64(url) {
-  try {
-    const ctrl = new AbortController();
-    const t    = setTimeout(() => ctrl.abort(), 5000);
-    const res  = await fetch(url, { signal: ctrl.signal });
-    clearTimeout(t);
-    if (!res.ok) return null;
-    const buf   = await res.arrayBuffer();
-    const bytes = new Uint8Array(buf);
-    let binary  = "";
-    for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
-    return btoa(binary);
-  } catch { return null; }
-}
 
 // ── Factory ───────────────────────────────────────────────────────────────────
 export async function createReportPdf(options = {}) {

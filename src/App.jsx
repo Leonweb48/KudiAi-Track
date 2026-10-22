@@ -182,6 +182,14 @@ export default function App() {
   const { status: authStatus, session, plan, setReady, refetch, retryAuth, upgradeAvailable, plansVersion, staff, ajoClient, orgMember, adminUser, marketer, org } = useAuth();
   const userId = session?.user?.id;
 
+  // Signed in: fetch the PDF fonts quietly in the background, so a report / statement exported later has its ₦ signs
+  // without waiting on the download (utils/pdfAssets). Not for visitors of the public pages.
+  useEffect(() => {
+    if (!userId) return undefined;
+    const t = setTimeout(() => { import("./utils/pdfAssets").then((m) => m.preloadPdfFonts()).catch(() => {}); }, 6000);
+    return () => clearTimeout(t);
+  }, [userId]);
+
   // Admin portal "access account" session: skips the customer's app lock, PIN-setup and consent screens only while
   // the server confirms this exact login session was opened by an admin (see utils/adminAccess.jsx).
   const adminAccess = useAdminAccess(userId);

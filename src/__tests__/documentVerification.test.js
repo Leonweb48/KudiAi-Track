@@ -176,8 +176,12 @@ describe("a debt statement", () => {
     pdf.addStatement([{ date: "1 Oct 2026", description: "Payment · cash", reference: "—", debit: "", credit: "five", balance: "forty" }],
       { openingBalance: 45000, totalCredits: 5000, closingBalance: 40000 });
     const t = allTexts(pdf.getDoc());
-    expect(t).toContain(fmtCurrency(40000));
-    expect(t).not.toContain(fmtCurrency(50000));   // not debt + payments
+    // no NotoSans in the test (no font download): the PDF writes "NGN 40,000.00", never a ₦ helvetica can't draw
+    const ngn = (n) => fmtCurrency(n).replace("₦", "NGN ");
+    expect(t).toContain(ngn(40000));
+    expect(t).not.toContain(ngn(50000));   // not debt + payments
+    expect(t.some((x) => x.includes("₦"))).toBe(false);
+    expect(t).toContain("DEBIT (NGN)");    // a sign on its own reads "NGN", not "NGN "
   });
 });
 

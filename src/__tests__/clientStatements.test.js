@@ -19,7 +19,8 @@ import { jsPDF } from "jspdf";
 
 let mockSaved = [];
 jest.mock("../utils/pdfSave", () => ({ savePdf: async (doc, filename) => { mockSaved.push({ doc, filename }); } }));
-jest.mock("../utils/pdfAssets", () => ({ loadPdfAssets: async () => ({ logo: null, fontReg: null, fontMed: null }), registerNotoSans: () => "helvetica" }));
+jest.mock("../utils/pdfAssets", () => ({
+  loadFontBase64: async () => null, preloadPdfFonts: () => {}, loadPdfAssets: async () => ({ logo: null, fontReg: null, fontMed: null }), registerNotoSans: () => "helvetica" }));
 // Supabase: every query is a chain that resolves to the table's canned rows; calls are recorded
 let mockTables = {};
 let mockCalls = [];

@@ -12,6 +12,7 @@ import { walletMonthFromLedger } from "../utils/statementPdfLayout";
 let mockSaved = [];
 jest.mock("../utils/pdfSave", () => ({ savePdf: async (doc, filename) => { mockSaved.push({ doc, filename }); } }));
 jest.mock("../utils/pdfAssets", () => ({
+  loadFontBase64: async () => null, preloadPdfFonts: () => {},
   loadPdfAssets: async () => ({ logo: null, fontReg: null, fontMed: null }), registerNotoSans: () => "helvetica",
   loadImageAsset: async () => null, downscaleImage: async () => null,
 }));

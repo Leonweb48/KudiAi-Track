@@ -1,4 +1,6 @@
 import { savePdf } from "./pdfSave";
+import { loadFontBase64 } from "./pdfAssets";
+import { nairaAsNgn } from "../shared/reportPdfCore.js";
 import { formatNGN } from "./formatNGN";
 import { registerStatement } from "./statementVerify";
 import { verifyLink, verifyShareText } from "./verifyLink";
@@ -54,20 +56,6 @@ async function imgToBase64(url) {
   } catch { return null; }
 }
 
-async function loadFontBase64(url) {
-  try {
-    const ctrl = new AbortController();
-    const t    = setTimeout(() => ctrl.abort(), 5000);
-    const res  = await fetch(url, { signal: ctrl.signal });
-    clearTimeout(t);
-    if (!res.ok) return null;
-    const buf   = await res.arrayBuffer();
-    const bytes = new Uint8Array(buf);
-    let binary  = "";
-    for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
-    return btoa(binary);
-  } catch { return null; }
-}
 
 function getImgFmt(dataUrl) {
   if (!dataUrl) return "JPEG";
@@ -259,6 +247,8 @@ export async function exportInvoicePdf(
       doc.addFont("NotoSans-Regular.ttf", "NotoSans", "bold");
     }
   } catch { /* fall back to helvetica */ }
+  // helvetica has no ₦ — without NotoSans every amount is written "NGN …" rather than coming out with no sign (2026-10-22)
+  if (FONT !== "NotoSans") nairaAsNgn(doc);
 
   const setReg  = (sz) => { doc.setFont(FONT, "normal"); if (sz) doc.setFontSize(sz); };
   const setMed  = (sz) => { doc.setFont(FONT, "bold");   if (sz) doc.setFontSize(sz); };
