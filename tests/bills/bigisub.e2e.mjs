@@ -381,6 +381,15 @@ reset({ bgMode: "processing" }); rid = ref();
 r = await elec(rid); bgLookupStatus = "failed";
 r = await call({ action: "electricity-query", orderId: rid });
 ok(r?.status === "CANCELLED" && !ckLog.some((x) => x.startsWith("APIQuery")), "Bigisub failed it → CANCELLED (refunded), ClubKonnect never asked", J([r, ckLog]));
+reset({ bgMode: "processing" }); rid = ref();
+r = await elec(rid);
+const meterChecks = () => bgLog.filter((x) => x.startsWith("meter:")).length, elecPays = () => bgLog.filter((x) => x.startsWith("elec:")).length;
+const [m1, p1] = [meterChecks(), elecPays()];
+r = await elec(rid);   // the app's retry after its request timed out
+ok(r?.status === "PENDING" && r?.reference === rid && meterChecks() === m1 && elecPays() === p1, "a retry of an electricity order already at Bigisub: no new meter check, not paid again", J([r, bgLog]));
+bgLookupStatus = "successful";
+r = await elec(rid);
+ok(r?.status === "SUCCESS" && r?.token === "5555-4444-3333-2222-1111" && elecPays() === p1, "…once Bigisub has the token, the retry returns it (still paid once)", J([r, bgLog]));
 reset();
 r = await call({ action: "bill-preflight", cat: "electricity", amount: 1000 });
 ok(r?.ok === true && r?.provider === "bigisub", "preflight: electricity checks Bigisub's wallet", J(r));

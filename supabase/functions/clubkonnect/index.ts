@@ -1627,7 +1627,12 @@ serve(async (req) => {
       // and only from its disco's minimum amount — without either it simply isn't in this order's list.
       let elecOrder: Provider[] = sid && mt ? await providerOrderFor("electricity") : ["clubkonnect"];
       let bgElec: BgOrder | null = null, bgFee = BG_ELEC_FEE_DEFAULT;
-      if (sid && mt && elecOrder.includes("bigisub")) {
+      // A retry of an order already sent to Bigisub: its record answers (never bought twice), so skip the slow meter
+      // check — the app's retry has to come back within the proxy's time limit (2026-10-22: a token was lost that way).
+      const prior = rid ? await readClaim(rid) : null;
+      if (sid && mt && prior && prior !== "error" && prior.providers.includes("bigisub") && (prior.bgMeta || prior.bgTranxId)) {
+        bgElec = { path: "/bills/electricity/pay/", body: {}, phone: meterNo.trim(), service: "electricity", amount: amt };
+      } else if (sid && mt && elecOrder.includes("bigisub")) {
         const prov = (await bgElecProviderList())[sid];
         if (prov) bgFee = prov.fee;
         const who = prov && amt >= (mt === "prepaid" ? prov.minPrepaid : prov.minPostpaid)
@@ -1733,6 +1738,8 @@ serve(async (req) => {
     // ask the provider. Token → save it on the order (the app's format) and tell the customer. Cancelled / refunded by the
     // provider → refund the customer's wallet when the order's own wallet debit is linked (else admins refund by hand), mark the
     // order failed and tell the customer. Otherwise leave it for the next run; admins are alerted once after 48 h.
+    // Also orders the app left at "PENDING CONFIRMATION" (2026-10-22: a Bigisub electricity reply was slower than the app
+    // waited; the token was bought but never reached the customer) — found by the reference in their note.
     // Body: { sinceHours?: 1..336 (default 72), dryRun?: true → report only, change nothing }. Counts only — never a token.
     if (action === "electricity-sweep") {
       const sb2 = body as { sinceHours?: unknown; dryRun?: unknown };
@@ -1742,7 +1749,7 @@ serve(async (req) => {
       const { data: rows, error: selErr } = await db.from("transactions")
         .select("id, user_id, amount, note, bill_details, created_at")
         .eq("category", "electricity").eq("payment_type", "bill_payment").in("bill_status", ["success", "pending"])
-        .ilike("note", "%Token loading%")
+        .or('note.ilike."*Token loading*",note.ilike."PENDING CONFIRMATION*"')
         .gt("created_at", new Date(Date.now() - sinceH * 3600_000).toISOString())
         .lt("created_at", new Date(Date.now() - 90_000).toISOString())   // the app may still be asking
         .order("created_at", { ascending: true }).limit(25);
@@ -1752,7 +1759,10 @@ serve(async (req) => {
       for (const r of (rows ?? []) as { id: string; user_id: string | null; amount: number; note: string | null; bill_details: Record<string, unknown> | null; created_at: string }[]) {
         sum.checked++;
         const bd = (r.bill_details ?? {}) as Record<string, unknown>;
-        const orderId = String(bd.orderId ?? "").trim();
+        const loading = /Token loading/.test(String(r.note ?? ""));
+        // the order's own state guards every write below (no double write if the app or another run got there first)
+        const guard = loading ? "%Token loading%" : "PENDING CONFIRMATION%";
+        const orderId = String(bd.orderId ?? "").trim() || (String(r.note ?? "").match(/KDT-BILL-\d+/)?.[0] ?? "");
         const ageMin = Math.round((Date.now() - Date.parse(r.created_at)) / 60000);
         const item: Record<string, unknown> = { at: r.created_at, ageMin };
         items.push(item);
@@ -1778,14 +1788,15 @@ serve(async (req) => {
         } catch (e) { item.result = `lookup failed: ${(e as Error).message.slice(0, 80)}`; sum.errors++; continue; }
 
         const naira = Number(r.amount ?? 0).toLocaleString("en-NG");
-        const cleaned = String(r.note ?? "").replace(" | Token loading...", "").replace("Token loading... | ", "").replace("Token loading...", "");
+        const cleaned = String(r.note ?? "").replace(" | Token loading...", "").replace("Token loading... | ", "").replace("Token loading...", "")
+          .replace(/^PENDING CONFIRMATION:[^|]*\|\s*/, "");
         if (token) {
           item.result = "token found"; sum.delivered++;
           if (dryRun) continue;
           const note = `Token: ${token}${units && !cleaned.includes("Units:") ? ` | Units: ${units}` : ""} | ${cleaned}`.replace(" |  | ", " | ");
           const { count } = await db.from("transactions")
             .update({ note, bill_status: "success", bill_details: { ...bd, token, units, token_found_by: "sweep" } }, { count: "exact" })
-            .eq("id", r.id).ilike("note", "%Token loading%");
+            .eq("id", r.id).ilike("note", guard);
           item.saved = count ?? 0;
           if (count) await notifyCustomer(r.user_id, { type: "bill_payment_delivered", title: "Your electricity token is ready", body: `Your ₦${naira} electricity token is ready — open your bills history to see it.` });
           continue;
@@ -1805,7 +1816,7 @@ serve(async (req) => {
           const failNote = refundedHow === "wallet"
             ? `FAILED: The electricity company could not issue a token — ₦${naira} refunded to your wallet | ${cleaned}`
             : `FAILED: The electricity company could not issue a token — our team is refunding you | ${cleaned}`;
-          await db.from("transactions").update({ bill_status: "failed", note: failNote, bill_details: { ...bd, provider_refunded: true, refund: refundedHow } }).eq("id", r.id).ilike("note", "%Token loading%");
+          await db.from("transactions").update({ bill_status: "failed", note: failNote, bill_details: { ...bd, provider_refunded: true, refund: refundedHow } }).eq("id", r.id).ilike("note", guard);
           if (refundedHow === "wallet") sum.refundedToWallet++;
           else {
             sum.manualRefund++;

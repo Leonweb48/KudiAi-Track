@@ -153,6 +153,20 @@ try {
   states = { "ORD-E5": [{ status: "ORDER_RECEIVED", statuscode: "100" }, { status: "INVALID_CREDENTIALS" }] };
   r = (await buyElec("E5")).j;
   ok(r?.status === "PENDING" && !r.error, "purchase taken, then the key is refused for the follow-up lookups → PENDING (the sweep finishes it), not a refund", JSON.stringify(r));
+  // ── an order the app left at PENDING CONFIRMATION (22 Oct: the reply came after the app stopped waiting) ──
+  txRows = [{ id: "t7", user_id: "u-t7", amount: 1000, note: "PENDING CONFIRMATION: provider outcome unverified (network) | PS: KDT-BILL-1792660952671",
+    bill_details: {}, created_at: old(20) }];
+  ledger = {};
+  states = { "KDT-BILL-1792660952671": [{ status: "ORDER_COMPLETED", statuscode: "200", metertoken: TOKEN, units: "12.1" }] };
+  patches = []; notifies = []; ckCalls = [];
+  s = await call({ action: "electricity-sweep" }, { "x-cron-secret": "good-secret" });
+  await sleep(300);
+  const p7 = patches.find((p) => p.q.id === "eq.t7");
+  ok(s.j?.delivered === 1 && ckCalls.some((c) => c.by === "R:KDT-BILL-1792660952671") && p7?.body.bill_status === "success" && p7?.body.bill_details?.token === TOKEN
+    && /^Token: 1234-5678-9012-3456-7890 \| Units: 12.1 \| PS: KDT-BILL/.test(p7?.body.note) && !/PENDING CONFIRMATION/.test(p7?.body.note),
+    "PENDING CONFIRMATION order: found by the reference in its note → token saved, note cleaned", JSON.stringify([s.j, p7]));
+  ok(p7?.q.note === "ilike.PENDING CONFIRMATION%" && notifies.some((n) => n.userId === "u-t7" && /token is ready/.test(n.title)), "…only while it still says PENDING CONFIRMATION; customer told", JSON.stringify(p7?.q));
+
   buy = { E6: { status: "INVALID_CREDENTIALS" } };
   r = (await buyElec("E6")).j;
   ok(r?.error && !CK_NET_ERR.test(r.error), "the PURCHASE refused for our key → still a refusal the app refunds (nothing was bought)", JSON.stringify(r));
