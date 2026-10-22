@@ -67,7 +67,8 @@ describe("the verify link", () => {
   it("is the reference's page on kudiai.app, sent with a shared document", () => {
     expect(verifyLink("KDT-202610-ABCDEFGH")).toBe("https://kudiai.app/verify?ref=KDT-202610-ABCDEFGH");
     expect(verifyShareText("KDT-202610-ABCDEFGH", "receipt"))
-      .toBe("Verify this receipt (Ref KDT-202610-ABCDEFGH): https://kudiai.app/verify?ref=KDT-202610-ABCDEFGH");
+      .toBe("*Verify this receipt:* https://kudiai.app/verify?ref=KDT-202610-ABCDEFGH");   // bold words, colon, link (2026-10-22)
+    expect(verifyShareText("KDR-202610-STMT0001", "statement")).toBe("*Verify this statement:* https://kudiai.app/verify?ref=KDR-202610-STMT0001");
     expect(verifyShareText("", "receipt")).toBe("");
     // only a receipt with a stored reference can be looked up
     expect(receiptShareText({ hasRef: false, receiptRef: "KDT-202610-ABCDEFGH" })).toBe("");

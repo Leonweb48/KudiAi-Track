@@ -3,10 +3,14 @@
 
 export const verifyLink = (ref) => `https://kudiai.app/verify?ref=${encodeURIComponent(ref)}`;
 
-/** "Verify this receipt (Ref KDT-…): https://kudiai.app/verify?ref=KDT-…" — "" when the document has no reference. */
+/**
+ * "*Verify this receipt:* https://kudiai.app/verify?ref=KDT-…" — "" when the document has no reference.
+ * Owner, 2026-10-22: just the words in bold (WhatsApp's *…* = bold), a colon, then the link — the reference is in the link,
+ * so it isn't repeated (the old "(Ref KDT-…)" made the caption a hard-to-read blob).
+ */
 export function verifyShareText(ref, noun = "document") {
   const r = String(ref || "").trim();
-  return r ? `Verify this ${noun} (Ref ${r}): ${verifyLink(r)}` : "";
+  return r ? `*Verify this ${noun}:* ${verifyLink(r)}` : "";
 }
 
 /** A receipt's share text — only a receipt with a stored reference can be looked up (data.hasRef). */
