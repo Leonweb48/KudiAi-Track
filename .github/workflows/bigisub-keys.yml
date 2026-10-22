@@ -11,7 +11,7 @@ name: Bigisub keys
 #   turn-off      — stops sending new orders to Bigisub at once (orders already there are still verified).
 #   remove-keys   — deletes the two function secrets (turns it off first).
 #   history-today — free: yesterday's and today's orders in Bigisub's own history (status, its reason, the SHAPE of the
-#                   number it received — length and first 3 digits — never the number or a balance).
+#                   number it received — length and first 4 digits — never the number or a balance).
 #
 # Add the secrets in GitHub → Settings → Secrets and variables → Actions. Values are written to a 0600 file, never to a
 # command line, and never printed.
@@ -120,7 +120,7 @@ jobs:
           FROM=$(TZ=Africa/Lagos date -d yesterday +%F); TO=$(TZ=Africa/Lagos date +%F)
           curl -sS -m 60 "https://api.bigisub.ng/api/v2/financial/transactions/?date_from=$FROM&date_to=$TO&limit=50" -H "Authorization: Token $TOKEN" > h.json
           jq -r '.results[]? | [ .date_created, .tranx_id, .service_type, .status,
-              ((.unique_element // "") | "len=\(length) starts=\(.[0:3])"),
+              ((.unique_element // "") | "len=\(length) starts=\(.[0:4])"),
               ((.transaction_type // "") | gsub("[0-9]{7,}"; "#######")),
               ((.api_response // "") | tostring | gsub("[0-9]{7,}"; "#######") | .[0:160]) ] | join(" | ")' h.json || head -c 200 h.json
           rm -f h.json
