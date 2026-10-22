@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import BankSelect from "../components/shared/BankSelect";
 import { friendlyError } from "../utils/errorMessage";
 import { Capacitor } from "@capacitor/core";
 import { App as CapApp } from "@capacitor/app";
@@ -970,14 +971,11 @@ function RequestWithdrawalModal({ member, org, onClose, onSuccess }) {
                     </div>
                   ) : (
                     <div className="space-y-2.5">
-                      <select value={acctForm.bank_code} onChange={e => {
-                        const sel = banks.find(b => b.code === e.target.value);
-                        setAcctForm(p => ({ ...p, bank_code: e.target.value, bank_name: sel?.name || "", account_name: "" }));
-                        setAcctVerified(false);
-                      }} className="w-full h-10 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 text-sm font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-green-400/40">
-                        <option value="">Select bank…</option>
-                        {banks.map(b => <option key={b.code} value={b.code}>{b.name}</option>)}
-                      </select>
+                      <BankSelect banks={banks} value={acctForm.bank_code || ""} placeholder="Select bank…" className="h-11"
+                        onChange={(code, sel) => {
+                          setAcctForm(p => ({ ...p, bank_code: code, bank_name: sel?.name || "", account_name: "" }));
+                          setAcctVerified(false);
+                        }} />
                       <div className="flex gap-2">
                         <input type="text" inputMode="numeric" maxLength={10} placeholder="10-digit account number"
                           value={acctForm.account_number}

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import BankSelect from "../components/shared/BankSelect";
 import { usePinLock } from "../hooks/usePinLock";
 import { supabase } from "../utils/supabase";
 import { useTheme } from "../hooks/useTheme";
@@ -2459,11 +2460,8 @@ function OrgBankSetupSection({ org, onRefresh }) {
         <div className="flex flex-col gap-3">
           <div>
             <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Bank *</label>
-            <select className={input} value={bankForm.bank_code}
-              onChange={e => { setBankForm(p => ({ ...p, bank_code: e.target.value })); setResolvedName(""); setBankError(""); }}>
-              <option value="">Select bank…</option>
-              {banks.map(b => <option key={b.code} value={b.code}>{b.name}</option>)}
-            </select>
+            <BankSelect banks={banks} value={bankForm.bank_code || ""} placeholder="Select bank…" className="h-11"
+              onChange={(code) => { setBankForm(p => ({ ...p, bank_code: code })); setResolvedName(""); setBankError(""); }} />
           </div>
           <div>
             <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Account Number *</label>

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import BankSelect from "./shared/BankSelect";
 import { supabase } from "../utils/supabase";
 import { useT } from "../contexts/LanguageContext";
 
@@ -206,13 +207,9 @@ export default function InvoiceSettingsModal({ settings, onSave, onClose, userId
           {/* Bank select */}
           <div className="mb-4">
             <label className={labelCls}>{t("invoices.set.bankName")}</label>
-            <select
-              value={form.bank_code || ""}
-              onChange={handleBankChange}
-              className={inputCls}>
-              <option value="">{banks.length === 0 ? t("invoices.set.loadingBanks") : t("invoices.set.selectBank")}</option>
-              {banks.map(b => <option key={b.code} value={b.code}>{b.name}</option>)}
-            </select>
+            <BankSelect banks={banks} value={form.bank_code || ""} className="h-11"
+              placeholder={banks.length === 0 ? t("invoices.set.loadingBanks") : t("invoices.set.selectBank")}
+              onChange={(code) => handleBankChange({ target: { value: code } })} />
           </div>
 
           {/* Account number + Verify button */}

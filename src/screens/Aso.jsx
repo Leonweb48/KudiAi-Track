@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, Fragment } from "react";
+import BankSelect from "../components/shared/BankSelect";
 import { canSellPlans } from "../utils/platform";
 import Icon   from "../components/Icon";
 import Modal  from "../components/shared/Modal";
@@ -3178,16 +3179,14 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
               <p className="text-[10px] text-slate-400 dark:text-slate-500 -mt-1 mb-1">
                 {t("ajo.payoutAccountHelp")}
               </p>
-              <Field label={t("ajo.bank")} as="select" value={f.bank_code}
-                onChange={e => {
-                  const b = banks.find(bk => bk.code === e.target.value);
-                  set("bank_code", e.target.value);
-                  set("bank_name", b?.name || "");
-                  set("account_name", "");
-                  setClientResolvedName(""); setClientBankErr("");
-                }}>
-                <option value="">{t("ajo.selectBank")}</option>
-                {banks.map(b => <option key={b.code} value={b.code}>{b.name}</option>)}
+              <Field label={t("ajo.bank")}>
+                <BankSelect banks={banks} value={f.bank_code || ""} placeholder={t("ajo.selectBank")} className="h-11"
+                  onChange={(code, b) => {
+                    set("bank_code", code);
+                    set("bank_name", b?.name || "");
+                    set("account_name", "");
+                    setClientResolvedName(""); setClientBankErr("");
+                  }} />
               </Field>
               <div className="flex gap-2 items-end">
                 <div className="flex-1">

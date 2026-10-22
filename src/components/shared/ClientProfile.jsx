@@ -4,6 +4,7 @@
  * NIN, and next-of-kin details.
  */
 import { useState, useEffect } from "react";
+import BankSelect from "./BankSelect";
 import { supabase } from "../../utils/supabase";
 import { bankLookup } from "../../utils/bankLookup";
 import { STATES, getLGAs, getWards } from "../../utils/nigeriaData";
@@ -606,20 +607,14 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                       {t("ajo.profile.payoutAccountNoteOwner")}
                     </p>
                     <FormField label={t("ajo.profile.bank")}>
-                      <select
-                        value={form.bank_code || ""}
-                        onChange={e => {
-                          const b = banks.find(bk => bk.code === e.target.value);
-                          set("bank_code", e.target.value);
+                      <BankSelect banks={banks} value={form.bank_code || ""} disabled={banks.length === 0} className="h-11"
+                        placeholder={banks.length === 0 ? t("ajo.profile.loadingBanks") : t("ajo.profile.selectBank")}
+                        onChange={(code, b) => {
+                          set("bank_code", code);
                           set("bank_name", b?.name || "");
                           set("account_name", "");
                           setBankResolvedName(""); setBankErr("");
-                        }}
-                        className={inputCls}
-                        disabled={banks.length === 0}>
-                        <option value="">{banks.length === 0 ? t("ajo.profile.loadingBanks") : t("ajo.profile.selectBank")}</option>
-                        {banks.map(b => <option key={b.code} value={b.code}>{b.name}</option>)}
-                      </select>
+                        }} />
                     </FormField>
                     <div className="flex gap-2 items-end">
                       <div className="flex-1">
@@ -677,19 +672,14 @@ export function ClientProfile({ record, type, onSave, onClose, staffList = [], g
                       {t("ajo.profile.payoutAccountNoteCoop")}
                     </p>
                     <FormField label={t("ajo.profile.bank")}>
-                      <select
-                        value={form.withdrawal_bank_code || ""}
-                        onChange={e => {
-                          const b = banks.find(bk => bk.code === e.target.value);
-                          set("withdrawal_bank_code", e.target.value);
+                      <BankSelect banks={banks} value={form.withdrawal_bank_code || ""} className="h-11"
+                        placeholder={banks.length === 0 ? t("ajo.profile.loadingBanks") : t("ajo.profile.selectBank")}
+                        onChange={(code, b) => {
+                          set("withdrawal_bank_code", code);
                           set("withdrawal_bank_name", b?.name || "");
                           set("withdrawal_account_name", "");
                           setWithdrawalBankResolvedName(""); setWithdrawalBankErr("");
-                        }}
-                        className={inputCls}>
-                        <option value="">{banks.length === 0 ? t("ajo.profile.loadingBanks") : t("ajo.profile.selectBank")}</option>
-                        {banks.map(b => <option key={b.code} value={b.code}>{b.name}</option>)}
-                      </select>
+                        }} />
                     </FormField>
                     <div className="flex gap-2 items-end">
                       <div className="flex-1">

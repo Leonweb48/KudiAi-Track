@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import BankSelect from "../components/shared/BankSelect";
 import { friendlyError, moneyError } from "../utils/errorMessages";
 import { supabase } from "../utils/supabase";
 import { bankLookup } from "../utils/bankLookup";
@@ -4465,14 +4466,11 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
             <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">{t("client.bankAccountPayout")}</p>
             <div>
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">{t("client.bank")}</p>
-              <select value={editForm.bank_code} onChange={e => {
-                const sel = banks.find(b => b.code === e.target.value);
-                setEditForm(p => ({ ...p, bank_code: e.target.value, bank_name: sel?.name || "", account_name: "" }));
-                setBankVerified(false); setBankError("");
-              }} className="w-full h-12 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/30">
-                <option value="">{t("client.selectBank")}</option>
-                {banks.map(b => <option key={b.code} value={b.code}>{b.name}</option>)}
-              </select>
+              <BankSelect banks={banks} value={editForm.bank_code || ""} placeholder={t("client.selectBank")} className="h-12"
+                onChange={(code, sel) => {
+                  setEditForm(p => ({ ...p, bank_code: code, bank_name: sel?.name || "", account_name: "" }));
+                  setBankVerified(false); setBankError("");
+                }} />
             </div>
             <div>
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">{t("client.accountNumber")}</p>
