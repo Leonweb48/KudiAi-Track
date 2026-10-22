@@ -103,9 +103,14 @@ const bgSrv = http.createServer((req, res) => {
       bgLog.push(`${m[2] ? "requery" : "status"}:${m[1]}`);
       const o = bgOrders.get(decodeURIComponent(m[1]));
       if (!o) return send(404, { success: false, message: "Transaction not found" });
+      if (o.svc === "electricity") {
+        // as live (22 Oct): once vended, the STATUS read carries the token; a requery of a finished order says "processing", no token
+        if (bgLookupStatus) o.status = bgLookupStatus;
+        if (m[2]) return send(200, { success: true, data: { tranx_id: m[1], old_status: o.status, new_status: o.status === "successful" ? "processing" : o.status } });
+        return send(200, { success: true, data: { tranx_id: m[1], service_type: "electricity", status: o.status, ...(o.status === "successful" ? { token: o.token, units: "12.5" } : {}) } });
+      }
       const st = m[2] ? (bgLookupStatus ?? o.status) : o.status;   // a status read shows what Bigisub last stored; a requery asks the network
-      const tok = m[2] && o.svc === "electricity" && st === "successful" ? { token: o.token, units: "12.5kWh" } : {};
-      return send(200, { success: true, data: m[2] ? { tranx_id: m[1], old_status: o.status, new_status: st, ...tok } : { tranx_id: m[1], status: st } });
+      return send(200, { success: true, data: m[2] ? { tranx_id: m[1], old_status: o.status, new_status: st } : { tranx_id: m[1], status: st } });
     }
     send(404, { success: false, message: "Not found" });
   });
@@ -376,7 +381,10 @@ r = await elec(rid);
 ok(r?.status === "PENDING" && r?.reference === rid && r?.provider === "bigisub", "Bigisub still processing → PENDING under our reference (the app keeps asking)", J(r));
 bgLookupStatus = "successful";
 r = await call({ action: "electricity-query", orderId: rid });
-ok(r?.status === "SUCCESS" && r?.token === "5555-4444-3333-2222-1111" && bgLog.some((x) => x.startsWith("requery:ElecT")), "electricity-query asks Bigisub → token when it's ready", J([r, bgLog]));
+ok(r?.status === "SUCCESS" && r?.token === "5555-4444-3333-2222-1111" && bgLog.some((x) => x.startsWith("status:ElecT")) && !bgLog.some((x) => x.startsWith("requery:ElecT")),
+  "electricity-query reads Bigisub's STATUS → token when it's ready (no requery of a finished order: it says 'processing', no token)", J([r, bgLog]));
+r = await call({ action: "verify", requestId: rid, service: "electricity" });
+ok(r?.status === "SUCCESS" && r?.token === "5555-4444-3333-2222-1111", "verify of a finished Bigisub electricity order returns its token (22 Oct: the token never reached the customer)", J(r));
 reset({ bgMode: "processing" }); rid = ref();
 r = await elec(rid); bgLookupStatus = "failed";
 r = await call({ action: "electricity-query", orderId: rid });

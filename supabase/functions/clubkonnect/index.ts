@@ -938,17 +938,17 @@ async function bgVerifyOrder(svc: string, rid: string, claim: ClaimRow | null): 
     id = f.tranxId;
     await bgStore(rid, { bg_tranx_id: id });
   }
-  // Electricity: the requery carries the token, so it is asked first.
+  // The status read first — for electricity it carries the token and units. The requery only when that isn't final: for a
+  // FINISHED electricity order Bigisub's requery answers "still processing" with no token (seen live 2026-10-22), so it is
+  // never asked about one the status read already calls successful or failed.
   const isElec = svc === "electricity" || claim?.bgMeta?.service === "electricity";
-  let st: ReturnType<typeof classifyBgLookup> = "unknown", elec = { token: "", units: "" };
-  if (isElec) {
-    const rq = await bgCall(bgFetch, BG, "POST", `/anubis/transactions/${encodeURIComponent(id)}/requery/`, {}, 30_000);
-    st = classifyBgLookup(rq); elec = bgElecToken(rq);
-  }
-  if (st === "unknown") st = classifyBgLookup(await bgCall(bgFetch, BG, "GET", `/anubis/transactions/${encodeURIComponent(id)}/`, undefined, 20_000));
-  if (!isElec && (st === "pending" || st === "unknown")) {
-    const rq = classifyBgLookup(await bgCall(bgFetch, BG, "POST", `/anubis/transactions/${encodeURIComponent(id)}/requery/`, {}, 30_000));
+  const sr = await bgCall(bgFetch, BG, "GET", `/anubis/transactions/${encodeURIComponent(id)}/`, undefined, 20_000);
+  let st = classifyBgLookup(sr), elec = isElec ? bgElecToken(sr) : { token: "", units: "" };
+  if (st === "pending" || st === "unknown") {
+    const rqd = await bgCall(bgFetch, BG, "POST", `/anubis/transactions/${encodeURIComponent(id)}/requery/`, {}, 30_000);
+    const rq = classifyBgLookup(rqd);
     if (rq !== "unknown") st = rq;
+    if (isElec && !elec.token) elec = bgElecToken(rqd);
   }
   const v = bgVerify(st);
   return out(v, { reference: id, ...(isElec ? elec : {}), message: v === "SUCCESS" ? "ORDER_COMPLETED" : v.toLowerCase() });
@@ -1010,7 +1010,8 @@ async function bgElecAnswer(out: Extract<BuyOutcome, { via: "bigisub" }>, rid: s
     afterResponse(recordBillCost("electricity", rid, userId, out.data, async () => ({ costKobo: Math.round((amt + fee) * 100), faceKobo: Math.round(amt * 100), basis: "provider_reported", estimated: false }), { provider: "bigisub" }));
     let { token, units } = bgElecToken(out.data);
     if (mt === "prepaid" && !token && out.tranxId) {
-      ({ token, units } = bgElecToken(await bgCall(bgFetch, BG, "POST", `/anubis/transactions/${encodeURIComponent(out.tranxId)}/requery/`, {}, 30_000)));
+      // the status read carries the token (the requery doesn't, for a finished order)
+      ({ token, units } = bgElecToken(await bgCall(bgFetch, BG, "GET", `/anubis/transactions/${encodeURIComponent(out.tranxId)}/`, undefined, 20_000)));
     }
     if (mt === "prepaid" && !token) return json({ status: "PENDING", reference: rid, token: "", message: "ORDER_COMPLETED_NO_TOKEN", provider: "bigisub" });
     return json({ status: "SUCCESS", reference: out.tranxId || rid, token, units, message: "ORDER_COMPLETED", provider: "bigisub" });
