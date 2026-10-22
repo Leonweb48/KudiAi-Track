@@ -23,8 +23,11 @@ on:
       action:
         description: What to do
         type: choice
-        options: [check, history-today, plans-check, install-keys, live-test-50, turn-on, turn-off, remove-keys]
+        options: [check, history-today, plans-check, order-detail, install-keys, live-test-50, turn-on, turn-off, remove-keys]
         default: check
+      tranx_id:
+        description: "order-detail: Bigisub transaction id (e.g. Elec0499...)"
+        required: false
 
 permissions:
   contents: read
@@ -143,3 +146,15 @@ jobs:
               | "\($net): \(.plans | length) plans, \($ids | length) from Bigisub, their networks: \([$ids[] | $name[tostring] // "?"] | group_by(.) | map("\(.[0])=\(length)") | join(" "))"' app.json
           done
           rm -f bg.json app.json
+
+      - name: One order as Bigisub reports it (order-detail)
+        if: inputs.action == 'order-detail'
+        env:
+          TOKEN: ${{ secrets.BIGISUB_TOKEN }}
+          TID: ${{ inputs.tranx_id }}
+        run: |
+          set -euo pipefail
+          [[ "$TID" =~ ^[A-Za-z0-9]{6,64}$ ]] || { echo "tranx_id required"; exit 1; }
+          mask='walk(if type == "string" then gsub("[0-9]"; "#") elif type == "number" then "<n>" else . end)'
+          echo "STATUS  $(curl -sS -m 30 "https://api.bigisub.ng/api/v2/anubis/transactions/$TID/" -H "Authorization: Token $TOKEN" | jq -c "$mask" | head -c 900)"
+          echo "REQUERY $(curl -sS -m 40 -X POST "https://api.bigisub.ng/api/v2/anubis/transactions/$TID/requery/" -H "Authorization: Token $TOKEN" -H "Content-Type: application/json" -d '{}' | jq -c "$mask" | head -c 900)"
