@@ -197,6 +197,9 @@ Tokens, PINs, meter/phone/account numbers, names and our ClubKonnect balance mus
   registration and JAMB never go to Bigisub. Bigisub returns the PINs only in the purchase reply: if that reply is lost,
   the order is found in its history but stays **pending** with an admin alert, so support can fetch the PINs.
 - **Failover must be on** (`bill_provider_failover=true`, migration 20270378) for any of this to move an order.
+- **Network ids — Bigisub's docs are wrong:** live, 1 = MTN, **2 = Glo, 3 = Airtel**, 4 = 9mobile (its docs say 2 Airtel,
+  3 Glo). Following the docs sold Glo plans to Airtel numbers and the other way round (2026-10-22). Plan lists are also
+  filtered by `network_name`, so a list can never hold another network's plans.
 - **Secrets:** every purchase needs the account's 4-digit PIN (`BIGISUB_PIN`) as well as the token (`BIGISUB_TOKEN`).
   Both are installed only by the **Bigisub keys** workflow, from repository secrets.
 

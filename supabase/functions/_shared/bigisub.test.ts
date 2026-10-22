@@ -26,8 +26,8 @@ Deno.test("bgConfigured: a token and a 4-digit PIN", () => {
   assertEquals(bgConfigured(null), false);
 });
 
-Deno.test("bgNetwork: our network names → Bigisub ids", () => {
-  assertEquals([bgNetwork("MTN"), bgNetwork("Airtel"), bgNetwork("glo"), bgNetwork("9mobile"), bgNetwork("T2")], [1, 2, 3, 4, 4]);
+Deno.test("bgNetwork: our network names → Bigisub's LIVE ids (2 = Glo, 3 = Airtel — its docs have them the other way)", () => {
+  assertEquals([bgNetwork("MTN"), bgNetwork("glo"), bgNetwork("Airtel"), bgNetwork("9mobile"), bgNetwork("T2")], [1, 2, 3, 4, 4]);
   assertEquals(bgNetwork("Smile"), null);
 });
 
@@ -117,6 +117,16 @@ Deno.test("bgCall: sends the token header, never throws", async () => {
   assertEquals(r, { success: true, _http: 200 });
   const dead = await bgCall(() => Promise.reject(new Error("boom")), { token: "t", pin: "1" }, "GET", "/x");
   assertEquals(dead._unreachable, true);
+});
+
+Deno.test("parseBgPlans: a network's list holds only that network's plans (live ids AND names: 2 glo, 3 airtel)", () => {
+  const live = { success: true, data: [
+    { id: 501, network: 2, network_name: "glo", plantype: "SME", size: 125, plan_volume: "MB", validity: "1 day", amount: 99, corporate_amount: 95 },
+    { id: 601, network: 3, network_name: "airtel", plantype: "GIFTING", size: 300, plan_volume: "MB", validity: "2 days", amount: 299, corporate_amount: 290 },
+    { id: 602, network: 3, network_name: "glo", plantype: "SME", size: 1, plan_volume: "GB", validity: "30 days", amount: 300 },   // ids and names disagree → out
+  ] };
+  assertEquals(parseBgPlans(live, bgNetwork("Glo")!).map((p) => p.plan_id), ["bg:501"]);
+  assertEquals(parseBgPlans(live, bgNetwork("Airtel")!).map((p) => p.plan_id), ["bg:601"]);
 });
 
 Deno.test("exam PINs: the reply's pins become card details; prices from education services", () => {

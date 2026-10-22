@@ -18,8 +18,14 @@ export type BgResult = Record<string, unknown>;
 export const bgConfigured = (c: Partial<BgCreds> | null | undefined) =>
   !!c && /^[A-Za-z0-9]{20,80}$/.test(String(c.token ?? "")) && /^\d{4}$/.test(String(c.pin ?? ""));
 
-/** Bigisub network ids (1 MTN, 2 Airtel, 3 Glo, 4 9mobile). */
-const NET: Record<string, number> = { MTN: 1, AIRTEL: 2, GLO: 3, "9MOBILE": 4, ETISALAT: 4, T2: 4, T2MOBILE: 4 };
+/**
+ * Bigisub network ids as its LIVE system uses them: 1 MTN, 2 Glo, 3 Airtel, 4 9mobile. Its API docs say 2 = Airtel and
+ * 3 = Glo — wrong: every live plan with network 2 is network_name "glo" (52 plans) and 3 is "airtel" (49), and a purchase
+ * of network 2 + a Glo plan is accepted as matching. Following the docs swapped Airtel and Glo (2026-10-22: Airtel numbers
+ * were sold Glo plans and refused as "not a valid GLO number").
+ */
+const NET: Record<string, number> = { MTN: 1, GLO: 2, AIRTEL: 3, "9MOBILE": 4, ETISALAT: 4, T2: 4, T2MOBILE: 4 };
+const NET_NAME: Record<number, string> = { 1: "mtn", 2: "glo", 3: "airtel", 4: "9mobile" };
 export const bgNetwork = (network: string): number | null => NET[String(network ?? "").trim().toUpperCase().replace(/\s+/g, "")] ?? null;
 
 /** One Bigisub call. Never throws: no answer → { _unreachable }, a non-JSON body → { _raw, _http }. */
@@ -220,7 +226,9 @@ export function parseBgPlans(d: BgResult | null | undefined, network: number): {
   const raw = (data(d).plans ?? d?.data ?? d?.results ?? []) as unknown;
   const list = Array.isArray(raw) ? (raw as Record<string, unknown>[]) : [];
   return list
-    .filter((p) => Number(p.network) === network && p.plan_disabled !== true && p.is_active !== false)
+    // the network NAME must agree too when Bigisub sends one — a guard against its ids ever moving again
+    .filter((p) => Number(p.network) === network && (p.network_name == null || String(p.network_name).toLowerCase() === NET_NAME[network])
+      && p.plan_disabled !== true && p.is_active !== false)
     .map((p) => {
       const cost = Number(p.corporate_amount ?? p.plan_amount ?? p.amount) || 0;
       const size = `${p.size ?? ""}${p.plan_volume ?? ""}`.trim();
