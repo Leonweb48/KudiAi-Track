@@ -55,8 +55,10 @@ const res = await fetch(
   { headers: { Authorization: `Bearer ${TOKEN}`, Accept: "application/vnd.github+json" } },
 );
 if (!res.ok) throw new Error(`GitHub API ${res.status}: ${await res.text()}`);
+// Only APKs built from main count: a test build from a side branch (e.g. #191 from android-191-prep, 2026-10-22) is not
+// on anyone's phone, and its native changes aren't in the code being shipped — counting it blocked every OTA update.
 const runs = (await res.json()).workflow_runs
-  .filter((r) => r.conclusion === "success")   // not ?status=success: that filter returns an inconsistent page
+  .filter((r) => r.conclusion === "success" && r.head_branch === "main")   // not ?status=success: that filter returns an inconsistent page
   .map((r) => ({ run: r.run_number, sha: r.head_sha }))
   .sort((a, b) => b.run - a.run);
 if (!runs.length) throw new Error("No successful APK build found");
