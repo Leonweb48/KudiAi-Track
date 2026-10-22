@@ -10,6 +10,7 @@ name: Bigisub keys
 #   turn-on       — airtime / data orders may go to Bigisub when ClubKonnect can't take them (platform_config switch).
 #   turn-off      — stops sending new orders to Bigisub at once (orders already there are still verified).
 #   remove-keys   — deletes the two function secrets (turns it off first).
+#   plans-check   — free: the app's data plan list per network vs Bigisub's own network for each bg: plan.
 #   history-today — free: yesterday's and today's orders in Bigisub's own history (status, its reason, the SHAPE of the
 #                   number it received — length and first 4 digits — never the number or a balance).
 #
@@ -22,7 +23,7 @@ on:
       action:
         description: What to do
         type: choice
-        options: [check, history-today, install-keys, live-test-50, turn-on, turn-off, remove-keys]
+        options: [check, history-today, plans-check, install-keys, live-test-50, turn-on, turn-off, remove-keys]
         default: check
 
 permissions:
@@ -124,3 +125,21 @@ jobs:
               ((.transaction_type // "") | gsub("[0-9]{7,}"; "#######")),
               ((.api_response // "") | tostring | gsub("[0-9]{7,}"; "#######") | .[0:160]) ] | join(" | ")' h.json || head -c 200 h.json
           rm -f h.json
+
+      - name: Plans per network vs Bigisub's own records (plans-check)
+        if: inputs.action == 'plans-check'
+        env:
+          URL: ${{ secrets.REACT_APP_SUPABASE_URL }}
+          KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TOKEN: ${{ secrets.BIGISUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          curl -sS -m 60 "https://api.bigisub.ng/api/v2/vtu/data/plans/" -H "Authorization: Token $TOKEN" > bg.json
+          for NET in MTN Airtel Glo 9mobile; do
+            curl -sS -m 120 -X POST "$URL/functions/v1/clubkonnect" -H "Content-Type: application/json" -H "Authorization: Bearer $KEY" -H "apikey: $KEY"               -d "{\"action\":\"data-plans\",\"network\":\"$NET\"}" > app.json
+            jq -r --arg net "$NET" --slurpfile bg bg.json '
+              ([.plans[]? | select(.plan_id | startswith("bg:")) | (.plan_id | ltrimstr("bg:") | tonumber)]) as $ids
+              | ($bg[0].data // [] | map({key: (.id|tostring), value: .network_name}) | from_entries) as $name
+              | "\($net): \(.plans | length) plans, \($ids | length) from Bigisub, their networks: \([$ids[] | $name[tostring] // "?"] | group_by(.) | map("\(.[0])=\(length)") | join(" "))"' app.json
+          done
+          rm -f bg.json app.json
