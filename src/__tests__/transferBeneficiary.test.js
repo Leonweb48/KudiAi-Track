@@ -46,7 +46,9 @@ const api = () => ({
   withdrawals: [], ledger: [], requests: [], refresh: jest.fn(), receiptFor: jest.fn(),
 });
 
-async function toReview() {
+// The save-as-beneficiary choice is on the AMOUNT step (2026-10-22: it replaced "record as a business expense" and
+// "repeat this transfer"); `beforeReview` runs there, then the sheet moves on to the review step.
+async function toReview(beforeReview = async () => {}) {
   await act(async () => {
     root.render(<TransferSheet open balanceKobo={99999900} maxKobo={99999900} banks={[]} api={api()} ownerId="u1" onDone={() => {}} />);
   });
@@ -56,6 +58,7 @@ async function toReview() {
   await flush();
   await click(button("Continue"));
   await type(host.querySelector('input[inputmode="decimal"]'), "5000");
+  await beforeReview();
   await click(button("Continue"));
 }
 const saveTick = () => [...host.querySelectorAll("label")].find((l) => l.textContent.includes("Save as beneficiary"))?.querySelector("input");
@@ -67,10 +70,17 @@ beforeEach(() => {
 afterEach(() => { act(() => root.unmount()); host.remove(); });
 
 describe("saving a transfer recipient is optional", () => {
+  it("the amount step suggests saving a new recipient — and no longer offers 'business expense' or 'repeat'", async () => {
+    await toReview(async () => {
+      expect(saveTick()).toBeTruthy();
+      expect(host.textContent).toContain("no typing the account again");
+      expect(host.textContent).not.toMatch(/business expense|Repeat this transfer/i);
+    });
+    expect(saveTick()).toBeFalsy();   // asked once, on the amount step — not again on review
+  });
+
   it("is off by default — a transfer does not save the account", async () => {
-    await toReview();
-    expect(saveTick()).toBeTruthy();
-    expect(saveTick().checked).toBe(false);
+    await toReview(async () => { expect(saveTick().checked).toBe(false); });
     await click(button("Transfer"));
     await click(button("MockApprovePin"));
     expect(host.textContent).toMatch(/sent/i);
@@ -83,10 +93,12 @@ describe("saving a transfer recipient is optional", () => {
   });
 
   it("ticked with a nickname → saved with that nickname, here and on the server", async () => {
-    await toReview();
-    await click(saveTick());
-    const nick = [...host.querySelectorAll("input")].find((i) => (i.placeholder || "").startsWith("Nickname"));
-    await type(nick, "Mama Ngozi");
+    await toReview(async () => {
+      await click(saveTick());
+      const nick = [...host.querySelectorAll("input")].find((i) => (i.placeholder || "").startsWith("Nickname"));
+      await type(nick, "Mama Ngozi");
+    });
+    expect(host.textContent).toContain("Mama Ngozi will be saved as a beneficiary");
     await click(button("Transfer"));
     await click(button("MockApprovePin"));
     const saved = mockSaved.find((x) => x.args);

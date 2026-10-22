@@ -719,18 +719,10 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
               ))}
             </div>
             {freeNote && <p className="text-[11px] text-slate-400 mt-2 px-1">{freeNote}</p>}
-            {isFirstTimeRecipient && (
-              <div className="mt-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 p-3.5">
-                <label className="flex items-center gap-2.5 text-[13px] font-semibold text-slate-700 dark:text-slate-200">
-                  <input type="checkbox" checked={saveBen} onChange={(e) => setSaveBen(e.target.checked)} className="w-[18px] h-[18px] rounded-md accent-brand-600" />
-                  {t("walletpanel.saveAsBen")} <span className="font-normal text-slate-400">· {t("common.optional")}</span>
-                </label>
-                {saveBen && (
-                  <input value={benNick} onChange={(e) => setBenNick(e.target.value.slice(0, 40))}
-                    placeholder={t("walletpanel.nicknamePh", { name: (recipientName || "").split(" ")[0] || t("walletpanel.supplier") })}
-                    className={inputCls + " mt-2.5"} />
-                )}
-              </div>
+            {isFirstTimeRecipient && saveBen && (
+              <p className="mt-3 text-[12px] font-semibold text-brand-700 dark:text-brand-300">
+                {t("walletpanel.willSaveAsBen", { name: (benNick.trim() || (recipientName || "").split(" ")[0]) || t("walletpanel.thisAccount") })}
+              </p>
             )}
             {shortForFee && (
               <p className="text-[12px] text-red-500 mt-2">
@@ -764,32 +756,22 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
               <label className={labelCls}>{t("walletpanel.narration")} <span className="text-slate-300 font-normal">{t("common.optional")}</span></label>
               <input value={narration} onChange={(e) => setNarration(e.target.value.slice(0, 100))} placeholder={t("walletpanel.whatsItFor")} className={inputCls} />
             </div>
-            <label className="flex items-center gap-2.5 text-[13px] font-medium text-slate-600 dark:text-slate-300">
-              <input type="checkbox" checked={bookExpense} onChange={(e) => setBookExpense(e.target.checked)} className="w-[18px] h-[18px] rounded-md accent-brand-600" />
-              {t("walletpanel.recordExpense")}
-            </label>
-            <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/60 p-3.5">
-              <label className="flex items-center gap-2.5 text-[13px] font-bold text-slate-700 dark:text-slate-200">
-                <input type="checkbox" checked={repeat} onChange={(e) => setRepeat(e.target.checked)} className="w-[18px] h-[18px] rounded-md accent-brand-600" />
-                {t("walletpanel.repeatThis")}
-              </label>
-              {repeat && (
-                <>
-                  <p className="text-[11px] text-slate-400 mt-1.5 mb-2">
-                    {t("walletpanel.repeatExplain")}
-                  </p>
-                  <div className="flex gap-1.5">
-                    {[["daily", t("walletpanel.freq.daily")], ["weekly", t("walletpanel.freq.weekly")], ["monthly", t("walletpanel.freq.monthly")]].map(([id, label]) => (
-                      <button key={id} type="button" onClick={() => setFrequency(id)}
-                        className={`flex-1 py-2 rounded-xl text-[12px] font-bold transition-colors ${
-                          frequency === id ? "bg-brand-600 text-white" : "bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600"}`}>
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
+            {/* No "record as a business expense" / "repeat this transfer" here (owner, 2026-10-22) — a new recipient is
+                offered to be saved as a beneficiary instead, so the next transfer to them is one tap. */}
+            {isFirstTimeRecipient && (
+              <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/60 p-3.5">
+                <label className="flex items-center gap-2.5 text-[13px] font-semibold text-slate-700 dark:text-slate-200">
+                  <input type="checkbox" checked={saveBen} onChange={(e) => setSaveBen(e.target.checked)} className="w-[18px] h-[18px] rounded-md accent-brand-600" />
+                  {t("walletpanel.saveAsBen")} <span className="font-normal text-slate-400">· {t("common.optional")}</span>
+                </label>
+                <p className="text-[11px] text-slate-400 mt-1 ml-[28px]">{t("walletpanel.saveAsBenHint")}</p>
+                {saveBen && (
+                  <input value={benNick} onChange={(e) => setBenNick(e.target.value.slice(0, 40))}
+                    placeholder={t("walletpanel.nicknamePh", { name: (recipientName || "").split(" ")[0] || t("walletpanel.supplier") })}
+                    className={inputCls + " mt-2.5"} />
+                )}
+              </div>
+            )}
             {err && <p className="text-[12px] text-red-500">{err}</p>}
             <button disabled={kobo < 10000 || kobo > cap}
               onClick={() => { setErr(""); setStep("review"); }} className={primaryBtn}>

@@ -19,7 +19,7 @@ const CLIENT_FEES = [
 
 const COMMON = [
   "Language: Settings (owner) or Me (client) -> Language changes the whole app to English, Pidgin, Hausa, Igbo or Yoruba. Receipts and PDF statements stay in English.",
-  "Saved beneficiaries (optional): when sending money, tick 'Save as beneficiary' on the review step (a nickname can be added), or tap Save after the transfer. Saved accounts show at the top of Send; tap Manage to remove one. Nothing is saved unless the user chooses to.",
+  "Saved beneficiaries (optional): when sending money, tick 'Save as beneficiary' on the amount step for a new recipient (a nickname can be added), or tap Save after the transfer. Saved accounts show at the top of Send; tap Manage to remove one. Nothing is saved unless the user chooses to.",
   "Wallet tiers: every wallet starts on Tier 1. Tier 2: add BVN and NIN, full name and home address in the wallet tier card. Tier 3: upload a valid ID (front, and back for cards), a utility bill from the last 3 months and a passport photo; our team reviews it and shows the reason if it is declined. The tier card shows the balance and daily limits for each tier.",
   "Bills: airtime, data, cable TV, electricity (the token is on the receipt), exam PINs (WAEC, NECO and NABTEB result checkers; the PIN is on the receipt) and internet, paid from the wallet. Airtime and data only go to a number on its own network (ported numbers are blocked). Airtime and data earn cashback.",
   "Receipts: every receipt and statement has a reference and QR code anyone can check at kudiai.app/verify.",
