@@ -105,13 +105,15 @@ describe("the running balance never leaves the app (bill + wallet receipts)", ()
       expect(r.balanceAfter).toBe(12345);            // still there for the in-app view
     }
   });
-  test("bill receipts too — and a bill booked as an expense; an ordinary sale keeps its balance", () => {
+  test("bill receipts show NO balance at all (owner, 2026-10-22) — nor a bill booked as an expense; an ordinary sale keeps its balance", () => {
     const bill = buildBillReceipt({ category: "airtime", amount: 500, network: "MTN", bill_status: "success", created_at: AT, balance_after: 12345 });
-    expect(field(bill, "Balance After")).toMatchObject({ private: true });
-    expect(bill.hideBalanceOnShare).toBe(true);
+    expect(field(bill, "Balance After")).toBeUndefined();
+    expect(bill.balanceAfter).toBeNull();
+    expect(pdfText(bill)).not.toMatch(/12,345/);
 
     const billTxn = buildTransactionReceipt({ type: "out", payment_type: "bill_payment", amount: 500, item_name: "MTN Airtime", created_at: AT, balance_after: 12345 });
-    expect(field(billTxn, "Balance After").private).toBe(true);
+    expect(field(billTxn, "Balance After")).toBeUndefined();
+    expect(billTxn.balanceAfter).toBeNull();
     expect(billTxn.hideBalanceOnShare).toBe(true);
 
     const sale = buildTransactionReceipt({ type: "in", payment_type: "cash", amount: 500, item_name: "Rice", created_at: AT, balance_after: 12345 });

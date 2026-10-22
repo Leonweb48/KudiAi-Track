@@ -194,7 +194,8 @@ export function buildTransactionReceipt(txn, profile) {
       !isMulti && txn.quantity > 1 && { label: 'Quantity',      value: String(txn.quantity) },
       txn.note          && { label: 'Note',                     value: txn.note },
       txn.staff_name    && { label: 'Recorded by',              value: txn.staff_name },
-      balanceAfter != null && { label: 'Balance After',        value: fmtAmt(balanceAfter), private: isBillPayment },
+      // a bill paid through the app shows no balance (owner, 2026-10-22 — same as the bill receipt)
+      balanceAfter != null && !isBillPayment && { label: 'Balance After', value: fmtAmt(balanceAfter) },
                            { label: 'Reference',                value: ref, copy: hasRef },
     ].filter(Boolean),
     businessName:  profile?.business_name || 'My Business',
@@ -205,7 +206,7 @@ export function buildTransactionReceipt(txn, profile) {
     processorName: null,
     iconType:      isIn ? 'income' : 'expense',
     recordedBy:    txn.staff_name || null,
-    ...meta(txn, { hasRef, method, balanceAfter, biz: bizFromProfile(profile) }),
+    ...meta(txn, { hasRef, method, balanceAfter: isBillPayment ? null : balanceAfter, biz: bizFromProfile(profile) }),
     hideBalanceOnShare: isBillPayment,
   };
 }
@@ -502,7 +503,6 @@ export function buildBillReceipt(bill) {
   // Who actually took the payment — read from the record, never assumed. A legacy
   // bill that never recorded its funding source shows no processor at all.
   const processor    = processorFor(billPaidVia(bill));
-  const balanceAfter = numOrNull(bill.balance_after);
   // Electricity: name the DISCO from whatever the record carries ("EKEDC (Eko) Prepaid", a full company name, or the
   // company code the payment webhook stores) so every electricity receipt — older ones included — shows its DISCO's logo.
   const disco = bill.category === 'electricity' ? discoFromRecord(bill) : null;
@@ -538,8 +538,7 @@ export function buildBillReceipt(bill) {
     bill.apiRef && { label: 'Provider Ref.', value: bill.apiRef, copy: true },
     bill.staffName && { label: 'Served by',   value: bill.staffName },
     processor      && { label: 'Payment Method', value: processor.label },
-    // the running balance is for the owner, in the app — it never goes out with a shared image / PDF (see PRIVATE ROWS)
-    balanceAfter != null && { label: 'Balance After', value: fmtAmt(balanceAfter), private: true },
+    // no "Balance After" on a bill receipt (owner, 2026-10-22: of no use there) — in the app, the PDF or a share
     { label: 'Reference',     value: ref, copy: hasRef },
   ].filter(Boolean);
 
@@ -561,7 +560,7 @@ export function buildBillReceipt(bill) {
     processorLine: processor?.line  || null,
     iconType:      null,
     recordedBy:    bill.staffName || null,
-    ...meta(bill, { hasRef, method: processor?.label, balanceAfter, biz: { address: bill.businessAddress, phone: bill.businessPhone } }),
+    ...meta(bill, { hasRef, method: processor?.label, biz: { address: bill.businessAddress, phone: bill.businessPhone } }),
     hideBalanceOnShare: true,
     // Raw structured data for specialized display in TransactionDetailModal
     elecToken:    bill.token      || undefined,

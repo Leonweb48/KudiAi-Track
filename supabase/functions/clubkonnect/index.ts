@@ -2637,11 +2637,11 @@ serve(async (req) => {
 
     // ── Bill success email — notify business user their bill was delivered ────────
     // Bank-grade layout (_shared/bankEmail.ts): the transaction's stored reference,
-    // WAT time, who actually took the payment, balance after, and a View Transaction
-    // button. The app sends receipt_ref / occurred_at / balance_after / paid_via /
-    // txn_id from the saved transaction row; any that are missing are simply left off.
+    // WAT time, who actually took the payment, and a View Transaction button. The app sends
+    // receipt_ref / occurred_at / paid_via / txn_id from the saved transaction row; any that are
+    // missing are simply left off.
     if (action === "bill-success-email") {
-      const { user_email, user_name, service, amount, reference, detail, pins, receipt_ref, occurred_at, balance_after, paid_via, txn_id } = body as {
+      const { user_email, user_name, service, amount, reference, detail, pins, receipt_ref, occurred_at, paid_via, txn_id } = body as {
         user_email?: string; user_name?: string; service?: string;
         amount?: number; reference?: string; detail?: string; pins?: unknown[];
         receipt_ref?: string; occurred_at?: string; balance_after?: number; paid_via?: string; txn_id?: string;
@@ -2673,7 +2673,7 @@ serve(async (req) => {
             ["Payment Method", via ? esc(via) : ""],
             ...detailRows,
             ["Payment Ref.", reference ? esc(reference) : "", { mono: true }],
-            ["Balance After", balance_after != null && Number.isFinite(Number(balance_after)) ? naira(Number(balance_after)) : ""],
+            // no "Balance After" on a bill receipt (owner, 2026-10-22) — older apps still send balance_after; it is ignored
           ],
           note: pins?.length ? renderPinCards(pins) : undefined,
           button: { label: "View Transaction →", url: appLink(link) },
