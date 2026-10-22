@@ -34,10 +34,11 @@ android {
     }
     buildTypes {
         release {
-            // R8 shrinking + obfuscation (Play: 'DEX code optimization'). Keep rules: proguard-rules.pro. Resources are NOT
-            // shrunk: some (e.g. the ic_notification push icon) are only referenced by name at run time.
+            // R8 shrinking + obfuscation (Play: 'DEX code optimization'). Keep rules: proguard-rules.pro. Resources are shrunk
+            // too (Play: 'Resource shrinking isn't enabled'); the ones only looked up BY NAME at run time (push icon, splash,
+            // notification sound, Capacitor config) are kept by res/raw/keep.xml.
             minifyEnabled true
-            shrinkResources false
+            shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             def ksFile = System.getenv('ANDROID_KEYSTORE_FILE')
             signingConfig ksFile ? signingConfigs.release : signingConfigs.debug

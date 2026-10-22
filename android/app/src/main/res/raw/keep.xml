@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Resource shrinking (build.gradle shrinkResources) removes resources no code references by R.<type>.<name>. These are
+     only looked up BY NAME at run time, so they are kept explicitly:
+       ic_notification        push icon, sent by name in every FCM message (supabase/functions/notify-send: icon "ic_notification")
+       ic_notification_large  large notification logo
+       splash                 splash screen (capacitor.config androidSplashResourceName "splash")
+       kudiai                 notification sound (usePushNotifications.js channel sound "kudiai")
+       config                 Capacitor / Cordova plugin config (res/xml/config.xml, read by name)
+       strings                small; some are read by name (custom_url_scheme, package_name) -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_notification,@drawable/ic_notification_large,@drawable/splash,@raw/kudiai,@xml/config,@xml/file_paths,@string/*,@mipmap/ic_launcher*" />
