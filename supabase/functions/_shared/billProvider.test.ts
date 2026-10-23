@@ -3,7 +3,7 @@ import { assert, assertEquals, assertRejects } from "https://deno.land/std@0.224
 import {
   buyAcrossProviders, ckAccountRefusal, classifyVt, combineVerdicts, LOOKALIKE_MSG, parseProviderConfig, providerOrder, RETRY_MSG,
   UNAVAILABLE_MSG, vtCostKobo, vtMessage, vtProbeVerdict, vtVerify, type BuyDeps, type BuyOutcome, type Provider,
-  type ProviderState, type SwitchEvent,
+  type ProviderState, type SwitchEvent, BG_BACKUP_DEFAULT,
 } from "./billProvider.ts";
 import { PENDING_STATUS, type CkResult, type Lookup } from "./ckRoute.ts";
 import type { VtResult } from "./vtpass.ts";
@@ -76,9 +76,9 @@ const VT_FIRST: Provider[] = ["vtpass", "clubkonnect"];
 
 Deno.test("parseProviderConfig: defaults to ClubKonnect with failover on; only exact values change it", () => {
   const none = new Set<string>();
-  assertEquals(parseProviderConfig({}), { primary: "clubkonnect", failover: true, bigisub: false, bigisubFirst: none });
-  assertEquals(parseProviderConfig({ bill_provider: " VTpass ", bill_provider_failover: "false" }), { primary: "vtpass", failover: false, bigisub: false, bigisubFirst: none });
-  assertEquals(parseProviderConfig({ bill_provider: "paystack", bill_provider_failover: "no" }), { primary: "clubkonnect", failover: true, bigisub: false, bigisubFirst: none });
+  assertEquals(parseProviderConfig({}), { primary: "clubkonnect", failover: true, bigisub: false, bigisubFirst: none, bigisubServices: BG_BACKUP_DEFAULT });
+  assertEquals(parseProviderConfig({ bill_provider: " VTpass ", bill_provider_failover: "false" }), { primary: "vtpass", failover: false, bigisub: false, bigisubFirst: none, bigisubServices: BG_BACKUP_DEFAULT });
+  assertEquals(parseProviderConfig({ bill_provider: "paystack", bill_provider_failover: "no" }), { primary: "clubkonnect", failover: true, bigisub: false, bigisubFirst: none, bigisubServices: BG_BACKUP_DEFAULT });
   assertEquals(parseProviderConfig({ bill_provider_bigisub: " TRUE " }).bigisub, true);
   assertEquals(parseProviderConfig({ bill_provider_bigisub: "yes" }).bigisub, false);
 });

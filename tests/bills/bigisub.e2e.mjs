@@ -94,6 +94,30 @@ const bgSrv = http.createServer((req, res) => {
       bgHistory.unshift({ tranx_id: id, unique_element: body.meter_no, status, service_type: "electricity", date_created: lagosNow(), transaction_amount: String(body.amount + 100) });
       return send(201, { success: true, data: { transaction_id: id, status, amount: body.amount, service_charge: 100, total_amount: body.amount + 100, ...(token ? { token, units: "45.2kWh" } : {}) }, message: "ok" });
     }
+    if (P === "/vtu/cable/plans/") { bgLog.push("cableplans"); return send(200, { success: true, data: [
+      { id: 55, cable_name: "dstv", product_name: "DStv Padi N4,400", variation_code: "dstv-padi", amount: 4400 },
+      { id: 95, cable_name: "dstv", product_name: "Movie Bundle Add-on N3500", variation_code: "dstv-movie-bundle-add-on", amount: 3500 },
+      { id: 98, cable_name: "dstv", product_name: "Compact Plus Movie Add-on N3,500", variation_code: "dstv-compact-plus-movie", amount: 3500 }] }); }
+    if (P === "/vtu/cable/verify/") { bgLog.push(`cableverify:${body.card_no}`); return send(200, { success: true, data: { valid: true, customer_name: "ADA OBI" } }); }
+    if (P === "/vtu/cable/purchase/") {
+      bgLog.push(`cable:${body.cable_type}:${body.card_no}:${body.amount}:${body.Customer}:pin=${body.pin === PIN}`);
+      if (bgMode === "poor") return send(402, { success: false, message: "Insufficient balance" });
+      const id = `CableT${++bgN}`; bgOrders.set(id, { status: "successful", svc: "cable" });
+      return send(201, { success: true, data: { transaction_id: id, status: "successful" } });
+    }
+    if (P === "/betting/validate/") { bgLog.push(`betvalidate:${body.biller_code}:${body.customer_id}`); return send(200, { success: true, data: { valid: true, customer_name: "John Doe", validation_reference: "VR-1" } }); }
+    if (P === "/betting/fund/") {
+      bgLog.push(`bet:${body.biller_code}:${body.customer_id}:${body.amount}:${body.validation_reference}:pin=${body.pin_code === PIN}`);
+      const id = `MONBET${++bgN}`; bgOrders.set(id, { status: "successful", svc: "betting" });
+      return send(201, { success: true, data: { transaction_id: id, status: "successful" } });
+    }
+    if (P === "/isp/smile/plans/") return send(200, { success: true, data: [{ id: 45, variation_code: "858", name: "Smile 450GB" }, { id: 1, variation_code: "airtime", name: "Buy Airtime" }] });
+    if (P === "/isp/smile/verify/") { bgLog.push(`smileverify:${body.account_id}`); return send(200, { success: true, data: { verified: true, customer_name: "TOLU" } }); }
+    if (P === "/isp/smile/topup/") {
+      bgLog.push(`smile:${body.plan}:${body.account_id}:pin=${body.pin === PIN}`);
+      const id = `SMLT${++bgN}`; bgOrders.set(id, { status: "successful", svc: "smile" });
+      return send(201, { success: true, data: { transaction_id: id, status: "successful" } });
+    }
     if (P === "/financial/transactions/") {
       bgLog.push(`history:${u.searchParams.get("unique_element")}:${u.searchParams.get("transaction_type")}`);
       const ue = u.searchParams.get("unique_element");
@@ -358,6 +382,40 @@ ok(J(claims.get(rid)?.providers) === J(["clubkonnect", "bigisub"]) && alerts.som
 reset({ real: { "APIDatabundleV1.asp": "invalidplan" } }); rid = ref();
 r = await call({ action: "data", phone: PHONE, network: "MTN", planId: "1000", requestId: rid });
 ok(!!r?.error && /INVALID_DATAPLAN/.test(r.error) && !bgLog.some((x) => x.startsWith("buy:")), "1GB weekly: Bigisub's costs more than the customer paid → never at a loss, fails and is refunded as before", J([r, bgLog]));
+
+console.log("cable / betting / Smile: Bigisub backs ClubKonnect up only once switched on (2026-10-23)…");
+const cable = (o, pkg = "dstv-padi", card = "1234567890") => call({ action: "cable", provider: "dstv", packageId: pkg, smartcard: card, phone: PHONE, requestId: o });
+const bet = (o) => call({ action: "betting", company: "product-bet-king", customerId: "BK-778", amount: "500", requestId: o });
+const smile = (o) => call({ action: "smile", accountNo: "08051112222", planId: "858", requestId: o });
+config = { ...BASE_CFG, bill_provider_bigisub: "true" }; await fresh();
+reset({ real: { "APICableTVV1.asp": "lowwallet", "APIBettingV1.asp": "lowwallet", "APISmileV1.asp": "lowwallet" } });
+r = await cable(ref()); const r2b = await bet(ref()); const r3s = await smile(ref());
+ok(!!r?.error && !!r2b?.error && !!r3s?.error && bgLog.length === 0, "not switched on yet: ClubKonnect's empty wallet → clean failure, Bigisub never contacted", J([r, r2b, r3s, bgLog]));
+config = { ...BASE_CFG, bill_provider_bigisub: "true", bill_bigisub_services: "airtime,data,electricity,cable,betting,smile" }; await fresh();
+reset({ real: { "APICableTVV1.asp": "ok", "APIBettingV1.asp": "ok", "APISmileV1.asp": "ok" } });
+r = await cable(ref());
+ok(r?.status === "SUCCESS" && r?.provider !== "bigisub" && bgLog.length === 0, "ClubKonnect works → Bigisub not even asked (no extra checks slow the order down)", J([r, bgLog]));
+reset({ real: { "APICableTVV1.asp": "lowwallet" } }); rid = ref();
+r = await cable(rid);
+ok(r?.status === "SUCCESS" && r?.provider === "bigisub" && bgLog.includes("cableverify:1234567890") && bgLog.includes("cable:dstv:1234567890:4400:ADA OBI:pin=true"),
+  "cable: ClubKonnect's wallet empty → Bigisub subscribes DStv Padi (₦4,400, the verified name)", J([r, bgLog]));
+ok(J(claims.get(rid)?.providers) === J(["clubkonnect", "bigisub"]), "…the move is on the claim", J(claims.get(rid)));
+reset({ real: { "APICableTVV1.asp": "lowwallet" } });
+r = await cable(ref(), "dstv-movie-bundle-add-on");
+ok(!!r?.error && !bgLog.some((x) => x.startsWith("cable:")), "a package whose price another package shares is never bought on Bigisub (it buys by amount)", J([r, bgLog]));
+reset({ real: { "APICableTVV1.asp": "badnumber" } });
+r = await cable(ref());
+ok(!!r?.error && bgLog.length === 0, "ClubKonnect refuses the CUSTOMER (bad smartcard) → not moved", J([r, bgLog]));
+reset({ real: { "APIBettingV1.asp": "lowwallet" } }); rid = ref();
+r = await bet(rid);
+ok(r?.status === "SUCCESS" && r?.provider === "bigisub" && bgLog.includes("betvalidate:biller-bet-king:BK-778") && bgLog.includes("bet:biller-bet-king:BK-778:500:VR-1:pin=true"),
+  "betting: validated on Bigisub (BetKing → biller-bet-king), funded with its validation reference", J([r, bgLog]));
+reset({ real: { "APISmileV1.asp": "lowwallet" } }); rid = ref();
+r = await smile(rid);
+ok(r?.status === "SUCCESS" && r?.provider === "bigisub" && bgLog.includes("smileverify:08051112222") && bgLog.includes("smile:45:08051112222:pin=true"),
+  "Smile: same plan code (858 → Bigisub plan 45), account verified, topped up", J([r, bgLog]));
+r = await call({ action: "verify", requestId: rid, service: "smile" });
+ok(r?.status === "SUCCESS" && r?.provider === "bigisub", "verify asks Bigisub for a moved Smile order", J(r));
 
 console.log("Bigisub FIRST for airtime and electricity (owner, 2026-10-21)…");
 config = { ...BASE_CFG, bill_provider_bigisub: "true", bill_bigisub_first: "airtime,electricity" }; await fresh(); reset();

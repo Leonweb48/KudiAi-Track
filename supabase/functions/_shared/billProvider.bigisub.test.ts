@@ -24,8 +24,8 @@ Deno.test("order: Bigisub is the last backup for airtime and data only, and only
 
 Deno.test("order: Bigisub FIRST for the services listed in bill_bigisub_first, ClubKonnect its backup", () => {
   const st = { vtUsable: false, bgUsable: true, health: { clubkonnect: "up" as const, bigisub: "up" as const } };
-  const first = parseProviderConfig({ bill_provider_bigisub: "true", bill_bigisub_first: " Airtime, electricity ,cable" });
-  assertEquals([...first.bigisubFirst!], ["airtime", "electricity"]);   // cable isn't a Bigisub service → ignored
+  const first = parseProviderConfig({ bill_provider_bigisub: "true", bill_bigisub_first: " Airtime, electricity ,water" });
+  assertEquals([...first.bigisubFirst!], ["airtime", "electricity"]);   // "water" isn't a Bigisub service → ignored
   assertEquals(providerOrder("airtime", first, st), ["bigisub", "clubkonnect"]);
   assertEquals(providerOrder("electricity", first, st), ["bigisub", "clubkonnect"]);
   assertEquals(providerOrder("data", first, st), ["clubkonnect", "bigisub"]);
@@ -133,4 +133,19 @@ Deno.test("buy: an order claimed for Bigisub when Bigisub isn't set up any more 
 Deno.test("bgVerify", () => {
   assertEquals([bgVerify("delivered"), bgVerify("failed"), bgVerify("pending"), bgVerify("not-found"), bgVerify("unknown"), bgVerify(null)],
     ["SUCCESS", "FAILED", "PENDING", "NOT_FOUND", "UNKNOWN", "UNKNOWN"]);
+});
+
+Deno.test("order: cable / betting / Smile get Bigisub as backup only once listed in bill_bigisub_services", () => {
+  const st = { vtUsable: false, bgUsable: true, health: { clubkonnect: "up" as const, bigisub: "up" as const } };
+  const off = parseProviderConfig({ bill_provider_bigisub: "true" });
+  assertEquals([...off.bigisubServices!], ["airtime", "data", "electricity"]);       // unset = the three proven live
+  assertEquals(providerOrder("cable", off, st), ["clubkonnect"]);
+  assertEquals(providerOrder("airtime", off, st), ["clubkonnect", "bigisub"]);
+  const on = parseProviderConfig({ bill_provider_bigisub: "true", bill_bigisub_services: "airtime,data,electricity,cable,betting,smile,spectranet" });
+  assertEquals(providerOrder("cable", on, st), ["clubkonnect", "bigisub"]);
+  assertEquals(providerOrder("betting", on, st), ["clubkonnect", "bigisub"]);
+  assertEquals(providerOrder("smile", on, st), ["clubkonnect", "bigisub"]);
+  assertEquals(providerOrder("spectranet", on, st), ["clubkonnect"]);                 // not a Bigisub service
+  const none = parseProviderConfig({ bill_provider_bigisub: "true", bill_bigisub_services: "" });
+  assertEquals(providerOrder("airtime", none, st), ["clubkonnect"]);                  // explicitly emptied → no backup at all
 });

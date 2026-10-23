@@ -20,7 +20,7 @@ import {
   type SwitchEvent,
 } from "../_shared/billProvider.ts";
 import {
-  BG_ELEC_FEE_DEFAULT, BG_EXAMS, bgAirtimeBody, bgCall, bgElecBody, bgElecCustomer, bgElecProviders, bgElecToken, bgElecVerifyBody, bgConfigured, bgDataBody, bgExamBody, bgExamPins, bgExamPrices, bgHistoryRows, bgNetwork, bgPlanId, bgStatus, bgWalletHealth,
+  BG_ELEC_FEE_DEFAULT, BG_EXAMS, bgAirtimeBody, bgBettingBiller, bgBettingFundBody, bgBettingValidateBody, bgBettingValidated, bgCableAmountFor, bgCableBody, bgCablePlans, bgCableVerifyBody, bgSmileBody, bgSmilePlanId, bgCall, bgElecBody, bgElecCustomer, bgElecProviders, bgElecToken, bgElecVerifyBody, bgConfigured, bgDataBody, bgExamBody, bgExamPins, bgExamPrices, bgHistoryRows, bgNetwork, bgPlanId, bgStatus, bgWalletHealth,
   classifyBgLookup, digits as bgDigits, isBgPlan, lagosDate, matchHistory, parseBgPlans, type BgCreds, type BgFetch, type BgFind, type BgOrderKey, type BgResult,
 } from "../_shared/bigisub.ts";
 import { findEquivalentPlan, pickCheaperPlans } from "../_shared/planMatch.ts";
@@ -736,7 +736,7 @@ async function providerConfig(): Promise<ProviderConfig> {
   if (provCfgCache && Date.now() - provCfgCache.at < 60_000) return provCfgCache.cfg;
   try {
     const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
-    const { data, error } = await db.from("platform_config").select("key, value").in("key", ["bill_provider", "bill_provider_failover", "bill_provider_bigisub", "bill_bigisub_first"]);
+    const { data, error } = await db.from("platform_config").select("key, value").in("key", ["bill_provider", "bill_provider_failover", "bill_provider_bigisub", "bill_bigisub_first", "bill_bigisub_services"]);
     if (error) throw error;
     const m: Record<string, string> = {};
     for (const r of (data ?? []) as { key: string; value: string }[]) m[r.key] = r.value;
@@ -932,8 +932,11 @@ async function bgVerifyOrder(svc: string, rid: string, claim: ClaimRow | null): 
     const meta = claim?.bgMeta;
     const sentAtMs = Date.parse(String(meta?.sent_at ?? ""));
     if (!meta?.phone || !Number.isFinite(sentAtMs)) return out("UNKNOWN", { message: "no Bigisub record of this order" });
-    const f = await bgFindOrder(rid, { phone: meta.phone, service: (meta.service === "data" || meta.service === "electricity" ? meta.service : svc === "data" ? "data" : "airtime"), sentAtMs, amount: Number(meta.amount) || undefined });
-    if (f.kind === "none") return out(Date.now() - sentAtMs > 30 * 60_000 ? "NOT_FOUND" : "PENDING", { message: "not in Bigisub's history" });
+    const kind = (["data", "electricity", "cable", "betting", "smile"].includes(String(meta.service)) ? meta.service : svc === "data" ? "data" : "airtime") as BgOrderKey["service"];
+    const f = await bgFindOrder(rid, { phone: meta.phone, service: kind, sentAtMs, amount: Number(meta.amount) || undefined });
+    // Absent from the history 30 minutes on = never placed — trusted only where the history's shape is proven live
+    // (airtime, data); anything else stays PENDING (held, admins alerted later), never refunded on a guess.
+    if (f.kind === "none") return out(Date.now() - sentAtMs > 30 * 60_000 && (kind === "airtime" || kind === "data") ? "NOT_FOUND" : "PENDING", { message: "not in Bigisub's history" });
     if (f.kind !== "found") return out(f.kind === "ambiguous" ? "PENDING" : "UNKNOWN", { message: `history ${f.kind}` });
     id = f.tranxId;
     await bgStore(rid, { bg_tranx_id: id });
@@ -983,7 +986,10 @@ async function bgFindOrder(rid: string, key: BgOrderKey): Promise<BgFind> {
   }
   return matchHistory(rows, key, taken);
 }
-type BgOrder = { path: string; body: Record<string, unknown>; phone: string; service: "airtime" | "data" | "exam" | "electricity"; amount?: number };
+// `prepare` builds the body only when the order actually goes to Bigisub (ClubKonnect failed first) — its customer check /
+// package lookup never slows a normal order down; null = Bigisub can't take this one (the order is not sent there).
+type BgOrder = { path: string; body: Record<string, unknown>; phone: string; service: "airtime" | "data" | "exam" | "electricity" | "cable" | "betting" | "smile";
+  amount?: number; prepare?: () => Promise<Record<string, unknown> | null> };
 
 // Bigisub's discos (minimum amounts, service charge), cached 10 minutes.
 let bgElecCache: { at: number; list: ReturnType<typeof bgElecProviders> } | null = null;
@@ -993,6 +999,42 @@ async function bgElecProviderList() {
   if (Object.keys(list).length) bgElecCache = { at: Date.now(), list };
   return list;
 }
+/** The providers for a ClubKonnect-only bill that Bigisub may back up: ["clubkonnect"] or ["clubkonnect", "bigisub"]. */
+async function ckWithBigisubBackup(svc: string): Promise<Provider[]> {
+  return (await providerOrderFor(svc)).includes("bigisub") ? ["clubkonnect", "bigisub"] : ["clubkonnect"];
+}
+/** Cable on Bigisub: its plan list (cached 10 min) must hold the package at a price no other package shares; the card is verified there. */
+let bgCableCache: { at: number; d: BgResult } | null = null;
+async function bgCablePrepare(provider: string, packageId: string, smartcard: string, phone: string): Promise<Record<string, unknown> | null> {
+  if (!bgCableCache || Date.now() - bgCableCache.at > 10 * 60_000) {
+    const d = await bgCall(bgFetch, BG, "GET", `/vtu/cable/plans/?cable_name=${encodeURIComponent(provider.toLowerCase())}`, undefined, 15_000);
+    if (d?.success !== true) return null;
+    bgCableCache = { at: Date.now(), d };
+  }
+  const amount = bgCableAmountFor(bgCablePlans(bgCableCache.d, provider), packageId);
+  if (!amount) return null;
+  const v = await bgCall(bgFetch, BG, "POST", "/vtu/cable/verify/", bgCableVerifyBody(provider, smartcard), 20_000);
+  const name = String((v?.data as Record<string, unknown> | undefined)?.customer_name ?? "").trim();
+  if (v?.success !== true || !name) return null;
+  return bgCableBody(provider, smartcard, phone || "08000000000", amount, name, BG.pin);
+}
+/** Betting on Bigisub: the company must map to a Bigisub biller, and the customer must validate there. */
+async function bgBettingPrepare(company: string, customerId: string, amount: number): Promise<Record<string, unknown> | null> {
+  const biller = bgBettingBiller(company);
+  if (!biller) return null;
+  const v = bgBettingValidated(await bgCall(bgFetch, BG, "POST", "/betting/validate/", bgBettingValidateBody(biller, customerId), 20_000));
+  return v ? bgBettingFundBody(biller, customerId, v.name, amount, v.ref, BG.pin) : null;
+}
+/** Smile on Bigisub: the same plan code must exist there, and the account must verify. */
+async function bgSmilePrepare(planId: string, accountNo: string): Promise<Record<string, unknown> | null> {
+  const id = bgSmilePlanId(await bgCall(bgFetch, BG, "GET", "/isp/smile/plans/", undefined, 15_000), planId);
+  if (!id) return null;
+  const v = await bgCall(bgFetch, BG, "POST", "/isp/smile/verify/", { account_id: accountNo }, 20_000);
+  if (v?.success !== true) return null;
+  const phone = /^0\d{10}$/.test(accountNo.replace(/\D/g, "")) ? accountNo.replace(/\D/g, "") : "08000000000";
+  return bgSmileBody(id, phone, "orders@kudiai.app", accountNo, BG.pin);
+}
+
 /** One plan of ClubKonnect's live list for a network, priced as the app showed it to the customer; null if not listed. */
 async function ckDataPlanPriced(network: string, planId: string): Promise<{ plan_id: string; plan_name: string; plan_amount: number } | null> {
   const netId = NET_ID[network] ?? "01";
@@ -1090,12 +1132,14 @@ function providerDeps(svc: string, rid: string, ckKey: string, ckCall: () => Pro
   return {
     ...(bg && bgUsable() ? {
       bgPay: async (): Promise<BgResult> => {
+        const body = bg.prepare ? await bg.prepare().catch(() => null) : bg.body;
+        if (!body) return { _notSent: true };   // Bigisub can't take this one (no matching package, customer not found …)
         bgSentAt = Date.now();
         // What we send is recorded first, and only if nothing was recorded before: one send per order, ever.
         const lock = await bgLock(rid, { phone: bgDigits(bg.phone), service: bg.service, amount: bg.amount ?? null, sent_at: new Date(bgSentAt).toISOString() });
         if (lock === "taken") return { _alreadySent: true };
         if (lock === "error") return { _notSent: true };
-        return bgCall(bgFetch, BG, "POST", bg.path, bg.body, 60_000);
+        return bgCall(bgFetch, BG, "POST", bg.path, body, 60_000);
       },
       bgFind: () => bgFindOrder(rid, { phone: bg.phone, service: bg.service, sentAtMs: bgSentAt, amount: bg.amount }),
       bgRemember: (id: string) => bgStore(rid, { bg_tranx_id: id }),
@@ -1250,7 +1294,7 @@ serve(async (req) => {
   // service-role key. This function is deployed --no-verify-jwt, so the gateway does NOT check anything for us:
   // these MUST be gated here (they used to be reachable by anyone on the internet with no credentials at all).
   let callerUser: { id: string } | null = null;   // set for ordinary logged-in callers; stays null for server (service-role) calls
-  const SERVICE_ONLY = new Set(["wallet-balance", "connectivity-check", "wallet-balance-alert", "health-check", "data-probe", "refresh-ck-prices", "price-list", "route-check", "vtpass-probe", "provider-status", "vtpass-sandbox-proof", "vtpass-explore", "ck-variants", "bigisub-check", "bigisub-live-test", "price-compare"]);
+  const SERVICE_ONLY = new Set(["wallet-balance", "connectivity-check", "wallet-balance-alert", "health-check", "data-probe", "refresh-ck-prices", "price-list", "route-check", "vtpass-probe", "provider-status", "vtpass-sandbox-proof", "vtpass-explore", "ck-variants", "bigisub-check", "bigisub-backup-check", "bigisub-live-test", "price-compare"]);
   // Public catalogue lookups (plan lists) stay open; purchase / write actions require the service key OR a user JWT.
   const READ_ONLY = new Set(["data-plans", "cabletv-plans", "waec-packages", "jamb-packages", "exam-price"]);
   if (CRON_ACTIONS.has(action)) {
@@ -1559,11 +1603,22 @@ serve(async (req) => {
         if (out.via === "clubkonnect") return json({ error: "This package is no longer available. Please reload the packages and try again." });
         return vtAnswer("cable", out, rid, callerUser?.id ?? null, pd.vtRid());
       }
-      const data = await ckBuy("cable", "APICableTVV1.asp", {
+      const ckCable = () => ckBuy("cable", "APICableTVV1.asp", {
         APIKey: CABLETV_K, CableTV: provider, Package: packageId,
         SmartCardNo: smartcard, PhoneNo: phone.replace(/\D/g, ""),
         RequestID: rid, CallBackURL: "https://kudiai.app/",
       });
+      let data: CkResult;
+      const cableOrder = await ckWithBigisubBackup("cable");
+      if (cableOrder.length > 1) {
+        // Bigisub backs ClubKonnect up (2026-10-23): only when ClubKonnect confirms it placed nothing
+        const pd = providerDeps("cable", rid, CABLETV_K, ckCable, null, { path: "/vtu/cable/purchase/", body: {}, phone: smartcard.trim(), service: "cable",
+          prepare: () => bgCablePrepare(provider, packageId, smartcard.trim(), phone.replace(/\D/g, "")) });
+        const out = await buyAcrossProviders("cable", cableOrder, pd);
+        if (out.via === "bigisub") return bgAnswer("cable", out, rid, callerUser?.id ?? null);
+        if (out.via !== "clubkonnect") return json({ error: out.message || UNAVAILABLE_MSG });
+        data = out.data;
+      } else data = await ckCable();
       if (!isOk(data)) return json({ error: (await ckFailedOrHeld(data, CABLETV_K, rid)) === "hold" ? PENDING_STATUS : errMsg(data, "Cable TV subscription failed"), _raw: data });
       return json({ status: "SUCCESS", reference: String(data.orderid ?? data.requestid ?? ""), message: String(data.status ?? "ORDER_RECEIVED") });
     }
@@ -2230,10 +2285,20 @@ serve(async (req) => {
     if (action === "betting") {
       const { company, customerId, amount } = body as { company: string; customerId: string; amount: string };
       if (!company || !customerId || !amount) return json({ error: "company, customerId and amount required" });
-      const data = await ckBuy("betting", "APIBettingV1.asp", {
+      const ckBet = () => ckBuy("betting", "APIBettingV1.asp", {
         APIKey: BETTING_K, BettingCompany: company, CustomerID: customerId,
         Amount: String(amount), RequestID: rid, CallBackURL: "https://kudiai.app/",
       });
+      let data: CkResult;
+      const betOrder = await ckWithBigisubBackup("betting");
+      if (betOrder.length > 1) {
+        const pd = providerDeps("betting", rid, BETTING_K, ckBet, null, { path: "/betting/fund/", body: {}, phone: customerId.trim(), service: "betting",
+          amount: Number(amount), prepare: () => bgBettingPrepare(company, customerId.trim(), Number(amount)) });
+        const out = await buyAcrossProviders("betting", betOrder, pd);
+        if (out.via === "bigisub") return bgAnswer("betting", out, rid, callerUser?.id ?? null);
+        if (out.via !== "clubkonnect") return json({ error: out.message || UNAVAILABLE_MSG });
+        data = out.data;
+      } else data = await ckBet();
       if (!isOk(data)) return json({ error: (await ckFailedOrHeld(data, BETTING_K, rid)) === "hold" ? PENDING_STATUS : errMsg(data, "Betting wallet funding failed"), _raw: data });
       return json({ status: "SUCCESS", reference: String(data.orderid ?? data.requestid ?? ""), message: String(data.status ?? "ORDER_RECEIVED") });
     }
@@ -2440,10 +2505,20 @@ serve(async (req) => {
         if (out.via === "clubkonnect") return json({ error: "This plan is no longer available. Please reload the plans and try again." });
         return vtAnswer("smile", out, rid, callerUser?.id ?? null, pd.vtRid());
       }
-      const data = await ckBuy("smile", "APISmileV1.asp", {
+      const ckSmile = () => ckBuy("smile", "APISmileV1.asp", {
         APIKey: SMILE_K, MobileNetwork: "smile-direct", DataPlan: planId,
         MobileNumber: accountNo, RequestID: rid, CallBackURL: "https://kudiai.app/",
       });
+      let data: CkResult;
+      const smileOrder = await ckWithBigisubBackup("smile");
+      if (smileOrder.length > 1) {
+        const pd = providerDeps("smile", rid, SMILE_K, ckSmile, null, { path: "/isp/smile/topup/", body: {}, phone: accountNo.trim(), service: "smile",
+          prepare: () => bgSmilePrepare(planId, accountNo.trim()) });
+        const out = await buyAcrossProviders("smile", smileOrder, pd);
+        if (out.via === "bigisub") return bgAnswer("smile", out, rid, callerUser?.id ?? null);
+        if (out.via !== "clubkonnect") return json({ error: out.message || UNAVAILABLE_MSG });
+        data = out.data;
+      } else data = await ckSmile();
       if (!isOk(data)) return json({ error: (await ckFailedOrHeld(data, SMILE_K, rid)) === "hold" ? PENDING_STATUS : errMsg(data, "Smile purchase failed"), _raw: data });
       return json({ status: "SUCCESS", reference: String(data.orderid ?? data.requestid ?? ""), message: String(data.status ?? "ORDER_RECEIVED") });
     }
@@ -3031,7 +3106,7 @@ serve(async (req) => {
       // order could go to is down.
       const routeCfg = await routeConfig();
       const route = PREFLIGHT_ROUTE[cat];
-      const order: Provider[] = VT_SERVICES.has(cat) ? await providerOrderFor(cat) : ["clubkonnect"];
+      const order: Provider[] = VT_SERVICES.has(cat) || BG_SERVICES.has(cat) ? await providerOrderFor(cat) : ["clubkonnect"];
       let ckDown: string | null = null;   // why ClubKonnect can't take it right now (null = it can, or we can't tell)
       if (order.includes("clubkonnect") && route && routeCfg.healthcheckOn) {
         const [svc, mainPath] = route;
@@ -3072,7 +3147,9 @@ serve(async (req) => {
       const vtBackup = available.includes("vtpass");   // a ClubKonnect refusal for an empty wallet would move the order to VTpass
       // Bigisub backs up airtime the same way; data only once its plans are what the customer sees (catalogueProvider).
       const bgBackup = !bgShort && available.includes("bigisub") && (cat === "airtime" || (cat === "data" && (await catalogueProvider("data")) === "bigisub")
-        || (cat === "electricity" && ((await bgHealthState()).balance ?? 0) >= cost + BG_ELEC_FEE_DEFAULT));
+        || (cat === "electricity" && ((await bgHealthState()).balance ?? 0) >= cost + BG_ELEC_FEE_DEFAULT)
+        // cable / betting / Smile: Bigisub adds its own charge (₦100 cable, a small betting fee) — leave room for it
+        || ((cat === "cable" || cat === "betting" || cat === "smile") && ((await bgHealthState()).balance ?? 0) >= cost + 200));
 
       const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
       const { data: cfgRows } = await sb.from("platform_config").select("key, value").in("key", ["ck_discounts", "ck_discounts_updated", "ck_wallet_min_buffer"]);
@@ -3343,6 +3420,37 @@ serve(async (req) => {
         mtnDataPlans: plans.length, historyReadable: hist !== null });
     }
 
+    // ── Bigisub backup readiness (service-only, free — nothing is bought): how much of ClubKonnect's cable, betting and
+    //    Smile catalogues Bigisub could take over (2026-10-23). Counts and codes only — no prices, no customers.
+    if (action === "bigisub-backup-check") {
+      if (!bgUsable()) return json({ error: "BIGISUB_TOKEN / BIGISUB_PIN not set" });
+      const cable: Record<string, unknown> = {};
+      for (const tv of ["dstv", "gotv", "startimes"]) {
+        const ckd = await ck("APICableTVPackagesV2.asp", { APIKey: CABLETV_K, CableTV: tv }, { retries: 1, timeoutMs: 15000 }).catch(() => null);
+        const ckIds = new Set<string>();
+        (function walk(o: unknown) {
+          if (Array.isArray(o)) { o.forEach(walk); return; }
+          if (o && typeof o === "object") { const r = o as Record<string, unknown>; if (r.PACKAGE_ID) ckIds.add(String(r.PACKAGE_ID)); Object.values(r).forEach(walk); }
+        })(ckd);
+        const bgPlans = bgCablePlans(await bgCall(bgFetch, BG, "GET", `/vtu/cable/plans/?cable_name=${tv}`, undefined, 15_000), tv);
+        const usable = [...ckIds].filter((id) => bgCableAmountFor(bgPlans, id) !== null).length;
+        cable[tv] = { clubkonnect: ckIds.size, bigisub: bgPlans.length, backed_up: usable };
+      }
+      const billers = await bgCall(bgFetch, BG, "GET", "/betting/billers/", undefined, 15_000);
+      const codes = new Set(((Array.isArray(billers?.data) ? billers.data : []) as Record<string, unknown>[]).map((b) => String(b.code ?? "")));
+      const ours = ["product-nairabet", "product-bang-bet", "product-bet-way", "product-bet-land", "product-bet-king", "product-1x-bet", "product-naija-bet", "prd-sporty-bet", "product-merry-bet"];
+      const betting = { ours: ours.length, at_bigisub: ours.filter((c) => codes.has(bgBettingBiller(c) ?? "")).length, missing: ours.filter((c) => !codes.has(bgBettingBiller(c) ?? "")) };
+      const ckSmile = await ck("APISmilePackagesV2.asp", { APIKey: SMILE_K }, { retries: 1, timeoutMs: 15000 }).catch(() => null);
+      const smileIds = new Set<string>();
+      (function walk(o: unknown) {
+        if (Array.isArray(o)) { o.forEach(walk); return; }
+        if (o && typeof o === "object") { const r = o as Record<string, unknown>; if (r.PACKAGE_ID && r.PACKAGE_ID !== "airtime") smileIds.add(String(r.PACKAGE_ID)); Object.values(r).forEach(walk); }
+      })(ckSmile);
+      const bgSmile = await bgCall(bgFetch, BG, "GET", "/isp/smile/plans/", undefined, 15_000);
+      const smile = { clubkonnect: smileIds.size, backed_up: [...smileIds].filter((id) => bgSmilePlanId(bgSmile, id) !== null).length };
+      return json({ cable, betting, smile, enabled: [...((await providerConfig()).bigisubServices ?? [])] });
+    }
+
     // ── Bigisub live test (service-only): ONE small airtime (₦25–₦100) through Bigisub only, to a number set by the
     //    workflow secret — proves token, PIN, purchase, stored id and verify end to end. Prints statuses only.
     if (action === "bigisub-live-test") {
@@ -3375,7 +3483,7 @@ serve(async (req) => {
         config: cfg,
         services,
         vtpass: { configured: vtConfigured(VT), env: VT.env, live: vtUsable(), health: vtConfigured(VT) ? vt : "unknown" },
-        bigisub: { configured: bgUsable(), on: !!cfg.bigisub, services: [...BG_SERVICES], health: bgH.state, walletOk: bgH.balance === null ? null : bgH.balance >= 500 },
+        bigisub: { configured: bgUsable(), on: !!cfg.bigisub, services: [...(cfg.bigisubServices ?? BG_SERVICES)], health: bgH.state, walletOk: bgH.balance === null ? null : bgH.balance >= 500 },
         clubkonnect: { health: Object.fromEntries(services.map((s, i) => [s, ckHealths[i]])), healthCheckOn: rc.healthcheckOn },
         routing: Object.fromEntries(services.map((s, i) => [s, orders[i]])),
         checkedAt: new Date().toISOString(),

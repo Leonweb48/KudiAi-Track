@@ -1,7 +1,7 @@
 // Run: deno test supabase/functions/_shared/bigisub.test.ts
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
-  bgCall, bgConfigured, bgElecCustomer, bgElecProviders, bgElecToken, bgExamPins, bgExamPrices, bgHistoryRows, bgMessage, bgNetwork, bgStatus, bgTxnId, bgWalletHealth, classifyBgLookup, classifyBgPurchase,
+  bgBettingBiller, bgBettingValidated, bgCableAmountFor, bgCablePlans, bgSmilePlanId, bgCall, bgConfigured, bgElecCustomer, bgElecProviders, bgElecToken, bgExamPins, bgExamPrices, bgHistoryRows, bgMessage, bgNetwork, bgStatus, bgTxnId, bgWalletHealth, classifyBgLookup, classifyBgPurchase,
   lagosDate, lagosToMs, matchHistory, parseBgPlans, BG_UNAVAILABLE, type BgHistoryRow,
 } from "./bigisub.ts";
 
@@ -160,4 +160,21 @@ Deno.test("matchHistory for an exam order: no phone, matched by kind of service 
   ];
   assertEquals(matchHistory(rows, { phone: "", service: "exam", sentAtMs: sent, amount: 5200 }), { kind: "found", tranxId: "Edu1", state: "delivered" });
   assertEquals(matchHistory(rows, { phone: "", service: "exam", sentAtMs: sent, amount: 2450 }).kind, "none");
+});
+
+Deno.test("cable / betting / Smile helpers", () => {
+  const plans = bgCablePlans({ success: true, data: [
+    { cable_name: "dstv", product_name: "DStv Padi N4,400", variation_code: "dstv-padi", amount: 4400 },
+    { cable_name: "dstv", product_name: "Movie Bundle Add-on N3500", variation_code: "dstv-movie-bundle-add-on", amount: 3500 },
+    { cable_name: "dstv", product_name: "Compact Plus Movie Add-on N3,500", variation_code: "dstv-compact-plus-movie", amount: 3500 },
+    { cable_name: "gotv", product_name: "GOtv Smallie", variation_code: "gotv-smallie", amount: 1575 }] }, "DStv");
+  assertEquals(plans.length, 3);
+  assertEquals(bgCableAmountFor(plans, "dstv-padi"), 4400);
+  assertEquals(bgCableAmountFor(plans, "dstv-movie-bundle-add-on"), null);    // two packages at ₦3,500: Bigisub buys by amount → ambiguous
+  assertEquals(bgCableAmountFor(plans, "dstv-unknown"), null);
+  assertEquals([bgBettingBiller("product-bet-king"), bgBettingBiller("prd-sporty-bet"), bgBettingBiller("BET9JA")], ["biller-bet-king", "biller-sporty-bet", null]);
+  assertEquals(bgBettingValidated({ success: true, data: { valid: true, customer_name: "John Doe", validation_reference: "VR1" } }), { name: "John Doe", ref: "VR1" });
+  assertEquals(bgBettingValidated({ success: true, data: { valid: false, customer_name: "x" } }), null);
+  assertEquals(bgSmilePlanId({ success: true, data: [{ id: 45, variation_code: "858" }, { id: 1, variation_code: "airtime" }] }, "858"), 45);
+  assertEquals(bgSmilePlanId({ success: true, data: [{ id: 1, variation_code: "airtime" }] }, "airtime"), null);
 });

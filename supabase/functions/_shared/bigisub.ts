@@ -54,6 +54,53 @@ export const bgAirtimeBody = (network: number, phone: string, amount: number, pi
 export const bgDataBody = (network: number, planId: number, phone: string, pin: string) =>
   ({ network, plan: planId, phone_number: phone, pin, ported_number: false });
 
+// ── Cable TV, betting, Smile — Bigisub as ClubKonnect's BACKUP only (owner, 2026-10-23) ──────────────────────────────
+/** Bigisub's cable plans for one provider: [{ code (= ClubKonnect's package id), amount, name }]. */
+export function bgCablePlans(d: BgResult | null | undefined, provider: string): { code: string; amount: number; name: string }[] {
+  const list = (Array.isArray(d?.data) ? d!.data : (data(d).plans ?? [])) as Record<string, unknown>[];
+  return (Array.isArray(list) ? list : [])
+    .filter((p) => String(p.cable_name ?? "").toLowerCase() === provider.toLowerCase())
+    .map((p) => ({ code: String(p.variation_code ?? ""), amount: Number(p.amount) || 0, name: String(p.product_name ?? "") }))
+    .filter((p) => p.code && p.amount > 0);
+}
+/**
+ * The amount to pay Bigisub for a ClubKonnect cable package — Bigisub's purchase names the package by AMOUNT only, so the
+ * package must exist there and be the ONLY one of that provider at that amount; null otherwise (no backup for it).
+ */
+export function bgCableAmountFor(plans: { code: string; amount: number }[], packageId: string): number | null {
+  const p = plans.find((x) => x.code === packageId);
+  if (!p) return null;
+  return plans.filter((x) => x.amount === p.amount).length === 1 ? p.amount : null;
+}
+export const bgCableVerifyBody = (provider: string, cardNo: string) => ({ cable_name: provider.toLowerCase(), card_no: cardNo });
+export const bgCableBody = (provider: string, cardNo: string, phone: string, amount: number, customer: string, pin: string) =>
+  ({ cable_type: provider.toLowerCase(), card_no: cardNo, phone_number: phone, amount, Customer: customer, pin });
+
+/** Our betting company codes ("product-bet-king", "prd-sporty-bet") → Bigisub biller codes ("biller-bet-king"). */
+export const bgBettingBiller = (company: string): string | null => {
+  const m = /^(?:product|prd)-(.+)$/i.exec(String(company ?? "").trim());
+  return m ? `biller-${m[1].toLowerCase()}` : null;
+};
+export const bgBettingValidateBody = (biller: string, customerId: string) => ({ biller_code: biller, customer_id: customerId });
+export const bgBettingFundBody = (biller: string, customerId: string, customerName: string, amount: number, validationRef: string, pin: string) =>
+  ({ biller_code: biller, customer_id: customerId, customer_name: customerName, amount, ...(validationRef ? { validation_reference: validationRef } : {}), pin_code: pin });
+/** A betting validation: the customer's name and the reference some billers need for funding; null = not valid / no answer. */
+export function bgBettingValidated(d: BgResult | null | undefined): { name: string; ref: string } | null {
+  if (!d || d.success !== true || data(d).valid === false) return null;
+  const name = String(data(d).customer_name ?? "").trim();
+  return name ? { name, ref: String(data(d).validation_reference ?? "").trim() } : null;
+}
+
+/** Bigisub's Smile plan id for a ClubKonnect Smile plan (both use the same plan codes, e.g. "858"); null if none. */
+export function bgSmilePlanId(d: BgResult | null | undefined, ckPlan: string): number | null {
+  const list = (Array.isArray(d?.data) ? d!.data : []) as Record<string, unknown>[];
+  const hit = list.find((p) => String(p.variation_code ?? "") === String(ckPlan) && String(ckPlan) !== "airtime");
+  const id = Number(hit?.id);
+  return Number.isFinite(id) && id > 0 ? id : null;
+}
+export const bgSmileBody = (planId: number, phone: string, email: string, accountId: string, pin: string) =>
+  ({ plan: planId, phone_number: phone, email, account_id: accountId, pin });
+
 // ── Exam result checker PINs (WAEC, NECO, NABTEB) ────────────────────────────────────────────────────────────────
 /** Our exam type codes (the app's) → Bigisub's exam code. WAEC REGISTRATION isn't sold by Bigisub. */
 export const BG_EXAMS: Readonly<Record<string, string>> = { waecdirect: "WAEC", neco: "NECO", nabteb: "NABTEB" };
@@ -172,7 +219,7 @@ export function classifyBgLookup(d: BgResult | null | undefined): BgState | "not
 // ── Finding an order in the history when its purchase reply was lost ───────────────────────────────────────────────
 export interface BgHistoryRow { tranx_id: string; unique_element: string; status: string; service_type: string; date_created: string; transaction_amount?: string; transaction_type?: string }
 /** `phone`: the number the order went to — for electricity, the meter number (its history's unique_element). */
-export interface BgOrderKey { phone: string; service: "airtime" | "data" | "exam" | "electricity"; sentAtMs: number; amount?: number; planLabel?: string }
+export interface BgOrderKey { phone: string; service: "airtime" | "data" | "exam" | "electricity" | "cable" | "betting" | "smile"; sentAtMs: number; amount?: number; planLabel?: string }
 export type BgFind = { kind: "found"; tranxId: string; state: BgState | null } | { kind: "none" } | { kind: "ambiguous" } | { kind: "unknown" };
 
 /** History timestamps are Africa/Lagos wall time with no zone ("2026-10-13T17:04:11"). */

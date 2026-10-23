@@ -11,6 +11,7 @@ name: Bigisub keys
 #   turn-off      — stops sending new orders to Bigisub at once (orders already there are still verified).
 #   remove-keys   — deletes the two function secrets (turns it off first).
 #   plans-check   — free: the app's data plan list per network vs Bigisub's own network for each bg: plan.
+#   backup-check  — free: how much of ClubKonnect's cable / betting / Smile catalogues Bigisub can back up (counts only).
 #   history-today — free: yesterday's and today's orders in Bigisub's own history (status, its reason, the SHAPE of the
 #                   number it received — length and first 4 digits — never the number or a balance).
 #
@@ -23,7 +24,7 @@ on:
       action:
         description: What to do
         type: choice
-        options: [check, history-today, plans-check, plan-lookup, order-detail, install-keys, live-test-50, turn-on, turn-off, remove-keys]
+        options: [check, backup-check, history-today, plans-check, plan-lookup, order-detail, install-keys, live-test-50, turn-on, turn-off, remove-keys]
         default: check
       tranx_id:
         description: "order-detail: Bigisub transaction id (e.g. Elec0499...)"
@@ -181,3 +182,13 @@ jobs:
           echo "PLAN    $PLAN: $(jq -r --arg p "$PLAN" '[.plans[]? | select(.plan_id == $p) | .plan_name] | if length == 0 then "NOT in the list" else join(" / ") end' app.json)"
           echo "SIMILAR $(jq -r --arg p "$PLAN" '[.plans[]? | select(.plan_id | startswith(($p | split(".")[0]) + ".")) | .plan_id + "=" + .plan_name] | .[0:6] | join(" ; ")' app.json)"
           rm -f app.json
+
+      - name: Backup readiness for cable / betting / Smile (backup-check — free, counts only)
+        if: inputs.action == 'backup-check'
+        env:
+          URL: ${{ secrets.REACT_APP_SUPABASE_URL }}
+          KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          curl -sS -m 150 -X POST "$URL/functions/v1/clubkonnect" -H "Content-Type: application/json" -H "Authorization: Bearer $KEY" -H "apikey: $KEY" -d '{"action":"bigisub-backup-check"}' > bc.json
+          echo "BACKUP  $(jq -c . bc.json 2>/dev/null || head -c 300 bc.json)"
+          rm -f bc.json
