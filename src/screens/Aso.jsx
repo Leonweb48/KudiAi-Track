@@ -803,7 +803,7 @@ function RegistrationFeeSetting({ ownerId, onChange }) {
 export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, onUpgrade, staffId = null, embedded, deepLink = null, onDeepLinkHandled = null }) {
   const t = useT();
   const toast = useToast();
-  const { walletEnabled, walletMoveFeeKobo } = usePlatformConfig();
+  const { walletEnabled } = usePlatformConfig();
   const [showAdd,      setShowAdd]      = useState(false);
   const [selected,              setSelected]             = useState(null);
   const [action,                setAction]               = useState(null);
@@ -2242,8 +2242,7 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                   onClick={() => setTxnPin({
                     title: isHeld ? t("ajo.releaseApproveWithdrawal") : t("ajo.approveWithdrawal"),
                     amount: Math.round((req.net_amount || 0) * 100),
-                    recipient: cl.full_name,
-                    fee: walletMoveFeeKobo,
+                    recipient: cl.full_name,   // a savings payout into the client's wallet is free — no charge fee, no VAT (2026-10-23)
                     description: isHeld ? t("ajo.securityHoldReleaseDesc") : t("ajo.savingsWithdrawalApproval"),
                     onApprove: (pin) => { setTxnPin(null); handleApproveRequest(req, pin, r => setActionResult(r)); },
                   })}
