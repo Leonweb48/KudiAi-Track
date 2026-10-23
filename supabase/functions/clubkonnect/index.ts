@@ -1060,34 +1060,6 @@ async function ckDataPlanPriced(network: string, planId: string): Promise<{ plan
 }
 
 /**
- * What a data purchase must send ClubKonnect as DataPlan for a plan of its list. Since 23 Oct 2026 its purchase refuses
- * the PRODUCT_ID its own list gives (every one → INVALID_DATAPLAN, like a made-up plan) and takes the PRODUCT_CODE
- * instead (free phone-"0" checks, workflow "ClubKonnect data plan check"). The app keeps showing PRODUCT_ID — prices, cost
- * records and the auto-hide stay keyed by it — and the code is looked up here at purchase. Not in the list / list
- * unreadable → the PRODUCT_ID as before (a refusal then hides the plan and moves the order, as for any refusal).
- */
-let ckPlanListCache: { at: number; mobileNet: Record<string, Record<string, unknown>[]> } | null = null;
-async function ckDataPlanCode(network: string, planId: string): Promise<string> {
-  if (!ckPlanListCache || Date.now() - ckPlanListCache.at > 5 * 60_000) {
-    // one call returns every network's plans
-    const data = await ck("APIDatabundlePlansV2.asp", { APIKey: DATA_K, MobileNetwork: NET_ID[network] ?? "01" }, { retries: 1, timeoutMs: 15000 }).catch(() => null);
-    const mobileNet = data?.MOBILE_NETWORK as Record<string, Record<string, unknown>[]> | undefined;
-    if (!mobileNet) return planId;
-    ckPlanListCache = { at: Date.now(), mobileNet };
-  }
-  const norm = (k: string) => k.replace(/^m_/i, "").replace(/\W/g, "").toUpperCase().replace("ETISALAT", "9MOBILE");
-  const key = Object.keys(ckPlanListCache.mobileNet).find((k) => norm(k) === norm(network));
-  for (const group of (key ? ckPlanListCache.mobileNet[key] : []) ?? []) {
-    for (const p of ((group?.PRODUCT ?? []) as Record<string, unknown>[])) {
-      if (String(p.DataPlan ?? p.PRODUCT_ID ?? p.PRODUCT_CODE ?? "") !== planId) continue;
-      const code = String(p.PRODUCT_CODE ?? "").trim();
-      return code || planId;
-    }
-  }
-  return planId;
-}
-
-/**
  * ClubKonnect refused a data plan it still lists (INVALID_DATAPLAN — a refusal, nothing placed; 2026-10-23: MTN 1500.02).
  * Buy Bigisub's plan of the same size and validity instead, when its cost fits inside what the customer paid and its wallet
  * can pay — through the same claim (ClubKonnect → Bigisub, never twice). null = no such plan / Bigisub can't: the order
@@ -1502,8 +1474,8 @@ serve(async (req) => {
           const products = (group?.PRODUCT ?? []) as Record<string, unknown>[];
           for (const p of products) {
             if (!_sampleProduct) _sampleProduct = p; // capture first product for debug
-            // PRODUCT_ID ("500", "1000.00") stays the plan's id in the app; since 23 Oct 2026 the purchase sends its
-            // PRODUCT_CODE instead (ckDataPlanCode) — ClubKonnect now refuses the PRODUCT_ID
+            // PRODUCT_ID is the MB-size value CK's V1 purchase endpoint accepts as DataPlan (e.g. "500", "1000", "2000")
+            // PRODUCT_CODE and PRODUCT_SNO are internal indexes rejected by the purchase endpoint
             const pid = String(p.DataPlan ?? p.PRODUCT_ID ?? p.PRODUCT_CODE ?? "");
             if (pid) plans.push({
               plan_id:     pid,
@@ -1570,14 +1542,10 @@ serve(async (req) => {
       if (vtPlan && (!vtUsable() || !sid)) return json({ error: "This data plan is no longer available. Please reload the plans and try again." });
       if (bgPlan && (!bgUsable() || !bgNet || !Number.isFinite(bgPlanId(planId)))) return json({ error: "This data plan is no longer available. Please reload the plans and try again." });
       const pd = providerDeps("data", rid, DATA_K,
-        async () => {
-          const code = await ckDataPlanCode(network, planId);   // ClubKonnect's purchase takes the PRODUCT_CODE (23 Oct 2026)
-          console.log(`data purchase: plan ${planId} sent as ${code}`);
-          return ckBuy("data", "APIDatabundleV1.asp", {
-            APIKey: DATA_K, MobileNetwork: netId, DataPlan: code,
-            MobileNumber: digits, RequestID: rid, CallBackURL: "https://kudiai.app/",
-          });
-        },
+        () => ckBuy("data", "APIDatabundleV1.asp", {
+          APIKey: DATA_K, MobileNetwork: netId, DataPlan: planId,
+          MobileNumber: digits, RequestID: rid, CallBackURL: "https://kudiai.app/",
+        }),
         vtPlan && sid ? vtDataBody(sid, vtPlanCode(planId), digits) : null,
         bgPlan && bgNet ? { path: "/vtu/data/purchase/", body: bgDataBody(bgNet, bgPlanId(planId), digits, BG.pin), phone: digits, service: "data" } : null);
       const out = await buyAcrossProviders("data", bgPlan ? ["bigisub"] : vtPlan ? ["vtpass"] : ["clubkonnect"], pd);
