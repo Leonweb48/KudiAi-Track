@@ -483,6 +483,7 @@ reset({ real: { "APIElectricityV1.asp": "elec-token" } }); rid = ref();
 r = await elec(rid);
 ok(r?.status === "SUCCESS" && r?.provider === "bigisub" && r?.token === "1234-5678-9012-3456-7890" && bgLog.includes(`elec:ikeja-electric:45012345678:1000:ADA OBI:pin=true`) && !ckLog.some((x) => x.startsWith("APIElectricityV1")),
   "prepaid electricity bought on Bigisub with the checked name; token on the receipt; ClubKonnect not used", J([r, bgLog, ckLog]));
+for (let i = 0; i < 20 && !costs.some((c) => c.p_request_id === rid); i++) await sleep(100);   // written just after the reply
 ok(costs.some((c) => c.p_request_id === rid && c.p_cost_kobo === 110000 && c.p_face_kobo === 100000), "our real cost recorded: ₦1,000 + Bigisub's ₦100 charge", J(costs));
 reset({ real: { "APIElectricityV1.asp": "elec-token" } }); rid = ref();
 r = await call({ action: "electricity", company: "07", meterType: "01", meterNo: "45012345678", amount: "1500", phone: PHONE, requestId: rid });
