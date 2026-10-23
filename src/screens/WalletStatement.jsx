@@ -43,7 +43,7 @@ function classifySource(source) {
   if (source === "withdrawal" || source === "withdrawal_reversal") return "transfers";
   if (source === "ajo_contribution" || source === "ajo_collection" || source === "ajo_payout" || String(source).startsWith("peer_esusu_")) return "ajo";
   if (source === "subscription_spend" || source === "subscription_reversal") return "subscription";
-  if (source === "transfer_fee" || source === "cbn_levy" || source === "wallet_fee") return "fees";
+  if (source === "transfer_fee" || source === "cbn_levy" || source === "wallet_fee" || source === "deposit_fee" || source === "vat") return "fees";
   return "other";
 }
 

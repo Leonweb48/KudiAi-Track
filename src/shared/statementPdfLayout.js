@@ -98,6 +98,8 @@ export const WALLET_SOURCE_TITLES = {
   transfer_fee:          "Transfer Fee",
   cbn_levy:              "Stamp Duty",
   deposit_fee:           "Deposit Fee",
+  wallet_fee:            "Charge Fee",
+  vat:                   "VAT",
   ajo_reversal:          "Contribution Reversed",
 };
 export function walletTitle(source) {

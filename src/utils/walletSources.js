@@ -26,7 +26,9 @@ export const WALLET_SOURCE = {
   cbn_levy:            { label: "Stamp duty",           icon: "wallet",     credit: false },
   wallet_fee:          { label: "Charge fee",           icon: "wallet",     credit: false },
   deposit_fee:         { label: "Deposit fee",          icon: "wallet",     credit: false },
+  // 7.5% VAT on one of the fees above, its own line (2026-10-23)
+  vat:                 { label: "VAT",                  icon: "wallet",     credit: false },
 };
 
 // Sources that are charges on a transfer — shown with the "%" icon
-export const WALLET_FEE_SOURCES = new Set(["transfer_fee", "cbn_levy", "wallet_fee", "deposit_fee"]);
+export const WALLET_FEE_SOURCES = new Set(["transfer_fee", "cbn_levy", "wallet_fee", "deposit_fee", "vat"]);

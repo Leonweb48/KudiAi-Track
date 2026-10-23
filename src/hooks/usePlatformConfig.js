@@ -89,6 +89,9 @@ export function usePlatformConfig() {
     // The "Charge fee" on every wallet-to-wallet payment (savings payments, circle contributions, payouts) — shown before
     // the PIN; the server takes it (wallet_transfer_fee_kobo). 0 = no fee.
     walletMoveFeeKobo: Number(config?.wallet_move_fee_kobo ?? "1000") || 0,
+    // 7.5% VAT on our wallet fees (2026-10-23), in basis points; 0 when platform_config.wallet_vat_enabled isn't "true".
+    // The server takes it as its own line (trigger trg_wallet_charge_vat_on_fee) — the app only shows it before the PIN.
+    walletVatBp: config?.wallet_vat_enabled === "true" ? (Number(config?.wallet_vat_rate_bp ?? "750") || 0) : 0,
     walletMinTopupKobo: Number(config?.wallet_min_topup_kobo ?? "10000") || 10000,
     walletMaxWithdrawalKobo: Number(config?.wallet_max_withdrawal_kobo ?? "5000000") || 5000000,
     // Mirrors the server-side cap already enforced in wallet_hold_transfer

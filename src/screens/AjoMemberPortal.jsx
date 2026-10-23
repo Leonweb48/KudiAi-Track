@@ -711,6 +711,8 @@ const PAD_DIGITS = [1,2,3,4,5,6,7,8,9];
 
 function AjoTxnPinModal({ hasPinSet, title, amount, description, fee, onApprove, onCancel, onNeedPinSetup }) {
   const t = useT();
+  const { walletVatBp } = usePlatformConfig();   // 7.5% VAT on the Charge fee, shown before the PIN (2026-10-23)
+  const vat = fee > 0 ? Math.round(fee * (walletVatBp || 0) / 10000) : 0;
   const [pin, setPin] = useState("");
   const [err, setErr] = useState("");
   const [shake, setShake] = useState(false);
@@ -800,7 +802,7 @@ function AjoTxnPinModal({ hasPinSet, title, amount, description, fee, onApprove,
               </p>
             )}
             {fee > 0 && (
-              <p className="text-center text-[12px] font-semibold text-slate-600 dark:text-slate-300 mb-1">{t("settings.pin.txn.chargeFee")}: ₦{(fee / 100).toLocaleString("en-NG", { minimumFractionDigits: 2 })}</p>
+              <p className="text-center text-[12px] font-semibold text-slate-600 dark:text-slate-300 mb-1">{t("settings.pin.txn.chargeFee")}: ₦{(fee / 100).toLocaleString("en-NG", { minimumFractionDigits: 2 })}{vat > 0 && <> · {t("settings.pin.txn.vat")}: ₦{(vat / 100).toLocaleString("en-NG", { minimumFractionDigits: 2 })}</>}</p>
             )}
             {description && (
               <p className="text-center text-[12px] text-slate-500 dark:text-slate-400">{description}</p>
@@ -3294,7 +3296,7 @@ function HistoryTab({ contributions, withdrawRequests = [], client, ownerInfo, c
     { id: "fees",        label: t("ajoPt.feesTab") },
   ];
 
-  const WALLET_FEE_SOURCES = new Set(["transfer_fee", "cbn_levy", "wallet_fee"]);
+  const WALLET_FEE_SOURCES = new Set(["transfer_fee", "cbn_levy", "wallet_fee", "deposit_fee", "vat"]);
   const filtered = allItems.filter(item => {
     if (typeFilter === "deposits") {
       if (item._type === "contribution") return item.type === "contribution" || item.type === "esusu_payout";

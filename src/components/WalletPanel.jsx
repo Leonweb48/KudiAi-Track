@@ -92,7 +92,7 @@ export function BottomSheet({ open, onClose, title, back, children }) {
 // Labels for the transfer review rows (the English row name stays the row's id)
 const REVIEW_ROW_LABEL = {
   Recipient: "walletpanel.rowRecipient", Account: "walletpanel.rowAccount", Bank: "walletpanel.rowBank",
-  Narration: "walletpanel.rowNarration", Fee: "walletpanel.rowFee", "Stamp duty": "walletpanel.rowStampDuty",
+  Narration: "walletpanel.rowNarration", Fee: "walletpanel.rowFee", VAT: "walletpanel.rowVat", "Stamp duty": "walletpanel.rowStampDuty",
   "Total debit": "walletpanel.rowTotalDebit", Repeats: "walletpanel.rowRepeats",
 };
 
@@ -598,7 +598,9 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
   const quoteFee = Number(quote?.fee_kobo || 0);
   // ₦50 stamp duty on bank transfers of ₦10,000 or more (Nigeria Tax Act 2025), as every bank charges — even when our fee is free
   const quoteDuty = Number(quote?.stamp_duty_kobo || 0);
-  const charges = quoteFee + quoteDuty;
+  // 7.5% VAT on our fee (not on the amount, not on stamp duty) — its own row, its own line in the history (2026-10-23)
+  const quoteVat = Number(quote?.vat_kobo || 0);
+  const charges = quoteFee + quoteVat + quoteDuty;
   const shortForFee = !!quote && charges > 0 && kobo + charges > balanceKobo;
   const freeNote = quote
     ? (quote.free
@@ -702,6 +704,7 @@ export function TransferSheet({ open, onClose, balanceKobo, maxKobo, dailyCapKob
               {[["Recipient", recipientName], ["Account", acctNo], ["Bank", bank?.name],
                 ["Narration", narration || "—"],
                 ["Fee", !quote ? "…" : quote.free ? t("walletpanel.free") : fmt(quoteFee / 100)],
+                ...(quoteVat > 0 ? [["VAT", fmt(quoteVat / 100)]] : []),
                 ...(quoteDuty > 0 ? [["Stamp duty", fmt(quoteDuty / 100)]] : []),
                 ...(charges > 0 ? [["Total debit", fmt((kobo + charges) / 100)]] : []),
                 ...(repeat ? [["Repeats", t(`walletpanel.freq.${frequency}`)]] : [])].map(([k, v]) => (

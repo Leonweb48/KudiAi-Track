@@ -11,6 +11,7 @@ const FEES = [
 const BUSINESS_FEES = [
   "Business bank transfer fee: ₦10 below ₦5,000; ₦25 from ₦5,000 to ₦9,999; ₦35 from ₦10,000 to ₦50,000; ₦60 above ₦50,000.",
   "Moving money between KudiAI wallets (for example paying a client's approved withdrawal into their wallet): a ₦10 charge fee each time, shown before the PIN.",
+  "VAT: 7.5% VAT is added to our fees only — the bank transfer fee, the ₦10 charge fee and the deposit fee (e.g. ₦10 fee + ₦0.75 VAT). It is shown before the PIN and as its own 'VAT' line in the wallet history, and remitted to the Nigeria Revenue Service. Never on the amount sent, and never on the ₦50 stamp duty.",
 ];
 const CLIENT_FEES = [
   "Client bank transfer fee (no free transfers): ₦10 up to ₦5,000; ₦25 from ₦5,000.01 to ₦50,000; ₦50 above ₦50,000.",

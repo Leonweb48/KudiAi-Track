@@ -3,6 +3,7 @@ import { supabase } from "../utils/supabase";
 import PinDots from "./PinDots";
 import { hapticSuccess, hapticError } from "../utils/haptics";
 import { useT, tNow } from "../contexts/LanguageContext";
+import { usePlatformConfig } from "../hooks/usePlatformConfig";
 
 const shakeCSS = `
 @keyframes shake {
@@ -42,6 +43,9 @@ export default function TransactionPinModal({
   onCancel,
 }) {
   const t = useT();
+  // 7.5% VAT on the Charge fee — taken by the server as its own line; shown here before the PIN (2026-10-23)
+  const { walletVatBp } = usePlatformConfig();
+  const vat = fee > 0 ? Math.round(fee * (walletVatBp || 0) / 10000) : 0;
   const [pin,       setPin]       = useState("");
   const [error,     setError]     = useState("");
   const [shake,     setShake]     = useState(false);
@@ -162,6 +166,12 @@ export default function TransactionPinModal({
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                 <span className="text-slate-400" style={{ fontSize: 12 }}>{t("settings.pin.txn.chargeFee")}</span>
                 <span className="text-slate-800 dark:text-slate-200" style={{ fontSize: 13, fontWeight: 600 }}>₦{(fee / 100).toLocaleString("en-NG", { minimumFractionDigits: 2 })}</span>
+              </div>
+            )}
+            {vat > 0 && (
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                <span className="text-slate-400" style={{ fontSize: 12 }}>{t("settings.pin.txn.vat")}</span>
+                <span className="text-slate-800 dark:text-slate-200" style={{ fontSize: 13, fontWeight: 600 }}>₦{(vat / 100).toLocaleString("en-NG", { minimumFractionDigits: 2 })}</span>
               </div>
             )}
             {description && (
