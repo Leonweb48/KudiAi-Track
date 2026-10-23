@@ -38,7 +38,7 @@ jobs:
             call "$(jq -nc --arg n "$NET" '{action:"data-plans", network:$n}')" > plans.json
             BODY=$(jq -c --arg n "$NET" --argjson k "$PER" '{action:"data-probe", probes: ([.plans[]? | select(.plan_id | startswith("bg:") | not) | {network:$n, planId:.plan_id, name:.plan_name}] | .[0:$k])}' plans.json)
             jq -r '.probes[] | "  listed: \(.network) \(.planId) = \(.name)"' <<<"$BODY"
-            call "$(jq -c '{action, probes: [.probes[] | {network, planId}] + [{network:"MTN", planId:"99999"}]}' <<<"$BODY")" | jq -r '.probes[]? | "\(.network) \(.planId) → \(.status)"' || echo "$NET: no answer"
+            call "$(jq -c '{action, probes: ([.probes[] | {network, planId}] + [{network:"MTN", planId:"99999"}])}' <<<"$BODY")" | jq -r '.probes[]? | "\(.network) \(.planId) → \(.status)"' || echo "$NET: no answer"
           done
           if [ -n "$EXTRA" ]; then
             BODY=$(jq -nc --arg e "$EXTRA" '{action:"data-probe", probes: [$e | split(",")[] | select(length>0) | split(":") | {network:.[0], planId:.[1]}]}')
