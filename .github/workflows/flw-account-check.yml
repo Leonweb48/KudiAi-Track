@@ -33,5 +33,9 @@ jobs:
               balance_over_10k: (if (.value.ngn_available | type) == "number" then .value.ngn_available >= 10000 else null end)
             })),
             active_covers_wallets: (if ((.accounts[.active].ngn_available | type) == "number") and (.wallet_liability_ngn != null)
-              then .accounts[.active].ngn_available >= .wallet_liability_ngn else null end)
+              then .accounts[.active].ngn_available >= .wallet_liability_ngn else null end),
+            # money of our own on top of what the wallets owe (yes/no per amount, no figures in this public log)
+            active_surplus_covers: (if ((.accounts[.active].ngn_available | type) == "number") and (.wallet_liability_ngn != null)
+              then (.accounts[.active].ngn_available - .wallet_liability_ngn) as $s
+                | {ngn_5000: ($s >= 5000), ngn_25000: ($s >= 25000), ngn_50000: ($s >= 50000)} else null end)
           }' 2>/dev/null || echo "non-JSON answer (length ${#R})"
