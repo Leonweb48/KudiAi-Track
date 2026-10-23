@@ -1566,20 +1566,22 @@ serve(async (req) => {
       return json({ status: "SUCCESS", reference: String(data.orderid ?? data.requestid ?? ""), message: String(data.status ?? "ORDER_RECEIVED") });
     }
 
-    // ── Data purchase diagnostic (test without real phone to isolate plan ID format) ──
+    // ── Data plan check: which listed plans does ClubKonnect refuse right now? ──
+    // Each plan goes to phone "0" (like the health probe), which can never be delivered or charged. ClubKonnect checks the
+    // plan before the number (a made-up plan to "0" answers INVALID_DATAPLAN), so a plan it accepts gets a phone-number
+    // complaint and a refused one INVALID_DATAPLAN. Main route only, statuses only.
     if (action === "data-probe") {
-      const { network, planId } = body as { network: string; planId: string };
-      const netId = NET_ID[network] ?? "01";
-      const dummy = "08000000000";
-      const probeRid = reqId();
-      // Try V1 and V3 with the given planId and a dummy phone
-      const [v1, v3] = await Promise.all([
-        ck("APIDatabundleV1.asp", { APIKey: DATA_K, MobileNetwork: netId, DataPlan: planId, MobileNumber: dummy, RequestID: probeRid + "A", CallBackURL: "https://kudiai.app/" }),
-        ck("APIDatabundleV3.asp", { APIKey: DATA_K, MobileNetwork: netId, DataPlan: planId, MobileNumber: dummy, RequestID: probeRid + "B", CallBackURL: "https://kudiai.app/" }),
-      ]);
-      console.log("data-probe v1:", JSON.stringify(v1));
-      console.log("data-probe v3:", JSON.stringify(v3));
-      return json({ netId, planId, v1_status: v1.status ?? v1.Status, v1_raw: v1, v3_status: v3.status ?? v3.Status, v3_raw: v3 });
+      const probes = ((body as { probes?: { network: string; planId: string }[] }).probes ?? []).slice(0, 12);
+      const out: { network: string; planId: string; status: string }[] = [];
+      for (const pr of probes) {
+        const netId = NET_ID[pr.network];
+        if (!netId || !/^[0-9A-Za-z.]{1,20}$/.test(String(pr.planId ?? ""))) { out.push({ ...pr, status: "bad input" }); continue; }
+        const d = await ck("APIDatabundleV1.asp", { APIKey: DATA_K, MobileNetwork: netId, DataPlan: String(pr.planId), MobileNumber: "0",
+          RequestID: `KUDIAI-PROBE-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` }, { retries: 0, timeoutMs: 15000 }).catch(() => null);
+        const st = d ? (d.status ?? d.Status ?? ("_raw" in d ? `HTTP ${d._http} non-JSON` : "no status")) : "no answer";
+        out.push({ network: pr.network, planId: String(pr.planId), status: String(st).slice(0, 40) });
+      }
+      return json({ probes: out });
     }
 
     // ── Cable TV providers ────────────────────────────────────────────────────
