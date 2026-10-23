@@ -13,17 +13,18 @@ const ok = (c, m, x = "") => { checks++; if (!c) { fails++; console.log(`  FAIL 
 const J = (x) => JSON.stringify(x);
 
 // ── fake ClubKonnect ──────────────────────────────────────────────────────────────────────────────────────────────
-let real = {}, ckLog = [], ckBalance = "500000";
+let real = {}, ckLog = [], ckBalance = "500000", ckDataPlans = [];
 const ckSrv = http.createServer((req, res) => {
   const u = new URL(req.url, "http://x"); const path = u.pathname.slice(1); const p = Object.fromEntries(u.searchParams);
   const send = (code, body) => { res.writeHead(code, { "Content-Type": typeof body === "string" ? "text/html" : "application/json" }); res.end(typeof body === "string" ? body : J(body)); };
   if (p.UserID === "CK000000") return send(200, { status: "INVALID_CREDENTIALS" });            // health probe: up
   if (String(p.RequestID || "").startsWith("KUDIAI-HEALTH-")) return send(200, { status: "INVALID_DATAPLAN" });
   ckLog.push(`${path}#${p.RequestID ?? ""}`);
+  if (path === "APIDatabundleV1.asp") ckDataPlans.push(p.DataPlan);
   if (path === "APIQueryV1.asp") return send(200, { status: "INVALID_REQUESTID" });
   if (path === "APIWalletBalanceV1.asp") return send(200, { WalletBalance: ckBalance });
-  if (path === "APIDatabundlePlansV2.asp") return send(200, { MOBILE_NETWORK: { MTN: [{ ID: "01", PRODUCT: [{ PRODUCT_ID: "500", PRODUCT_NAME: "500 MB - 30 days (SME)", PRODUCT_AMOUNT: "140" },
-    { PRODUCT_ID: "1000", PRODUCT_NAME: "1 GB - Weekly (SME)", PRODUCT_AMOUNT: "410" }] }] } });
+  if (path === "APIDatabundlePlansV2.asp") return send(200, { MOBILE_NETWORK: { MTN: [{ ID: "01", PRODUCT: [{ PRODUCT_ID: "500", PRODUCT_CODE: "2", PRODUCT_NAME: "500 MB - 30 days (SME)", PRODUCT_AMOUNT: "140" },
+    { PRODUCT_ID: "1000", PRODUCT_CODE: "4", PRODUCT_NAME: "1 GB - Weekly (SME)", PRODUCT_AMOUNT: "410" }] }] } });
   if (path === "APIWAECPackagesV2.asp") return send(200, { EXAM_TYPE: [{ PRODUCT_CODE: "waecdirect", PRODUCT_DESCRIPTION: "WAEC Result Checker PIN", PRODUCT_AMOUNT: "5350" }] });
   if (path === "APIWAECV1.asp" && real[path] === "ok") return send(200, { statuscode: "100", status: "ORDER_RECEIVED", orderid: "CK-WAEC", carddetails: "Serial No:CKS1, PIN: CKPIN1" });
   const mode = real[path];
@@ -416,6 +417,7 @@ reset({ real: { "APIDatabundleV1.asp": "ok" } });
 r = await call({ action: "data", phone: PHONE, network: "MTN", planId: "1000", requestId: ref() });
 await sleep(500);
 ok(r?.status === "SUCCESS" && !planBlocks.has("clubkonnect|data|MTN|1000") && planBlocks.has("clubkonnect|data|MTN|500"), "a delivered order for a hidden plan brings it back at once", J([r, [...planBlocks]]));
+ok(ckDataPlans.at(-1) === "4", "the purchase sends ClubKonnect the plan's PRODUCT_CODE (4), not the PRODUCT_ID the app shows (1000) — 23 Oct 2026", J(ckDataPlans));
 planBlocks.clear();
 
 console.log("cable / betting / Smile: Bigisub backs ClubKonnect up only once switched on (2026-10-23)…");
