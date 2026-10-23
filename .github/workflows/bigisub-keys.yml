@@ -23,10 +23,16 @@ on:
       action:
         description: What to do
         type: choice
-        options: [check, history-today, plans-check, order-detail, install-keys, live-test-50, turn-on, turn-off, remove-keys]
+        options: [check, history-today, plans-check, plan-lookup, order-detail, install-keys, live-test-50, turn-on, turn-off, remove-keys]
         default: check
       tranx_id:
         description: "order-detail: Bigisub transaction id (e.g. Elec0499...)"
+        required: false
+      network:
+        description: "plan-lookup: MTN / Airtel / Glo / 9mobile"
+        required: false
+      plan_id:
+        description: "plan-lookup: the plan id an order used (e.g. 1500.02)"
         required: false
 
 permissions:
@@ -158,3 +164,20 @@ jobs:
           mask='walk(if type == "string" then gsub("[0-9]"; "#") elif type == "number" then "<n>" else . end)'
           echo "STATUS  $(curl -sS -m 30 "https://api.bigisub.ng/api/v2/anubis/transactions/$TID/" -H "Authorization: Token $TOKEN" | jq -c "$mask" | head -c 900)"
           echo "REQUERY $(curl -sS -m 40 -X POST "https://api.bigisub.ng/api/v2/anubis/transactions/$TID/requery/" -H "Authorization: Token $TOKEN" -H "Content-Type: application/json" -d '{}' | jq -c "$mask" | head -c 900)"
+
+      - name: Is this plan in the app's live list? (plan-lookup — names only, no prices)
+        if: inputs.action == 'plan-lookup'
+        env:
+          URL: ${{ secrets.REACT_APP_SUPABASE_URL }}
+          KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          NET: ${{ inputs.network }}
+          PLAN: ${{ inputs.plan_id }}
+        run: |
+          set -euo pipefail
+          [[ "$NET" =~ ^(MTN|Airtel|Glo|9mobile)$ ]] && [[ "$PLAN" =~ ^[A-Za-z0-9.:_-]{1,40}$ ]] || { echo "network and plan_id required"; exit 1; }
+          BODY=$(jq -nc --arg n "$NET" '{action:"data-plans", network:$n}')
+          curl -sS -m 120 -X POST "$URL/functions/v1/clubkonnect" -H "Content-Type: application/json" -H "Authorization: Bearer $KEY" -H "apikey: $KEY" -d "$BODY" > app.json
+          echo "LIST    $NET: $(jq -r '(.plans | length | tostring) + " plans, provider " + (._provider // "clubkonnect")' app.json)"
+          echo "PLAN    $PLAN: $(jq -r --arg p "$PLAN" '[.plans[]? | select(.plan_id == $p) | .plan_name] | if length == 0 then "NOT in the list" else join(" / ") end' app.json)"
+          echo "SIMILAR $(jq -r --arg p "$PLAN" '[.plans[]? | select(.plan_id | startswith(($p | split(".")[0]) + ".")) | .plan_id + "=" + .plan_name] | .[0:6] | join(" ; ")' app.json)"
+          rm -f app.json
