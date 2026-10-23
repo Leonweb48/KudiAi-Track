@@ -28,6 +28,7 @@ const ckSrv = http.createServer((req, res) => {
   if (path === "APIWAECV1.asp" && real[path] === "ok") return send(200, { statuscode: "100", status: "ORDER_RECEIVED", orderid: "CK-WAEC", carddetails: "Serial No:CKS1, PIN: CKPIN1" });
   const mode = real[path];
   if (mode === "lowwallet") return send(200, { status: "INSUFFICIENT_BALANCE" });
+  if (mode === "invalidplan") return send(200, { status: "INVALID_DATAPLAN" });
   if (mode === "badnumber") return send(200, { status: "INVALID_MOBILENUMBER" });
   if (mode === "ok") return send(200, { statuscode: "100", status: "ORDER_RECEIVED", orderid: `CK-${path}`, requestid: p.RequestID });
   if (mode === "elec-token") return send(200, { statuscode: "200", status: "ORDER_COMPLETED", orderid: "CK-ELEC", metertoken: "99998888777766665555" });
@@ -346,6 +347,17 @@ ok(!bgLog.some((x) => x.startsWith("exam:")), "WAEC registration never goes to B
 config = { ...BASE_CFG, bill_provider_bigisub: "false" }; await fresh(); reset(); rid = ref();
 r = await call({ action: "waec", examType: "neco", phone: PHONE, requestId: rid });
 ok(/aren't available/.test(r?.error || "") && !bgLog.length, "Bigisub switched off → NECO cleanly unavailable, nothing bought", J([r, bgLog]));
+
+console.log("ClubKonnect refuses a plan it still lists → Bigisub's plan of the same size and validity (2026-10-23)…");
+config = { ...BASE_CFG, bill_provider_bigisub: "true" }; await fresh();
+reset({ real: { "APIDatabundleV1.asp": "invalidplan" } }); rid = ref();
+r = await call({ action: "data", phone: PHONE, network: "MTN", planId: "500", requestId: rid });
+ok(r?.status === "SUCCESS" && r?.provider === "bigisub" && bgLog.includes(`buy:data:${PHONE}:310:pin=true`) && ckLog.filter((x) => x.startsWith("APIDatabundleV1")).length === 1,
+  "500MB / 30 days refused by ClubKonnect → Bigisub's 500MB / 30 days bought (₦100 ≤ the ₦140 paid), ClubKonnect not asked again", J([r, bgLog, ckLog]));
+ok(J(claims.get(rid)?.providers) === J(["clubkonnect", "bigisub"]) && alerts.some((a) => a.title === "Bills moved to the backup provider"), "…recorded on the claim, admins told", J([claims.get(rid), alerts.map((a) => a.title)]));
+reset({ real: { "APIDatabundleV1.asp": "invalidplan" } }); rid = ref();
+r = await call({ action: "data", phone: PHONE, network: "MTN", planId: "1000", requestId: rid });
+ok(!!r?.error && /INVALID_DATAPLAN/.test(r.error) && !bgLog.some((x) => x.startsWith("buy:")), "1GB weekly: Bigisub's costs more than the customer paid → never at a loss, fails and is refunded as before", J([r, bgLog]));
 
 console.log("Bigisub FIRST for airtime and electricity (owner, 2026-10-21)…");
 config = { ...BASE_CFG, bill_provider_bigisub: "true", bill_bigisub_first: "airtime,electricity" }; await fresh(); reset();

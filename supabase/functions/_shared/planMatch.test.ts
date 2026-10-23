@@ -1,6 +1,6 @@
 // Run: deno test supabase/functions/_shared/planMatch.test.ts
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { pickCheaperPlans, planDays, planSizeMb } from "./planMatch.ts";
+import { pickCheaperPlans, findEquivalentPlan, planDays, planSizeMb } from "./planMatch.ts";
 
 Deno.test("planSizeMb / planDays read both providers' plan names", () => {
   assertEquals([planSizeMb("1 GB - Monthly (SME)"), planSizeMb("1.5GB (SME) - 30 days"), planSizeMb("500 MB - Weekly (SME)"), planSizeMb("Freedom plan")], [1000, 1500, 500, null]);
@@ -42,4 +42,20 @@ Deno.test("never below cost: a customer price under Bigisub's cost keeps ClubKon
 Deno.test("one Bigisub plan replaces at most one ClubKonnect plan", () => {
   const two = [ck[0], { plan_id: "1000.01", plan_name: "1 GB - 30 days (Gifting)", plan_amount: 700, cost_amount: 600, priced: true }];
   assertEquals(pickCheaperPlans(two, bg, { bgBalance: 10_000 }).map((p) => p.plan_id), ["bg:269", "1000.01"]);
+});
+
+Deno.test("findEquivalentPlan: same size + validity, covered by the customer's price and Bigisub's wallet, cheapest first", () => {
+  const refused = { plan_id: "1500.02", plan_name: "2GB+2mins Monthly Plan - 30 days (Direct Data)", plan_amount: 1500 };
+  const list = [
+    { plan_id: "bg:1", plan_name: "2GB (SME) - 30 days", plan_amount: 1300 },
+    { plan_id: "bg:2", plan_name: "2GB (GIFTING) - 30 days", plan_amount: 1100 },
+    { plan_id: "bg:3", plan_name: "2GB (SME) - 7days", plan_amount: 600 },        // other validity
+    { plan_id: "bg:4", plan_name: "1GB (SME) - 30 days", plan_amount: 300 },      // other size
+  ];
+  assertEquals(findEquivalentPlan(refused, list, 10_000)?.plan_id, "bg:2");
+  assertEquals(findEquivalentPlan(refused, list, 1200)?.plan_id, "bg:2");
+  assertEquals(findEquivalentPlan(refused, list, 1000), null);                     // Bigisub's wallet can't pay any
+  assertEquals(findEquivalentPlan({ ...refused, plan_amount: 1000 }, list, 10_000), null);   // never at a loss
+  assertEquals(findEquivalentPlan(refused, list, null), null);
+  assertEquals(findEquivalentPlan({ ...refused, plan_name: "Night plan" }, list, 10_000), null);   // can't read size/validity
 });

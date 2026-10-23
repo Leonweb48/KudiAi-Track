@@ -23,7 +23,7 @@ import {
   BG_ELEC_FEE_DEFAULT, BG_EXAMS, bgAirtimeBody, bgCall, bgElecBody, bgElecCustomer, bgElecProviders, bgElecToken, bgElecVerifyBody, bgConfigured, bgDataBody, bgExamBody, bgExamPins, bgExamPrices, bgHistoryRows, bgNetwork, bgPlanId, bgStatus, bgWalletHealth,
   classifyBgLookup, digits as bgDigits, isBgPlan, lagosDate, matchHistory, parseBgPlans, type BgCreds, type BgFetch, type BgFind, type BgOrderKey, type BgResult,
 } from "../_shared/bigisub.ts";
-import { pickCheaperPlans } from "../_shared/planMatch.ts";
+import { findEquivalentPlan, pickCheaperPlans } from "../_shared/planMatch.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -993,6 +993,49 @@ async function bgElecProviderList() {
   if (Object.keys(list).length) bgElecCache = { at: Date.now(), list };
   return list;
 }
+/** One plan of ClubKonnect's live list for a network, priced as the app showed it to the customer; null if not listed. */
+async function ckDataPlanPriced(network: string, planId: string): Promise<{ plan_id: string; plan_name: string; plan_amount: number } | null> {
+  const netId = NET_ID[network] ?? "01";
+  const data = await ck("APIDatabundlePlansV2.asp", { APIKey: DATA_K, MobileNetwork: netId }, { retries: 1, timeoutMs: 15000 }).catch(() => null);
+  const mobileNet = data?.MOBILE_NETWORK as Record<string, Record<string, unknown>[]> | undefined;
+  if (!mobileNet) return null;
+  const norm = (k: string) => k.replace(/^m_/i, "").replace(/\W/g, "").toUpperCase().replace("ETISALAT", "9MOBILE");
+  const key = Object.keys(mobileNet).find((k) => norm(k) === norm(network));
+  for (const group of (key ? mobileNet[key] : []) ?? []) {
+    for (const p of ((group?.PRODUCT ?? []) as Record<string, unknown>[])) {
+      if (String(p.DataPlan ?? p.PRODUCT_ID ?? p.PRODUCT_CODE ?? "") !== planId) continue;
+      const plan = { plan_id: planId, plan_name: String(p.PRODUCT_NAME ?? p.DataPlanName ?? ""), plan_amount: Math.round(Number(p.PRODUCT_AMOUNT ?? p.Price ?? 0) * 100) / 100 };
+      const cfg = await priceConfig();
+      return applyDataPrices([plan], network, cfg.selling)[0] ?? null;
+    }
+  }
+  return null;
+}
+
+/**
+ * ClubKonnect refused a data plan it still lists (INVALID_DATAPLAN — a refusal, nothing placed; 2026-10-23: MTN 1500.02).
+ * Buy Bigisub's plan of the same size and validity instead, when its cost fits inside what the customer paid and its wallet
+ * can pay — through the same claim (ClubKonnect → Bigisub, never twice). null = no such plan / Bigisub can't: the order
+ * fails as before (refunded).
+ */
+async function dataPlanToBigisub(network: string, planId: string, digits: string, rid: string, userId: string | null): Promise<Response | null> {
+  if (!rid || !(await providerConfig()).failover || !(await bgReady())) return null;
+  const bgNet = bgNetwork(network);
+  if (!bgNet) return null;
+  const refused = await ckDataPlanPriced(network, planId);
+  if (!refused) return null;
+  const bgList = parseBgPlans(await bgCall(bgFetch, BG, "GET", `/vtu/data/plans/?network=${bgNet}`, undefined, 15_000), bgNet);
+  const eq = findEquivalentPlan(refused, bgList, (await bgHealthState()).balance);
+  if (!eq) { console.log(`[data] ClubKonnect refused ${planId}; no Bigisub plan of the same size/validity within the price`); return null; }
+  const pd = providerDeps("data", rid, DATA_K, () => Promise.reject(new Error("ClubKonnect refused this plan — not sent again")), null,
+    { path: "/vtu/data/purchase/", body: bgDataBody(bgNet, bgPlanId(eq.plan_id), digits, BG.pin), phone: digits, service: "data" });
+  pd.ckNoOrder = true;   // ClubKonnect answered with a refusal: it holds no order for this reference
+  const out = await buyAcrossProviders("data", ["clubkonnect", "bigisub"], pd);
+  if (out.via !== "bigisub") return null;
+  // admins hear it through the switch alerts ("ClubKonnect is failing bill orders" + "Bills moved to the backup provider")
+  return bgAnswer("data", out, rid, userId);
+}
+
 /** The order's claim row when Bigisub is where it lives now (the last provider it was sent to), else null. */
 async function bigisubClaim(rid: string): Promise<ClaimRow | null> {
   const c = await readClaim(rid);
@@ -1410,6 +1453,10 @@ serve(async (req) => {
       if (out.via !== "clubkonnect") return vtAnswer("data", out, rid, callerUser?.id ?? null, pd.vtRid());
       const data = out.data;
       console.log(`data purchase result:`, forLog(data, 500));
+      if (!isOk(data) && !vtPlan && !bgPlan && /INVALID_DATAPLAN/i.test(String(data?.status ?? data?.Status ?? ""))) {
+        const moved = await dataPlanToBigisub(network, planId, digits, rid, callerUser?.id ?? null);
+        if (moved) return moved;
+      }
       if (!isOk(data)) return json({ error: (await ckFailedOrHeld(data, DATA_K, rid)) === "hold" ? PENDING_STATUS : `${errMsg(data, "Data purchase failed")} [net:${netId} plan:${planId}]`, _raw: data });
       afterResponse(recordBillCost("data", rid, callerUser?.id ?? null, data, async () =>
         dataCost(await providerPlanPrice("data", DATA_K, netId, networkName(network, netId) ?? network, planId).catch(() => null), 1, data)));

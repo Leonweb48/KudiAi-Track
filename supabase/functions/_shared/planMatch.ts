@@ -64,3 +64,17 @@ export function pickCheaperPlans<T extends ListedPlan>(ck: T[], bg: ListedPlan[]
     return { plan_id: b.plan_id, plan_name: b.plan_name, plan_amount: c.plan_amount, cost_amount: b.plan_amount, priced: c.priced, replaces: c.plan_id };
   });
 }
+
+/**
+ * Bigisub's plan of the same size and validity as a ClubKonnect plan ClubKonnect has just refused (INVALID_DATAPLAN while
+ * still listing it, 2026-10-23) — the cheapest one whose cost the customer's price covers (never at a loss) and Bigisub's
+ * wallet can pay for. null when there is none (the order then fails and is refunded, as before).
+ */
+export function findEquivalentPlan(ck: ListedPlan, bg: ListedPlan[], bgBalance: number | null): ListedPlan | null {
+  if (bgBalance === null) return null;
+  const s = planSizeMb(ck.plan_name), d = planDays(ck.plan_name);
+  if (s === null || d === null) return null;
+  const fits = bg.filter((b) => planSizeMb(b.plan_name) === s && planDays(b.plan_name) === d
+    && b.plan_amount > 0 && b.plan_amount <= ck.plan_amount && b.plan_amount <= bgBalance);
+  return fits.sort((a, b) => a.plan_amount - b.plan_amount)[0] ?? null;
+}
