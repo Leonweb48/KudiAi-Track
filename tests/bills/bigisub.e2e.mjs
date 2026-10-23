@@ -417,6 +417,16 @@ ok(r?.status === "SUCCESS" && r?.provider === "bigisub" && bgLog.includes("smile
 r = await call({ action: "verify", requestId: rid, service: "smile" });
 ok(r?.status === "SUCCESS" && r?.provider === "bigisub", "verify asks Bigisub for a moved Smile order", J(r));
 
+console.log("owner's own test: cable / betting / Smile to Bigisub FIRST…");
+config = { ...BASE_CFG, bill_provider_bigisub: "true", bill_bigisub_services: "airtime,data,electricity,cable,betting,smile", bill_bigisub_first: "cable,betting,smile" }; await fresh();
+reset({ real: { "APICableTVV1.asp": "ok" } }); rid = ref();
+r = await cable(rid);
+ok(r?.status === "SUCCESS" && r?.provider === "bigisub" && !ckLog.some((x) => x.startsWith("APICableTVV1")), "test mode: cable goes to Bigisub first, ClubKonnect not used", J([r, ckLog]));
+reset({ real: { "APICableTVV1.asp": "ok" } }); rid = ref();
+r = await cable(rid, "dstv-movie-bundle-add-on");
+ok(r?.status === "SUCCESS" && r?.provider !== "bigisub" && ckLog.some((x) => x.startsWith("APICableTVV1")) && !bgLog.some((x) => x.startsWith("cable:")),
+  "test mode: a package Bigisub can't take (shared price) still goes through ClubKonnect", J([r, bgLog, ckLog]));
+
 console.log("Bigisub FIRST for airtime and electricity (owner, 2026-10-21)…");
 config = { ...BASE_CFG, bill_provider_bigisub: "true", bill_bigisub_first: "airtime,electricity" }; await fresh(); reset();
 st = await fresh();

@@ -999,9 +999,14 @@ async function bgElecProviderList() {
   if (Object.keys(list).length) bgElecCache = { at: Date.now(), list };
   return list;
 }
-/** The providers for a ClubKonnect-only bill that Bigisub may back up: ["clubkonnect"] or ["clubkonnect", "bigisub"]. */
+/**
+ * The providers for a ClubKonnect bill that Bigisub may back up: ["clubkonnect"], ["clubkonnect", "bigisub"], or — while the
+ * owner tests it (bill_bigisub_first lists the service) — ["bigisub", "clubkonnect"] (ClubKonnect still takes what Bigisub can't).
+ */
 async function ckWithBigisubBackup(svc: string): Promise<Provider[]> {
-  return (await providerOrderFor(svc)).includes("bigisub") ? ["clubkonnect", "bigisub"] : ["clubkonnect"];
+  const order = await providerOrderFor(svc);
+  if (!order.includes("bigisub")) return ["clubkonnect"];
+  return order[0] === "bigisub" ? ["bigisub", "clubkonnect"] : ["clubkonnect", "bigisub"];
 }
 /** Cable on Bigisub: its plan list (cached 10 min) must hold the package at a price no other package shares; the card is verified there. */
 let bgCableCache: { at: number; d: BgResult } | null = null;

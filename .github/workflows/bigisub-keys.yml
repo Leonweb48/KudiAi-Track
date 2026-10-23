@@ -11,6 +11,9 @@ name: Bigisub keys
 #   turn-off      — stops sending new orders to Bigisub at once (orders already there are still verified).
 #   remove-keys   — deletes the two function secrets (turns it off first).
 #   plans-check   — free: the app's data plan list per network vs Bigisub's own network for each bg: plan.
+#   test-first-on — owner's own test: cable / betting / Smile orders go to Bigisub FIRST (ClubKonnect takes what it can't).
+#   test-first-off— back to ClubKonnect first for them.
+#   backup-on     — Bigisub backs up cable / betting / Smile too (after the owner's test); backup-off removes it.
 #   backup-check  — free: how much of ClubKonnect's cable / betting / Smile catalogues Bigisub can back up (counts only).
 #   history-today — free: yesterday's and today's orders in Bigisub's own history (status, its reason, the SHAPE of the
 #                   number it received — length and first 4 digits — never the number or a balance).
@@ -24,7 +27,7 @@ on:
       action:
         description: What to do
         type: choice
-        options: [check, backup-check, history-today, plans-check, plan-lookup, order-detail, install-keys, live-test-50, turn-on, turn-off, remove-keys]
+        options: [check, backup-check, test-first-on, test-first-off, backup-on, backup-off, history-today, plans-check, plan-lookup, order-detail, install-keys, live-test-50, turn-on, turn-off, remove-keys]
         default: check
       tranx_id:
         description: "order-detail: Bigisub transaction id (e.g. Elec0499...)"
@@ -192,3 +195,26 @@ jobs:
           curl -sS -m 150 -X POST "$URL/functions/v1/clubkonnect" -H "Content-Type: application/json" -H "Authorization: Bearer $KEY" -H "apikey: $KEY" -d '{"action":"bigisub-backup-check"}' > bc.json
           echo "BACKUP  $(jq -c . bc.json 2>/dev/null || head -c 300 bc.json)"
           rm -f bc.json
+
+      - name: Cable / betting / Smile switches (test-first-on / test-first-off / backup-on / backup-off)
+        if: inputs.action == 'test-first-on' || inputs.action == 'test-first-off' || inputs.action == 'backup-on' || inputs.action == 'backup-off'
+        env:
+          URL: ${{ secrets.REACT_APP_SUPABASE_URL }}
+          KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ACTION: ${{ inputs.action }}
+        run: |
+          set -euo pipefail
+          put() {   # upsert one platform_config row
+            BODY=$(jq -nc --arg k "$1" --arg v "$2" '{key:$k, value:$v}')
+            CODE=$(curl -sS -m 30 -o /dev/null -w '%{http_code}' -X POST "$URL/rest/v1/platform_config?on_conflict=key" -H "apikey: $KEY" -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -H "Prefer: resolution=merge-duplicates" -d "$BODY")
+            echo "$1 = '$2': HTTP $CODE"
+          }
+          ALL="airtime,data,electricity,cable,betting,smile"; BASE="airtime,data,electricity"
+          case "$ACTION" in
+            test-first-on)  put bill_bigisub_services "$ALL"; put bill_bigisub_first "cable,betting,smile" ;;
+            test-first-off) put bill_bigisub_first "" ;;
+            backup-on)      put bill_bigisub_services "$ALL"; put bill_bigisub_first "" ;;
+            backup-off)     put bill_bigisub_services "$BASE"; put bill_bigisub_first "" ;;
+          esac
+          sleep 65   # the function re-reads the switches every minute
+          curl -sS -m 60 -X POST "$URL/functions/v1/clubkonnect" -H "Content-Type: application/json" -H "Authorization: Bearer $KEY" -H "apikey: $KEY"             -d '{"action":"provider-status"}' | jq -c '{bigisub: .bigisub.services, cable: .routing.cable, betting: .routing.betting, smile: .routing.smile}' | sed 's/^/NOW     /'
