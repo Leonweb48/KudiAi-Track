@@ -23,7 +23,7 @@ import {
   BG_ELEC_FEE_DEFAULT, BG_EXAMS, bgAirtimeBody, bgBettingBiller, bgBettingFundBody, bgBettingValidateBody, bgBettingValidated, bgCableAmountFor, bgCableBody, bgCablePlans, bgCableVerifyBody, bgSmileBody, bgSmilePlanId, bgCall, bgElecBody, bgElecCustomer, bgElecProviders, bgElecToken, bgElecVerifyBody, bgConfigured, bgDataBody, bgExamBody, bgExamPins, bgExamPrices, bgHistoryRows, bgNetwork, bgPlanId, bgStatus, bgWalletHealth,
   classifyBgLookup, digits as bgDigits, isBgPlan, lagosDate, matchHistory, parseBgPlans, type BgCreds, type BgFetch, type BgFind, type BgOrderKey, type BgResult,
 } from "../_shared/bigisub.ts";
-import { findEquivalentPlan, pickCheaperPlans } from "../_shared/planMatch.ts";
+import { findEquivalentPlan, hideRefusedPlans, pickCheaperPlans } from "../_shared/planMatch.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -1065,12 +1065,11 @@ async function ckDataPlanPriced(network: string, planId: string): Promise<{ plan
  * can pay — through the same claim (ClubKonnect → Bigisub, never twice). null = no such plan / Bigisub can't: the order
  * fails as before (refunded).
  */
-async function dataPlanToBigisub(network: string, planId: string, digits: string, rid: string, userId: string | null): Promise<Response | null> {
-  if (!rid || !(await providerConfig()).failover || !(await bgReady())) return null;
+async function dataPlanToBigisub(network: string, refused: { plan_id: string; plan_name: string; plan_amount: number } | null, digits: string, rid: string, userId: string | null): Promise<Response | null> {
+  if (!refused || !rid || !(await providerConfig()).failover || !(await bgReady())) return null;
   const bgNet = bgNetwork(network);
   if (!bgNet) return null;
-  const refused = await ckDataPlanPriced(network, planId);
-  if (!refused) return null;
+  const planId = refused.plan_id;
   const bgList = parseBgPlans(await bgCall(bgFetch, BG, "GET", `/vtu/data/plans/?network=${bgNet}`, undefined, 15_000), bgNet);
   const eq = findEquivalentPlan(refused, bgList, (await bgHealthState()).balance);
   if (!eq) { console.log(`[data] ClubKonnect refused ${planId}; no Bigisub plan of the same size/validity within the price`); return null; }
@@ -1081,6 +1080,54 @@ async function dataPlanToBigisub(network: string, planId: string, digits: string
   if (out.via !== "bigisub") return null;
   // admins hear it through the switch alerts ("ClubKonnect is failing bill orders" + "Bills moved to the backup provider")
   return bgAnswer("data", out, rid, userId);
+}
+
+// Refused plans are hidden for a while (owner, 2026-10-23): ClubKonnect's list has no "available" flag, so its refusal
+// is the only sign a listed plan is off. The first customer's order still moves to Bigisub's equivalent (above); the
+// plan then stays off the list — or shows as that Bigisub plan — for PLAN_HIDE_HOURS, then comes back on its own.
+const PLAN_HIDE_HOURS = 24;
+const planNet = (network: string) => network.replace(/\W/g, "").toUpperCase().replace("ETISALAT", "9MOBILE");
+
+/** Plan ids ClubKonnect refused lately on this network (hidden from the list); empty when unreadable — never blocks the list. */
+async function refusedDataPlans(network: string): Promise<Set<string>> {
+  try {
+    const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+    const { data, error } = await db.from("bill_plan_blocks").select("plan_id")
+      .eq("provider", "clubkonnect").eq("service", "data").eq("network", planNet(network)).gt("blocked_until", new Date().toISOString());
+    if (error) throw error;
+    return new Set(((data ?? []) as { plan_id: string }[]).map((r) => String(r.plan_id)));
+  } catch (e) {
+    console.warn("[data-plans] refused plans unreadable:", (e as Error).message);
+    return new Set();
+  }
+}
+
+/** ClubKonnect refused a plan it lists: hide it for PLAN_HIDE_HOURS; admins hear it once per hiding. */
+async function hideRefusedPlan(network: string, planId: string, planName: string): Promise<void> {
+  try {
+    const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+    const { data: fresh, error } = await db.rpc("bill_plan_block", {
+      p_provider: "clubkonnect", p_service: "data", p_network: planNet(network), p_plan_id: planId, p_plan_name: planName, p_hours: PLAN_HIDE_HOURS,
+    });
+    if (error) throw error;
+    if (fresh !== true) return;
+    const label = `${network.toUpperCase()} ${planName || planId}`;
+    afterResponse(sendBillAlert({
+      type: "warning", title: `ClubKonnect refused a data plan — ${label} hidden for ${PLAN_HIDE_HOURS} h`,
+      what: `ClubKonnect answered INVALID_DATAPLAN for ${label} (plan ${planId}) although it still lists it. Customers won't see it for ${PLAN_HIDE_HOURS} hours — Bigisub's plan of the same size and validity shows in its place where one fits.`,
+      hint: "It comes back on its own; refused again → hidden again. Nothing to do unless it keeps happening.",
+      emailHint: "It comes back on its own after the hiding period; a delivered order for it brings it back at once.",
+    }, { svc: "data", outcome: "plan-refused", detail: `${planNet(network)} ${planId}` }));
+  } catch (e) { console.warn(`[data] couldn't hide refused plan ${planId}:`, (e as Error).message); }
+}
+
+/** A delivered order proves the plan works again: back on the list at once. */
+async function unhidePlan(network: string, planId: string): Promise<void> {
+  try {
+    const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+    await db.from("bill_plan_blocks").delete()
+      .eq("provider", "clubkonnect").eq("service", "data").eq("network", planNet(network)).eq("plan_id", planId);
+  } catch { /* the hiding just runs out */ }
 }
 
 /** The order's claim row when Bigisub is where it lives now (the last provider it was sent to), else null. */
@@ -1461,16 +1508,20 @@ serve(async (req) => {
       // What customers pay: the owner's selling price (Print Data: minus the print discount), not the provider price. cost_amount keeps the provider price.
       const cfg = await priceConfig();
       const priced = applyDataPrices(plans, network, cfg.selling, { print: isPrint, printDiscountPct: cfg.printPct });
+      // plans ClubKonnect refused lately stay off the list (or show as Bigisub's same plan) — Print Data is another product
+      const refusedIds = isPrint ? new Set<string>() : await refusedDataPlans(network);
       // Cheapest provider per plan (owner, 2026-10-21): where Bigisub sells the same plan for less, show Bigisub's at the
       // same customer price — it then buys on Bigisub ("bg:" id). Only while Bigisub is on, up and can pay for it.
       if (!isPrint && (await bgReady())) {
         const bgNet = bgNetwork(network);
         const bgList = bgNet ? parseBgPlans(await bgCall(bgFetch, BG, "GET", `/vtu/data/plans/?network=${bgNet}`, undefined, 15_000), bgNet) : [];
-        const mixed = pickCheaperPlans(priced, bgList, { bgBalance: (await bgHealthState()).balance });
+        const bal = (await bgHealthState()).balance;
+        const mixed = hideRefusedPlans(pickCheaperPlans(priced, bgList, { bgBalance: bal }), refusedIds, bgList, bal);
         const swapped = mixed.filter((p) => "replaces" in p).length;
-        if (swapped) return json({ plans: mixed, _count: mixed.length, _sample: _sampleProduct, _bigisub: swapped });
+        if (swapped || refusedIds.size) return json({ plans: mixed, _count: mixed.length, _sample: _sampleProduct, ...(swapped ? { _bigisub: swapped } : {}) });
       }
-      return json({ plans: priced, _count: priced.length, _sample: _sampleProduct });
+      const shown = hideRefusedPlans(priced, refusedIds, [], null);
+      return json({ plans: shown, _count: shown.length, _sample: _sampleProduct });
     }
 
     // ── Data purchase ─────────────────────────────────────────────────────────
@@ -1503,12 +1554,15 @@ serve(async (req) => {
       const data = out.data;
       console.log(`data purchase result:`, forLog(data, 500));
       if (!isOk(data) && !vtPlan && !bgPlan && /INVALID_DATAPLAN/i.test(String(data?.status ?? data?.Status ?? ""))) {
-        const moved = await dataPlanToBigisub(network, planId, digits, rid, callerUser?.id ?? null);
+        const refused = await ckDataPlanPriced(network, planId);
+        await hideRefusedPlan(network, planId, refused?.plan_name ?? "");
+        const moved = await dataPlanToBigisub(network, refused, digits, rid, callerUser?.id ?? null);
         if (moved) return moved;
       }
       if (!isOk(data)) return json({ error: (await ckFailedOrHeld(data, DATA_K, rid)) === "hold" ? PENDING_STATUS : `${errMsg(data, "Data purchase failed")} [net:${netId} plan:${planId}]`, _raw: data });
       afterResponse(recordBillCost("data", rid, callerUser?.id ?? null, data, async () =>
         dataCost(await providerPlanPrice("data", DATA_K, netId, networkName(network, netId) ?? network, planId).catch(() => null), 1, data)));
+      if (!vtPlan && !bgPlan) afterResponse(unhidePlan(network, planId));
       return json({ status: "SUCCESS", reference: String(data.orderid ?? data.requestid ?? ""), message: String(data.status ?? "ORDER_RECEIVED") });
     }
 

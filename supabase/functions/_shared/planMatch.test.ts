@@ -1,6 +1,6 @@
 // Run: deno test supabase/functions/_shared/planMatch.test.ts
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { pickCheaperPlans, findEquivalentPlan, planDays, planSizeMb } from "./planMatch.ts";
+import { pickCheaperPlans, findEquivalentPlan, hideRefusedPlans, planDays, planSizeMb } from "./planMatch.ts";
 
 Deno.test("planSizeMb / planDays read both providers' plan names", () => {
   assertEquals([planSizeMb("1 GB - Monthly (SME)"), planSizeMb("1.5GB (SME) - 30 days"), planSizeMb("500 MB - Weekly (SME)"), planSizeMb("Freedom plan")], [1000, 1500, 500, null]);
@@ -58,4 +58,31 @@ Deno.test("findEquivalentPlan: same size + validity, covered by the customer's p
   assertEquals(findEquivalentPlan({ ...refused, plan_amount: 1000 }, list, 10_000), null);   // never at a loss
   assertEquals(findEquivalentPlan(refused, list, null), null);
   assertEquals(findEquivalentPlan({ ...refused, plan_name: "Night plan" }, list, 10_000), null);   // can't read size/validity
+});
+
+Deno.test("hideRefusedPlans: a refused plan is shown as Bigisub's equivalent at the same price, else left out", () => {
+  const list = [
+    { plan_id: "500", plan_name: "500 MB - 30 days (SME)", plan_amount: 140, cost_amount: 135, priced: true },
+    { plan_id: "1500.02", plan_name: "2GB+2mins Monthly Plan - 30 days (Direct Data)", plan_amount: 1500, cost_amount: 1470, priced: true },
+    { plan_id: "1000", plan_name: "1 GB - Weekly (SME)", plan_amount: 410, cost_amount: 400, priced: true },
+  ];
+  const bgList = [
+    { plan_id: "bg:2", plan_name: "2GB (GIFTING) - 30 days", plan_amount: 1100 },
+    { plan_id: "bg:5", plan_name: "1GB (SME) - 7days", plan_amount: 450 },          // costs more than the ₦410 customer price
+  ];
+  assertEquals(hideRefusedPlans(list, new Set(), bgList, 10_000), list);           // nothing refused → untouched
+  const out = hideRefusedPlans(list, new Set(["1500.02", "1000"]), bgList, 10_000);
+  assertEquals(out.map((p) => p.plan_id), ["500", "bg:2"]);                         // 1GB weekly: no fit → gone
+  assertEquals(out[1], { plan_id: "bg:2", plan_name: "2GB (GIFTING) - 30 days", plan_amount: 1500, cost_amount: 1100, priced: true, replaces: "1500.02" });
+  assertEquals(hideRefusedPlans(list, new Set(["1500.02"]), bgList, null).map((p) => p.plan_id), ["500", "1000"]);   // Bigisub unusable → just hidden
+  assertEquals(hideRefusedPlans(list, new Set(["1500.02"]), [], null).map((p) => p.plan_id), ["500", "1000"]);
+});
+
+Deno.test("hideRefusedPlans: a Bigisub plan already shown (cheaper swap) is never shown twice", () => {
+  const list = [
+    { plan_id: "bg:2", plan_name: "2GB (GIFTING) - 30 days", plan_amount: 1500, cost_amount: 1100, priced: true, replaces: "2000.01" },
+    { plan_id: "1500.02", plan_name: "2GB Monthly Plan - 30 days (Direct Data)", plan_amount: 1500, cost_amount: 1470, priced: true },
+  ];
+  const bgList = [{ plan_id: "bg:2", plan_name: "2GB (GIFTING) - 30 days", plan_amount: 1100 }];
+  assertEquals(hideRefusedPlans(list, new Set(["1500.02", "2000.01"]), bgList, 10_000).map((p) => p.plan_id), ["bg:2"]);
 });

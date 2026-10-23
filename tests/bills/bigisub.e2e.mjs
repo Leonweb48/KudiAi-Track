@@ -142,7 +142,7 @@ const bgSrv = http.createServer((req, res) => {
 });
 
 // ── fake Supabase (PostgREST) ─────────────────────────────────────────────────────────────────────────────────────
-let config = {}, alerts = [], claims = new Map(), costs = [];
+let config = {}, alerts = [], claims = new Map(), costs = [], planBlocks = new Map();
 const rowOut = (rid, r) => ({ request_id: rid, providers: r.providers, vt_request_id: r.vt ?? null, bg_tranx_id: r.bg_tranx_id ?? null, bg_meta: r.bg_meta ?? null, service: r.service, ck_last_sent_at: r.ck_last_sent_at ?? null });
 const sbSrv = http.createServer((req, res) => {
   let b = ""; req.on("data", (d) => (b += d)); req.on("end", () => {
@@ -157,6 +157,12 @@ const sbSrv = http.createServer((req, res) => {
       return send(200, { providers: row.providers, vt_request_id: null });
     }
     if (u.pathname === "/rest/v1/rpc/finance_record_bill_cost") { costs.push(JSON.parse(b)); return send(200, true); }
+    if (u.pathname === "/rest/v1/rpc/bill_plan_block") {
+      const a = JSON.parse(b), k = `${a.p_provider}|${a.p_service}|${a.p_network}|${a.p_plan_id}`;
+      const was = planBlocks.get(k), until = Date.now() + a.p_hours * 3600_000;
+      planBlocks.set(k, { until, name: a.p_plan_name, count: (was?.count ?? 0) + 1 });
+      return send(200, !(was && was.until > Date.now()));
+    }
     const t = /^\/rest\/v1\/(\w+)/.exec(u.pathname)?.[1];
     if (t === "bill_provider_attempts") {
       const rid = (u.searchParams.get("request_id") || "").replace(/^eq\./, "");
@@ -176,6 +182,13 @@ const sbSrv = http.createServer((req, res) => {
       const wantsOne = (req.headers.accept || "").includes("vnd.pgrst.object");
       if (wantsOne) return row ? send(200, rowOut(rid, row)) : send(406, { code: "PGRST116", message: "no rows" });
       return send(200, row ? [rowOut(rid, row)] : []);
+    }
+    if (t === "bill_plan_blocks") {
+      const q = (f) => (u.searchParams.get(f) || "").replace(/^eq\./, "");
+      const pre = `${q("provider")}|${q("service")}|${q("network")}|`;
+      if (req.method === "DELETE") { planBlocks.delete(pre + q("plan_id")); return send(204, null); }
+      const since = Date.parse((u.searchParams.get("blocked_until") || "").replace(/^gt\./, ""));
+      return send(200, [...planBlocks.entries()].filter(([k, v]) => k.startsWith(pre) && v.until > since).map(([k]) => ({ plan_id: k.slice(pre.length) })));
     }
     if (t === "platform_config" && req.method === "GET") return send(200, Object.entries(config).map(([key, value]) => ({ key, value })));
     if (t === "platform_config") return send(201, null);
@@ -382,6 +395,28 @@ ok(J(claims.get(rid)?.providers) === J(["clubkonnect", "bigisub"]) && alerts.som
 reset({ real: { "APIDatabundleV1.asp": "invalidplan" } }); rid = ref();
 r = await call({ action: "data", phone: PHONE, network: "MTN", planId: "1000", requestId: rid });
 ok(!!r?.error && /INVALID_DATAPLAN/.test(r.error) && !bgLog.some((x) => x.startsWith("buy:")), "1GB weekly: Bigisub's costs more than the customer paid → never at a loss, fails and is refunded as before", J([r, bgLog]));
+
+console.log("…and a refused plan is hidden from the list for 24 h (2026-10-23)…");
+ok(planBlocks.get("clubkonnect|data|MTN|500")?.until > Date.now() + 23 * 3600_000 && planBlocks.has("clubkonnect|data|MTN|1000"), "both refused plans recorded as hidden for 24 h", J([...planBlocks]));
+ok(alerts.some((a) => a.title === "ClubKonnect refused a data plan — MTN 1 GB - Weekly (SME) hidden for 24 h"), "admins told which plan was hidden", J(alerts.map((a) => a.title)));
+reset(); await fresh();
+r = await call({ action: "data-plans", network: "MTN" });
+ok(!r?.plans?.some((p) => p.plan_id === "1000" || p.plan_id === "500") && r?.plans?.find((p) => p.replaces === "500")?.plan_id === "bg:310" && r.plans.find((p) => p.replaces === "500").plan_amount === 140,
+  "list: 1GB weekly gone (no Bigisub plan fits), 500MB shows as Bigisub's 500MB at the same ₦140", J(r));
+config = { ...BASE_CFG, bill_provider_bigisub: "false" }; await fresh();
+r = await call({ action: "data-plans", network: "MTN" });
+ok(Array.isArray(r?.plans) && !r.plans.some((p) => p.plan_id === "1000" || p.plan_id === "500" || String(p.plan_id).startsWith("bg:")), "Bigisub off → the refused plans are simply hidden", J(r));
+r = await call({ action: "data-plans", network: "MTN", print: true });
+ok(r?.plans?.some((p) => p.plan_id === "1000"), "Print Data list is untouched", J(r));
+config = { ...BASE_CFG, bill_provider_bigisub: "true" }; await fresh();
+reset({ real: { "APIDatabundleV1.asp": "invalidplan" } });
+r = await call({ action: "data", phone: PHONE, network: "MTN", planId: "1000", requestId: ref() });
+ok(!alerts.some((a) => /refused a data plan/.test(a.title)) && planBlocks.get("clubkonnect|data|MTN|1000")?.count === 2, "refused again while hidden → hiding extended, admins not told twice", J([alerts.map((a) => a.title), [...planBlocks]]));
+reset({ real: { "APIDatabundleV1.asp": "ok" } });
+r = await call({ action: "data", phone: PHONE, network: "MTN", planId: "1000", requestId: ref() });
+await sleep(500);
+ok(r?.status === "SUCCESS" && !planBlocks.has("clubkonnect|data|MTN|1000") && planBlocks.has("clubkonnect|data|MTN|500"), "a delivered order for a hidden plan brings it back at once", J([r, [...planBlocks]]));
+planBlocks.clear();
 
 console.log("cable / betting / Smile: Bigisub backs ClubKonnect up only once switched on (2026-10-23)…");
 const cable = (o, pkg = "dstv-padi", card = "1234567890") => call({ action: "cable", provider: "dstv", packageId: pkg, smartcard: card, phone: PHONE, requestId: o });

@@ -78,3 +78,22 @@ export function findEquivalentPlan(ck: ListedPlan, bg: ListedPlan[], bgBalance: 
     && b.plan_amount > 0 && b.plan_amount <= ck.plan_amount && b.plan_amount <= bgBalance);
   return fits.sort((a, b) => a.plan_amount - b.plan_amount)[0] ?? null;
 }
+
+/**
+ * The list with every plan ClubKonnect has lately refused (`refused`: its plan ids, hidden for a while — 2026-10-23)
+ * taken off: each is shown as Bigisub's plan of the same size and validity at the same customer price where one fits
+ * (findEquivalentPlan's rules, a Bigisub plan shown once), else left out. Plans already swapped to Bigisub stay as they are.
+ */
+export function hideRefusedPlans<T extends ListedPlan>(list: (T | (ListedPlan & { replaces: string }))[], refused: Set<string>, bg: ListedPlan[], bgBalance: number | null): (T | (ListedPlan & { replaces: string }))[] {
+  if (!refused.size) return list;
+  const used = new Set(list.filter((p) => "replaces" in p).map((p) => p.plan_id));
+  const out: (T | (ListedPlan & { replaces: string }))[] = [];
+  for (const p of list) {
+    if ("replaces" in p || !refused.has(p.plan_id)) { out.push(p); continue; }
+    const eq = findEquivalentPlan(p, bg.filter((b) => !used.has(b.plan_id)), bgBalance);
+    if (!eq) continue;
+    used.add(eq.plan_id);
+    out.push({ plan_id: eq.plan_id, plan_name: eq.plan_name, plan_amount: p.plan_amount, cost_amount: eq.plan_amount, priced: p.priced, replaces: p.plan_id });
+  }
+  return out;
+}
