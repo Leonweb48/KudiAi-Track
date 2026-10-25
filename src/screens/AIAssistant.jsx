@@ -4,6 +4,7 @@ import { buildContext } from "../utils/buildContext";
 import { askGemini } from "../utils/gemini";
 import { speakText } from "../utils/tts";
 import { AssistantAvatar, AssistantHero } from "../components/AssistantVisuals";
+import { openSupportWhatsApp, WhatsAppIcon } from "../components/shared/WhatsAppSupport";
 
 const SPEECH_LANG = { en: "en-NG", pidgin: "en-NG", ha: "ha-NG", ig: "ig-NG", yo: "yo-NG" };
 
@@ -196,6 +197,18 @@ export default function AIAssistant({ store, inventory, branches = [], invoices 
           <p className="text-sm font-bold text-slate-800 dark:text-white leading-tight">{t("account.ai.businessAssistant")}</p>
           <p className="text-[10px] text-slate-400 dark:text-slate-500">{t("account.ai.poweredBy")}</p>
         </div>
+
+        {/* A person on WhatsApp — carries the last question over (2026-10-25) */}
+        <button
+          onClick={() => {
+            const lastQ = [...messages].reverse().find((m) => m.role === "user")?.text;
+            openSupportWhatsApp(t("common.whatsAppHello") + (lastQ ? lastQ.slice(0, 500) : ""));
+          }}
+          title={t("common.chatWhatsApp")}
+          aria-label={t("common.chatWhatsApp")}
+          className="h-8 px-3 rounded-full bg-[#25D366] hover:bg-[#1ebe5b] text-white flex items-center gap-1.5 text-xs font-bold transition-colors flex-shrink-0">
+          <WhatsAppIcon className="w-4 h-4" /> WhatsApp
+        </button>
 
         {/* TTS toggle */}
         <button

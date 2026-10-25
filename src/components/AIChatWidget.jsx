@@ -3,6 +3,7 @@ import { useLanguage, useT } from "../contexts/LanguageContext";
 import { buildContext } from "../utils/buildContext";
 import { askGemini } from "../utils/gemini";
 import { AssistantAvatar, AssistantHero } from "./AssistantVisuals";
+import { openSupportWhatsApp, WhatsAppIcon } from "./shared/WhatsAppSupport";
 
 const LS_POS    = "kt_ai_fab_pos";
 const LS_HIDDEN = "kt_ai_widget_hidden";
@@ -307,6 +308,18 @@ export default function AIChatWidget({
                 <p className="text-[10px] text-brand-500 dark:text-brand-400 font-medium">{t("account.ai.poweredBy")}</p>
               </div>
               <div className="flex items-center gap-1.5">
+                {/* A person on WhatsApp — carries the last question over so it needn't be typed again (2026-10-25) */}
+                <button
+                  onClick={() => {
+                    const lastQ = [...messages].reverse().find((m) => m.role === "user")?.text;
+                    openSupportWhatsApp(t("common.whatsAppHello") + (lastQ ? lastQ.slice(0, 500) : ""));
+                  }}
+                  className="h-7 px-2.5 rounded-full bg-[#25D366] hover:bg-[#1ebe5b] text-white flex items-center gap-1 text-[11px] font-bold transition-colors"
+                  title={t("common.chatWhatsApp")}
+                  aria-label={t("common.chatWhatsApp")}
+                >
+                  <WhatsAppIcon className="w-3.5 h-3.5" /> WhatsApp
+                </button>
                 {/* Hide widget from header too */}
                 <button
                   onClick={hideWidget}
