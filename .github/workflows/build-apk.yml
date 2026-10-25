@@ -161,8 +161,9 @@ jobs:
             echo "SIGNING_TYPE=RELEASE"                   >> $GITHUB_ENV
             echo "Keystore decoded — will sign with release keystore"
           else
-            echo "SIGNING_TYPE=DEBUG" >> $GITHUB_ENV
-            echo "No ANDROID_KEYSTORE_BASE64 secret — will use debug signing"
+            # a release must never go out debug-signed (2026-10-25 audit) — stop instead
+            echo "::error::No ANDROID_KEYSTORE_BASE64 secret — refusing to build a debug-signed release"
+            exit 1
           fi
 
       - name: Build release APK + AAB

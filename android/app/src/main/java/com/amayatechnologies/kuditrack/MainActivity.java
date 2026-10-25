@@ -20,12 +20,19 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(NotificationSettingsPlugin.class);
         super.onCreate(savedInstanceState);
 
-        // Auto-grant WebView-level media permissions (camera/mic access within the WebView)
+        // WebView-level media permissions (camera/mic inside the WebView) — granted only to the app's OWN pages
+        // (https://localhost); anything else running inside it, such as an embedded video frame, is refused
+        // (2026-10-25 audit: every request was granted, whoever asked).
         getBridge().getWebView().setWebChromeClient(
             new BridgeWebChromeClient(getBridge()) {
                 @Override
                 public void onPermissionRequest(final PermissionRequest request) {
-                    runOnUiThread(() -> request.grant(request.getResources()));
+                    android.net.Uri origin = request.getOrigin();
+                    final boolean ours = origin != null && "localhost".equals(origin.getHost());
+                    runOnUiThread(() -> {
+                        if (ours) request.grant(request.getResources());
+                        else request.deny();
+                    });
                 }
             }
         );
