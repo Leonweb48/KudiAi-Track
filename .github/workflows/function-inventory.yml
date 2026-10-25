@@ -1,0 +1,29 @@
+# Which edge functions are deployed, and which function secrets are SET (names only — never values or digests).
+# Security audit 2026-10-25: confirms whether EMAIL_TRIGGER_SECRET is set (some functions fall back to the service key
+# without it) and whether functions CI doesn't deploy (admin-portal, notify-admin, manage-staff-profile) are live.
+name: Function inventory
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb   # v1 (pinned)
+        with:
+          version: 2.107.0
+      - name: List
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ secrets.SUPABASE_PROJECT_ID }}
+        run: |
+          set -uo pipefail
+          echo "== deployed functions"
+          supabase functions list --project-ref "$REF" -o json 2>/dev/null | jq -r '.[] | "\(.slug) | \(.status) | verify_jwt=\(.verify_jwt)"' | sort
+          echo "== secrets that are set (names only)"
+          supabase secrets list --project-ref "$REF" -o json 2>/dev/null | jq -r '.[].name' | sort | tr '\n' ' '; echo
