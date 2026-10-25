@@ -1,4 +1,4 @@
--- Security audit 2026-10-25, part 2 of 20270415: each money function, called by a USER, now requires a correct
+-- Security audit 2026-10-25, part 2 of 20270415 (renumbered after 20270417): each money function, called by a USER, now requires a correct
 -- transaction PIN within the last 5 minutes (txn_pin_recently_verified). Server-run work is unaffected.
 -- Edited in place (each function's own code is untouched apart from one check at the top).
 DO $mig$
