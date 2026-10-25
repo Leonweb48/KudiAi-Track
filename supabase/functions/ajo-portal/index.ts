@@ -878,6 +878,10 @@ serve(async (req) => {
       };
 
       if (!client_id || !owner_id) return json({ error: "client_id and owner_id required" }, 400);
+      // a payment proof must be a file in our own storage — it is opened in the owner's session (2026-10-25 audit)
+      if (proof_url && !/^https:\/\/([a-z0-9]+\.supabase\.co\/storage\/|kudiai\.app\/sb\/storage\/)/i.test(String(proof_url))) {
+        return json({ error: "Please upload the proof again." }, 400);
+      }
       const numAmt = Number(amount);
       if (!numAmt || numAmt <= 0) return json({ error: "Amount must be greater than zero" }, 400);
 

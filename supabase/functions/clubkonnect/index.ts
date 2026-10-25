@@ -6,7 +6,7 @@ import { parseCkAmount } from "../_shared/ckAmount.ts";
 import { detectNetwork, networkMismatch, networkMismatchMessage } from "../_shared/app/phoneNetwork.js";
 import { applyDataPrices, parseDiscountPct, parseSellingPrices, type SellingPrices } from "../_shared/dataPricing.ts";
 import { findExamProduct, parseCkExamCatalogue, providerExamCode, type ExamProduct } from "../_shared/examCatalogue.ts";
-import { checkBillGate, DEFAULT_CONFIG, PURCHASE_ACTIONS, type CouponRow, type GateConfig, type GateDeps, type GateMode } from "../_shared/billGate.ts";
+import { checkBillGate, DEFAULT_CONFIG, parseRequestRef, PURCHASE_ACTIONS, type CouponRow, type GateConfig, type GateDeps, type GateMode } from "../_shared/billGate.ts";
 import { airtimeCost, dataCost, findPlan, findPlanPrice, networkName, parseDiscounts, printAirtimeCost, type Cost, type Discounts } from "../_shared/billCost.ts";
 import { buyWithFallback, parseServiceList, PENDING_STATUS, probeVerdict, purchaseServiceState, V3_PATH, type CkResult, type Health, type Lookup, type RouteConfig, type RouteEvent } from "../_shared/ckRoute.ts";
 import {
@@ -296,6 +296,25 @@ function makeGateDeps(): GateDeps {
       return naira > 0 ? Math.round(naira * 100) : 0;
     },
   };
+}
+
+/**
+ * Is this bill order (our KDT-BILL reference, or one of its sub-orders) the caller's — or their business's, for staff?
+ * Proven only by records the server writes or checks: the gate's claim, the card payment's pending bill, the wallet
+ * charge. Lookups that return tokens and PINs answer only for the caller's own orders (2026-10-25 audit).
+ */
+async function callerOwnsOrder(userId: string, ref: string): Promise<boolean> {
+  const base = parseRequestRef(ref)?.baseRef;
+  if (!base) return false;
+  const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+  const { data: st } = await db.from("staff").select("owner_id").eq("user_id", userId).eq("status", "active");
+  const ids = [userId, ...((st ?? []) as { owner_id: string }[]).map((x) => x.owner_id).filter(Boolean)];
+  const [a, b, c] = await Promise.all([
+    db.from("bill_gate_claims").select("request_id").eq("base_ref", base).in("user_id", ids).limit(1),
+    db.from("pending_bills").select("reference").eq("reference", base).in("user_id", ids).limit(1),
+    db.from("wallet_ledger").select("id").eq("reference", base).eq("source", "bill_spend").in("user_id", ids).limit(1),
+  ]);
+  return !!(a.data?.length || b.data?.length || c.data?.length);
 }
 
 /** Which bill a wallet charge paid for, from its narration (the charge row carries no category). */
@@ -2103,7 +2122,17 @@ serve(async (req) => {
 
     // ── Electricity status query (frontend polls this when status=PENDING) ────────
     if (action === "electricity-query") {
-      const { orderId } = body as { orderId: string };
+      let { orderId } = body as { orderId: string };
+      // A user polls only their own order: by our reference (requestId), which the server checks is theirs; the order
+      // number they send is used only when it is that order's VTpass id — otherwise the order is looked up by our
+      // reference (2026-10-25 audit: any order number returned its electricity token).
+      if (callerUser) {
+        const ownRef = String((body as { requestId?: unknown }).requestId ?? "").trim();
+        if (!ownRef || !(await callerOwnsOrder(callerUser.id, ownRef))) return json({ error: "Order not found" });
+        const claim = VT_REF.test(String(orderId ?? "")) ? await readClaim(ownRef) : null;
+        const vtOk = !!claim && claim !== "error" && claim.vtRequestId === orderId;
+        if (!vtOk) orderId = ownRef;
+      }
       if (!orderId) return json({ error: "orderId required" });
       // A VTpass order (its reference is the VTpass request_id): ask VTpass.
       if (VT_REF.test(orderId)) {
@@ -2154,6 +2183,10 @@ serve(async (req) => {
     if (action === "verify") {
       const svc     = String((body as Record<string, unknown>).service ?? "").toLowerCase().trim();
       const orderId = String((body as Record<string, unknown>).orderId ?? "").trim();
+      // a user asks only about their own order, by our reference (the answer can carry tokens and PINs)
+      if (callerUser && (orderId || !(await callerOwnsOrder(callerUser.id, rid)))) {
+        return json({ status: "UNKNOWN", requestId: rid, message: "Order not found" });
+      }
       return json(await verifyOrder(svc, orderId, rid));
     }
 
@@ -2768,6 +2801,29 @@ serve(async (req) => {
       try {
         const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
+        // 2026-10-25 audit: this action took any Paystack reference and refunded it in full — a card-paid bill could be
+        // delivered and then refunded, or someone else's payment refunded — and e-mailed whatever address it was given.
+        // Now a user only reports their own payment (theirs or their business's), the refund runs only once the provider
+        // confirms the order failed, and the customer e-mail goes to the reporter's own login address.
+        let mayRefund = !callerUser;   // server callers (none today) keep the old behaviour
+        let reporterEmail: string | null = null;
+        if (callerUser) {
+          const { data: who } = await sb.auth.admin.getUserById(callerUser.id).catch(() => ({ data: null }));
+          reporterEmail = who?.user?.email ?? null;
+          const { data: pbRow } = ps_ref ? await sb.from("pending_bills").select("user_id").eq("reference", ps_ref).maybeSingle() : { data: null };
+          const ownerId = (pbRow as { user_id?: string } | null)?.user_id;
+          let owns = !!ownerId && ownerId === callerUser.id;
+          if (!owns && ownerId) {
+            const { data: st } = await sb.from("staff").select("id").eq("user_id", callerUser.id).eq("owner_id", ownerId).eq("status", "active").maybeSingle();
+            owns = !!st;
+          }
+          if (owns && ps_ref) {
+            let verdict = "UNKNOWN";
+            try { verdict = await chargeVerdict(billSvcOf(String(service ?? "")), ps_ref); } catch { /* unclear → no refund */ }
+            mayRefund = verdict === "NOT_FOUND" || verdict === "FAILED";
+          }
+        }
+
         // Create a support ticket so admin/finance see it immediately
         const ticketSubject = hold
           ? `BILLING UNCONFIRMED: ${service} — paid, delivery not verified (network)`
@@ -2843,7 +2899,7 @@ serve(async (req) => {
         }
 
         // Email the business user
-        if (user_email) {
+        if (callerUser ? reporterEmail : user_email) {
           const paidAmt = Number(amount);
           const userEmailHtml = bankEmail({
             title: hold ? "Bill Payment Under Review" : "Bill Delivery Issue", tone: "danger", timestamp: new Date(),
@@ -2860,7 +2916,7 @@ serve(async (req) => {
             note: "<strong>Your money is safe.</strong> Our team has been automatically alerted and will resolve this immediately. If you do not receive your service within 2 hours, please contact our support team with the payment reference above.",
             button: { label: "Open KudiAI Track →", url: appLink({ tab: "bills" }) },
           });
-          try { await sendEmail(sb, { to: user_email, subject: `KudiAI Track: Action needed on your ${service} payment`, html: userEmailHtml }); }
+          try { await sendEmail(sb, { to: callerUser ? (reporterEmail ?? "") : user_email, subject: `KudiAI Track: Action needed on your ${service} payment`, html: userEmailHtml }); }
           catch (e) { console.error("User failure email failed:", (e as Error).message); }
         }
 
@@ -2872,7 +2928,7 @@ serve(async (req) => {
         // and the order may have been delivered — a human reconciles instead.
         let refundInitiated = false;
         let refundId: string | null = null;
-        if (!hold && ps_ref && amount && Number(amount) > 0) {
+        if (!hold && mayRefund && ps_ref && amount && Number(amount) > 0) {
           try {
             const rfRes = await fetch(`${SUPABASE_URL}/functions/v1/paystack`, {
               method: "POST",

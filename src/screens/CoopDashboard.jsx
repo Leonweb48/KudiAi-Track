@@ -31,6 +31,7 @@ import PeriodFilter from "../components/shared/PeriodFilter";
 import NotificationCenter from "../components/NotificationCenter";
 import { usePushNotifications } from "../hooks/usePushNotifications";
 import { useToast } from "../components/Toast";
+import { safeExternalUrl } from "../utils/sanitizeHtml";
 
 const coopFn = async (action, body = {}) => {
   const r = await supabase.functions.invoke("coop-portal", { body: { action, ...body } });
@@ -2022,7 +2023,7 @@ function BroadcastTab({ org, members }) {
                         {t("bcast.markAttendance")}
                       </button>
                       {item.meeting_link && (
-                        <a href={item.meeting_link} target="_blank" rel="noreferrer"
+                        <a href={safeExternalUrl(item.meeting_link) || undefined} target="_blank" rel="noreferrer"
                           className="px-3 py-1.5 rounded-xl text-[10px] font-bold text-white bg-brand-500">{t("bcast.joinMeeting")}</a>
                       )}
                     </div>

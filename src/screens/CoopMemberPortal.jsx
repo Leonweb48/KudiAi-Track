@@ -40,6 +40,7 @@ import { useToast } from "../components/Toast";
 import SyncBar from "../components/SyncBar";
 import { useOnlineStatus } from "../hooks/useOnlineStatus";
 import { setCache, getCache } from "../utils/offlineCache";
+import { safeExternalUrl, safeStorageUrl } from "../utils/sanitizeHtml";
 
 const coopFn = async (action, body = {}) => {
   const r = await supabase.functions.invoke("coop-portal", { body: { action, ...body } });
@@ -1745,7 +1746,7 @@ function MemberBroadcastTab({ member, org }) {
               {item._type === "meeting" && (<>
                 {item.location && <p className="text-[11px] text-slate-400 mb-1">📍 {item.location}</p>}
                 {item.meeting_link && (
-                  <a href={item.meeting_link} target="_blank" rel="noreferrer"
+                  <a href={safeExternalUrl(item.meeting_link) || undefined} target="_blank" rel="noreferrer"
                     className="inline-block mb-2 text-[10px] font-bold text-green-500 bg-green-50 dark:bg-green-900/20 px-2.5 py-1 rounded-lg">{`🔗 ${t("bcast.joinOnline")}`}</a>
                 )}
                 {item.agenda && (
@@ -1792,7 +1793,7 @@ function MemberBroadcastTab({ member, org }) {
                 {item.location    && <p className="text-[11px] text-slate-400">📍 {item.location}</p>}
                 {item.end_date    && <p className="text-[11px] text-slate-400">Until {fmtDT(item.end_date)}</p>}
                 {item.event_link  && (
-                  <a href={item.event_link} target="_blank" rel="noreferrer"
+                  <a href={safeExternalUrl(item.event_link) || undefined} target="_blank" rel="noreferrer"
                     className="inline-block mt-2 text-[10px] font-bold text-green-500 bg-green-50 dark:bg-green-900/20 px-2.5 py-1 rounded-lg">{`🔗 ${t("bcast.moreInfo")}`}</a>
                 )}
               </>)}
@@ -2337,7 +2338,7 @@ function OfficerTab({ member, org }) {
                 <div className="text-right">
                   <p className="text-sm font-extrabold text-slate-800 dark:text-white">{fmt(claim.amount)}</p>
                   {claim.proof_url && (
-                    <a href={claim.proof_url} target="_blank" rel="noreferrer" className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold">View proof</a>
+                    <a href={safeStorageUrl(claim.proof_url) || undefined} target="_blank" rel="noreferrer" className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold">View proof</a>
                   )}
                 </div>
               </div>

@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from "react";
 import { supabase } from "../../utils/supabase";
+import { safeExternalUrl } from "../../utils/sanitizeHtml";
 
 const fmtDate = ts => new Date(ts).toLocaleDateString([],{day:"numeric",month:"short",year:"numeric"});
 
@@ -49,7 +50,7 @@ function MediaResult({ item, query }) {
   const ext = item.file_name?.split(".").pop()?.toUpperCase()||"";
   const isImg = ["jpg","jpeg","png","gif","webp","avif"].includes(ext.toLowerCase());
   return (
-    <a href={item.url} target="_blank" rel="noopener noreferrer"
+    <a href={safeExternalUrl(item.url) || undefined} target="_blank" rel="noopener noreferrer"
       className="flex items-center gap-3 px-4 py-3.5 border-b border-slate-50 bg-white active:bg-slate-50">
       <div className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center flex-shrink-0 overflow-hidden">
         {isImg

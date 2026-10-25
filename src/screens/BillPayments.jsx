@@ -2088,6 +2088,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
   // Poll for electricity token when edge function returned PENDING (async processing)
   useEffect(() => {
     const orderId = fulfillResult?.elecOrderId;
+    const ownRef  = fulfillResult?.psRef || "";   // the server answers only for the caller's own order
     if (!orderId) return;
     let cancelled = false;
     let attempts  = 0;
@@ -2102,7 +2103,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       }
       attempts++;
       try {
-        const q = await clubkonnect("electricity-query", { orderId });
+        const q = await clubkonnect("electricity-query", { orderId, requestId: ownRef });
         if (cancelled) return;
         const qToken = q.token || q.metertoken || q.meter_token || q.electricity_token || "";
         const qUnits = q.units || q.unit || q.kwh || "";
@@ -2780,6 +2781,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
           : cardDetails                            ? { cardDetails }
           : {}),
         paid_via: paidVia,
+        requestId: ref,   // our order reference: token lookups only answer for the caller's own order (2026-10-25)
       };
 
       const payload = {
@@ -2877,7 +2879,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
           elecPendingCbRef.current = null;
           if (_txnId) {
             const dbPatch = tok
-              ? { note: updatedNote, bill_details: { token: tok, orderId: _orderId, units: "", paid_via: paidVia } }
+              ? { note: updatedNote, bill_details: { token: tok, orderId: _orderId, units: "", paid_via: paidVia, requestId: _ref } }
               : { note: updatedNote };
             Promise.resolve(supabase.from("transactions").update(dbPatch).eq("id", _txnId)).catch(() => {});
             patchTransactionNote(_txnId, updatedNote);
@@ -3986,7 +3988,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
           onRetrieveToken={
             receipt.category === "electricity" && !receipt.token && receipt.apiRef
               ? async () => {
-                  const q = await clubkonnect("electricity-query", { orderId: receipt.apiRef });
+                  const q = await clubkonnect("electricity-query", { orderId: receipt.apiRef, requestId: receipt.bill_details?.requestId || "" });
                   const qToken = q.token || q.metertoken || q.meter_token || q.electricity_token || "";
                   const qUnits = q.units || q.unit || q.kwh || "";
                   if (q.status === "SUCCESS" && qToken) {

@@ -35,6 +35,7 @@ import { friendlyError } from "../utils/errorMessage";
 import { useToast } from "../components/Toast";
 import { overdueEligible, countingStart, effectiveNextDue, isCounting } from "../utils/asoOverdue";
 import { daysDiff } from "../utils/localDays";
+import { safeStorageUrl } from "../utils/sanitizeHtml";
 
 const BLANK = {
   full_name: "", contribution_frequency: "daily", contribution_amount: "",
@@ -2596,10 +2597,12 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
                       {dep.notes       && !isManualClaim && <p className="text-[10px] text-slate-400 italic mt-0.5">"{dep.notes}"</p>}
                       <p className="text-[10px] text-slate-400 mt-0.5">{dateStr}</p>
                       {dep.proof_url && (() => {
-                        const proofHref = dep.proof_url.replace(
+                        // only a file in our own storage (a client-supplied "proof" could be a javascript: link or a phishing page)
+                        const proofHref = safeStorageUrl(dep.proof_url.replace(
                           /^https:\/\/kudiai\.app\/sb\//,
                           `${process.env.REACT_APP_SUPABASE_URL}/`
-                        );
+                        ));
+                        if (!proofHref) return null;
                         const openProof = () => {
                           if (Capacitor.isNativePlatform()) {
                             InAppBrowser.openWebView({

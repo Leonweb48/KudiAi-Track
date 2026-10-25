@@ -170,6 +170,36 @@ serve(async (req) => {
   }
 
   // Returns null if the caller is the org owner, their active staff, or the org portal admin; Response if denied
+  // Which table each record id in a request lives in (each has an org_id column). A key whose table can't be checked is
+  // skipped; a record that exists outside this co-op — or doesn't exist — refuses the request.
+  const ORG_CHILD_TABLES: Record<string, string[]> = {
+    member_id: ["org_members"], loan_id: ["org_loans"], meeting_id: ["org_meetings"], poll_id: ["org_polls"],
+    claim_id: ["org_manual_savings_claims"], event_id: ["org_events"], announcement_id: ["org_announcements"],
+    program_id: ["org_contribution_programs"], saving_id: ["org_savings"], savings_id: ["org_savings"],
+    repayment_id: ["org_loan_repayments"], withdrawal_id: ["org_member_withdrawal_requests"],
+    reactivation_request_id: ["org_member_reactivation_requests"],
+    request_id: ["org_member_reactivation_requests", "org_member_withdrawal_requests"],
+  };
+  async function childRowsOutsideOrg(org_id: string, b: Record<string, unknown>): Promise<string | null> {
+    for (const [key, tables] of Object.entries(ORG_CHILD_TABLES)) {
+      const v = b[key];
+      if (v === undefined || v === null || v === "") continue;
+      if (typeof v !== "string") return key;
+      let checked = false;
+      for (const t of tables) {
+        const { data, error } = await sb.from(t).select("id").eq("id", v).eq("org_id", org_id).maybeSingle();
+        if (error) {
+          if (/column .*org_id.* does not exist|42703|relation .* does not exist|42P01/i.test(error.message)) continue;
+          return key;   // e.g. not a valid id
+        }
+        checked = true;
+        if (data) { checked = false; break; }   // found in this co-op
+      }
+      if (checked) return key;
+    }
+    return null;
+  }
+
   async function requireOrgOwner(org_id: string): Promise<Response | null> {
     if (!org_id) return json({ error: "org_id required" }, 400);
     if (!callerId) return json({ error: "Unauthorised" }, 401);
@@ -420,6 +450,11 @@ serve(async (req) => {
       }
       const govDenied = await checkGovernanceDelegation(org_id ?? "", action as string);
       if (govDenied) return govDenied;
+      // Every record the request names must belong to the co-op the caller was just checked against. Handlers update
+      // members, savings, loans and claims by id alone, so the owner of ANY co-op (anyone can create one) could pass
+      // their own org_id with another co-op's member id and edit it (2026-10-25 audit).
+      const outside = await childRowsOutsideOrg(org_id ?? "", body as Record<string, unknown>);
+      if (outside) return json({ error: "Not found" }, 404);
     }
 
     // ══════════════════════════════════════════════════
@@ -3878,6 +3913,10 @@ serve(async (req) => {
         payer_name?: string; notes?: string; proof_url?: string; program_id?: string;
       };
       if (!member_id || !org_id || !amount) return json({ error: "member_id, org_id, amount required" }, 400);
+      // a payment proof must be a file in our own storage — it is opened in the owner's session (2026-10-25 audit)
+      if (proof_url && !/^https:\/\/([a-z0-9]+\.supabase\.co\/storage\/|kudiai\.app\/sb\/storage\/)/i.test(String(proof_url))) {
+        return json({ error: "Please upload the proof again." }, 400);
+      }
       const _scDenied = await requireMemberAccess(member_id);
       if (_scDenied) return _scDenied;
       const amt = parseFloat(String(amount));

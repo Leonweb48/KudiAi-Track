@@ -28,3 +28,22 @@ export function safeExternalUrl(value) {
     return null;
   }
 }
+
+/**
+ * A link to a file in OUR storage (payment proofs, chat media): https and our Supabase project or the kudiai.app/sb proxy
+ * only — so a "proof" can't be a javascript: link run inside the owner's session, or a look-alike page opened in the app's
+ * own browser window (2026-10-25 audit). null for anything else.
+ */
+export function safeStorageUrl(value) {
+  const href = safeExternalUrl(value);
+  if (!href) return null;
+  try {
+    const u = new URL(href);
+    const sbHost = (() => { try { return new URL(process.env.REACT_APP_SUPABASE_URL || "").host; } catch { return ""; } })();
+    const ours = u.protocol === "https:" && ((sbHost && u.host === sbHost && u.pathname.startsWith("/storage/"))
+      || (u.host === "kudiai.app" && u.pathname.startsWith("/sb/storage/")));
+    return ours ? u.href : null;
+  } catch {
+    return null;
+  }
+}

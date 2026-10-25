@@ -355,6 +355,25 @@ async function isServiceCall(token: string, url: string, envKey: string): Promis
 
 // ── Main handler ─────────────────────────────────────────────────────────────
 
+// The business(es) a user belongs to: as owner (their own id), as active staff (owner_id), as an Ajo client (user_id of
+// the business's aso_clients row they log in to).
+async function businessesOf(uid: string): Promise<Set<string>> {
+  const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+  const out = new Set<string>([uid]);
+  const [st, cl] = await Promise.all([
+    sb.from("staff").select("owner_id").eq("user_id", uid).eq("status", "active"),
+    sb.from("aso_clients").select("user_id").eq("client_user_id", uid),
+  ]);
+  for (const r of ((st.data ?? []) as { owner_id: string }[])) if (r.owner_id) out.add(r.owner_id);
+  for (const r of ((cl.data ?? []) as { user_id: string }[])) if (r.user_id) out.add(r.user_id);
+  return out;
+}
+async function sameBusiness(callerId: string, targetId: string): Promise<boolean> {
+  const [a, b] = await Promise.all([businessesOf(callerId), businessesOf(targetId)]);
+  for (const x of a) if (b.has(x)) return true;
+  return false;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -592,14 +611,12 @@ Deno.serve(async (req) => {
     let title    = titleIn;
     let bodyText = bodyTextIn;
 
-    // Cross-user auth guard
+    // Cross-user auth guard: a user may notify someone else only inside one business — staff ↔ their owner, staff ↔ staff
+    // of the same owner, the owner or its staff ↔ the business's own Ajo clients. (2026-10-25 audit: the old check looked
+    // up profiles.user_id, which doesn't exist, so it was always skipped — anyone could push "Wallet funded ₦500,000"
+    // to anyone.)
     if (!isServiceRole && callerId && callerId !== userId) {
-      const { data: ownerProf } = await sb.from("profiles").select("id").eq("user_id", userId).maybeSingle();
-      if (ownerProf) {
-        const { data: staffRow } = await sb.from("staff")
-          .select("id").eq("user_id", callerId).eq("owner_id", userId).eq("status", "active").maybeSingle();
-        if (!staffRow) return json({ error: "Forbidden" }, 403);
-      }
+      if (!(await sameBusiness(callerId, userId))) return json({ error: "Forbidden" }, 403);
     }
 
     // Preference check

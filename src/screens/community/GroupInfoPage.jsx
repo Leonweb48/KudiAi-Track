@@ -10,6 +10,7 @@ import PrivacySettings from "./PrivacySettings";
 import InviteManager   from "./InviteManager";
 import GroupSearch     from "./GroupSearch";
 import Leaderboard     from "./Leaderboard";
+import { safeExternalUrl } from "../../utils/sanitizeHtml";
 
 // ─── Avatar ───────────────────────────────────────────────────────────────────
 const AC = ["#ef4444","#f97316","#eab308","#22c55e","#06b6d4","#3b82f6","#8b5cf6","#ec4899","#14b8a6","#f43f5e"];
@@ -246,7 +247,7 @@ export default function GroupInfoPage({ orgId, orgName, org, settings: initSetti
                 </span>
               )}
               {org?.website && (
-                <a href={org.website} target="_blank" rel="noreferrer"
+                <a href={safeExternalUrl(org.website) || undefined} target="_blank" rel="noreferrer"
                   className="flex items-center gap-1 text-[13px] text-[#128c7e] font-medium">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" className="w-3.5 h-3.5">
                     <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/>

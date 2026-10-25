@@ -7,6 +7,7 @@ import { compressImage } from "../utils/compressImage";
 import WalletTierCard from "../components/WalletTierCard";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
 import { useT } from "../contexts/LanguageContext";
+import { safeExternalUrl } from "../utils/sanitizeHtml";
 
 // ── Icons ────────────────────────────────────────────────────────────────────
 const ArrowLeft  = () => <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>;
@@ -545,7 +546,7 @@ export default function Profile({ store, session, plan }) {
             {profile.reg_doc_url && (
               <div className="px-4 py-3 flex items-center gap-3">
                 <p className="text-xs text-slate-400 dark:text-slate-500 w-28 flex-shrink-0">{t("settings.prof.regDocument")}</p>
-                <a href={profile.reg_doc_url} target="_blank" rel="noopener noreferrer"
+                <a href={safeExternalUrl(profile.reg_doc_url) || undefined} target="_blank" rel="noopener noreferrer"
                   className="text-xs font-semibold text-brand-600 dark:text-brand-400 underline underline-offset-2">
                   {t("settings.prof.viewDocument")}
                 </a>

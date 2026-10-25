@@ -109,7 +109,7 @@ serve(async (req) => {
   }
 
   if (paymentType === "org_registration") {
-    await handleOrgRegistrationPayment(sb, meta, paidAt);
+    await handleOrgRegistrationPayment(sb, meta, paidAt, amountKobo);
     return ok("org registration processed");
   }
 
@@ -398,6 +398,7 @@ async function handleOrgRegistrationPayment(
   sb: ReturnType<typeof createClient>,
   meta: Record<string, unknown>,
   paidAt: string,
+  amountKobo: number,
 ) {
   const orgId = meta.org_id as string | undefined;
   if (!orgId) {
@@ -407,7 +408,7 @@ async function handleOrgRegistrationPayment(
 
   const { data: org, error } = await sb
     .from("organizations")
-    .select("id, name, status, owner_id")
+    .select("id, name, status, owner_id, platform_reg_fee_amount")
     .eq("id", orgId)
     .maybeSingle();
 
@@ -418,6 +419,13 @@ async function handleOrgRegistrationPayment(
 
   if (org.status !== "pending_payment") {
     console.log(`[paystack-webhook] org_registration: org ${orgId} already active (idempotent skip)`);
+    return;
+  }
+  // the payment must cover the registration fee (2026-10-25 audit: the app sets the charge amount and its metadata, so a
+  // ₦50 charge tagged with any org_id activated that co-op)
+  const feeKobo = Math.round(Number((org as Record<string, unknown>).platform_reg_fee_amount || 2000) * 100);
+  if (!(amountKobo >= feeKobo)) {
+    console.warn(`[paystack-webhook] org_registration: org ${orgId} paid ${amountKobo} kobo of ${feeKobo} — not activated`);
     return;
   }
 

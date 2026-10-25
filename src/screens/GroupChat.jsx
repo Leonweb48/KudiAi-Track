@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { supabase } from "../utils/supabase";
 import GroupInfoPage from "./community/GroupInfoPage";
+import { safeExternalUrl, safeStorageUrl } from "../utils/sanitizeHtml";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const QUICK_EMOJIS = ["👍","❤️","😂","😮","😢","🙏","🔥","👏","🎉","💯"];
@@ -378,7 +379,7 @@ function Bubble({ msg, isMe, showName, showAv, myId, lastSeen, memberCount, avat
           ) : msg.type === "image" ? (
             <div>
               <img src={msg.media_url} alt={msg.media_name || ""} loading="lazy"
-                onClick={() => window.open(msg.media_url, "_blank")}
+                onClick={() => { const u = safeStorageUrl(msg.media_url); if (u) window.open(u, "_blank", "noopener"); }}
                 className="rounded-xl max-w-[220px] max-h-[240px] object-cover cursor-zoom-in mb-0.5" />
               {msg.content && <p className="text-sm mt-1">{msg.content}</p>}
             </div>
@@ -858,7 +859,7 @@ function DocumentBubble({ url, name, isMe }) {
   const color = EXT_COLOR[ext] || "#64748b";
   const label = EXT_LABEL[ext] || (ext.toUpperCase() || "FILE");
   return (
-    <a href={url} target="_blank" rel="noreferrer"
+    <a href={safeExternalUrl(url) || undefined} target="_blank" rel="noreferrer"
       className="flex items-center gap-3 min-w-[180px] py-0.5 active:opacity-70">
       <div className="w-11 h-11 rounded-xl flex flex-col items-center justify-center flex-shrink-0"
         style={{ background: `${color}18`, border: `1.5px solid ${color}50` }}>

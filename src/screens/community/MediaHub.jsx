@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../../utils/supabase";
+import { safeExternalUrl } from "../../utils/sanitizeHtml";
 
 const TABS = [
   { id:"photo",    label:"Photos",    icon:"🖼️" },
@@ -89,7 +90,7 @@ function DocItem({ item }) {
   const fmtSize = b => b>1e6?`${(b/1e6).toFixed(1)} MB`:b>1e3?`${Math.round(b/1e3)} KB`:`${b} B`;
 
   return (
-    <a href={item.url} target="_blank" rel="noopener noreferrer"
+    <a href={safeExternalUrl(item.url) || undefined} target="_blank" rel="noopener noreferrer"
       className="flex items-center gap-3 px-4 py-3.5 border-b border-slate-50 bg-white active:bg-slate-50">
       <div className="w-10 h-10 rounded-xl flex items-center justify-center font-extrabold text-[10px] text-white flex-shrink-0"
         style={{background:color}}>
@@ -109,7 +110,7 @@ function DocItem({ item }) {
 
 function LinkItem({ item }) {
   return (
-    <a href={item.url} target="_blank" rel="noopener noreferrer"
+    <a href={safeExternalUrl(item.url) || undefined} target="_blank" rel="noopener noreferrer"
       className="flex items-center gap-3 px-4 py-3.5 border-b border-slate-50 bg-white active:bg-slate-50">
       <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center flex-shrink-0 overflow-hidden">
         {item.thumbnail_url
@@ -225,7 +226,7 @@ export default function MediaHub({ orgId, onBack }) {
               <p className="text-white font-semibold text-sm truncate">{preview.sender_name}</p>
               <p className="text-white/60 text-[11px]">{new Date(preview.created_at).toLocaleDateString([],{day:"numeric",month:"long",year:"numeric"})}</p>
             </div>
-            <a href={preview.url} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()}
+            <a href={safeExternalUrl(preview.url) || undefined} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()}
               className="w-9 h-9 flex items-center justify-center text-white">⬇️</a>
           </div>
           <div className="flex-1 flex items-center justify-center p-4">
