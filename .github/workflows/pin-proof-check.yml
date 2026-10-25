@@ -1,0 +1,35 @@
+# Does a correct transaction PIN reach the database's money-function check? (security audit 2026-10-25)
+# Signs in as the fictional Play demo reviewer (password only in DEMO_REVIEWER_PASSWORD; its transaction PIN 2468 is
+# public in scripts/demo-account/seed.mjs), asks txn_pin_recently_verified() before and after entering the PIN through
+# pin-manager. Nothing is bought or moved. Prints yes/no answers only — no tokens, ids or balances.
+name: PIN proof check
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check
+        env:
+          URL: ${{ secrets.REACT_APP_SUPABASE_URL }}
+          ANON: ${{ secrets.REACT_APP_SUPABASE_ANON_KEY }}
+          PASS: ${{ secrets.DEMO_REVIEWER_PASSWORD }}
+        run: |
+          set -uo pipefail
+          TOKEN=$(curl -sS -m 30 -X POST "$URL/auth/v1/token?grant_type=password" -H "apikey: $ANON" -H "Content-Type: application/json" \
+            -d "$(jq -nc --arg p "$PASS" '{email:"demo.reviewer@kudiai.app", password:$p}')" | jq -r '.access_token // empty')
+          if [ -z "$TOKEN" ]; then echo "sign-in: FAILED (demo account disabled or password changed)"; exit 1; fi
+          echo "::add-mask::$TOKEN"
+          echo "sign-in: ok"
+          ask() { curl -sS -m 30 -X POST "$URL/rest/v1/rpc/txn_pin_recently_verified" -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d '{}'; }
+          echo "before the PIN: recently verified = $(ask)"
+          OK=$(curl -sS -m 30 -X POST "$URL/functions/v1/pin-manager" -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+            -d '{"action":"verify_txn_pin","pin":"2468"}' | jq -r '.success // false')
+          echo "PIN accepted by pin-manager: $OK"
+          echo "after the PIN:  recently verified = $(ask)"
