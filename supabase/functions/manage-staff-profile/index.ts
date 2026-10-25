@@ -175,6 +175,11 @@ serve(async (req) => {
     if (!staffRow.email_change_otp || !staffRow.email_change_pending) {
       return json({ error: "No pending email change — request a new code first" }, 400);
     }
+    // at most 8 code checks per 15 minutes (a 6-digit code was guessable with unlimited tries — 2026-10-25 audit)
+    {
+      const { data: allowed, error: rlErr } = await adminClient.rpc("rate_limit_hit", { p_key: "otp:email-change:" + authUserId, p_window_seconds: 900, p_max: 8 });
+      if (rlErr || allowed === false) return json({ error: "Too many attempts. Wait 15 minutes and try again." }, 429);
+    }
     if (staffRow.email_change_otp !== otp) {
       return json({ error: "Incorrect verification code" }, 400);
     }

@@ -470,7 +470,9 @@ serve(async (req) => {
         .select("id, name, email, owner_id, portal_user_id, reg_number, type, status")
         .eq("id", org_id).maybeSingle();
       if (!org) return json({ error: "Organisation not found" }, 404);
-      if (org.owner_id !== owner_id) return json({ error: "Unauthorized" }, 403);
+      // the business owner only — not staff, the portal admin or an officer (delete the co-op, reset the portal password
+      // and receive it, or change the payout bank account — 2026-10-25 audit)
+      if (org.owner_id !== owner_id || org.owner_id !== callerId) return json({ error: "Unauthorized" }, 403);
       if ((org as Record<string, unknown>).status === "pending_payment")
         return json({ error: "Registration fee must be paid before setting up the organisation portal." }, 402);
       if (!org.email) return json({ error: "Please add an organisation email in Settings first" }, 400);
@@ -621,7 +623,9 @@ serve(async (req) => {
       const { data: org } = await sb.from("organizations")
         .select("id, owner_id, portal_user_id").eq("id", org_id).maybeSingle();
       if (!org) return json({ error: "Organisation not found" }, 404);
-      if (org.owner_id !== owner_id) return json({ error: "Unauthorized" }, 403);
+      // the business owner only — not staff, the portal admin or an officer (delete the co-op, reset the portal password
+      // and receive it, or change the payout bank account — 2026-10-25 audit)
+      if (org.owner_id !== owner_id || org.owner_id !== callerId) return json({ error: "Unauthorized" }, 403);
 
       // Delete portal auth user if one exists
       if (org.portal_user_id) {
@@ -800,7 +804,8 @@ serve(async (req) => {
       const { org_id, ...fields } = body as Record<string, unknown>;
       const allowed = ["name","description","purpose","vision","mission","address","state_name","lga",
                        "phone","email","website","logo_url","social_instagram","social_facebook",
-                       "social_twitter","date_established","registration_fee","status"];
+                       "social_twitter","date_established","registration_fee"];
+      // (no "status": an owner could activate a co-op without paying its fee, or lift a KudiAI suspension — 2026-10-25)
       const update: Record<string, unknown> = {};
       for (const k of allowed) if (fields[k] !== undefined) update[k] = fields[k];
       const { data: org, error } = await sb.from("organizations").update(update)
@@ -2402,9 +2407,11 @@ serve(async (req) => {
       if (!PAYSTACK_SECRET) return json({ error: "Paystack not configured" }, 503);
 
       const { data: org } = await sb.from("organizations")
-        .select("id, owner_id, name, paystack_subaccount_code").eq("id", org_id).maybeSingle();
+        .select("id, owner_id, portal_user_id, name, paystack_subaccount_code").eq("id", org_id).maybeSingle();
       if (!org) return json({ error: "Organisation not found" }, 404);
-      if (org.owner_id !== owner_id) return json({ error: "Unauthorized" }, 403);
+      // the business owner only — not staff, the portal admin or an officer (delete the co-op, reset the portal password
+      // and receive it, or change the payout bank account — 2026-10-25 audit)
+      if (org.owner_id !== owner_id || (org.owner_id !== callerId && !((org as Record<string, unknown>).portal_user_id && (org as Record<string, unknown>).portal_user_id === callerId))) return json({ error: "Unauthorized" }, 403);   // owner or the co-op's own portal login
 
       // Verify bank account with Paystack
       const verRes = await fetch(
@@ -2527,20 +2534,24 @@ serve(async (req) => {
 
       const paidAmount = Number(verData.data.amount) / 100;
 
-      // Idempotency: only process once
+      // Idempotency: one Paystack payment is credited once, for one member (2026-10-25 audit: the check was per member, so
+      // the same payment could be credited to several members; a unique index on paystack_ref now also stops two
+      // requests at once)
       const { data: existing } = await sb.from("org_savings")
-        .select("id").eq("paystack_ref", reference).eq("member_id", member_id).maybeSingle();
+        .select("id").eq("paystack_ref", reference).maybeSingle();
 
       if (!existing) {
         const { data: mem } = await sb.from("org_members")
           .select("savings_balance, full_name, email").eq("id", member_id).single();
         const balanceAfter = (mem?.savings_balance || 0) + paidAmount;
 
-        const { data: saving } = await sb.from("org_savings").insert({
+        const { data: saving, error: savErr } = await sb.from("org_savings").insert({
           org_id, member_id, amount: paidAmount, type: "deposit",
           payment_method: "paystack", paystack_ref: reference,
           balance_after: balanceAfter, program_id: program_id || null,
         }).select("id").single();
+        // already recorded by a request that ran at the same moment (unique paystack_ref) → credit nothing again
+        if (savErr) return json({ ok: true, already_confirmed: true });
 
         await sb.from("org_members").update({ savings_balance: balanceAfter }).eq("id", member_id);
 
@@ -2669,11 +2680,16 @@ serve(async (req) => {
       const interestPortion  = parseFloat((paidAmount * interestRatio).toFixed(2));
       const principalPortion = parseFloat((paidAmount - interestPortion).toFixed(2));
 
-      const { data: paidRepayment } = await sb.from("org_loan_repayments").insert({
+      const { data: paidRepayment, error: repErr } = await sb.from("org_loan_repayments").insert({
         org_id, loan_id, member_id,
         amount: paidAmount, payment_method: "paystack", paystack_ref: reference,
         principal_portion: principalPortion, interest_portion: interestPortion,
       }).select("id").single();
+      // recorded already (unique paystack_ref — two requests at once) → don't reduce the loan twice (2026-10-25 audit)
+      if (repErr) {
+        const { data: loanNow } = await sb.from("org_loans").select("*").eq("id", loan_id).single();
+        return json({ loan: loanNow, amount: paidAmount, already_confirmed: true });
+      }
 
       const { data: updatedLoan } = await sb.from("org_loans")
         .update({ outstanding_balance: newOutstanding, status: newOutstanding === 0 ? "repaid" : "disbursed" })

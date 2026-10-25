@@ -16,7 +16,7 @@ const json = (body: unknown, status = 200) =>
   });
 
 function genOtp(): string {
-  return String(Math.floor(100000 + Math.random() * 900000));
+  return String(100000 + (crypto.getRandomValues(new Uint32Array(1))[0] % 900000));   // CSPRNG, not Math.random
 }
 
 async function fireEmail(event: string, data: Record<string, unknown>) {
@@ -85,6 +85,11 @@ serve(async (req) => {
         .maybeSingle();
 
       if (!clientRow) return json({ error: "Client account not found" }, 404);
+      // at most 8 code checks per 15 minutes (a 6-digit code was guessable with unlimited tries — 2026-10-25 audit)
+      {
+        const { data: allowed, error: rlErr } = await adminClient.rpc("rate_limit_hit", { p_key: "otp:client-first-login:" + userData.user.id, p_window_seconds: 900, p_max: 8 });
+        if (rlErr || allowed === false) return json({ error: "Too many attempts. Wait 15 minutes and try again." }, 429);
+      }
       if (!clientRow.otp_code || clientRow.otp_code !== otp_code.trim()) {
         return json({ error: "Invalid verification code" }, 400);
       }
