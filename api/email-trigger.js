@@ -281,6 +281,44 @@ const CORS = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
+// The addresses a user-triggered e-mail may go to: the user, the owners of the businesses they belong to (staff), and
+// those businesses' Ajo clients, staff and customers — checked only for the few addresses this request names.
+async function allowedRecipients(sb, user, d) {
+  const allowed = new Set();
+  const me = String(user.email || "").toLowerCase();
+  if (me) allowed.add(me);
+  const named = [...new Set(["owner_email", "user_email", "customer_email", "client_email", "email", "staff_email"]
+    .map((k) => decodeEntities(str(d[k])).trim().toLowerCase()).filter((x) => x && x !== me && x.includes("@")))];
+  if (!named.length) return allowed;
+  try {
+    const biz = new Set([user.id]);
+    const [{ data: st }, { data: cl }] = await Promise.all([
+      sb.from("staff").select("owner_id").eq("user_id", user.id).eq("status", "active"),
+      sb.from("aso_clients").select("user_id").eq("client_user_id", user.id),   // an Ajo client writing to their business
+    ]);
+    for (const r of st || []) if (r.owner_id) biz.add(r.owner_id);
+    for (const r of cl || []) if (r.user_id) biz.add(r.user_id);
+    const ids = [...biz];
+    for (const id of ids) {
+      if (id === user.id) continue;
+      const { data: o } = await sb.auth.admin.getUserById(id).catch(() => ({ data: null }));
+      const em = String(o?.user?.email || "").toLowerCase();
+      if (em && named.includes(em)) allowed.add(em);
+    }
+    const lists = await Promise.all([
+      sb.from("aso_clients").select("email").in("user_id", ids).in("email", named),
+      sb.from("staff").select("email").in("owner_id", ids).in("email", named),
+      sb.from("customers").select("email").in("user_id", ids).in("email", named),
+      sb.from("invoices").select("customer_email").in("user_id", ids).in("customer_email", named),
+    ]);
+    for (const l of lists) for (const r of (l.data || [])) {
+      const em = String(r.email ?? r.customer_email ?? "").toLowerCase();
+      if (em) allowed.add(em);
+    }
+  } catch { /* only the sender's own address then */ }
+  return allowed;
+}
+
 export default async function handler(req, res) {
   // Capacitor webview origin is capacitor://localhost — always set CORS headers first
   Object.entries(CORS).forEach(([k, v]) => res.setHeader(k, v));
@@ -333,6 +371,12 @@ export default async function handler(req, res) {
   // reasons…) can reach an email's HTML unescaped after this line.
   const d = escapeDeep({ owner_email: user.email || "", user_email: user.email || "", ...(rawData || {}) });
 
+  // Who this request may e-mail (2026-10-25 audit: any logged-in user could send branded KudiAI mail — "withdrawal
+  // approved", "invoice paid" — to ANY address with any figures). Only addresses that belong to the sender's own business:
+  // the sender, the business owner (for staff), and that business's Ajo clients, staff and customers. Anything else is
+  // dropped (and logged) instead of sent.
+  const allowedTo = await allowedRecipients(sb, user, d);
+
   // Per-user sending allowance — this route is callable by any logged-in user and can address third parties, so
   // without a cap a free account is a spam/phishing relay from the company domain. An outage of the counter must
   // never block real mail, so a failed lookup lets the request through.
@@ -362,6 +406,10 @@ export default async function handler(req, res) {
   // One plain address only — a comma-separated "to" would turn one counted send into many recipients.
   const queueTo = (to) => {
     const addr = singleEmail(decodeEntities(str(to)));
+    if (addr && !allowedTo.has(addr.toLowerCase())) {
+      logDelivery(sb, addr, `[${event}] refused`, "failed", "recipient is not part of the sender's business").catch(() => {});
+      return null;
+    }
     if (addr) recipients.push(addr);
     return addr;
   };

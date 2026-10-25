@@ -283,8 +283,11 @@ export async function handleMoneyEmail(event, { d, q, qa, sb, user, fmt }) {
     const customer = str(d.customer_name) || "there";
     const phone = str(d.business_phone);
     const callButton = phone ? { label: `Call ${biz}`, url: `tel:${phone.replace(/[^0-9+]/g, "")}` } : undefined;
-    const pdfAttachments = d.pdf_base64
-      ? [{ filename: decodeEntities(str(d.pdf_filename)) || "invoice.pdf", content: Buffer.from(str(d.pdf_base64), "base64"), contentType: "application/pdf" }]
+    // only a real PDF with a plain file name is attached (2026-10-25 audit: any bytes under any name could be sent)
+    const pdfBytes = d.pdf_base64 ? Buffer.from(str(d.pdf_base64), "base64") : null;
+    const pdfName = decodeEntities(str(d.pdf_filename));
+    const pdfAttachments = pdfBytes && pdfBytes.length > 4 && pdfBytes.subarray(0, 5).toString("latin1") === "%PDF-"
+      ? [{ filename: /^[\w .()-]{1,80}\.pdf$/i.test(pdfName) ? pdfName : "invoice.pdf", content: pdfBytes, contentType: "application/pdf" }]
       : [];
     const money = (v) => (v != null && v !== "" && Number(v) !== 0 ? naira(v) : "");
     // subtotal / discount / VAT / other charges, as rows

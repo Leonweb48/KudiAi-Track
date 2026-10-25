@@ -31,8 +31,9 @@ generateSW({
   importScripts: ["push-sw.js"],
   runtimeCaching: [
     {
-      // logos, pictures and icons used by the app, cached the first time they are shown
-      urlPattern: ({ request, sameOrigin }) => sameOrigin && request.destination === "image",
+      // logos, pictures and icons used by the app, cached the first time they are shown — never user uploads under /sb/
+      // (payment proofs, chat pictures, KYC): those stayed on the phone for 30 days after logout (2026-10-25 audit)
+      urlPattern: ({ request, sameOrigin, url }) => sameOrigin && request.destination === "image" && !url.pathname.startsWith("/sb/"),
       handler: "CacheFirst",
       options: {
         cacheName: "kudiai-images",

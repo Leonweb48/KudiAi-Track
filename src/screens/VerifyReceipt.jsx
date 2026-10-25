@@ -232,6 +232,9 @@ export default function VerifyReceipt() {
               <p style={{ margin: "12px 0 0", fontSize: 11.5, color: "#94a3b8", lineHeight: 1.5 }}>
                 {t("circles.verify.changedNote", { doc })}
               </p>
+              <p data-testid="report-declared" style={{ margin: "6px 0 0", fontSize: 11.5, color: "#94a3b8", lineHeight: 1.5 }}>
+                {t("circles.verify.declaredNote", { doc })}
+              </p>
             </div>
             );
           })()}

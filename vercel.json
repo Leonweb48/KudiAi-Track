@@ -38,6 +38,15 @@
       ]
     },
     {
+      "source": "/sb/storage/(.*\\.(?:svg|SVG|html?|HTML?|xml|XML|xhtml))",
+      "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'"
+        }
+      ]
+    },
+    {
       "source": "/.well-known/(.*)",
       "headers": [
         {
