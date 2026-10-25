@@ -379,6 +379,11 @@ serve(async (req: Request) => {
 
       if (correct) {
         await updateProfile({ txn_pin_attempts: 0, txn_pin_locked_until: null });
+        // the money functions in the database accept a user's call only within 5 minutes of this (2026-10-25 audit:
+        // they could be called straight from the API with no PIN). Best effort — never fails the PIN check itself.
+        await adminClient.from("txn_pin_verifications")
+          .upsert({ user_id: user!.id, verified_at: new Date().toISOString() }, { onConflict: "user_id" })
+          .then(() => {}, () => {});
         return jsonResponse({ success: true });
       }
 

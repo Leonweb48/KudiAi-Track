@@ -297,6 +297,12 @@ serve(async (req) => {
 
       // Correct PIN — reset attempt counter
       await sb.rpc("ajo_client_pin_reset", { p_client_id: _pgClientId });
+      // ...and record it, so the wallet payment that follows is accepted by the database (txn_pin_recently_verified)
+      if (callerId) {
+        await sb.from("txn_pin_verifications")
+          .upsert({ user_id: callerId, verified_at: new Date().toISOString() }, { onConflict: "user_id" })
+          .then(() => {}, () => {});
+      }
     }
 
     if (action === "create-group" || action === "join-group" || action === "leave-group") {
