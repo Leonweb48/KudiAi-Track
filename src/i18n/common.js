@@ -30,6 +30,11 @@ const T = {
   "common.noData":      { en: "Nothing here yet", pidgin: "Nothing dey here yet", ha: "Babu komai tukuna", ig: "Ọ dịghị ihe ebe a ugbu a", yo: "Kò sí nǹkan níbí síbẹ̀" },
   "common.offline":     { en: "You're offline", pidgin: "You no get network", ha: "Ba ka kan layi", ig: "Ị nọghị n'ịntanetị", yo: "O kò sí lórí ayélujára" },
   "common.somethingWrong": { en: "Something went wrong. Please try again.", pidgin: "Something no work. Abeg try again.", ha: "Wani abu ya faru ba daidai ba. Da fatan a sake gwadawa.", ig: "Ihe adịghị mma mere. Biko nwaa ọzọ.", yo: "Nǹkan kan ṣẹlẹ̀. Jọ̀wọ́ gbìyànjú lẹ́ẹ̀kan sí i." },
+  // WhatsApp support (2026-10-25): the button text, its subtitle, and the message it starts
+  "common.chatWhatsApp":    { en: "Chat with us on WhatsApp", pidgin: "Chat with us for WhatsApp", ha: "Yi hira da mu a WhatsApp", ig: "Kparịta ụka na anyị na WhatsApp", yo: "Bá wa sọ̀rọ̀ lórí WhatsApp" },
+  "common.chatWhatsAppSub": { en: "Talk to our team · {number}", pidgin: "Talk to our team · {number}", ha: "Yi magana da ƙungiyarmu · {number}", ig: "Gwa ndị otu anyị okwu · {number}", yo: "Bá ẹgbẹ́ wa sọ̀rọ̀ · {number}" },
+  "common.whatsAppHello":   { en: "Hello KudiAI, I need help with: ", pidgin: "Hello KudiAI, I need help with: ", ha: "Sannu KudiAI, ina buƙatar taimako game da: ", ig: "Ndewo KudiAI, achọrọ m enyemaka maka: ", yo: "Ẹ n lẹ́ KudiAI, mo nílò ìrànlọ́wọ́ nípa: " },
+  "common.whatsAppHelloAs": { en: "Hello KudiAI, this is {name}. I need help with: ", pidgin: "Hello KudiAI, na {name} dey talk. I need help with: ", ha: "Sannu KudiAI, ni ne {name}. Ina buƙatar taimako game da: ", ig: "Ndewo KudiAI, abụ m {name}. Achọrọ m enyemaka maka: ", yo: "Ẹ n lẹ́ KudiAI, èmi ni {name}. Mo nílò ìrànlọ́wọ́ nípa: " },
 };
 
 export default T;

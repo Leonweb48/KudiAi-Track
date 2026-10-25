@@ -1,6 +1,9 @@
 import { useState } from "react";
 import SITE from "../content/site.json";
 import SiteShell, { useSeo, TiltCard, SOCIAL_ICON } from "./SiteShell";
+import { supportWhatsAppLink, SUPPORT_WHATSAPP_DISPLAY } from "../components/shared/WhatsAppSupport";
+
+const WhatsAppPath = () => <path fill="currentColor" d="M17.5 14.4c-.3-.1-1.8-.9-2-1s-.5-.1-.7.1-.8 1-1 1.2-.4.2-.7.1a8.2 8.2 0 01-4-3.5c-.3-.5.3-.5.9-1.6.1-.2 0-.4 0-.5l-1-2.2c-.2-.6-.5-.5-.7-.5h-.6a1.1 1.1 0 00-.8.4 3.4 3.4 0 00-1 2.5 6 6 0 001.2 3.1 13.4 13.4 0 005.2 4.6c1.9.8 2.7.9 3.6.7a3.1 3.1 0 002-1.4 2.5 2.5 0 00.2-1.4c-.1-.1-.3-.2-.6-.3zM12 21.8a9.9 9.9 0 01-5-1.4l-.4-.2-3.7 1 1-3.6-.2-.4A9.8 9.8 0 1112 21.8zm0-21.6A11.8 11.8 0 002 18l-1.6 5.8 6-1.6A11.8 11.8 0 1012 .2z" />;
 
 /** kudiai.app/contact — email, social handles, quick help, and a message form that opens the visitor's email app. */
 const CSS = `
@@ -55,6 +58,14 @@ export default function ContactPage() {
       <section className="ks-wrap" style={{ paddingBottom: 40 }}>
         <div className="ct-grid">
           <div style={{ display: "grid", gap: 18 }}>
+            <div className="ks-card ct-mail ks-reveal">
+              <svg viewBox="0 0 24 24" aria-hidden="true" style={{ width: 64, height: 64, flex: "none", color: "#25D366" }}><WhatsAppPath /></svg>
+              <div>
+                <div className="ks-eyebrow" style={{ marginBottom: 6 }}>Chat on WhatsApp</div>
+                <a className="big" href={supportWhatsAppLink("Hello KudiAI, I need help with: ")} target="_blank" rel="noopener noreferrer">{SUPPORT_WHATSAPP_DISPLAY}</a>
+                <p style={{ margin: "6px 0 0", color: "var(--muted)" }}>Message our team directly — the quickest way to reach us.</p>
+              </div>
+            </div>
             <div className="ks-card ct-mail ks-reveal">
               <img src="/site/3d/ai.webp" alt="" />
               <div>

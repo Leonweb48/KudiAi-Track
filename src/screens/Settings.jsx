@@ -28,6 +28,7 @@ import NotificationPreferences from "../components/NotificationPreferences";
 import { useWallet } from "../hooks/useWallet";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
 import { cleanBankName } from "../components/WalletPanel";
+import { openSupportWhatsApp, WhatsAppIcon, SUPPORT_WHATSAPP_DISPLAY } from "../components/shared/WhatsAppSupport";
 
 /* ── Change PIN Modal (3-step: verify current → enter new → confirm new) ── */
 const PinBsIcon = () => (
@@ -1072,6 +1073,11 @@ export default function Settings({ store, session, plan = "starter", onUpgrade, 
           />
         )}
         <Row icon={<HelpIcon />} label={t("settings.help")}        onClick={() => navigate("/help")} />
+        <Row icon={<WhatsAppIcon className="w-5 h-5 text-[#25D366]" />} label={t("common.chatWhatsApp")}
+          sub={t("common.chatWhatsAppSub", { number: SUPPORT_WHATSAPP_DISPLAY })}
+          onClick={() => openSupportWhatsApp((profile.business_name || profile.owner_name)
+            ? t("common.whatsAppHelloAs", { name: profile.business_name || profile.owner_name })
+            : t("common.whatsAppHello"))} />
       </SettingsCard>
 
       {/* ── LOG OUT ────────────────────────────────────────────────── */}

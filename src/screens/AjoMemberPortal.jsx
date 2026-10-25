@@ -63,6 +63,7 @@ import { promoDue, markPromoSeen, naira } from "../utils/invite";
 import GlassIcon, { GLASS } from "../components/GlassIcon";
 import PhotoHero from "../components/PhotoHero";
 import { AssistantAvatar } from "../components/AssistantVisuals";
+import { openSupportWhatsApp, WhatsAppIcon, SUPPORT_WHATSAPP_DISPLAY } from "../components/shared/WhatsAppSupport";
 
 async function ajoFn(action, body = {}) {
   const { data, error } = await supabase.functions.invoke("ajo-portal", {
@@ -4729,6 +4730,9 @@ function AjoMemberMe({ client, session, clientId, pinLock, onChangePwdClick, onP
             label={t("client.faqAiHelp")} sub={t("client.faqAiHelpSub")} onClick={() => { setView("faq"); setFaqTab("faq"); }} />
           <Row iconCls="bg-violet-50 dark:bg-violet-900/20" icon={<RowIcon d={P.help} color="#7c3aed" />}
             label={t("client.contactSupport")} sub={t("client.contactSupportSub")} onClick={() => { setView("faq"); setFaqTab("support"); }} />
+          <Row iconCls="bg-green-50 dark:bg-green-900/20" icon={<WhatsAppIcon className="w-5 h-5 text-[#25D366]" />}
+            label={t("common.chatWhatsApp")} sub={t("common.chatWhatsAppSub", { number: SUPPORT_WHATSAPP_DISPLAY })}
+            onClick={() => openSupportWhatsApp(client?.full_name ? t("common.whatsAppHelloAs", { name: client.full_name }) : t("common.whatsAppHello"))} />
         </SettingsCard>
       </div>
 

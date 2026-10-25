@@ -1,4 +1,5 @@
 import { useT } from "../contexts/LanguageContext";
+import { openSupportWhatsApp, WhatsAppIcon } from "./shared/WhatsAppSupport";
 
 const slideUpCSS = `@keyframes ro-slide-up { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }`;
 const popCSS     = `@keyframes ro-pop { 0% { transform: scale(0.4); opacity: 0; } 65% { transform: scale(1.08); } 100% { transform: scale(1); opacity: 1; } }`;
@@ -161,6 +162,15 @@ export default function ResultOverlay({
           >
             {label}
           </button>
+          {/* a failure → one tap to a person, with what failed already in the message */}
+          {!ok && (
+            <button
+              onClick={() => openSupportWhatsApp(t("common.whatsAppHello") + [title, amount > 0 ? fmtAmt(amount) : null, reason].filter(Boolean).join(" — "))}
+              className="w-full flex items-center justify-center gap-2 py-2 text-[13px] font-bold text-[#128C7E] dark:text-[#25D366]"
+            >
+              <WhatsAppIcon className="w-4 h-4" /> {t("common.chatWhatsApp")}
+            </button>
+          )}
         </div>
       </div>
     </>
