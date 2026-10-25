@@ -1,0 +1,59 @@
+# Retire edge functions that are live but not in this repo (security audit 2026-10-25: initialize-payment,
+# bright-responder, dynamic-worker — nothing in the app or admin portal calls them, and initialize-payment held the
+# service-role key). Their code is first saved ENCRYPTED (PRICE_EXPORT_PASSPHRASE, like the export workflows) as a 30-day
+# artifact — open with: openssl enc -d -aes-256-cbc -pbkdf2 -in retired-functions.tgz.enc -out retired-functions.tgz
+# — then, with action "delete", the functions are deleted. Nothing about their code is printed.
+name: Retire unused functions
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "backup = save encrypted copy only; delete = save, then delete the functions"
+        type: choice
+        options: [backup, delete]
+        default: backup
+
+permissions:
+  contents: read
+
+jobs:
+  retire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb   # v1 (pinned)
+        with:
+          version: 2.107.0
+      - name: Save an encrypted copy
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ secrets.SUPABASE_PROJECT_ID }}
+          PASS: ${{ secrets.PRICE_EXPORT_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          [ -n "$PASS" ] || { echo "::error::PRICE_EXPORT_PASSPHRASE is not set — refusing to save the code unencrypted"; exit 1; }
+          mkdir -p /tmp/retire && cd /tmp/retire
+          for f in initialize-payment bright-responder dynamic-worker; do
+            supabase functions download "$f" --project-ref "$REF" >/dev/null 2>&1 && echo "$f: saved" || echo "$f: not found (already gone?)"
+          done
+          tar czf retired-functions.tgz supabase 2>/dev/null || tar czf retired-functions.tgz --files-from /dev/null
+          openssl enc -aes-256-cbc -pbkdf2 -salt -in retired-functions.tgz -out retired-functions.tgz.enc -pass env:PASS
+          rm -rf supabase retired-functions.tgz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: retired-functions-encrypted
+          path: /tmp/retire/retired-functions.tgz.enc
+          retention-days: 30
+      - name: Delete the functions
+        if: inputs.action == 'delete'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ secrets.SUPABASE_PROJECT_ID }}
+        run: |
+          set -uo pipefail
+          for f in initialize-payment bright-responder dynamic-worker; do
+            supabase functions delete "$f" --project-ref "$REF" >/dev/null 2>&1 && echo "$f: deleted" || echo "$f: not deleted (missing?)"
+          done
+          echo "== still deployed"
+          supabase functions list --project-ref "$REF" -o json 2>/dev/null | jq -r '.[].slug' | sort | tr '\n' ' '; echo
