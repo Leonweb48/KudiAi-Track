@@ -2804,16 +2804,15 @@ export default function BillPayments({ store, plan, session = null, staffName = 
       // Cashback: record redeemed amount (if used) and earned amount (1% of paid)
       const { cashbackUsed = 0 } = pending;
       const cbEmail = staffEmail || profile?.email;
-      const cbEarned = cashbackEligible(cat) ? parseFloat(((paidAmount || amount) * 0.01).toFixed(2)) : 0;   // 1% back on airtime and data only
-      if (cbEmail && (cashbackUsed > 0 || cbEarned > 0)) {
+      // the server records cashback (1% of what was really paid, airtime/data only; spending capped at the real balance) —
+      // it used to be written here, so anyone could give themselves cashback (2026-10-25 security fix)
+      if (cbEmail && (cashbackUsed > 0 || cashbackEligible(cat))) {
         try {
-          const rows = [];
-          if (cashbackUsed > 0) rows.push({ user_email: cbEmail, amount: cashbackUsed, type: "redeemed", bill_type: cat, description: `Applied to ${itemName}` });
-          if (cbEarned > 0)    rows.push({ user_email: cbEmail, amount: cbEarned,    type: "earned",   bill_type: cat, description: `1% cashback on ${itemName}` });
-          await supabase.from("cashback_transactions").insert(rows);
-          const newBal = Math.max(0, cashbackBalanceRef.current - cashbackUsed) + cbEarned;
-          setCashbackBalance(newBal);
-          cashbackBalanceRef.current = newBal;
+          const { data: cb } = await supabase.rpc("cashback_record", { p_reference: ref, p_cat: cat, p_used: cashbackUsed || 0 });
+          if (cb && typeof cb.balance === "number") {
+            setCashbackBalance(cb.balance);
+            cashbackBalanceRef.current = cb.balance;
+          }
           setUseCashback(false);
         } catch (_) {}
       }
@@ -2979,11 +2978,12 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         let reversed = false;
         if (pending.walletLedgerId) {
           try {
-            const { error: rErr } = await supabase.rpc("wallet_reverse_bill", {
-              p_ledger_id: pending.walletLedgerId,
-              p_reason: `Bill delivery failed (${ckError}) — refunded to wallet`,
+            // the server refunds only once the provider confirms the bill didn't go through (2026-10-25 security fix);
+            // when it can't tell yet, the bill-charge sweep refunds it within the hour
+            const { data: rData } = await supabase.functions.invoke("clubkonnect", {
+              body: { action: "bill-refund-wallet", ledgerId: pending.walletLedgerId },
             });
-            reversed = !rErr;
+            reversed = rData?.refunded === true;
           } catch (re) { console.warn("[wallet] reverse failed:", re?.message); }
         }
         setFulfillResult({

@@ -686,7 +686,10 @@ async function handleBillPaymentFlw(
   };
 
   try {
-    const ck = await ckPost({ action: cat, requestId: reference, ...formData });
+    // form_data is written by the app: it can never choose the action, the reference or whose order it is (spread first),
+    // and the order goes through clubkonnect's bill gate as its owner — what was actually paid vs the server's price.
+    const { action: _a, requestId: _r, gateUserId: _g, ...orderFields } = formData;
+    const ck = await ckPost({ ...orderFields, action: cat, requestId: reference, gateUserId: pb.user_id ?? undefined });
 
     if (ck?.error) throw new Error(String(ck.error));
 

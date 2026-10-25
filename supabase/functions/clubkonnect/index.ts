@@ -278,9 +278,14 @@ function makeGateDeps(): GateDeps {
     // "no payment" in Sept 2026). The price the customer sees — the owner's selling price, Print Data minus its discount —
     // from the same cached provider plan list the cost records use. 0 = unknown (VTpass plans, lookup failure).
     async planFace(action, body) {
+      // the other plan-priced bills (2026-10-25 audit: without a price the gate only checked that SOME payment existed)
+      if (action === "cable") return cablePriceKobo(String(body.provider ?? ""), String(body.packageId ?? ""));
+      if (action === "waec" || action === "jamb") return examPriceKobo(action, String(body.examType ?? ""));
+      if (action === "smile" || action === "spectranet") return netPlanPriceKobo(action, String(body.planId ?? ""));
       if (action !== "data" && action !== "print-data") return 0;
       const network = String(body.network ?? ""), planId = String(body.planId ?? "");
       const netId = NET_ID[network];
+      if (action === "data" && isBgPlan(planId)) return bgDataCostKobo(network, planId);
       if (!netId || !planId || isVtPlan(planId)) return 0;
       const resp = await providerPlanList(action, action === "print-data" ? PRINT_DATA_K : DATA_K, netId);
       const entry = findPlan(resp, networkName(network, netId) ?? network, planId);
@@ -291,6 +296,84 @@ function makeGateDeps(): GateDeps {
       return naira > 0 ? Math.round(naira * 100) : 0;
     },
   };
+}
+
+/** Which bill a wallet charge paid for, from its narration (the charge row carries no category). */
+function billSvcOf(n: string): string {
+  return /data/i.test(n) ? "data" : /electric|prepaid|postpaid|meter/i.test(n) ? "electricity"
+    : /dstv|gotv|startimes|cable/i.test(n) ? "cable" : /bet/i.test(n) ? "betting" : /waec|neco|nabteb|result checker|exam/i.test(n) ? "waec"
+    : /jamb/i.test(n) ? "jamb" : /smile/i.test(n) ? "smile" : /spectranet/i.test(n) ? "spectranet" : "airtime";
+}
+
+// ── Prices the gate checks plan-priced bills against (2026-10-25 audit) ────────────────────────────────────────────
+// A wallet bill charge is made by the app with an amount it chooses, so for a bill whose request carries no price the
+// server must know the price itself — otherwise a ₦1 charge bought any bouquet, exam PIN or Smile/Spectranet plan.
+// The price the app shows comes from the same provider lists; cached 10 minutes; kobo; 0 = unknown (proof-only, as before).
+const gatePriceCache = new Map<string, { at: number; prices: Map<string, number> }>();
+async function cachedPrices(key: string, load: () => Promise<Map<string, number>>): Promise<Map<string, number>> {
+  const hit = gatePriceCache.get(key);
+  if (hit && Date.now() - hit.at < 10 * 60_000) return hit.prices;
+  const prices = await load().catch(() => new Map<string, number>());
+  if (prices.size) gatePriceCache.set(key, { at: Date.now(), prices });   // a failed load is tried again next time
+  return prices;
+}
+/** id → naira from a ClubKonnect list: { <ROOT>: { <group>: [{ PRODUCT: [...] }] } } (or a flat array). */
+function ckListPrices(data: Record<string, unknown> | null, root: string, idKeys: string[], amountKeys: string[], groupKey?: string): Map<string, number> {
+  const out = new Map<string, number>();
+  const rootObj = data?.[root] as Record<string, Record<string, unknown>[]> | undefined;
+  const pick = (p: Record<string, unknown>, keys: string[]) => keys.map((k) => p[k]).find((v) => v != null && v !== "");
+  const add = (p: Record<string, unknown>) => {
+    const id = String(pick(p, idKeys) ?? ""), amt = Number(pick(p, amountKeys) ?? 0);
+    if (id && amt > 0) out.set(id, amt);
+  };
+  if (rootObj) {
+    const groups = (groupKey && rootObj[groupKey]) || Object.values(rootObj).flat();
+    for (const g of groups ?? []) for (const p of ((g?.PRODUCT ?? []) as Record<string, unknown>[])) add(p);
+  } else if (Array.isArray(data)) (data as Record<string, unknown>[]).forEach(add);
+  return out;
+}
+async function cablePriceKobo(provider: string, packageId: string): Promise<number> {
+  if (!provider || !packageId) return 0;
+  if (isVtPlan(packageId)) {
+    const hit = (await vtCatalogue(provider)).find((p) => p.plan_id === packageId);
+    return hit ? Math.round(hit.plan_amount * 100) : 0;
+  }
+  const TV_KEY: Record<string, string> = { dstv: "DStv", gotv: "GOtv", startimes: "StarTimes", showmax: "Showmax" };
+  const prices = await cachedPrices(`cable:${provider}`, async () => ckListPrices(
+    await ck("APICableTVPackagesV2.asp", { APIKey: CABLETV_K, CableTV: provider }, { retries: 1, timeoutMs: 15000 }),
+    "TV_ID", ["PACKAGE_ID", "PRODUCT_CODE", "id"], ["PACKAGE_AMOUNT", "PRODUCT_AMOUNT"], TV_KEY[provider] ?? provider));
+  return Math.round((prices.get(packageId) ?? 0) * 100);
+}
+async function netPlanPriceKobo(action: "smile" | "spectranet", planId: string): Promise<number> {
+  if (!planId) return 0;
+  if (action === "smile" && isVtPlan(planId)) {
+    const hit = (await vtCatalogue(VT_SMILE)).find((p) => p.plan_id === planId);
+    return hit ? Math.round(hit.plan_amount * 100) : 0;
+  }
+  const prices = await cachedPrices(action, async () => ckListPrices(
+    await ck(action === "smile" ? "APISmilePackagesV2.asp" : "APISpectranetPackagesV2.asp", { APIKey: action === "smile" ? SMILE_K : SPECTRANET_K }, { retries: 1, timeoutMs: 15000 }),
+    "MOBILE_NETWORK", ["PRODUCT_CODE", "PRODUCT_ID", "DataPlan", "PackageCode"], ["PRODUCT_AMOUNT", "Price"]));
+  return Math.round((prices.get(planId) ?? 0) * 100);
+}
+async function examPriceKobo(action: "waec" | "jamb", examType: string): Promise<number> {
+  if (!examType) return 0;
+  // NECO / NABTEB (Bigisub only) and the WAEC checker Bigisub may serve: never below Bigisub's public price
+  if (action === "waec" && BG_EXAMS[examType]) {
+    const bp = (await bgExamPriceList().catch(() => ({} as Record<string, { regular: number }>)))[BG_EXAMS[examType]];
+    const ckp = examType === "waecdirect" ? findExamProduct((await ckExamCatalogue("waec")).products, examType) : null;
+    const naira = Math.max(Number(ckp?.amount ?? 0), Number(bp?.regular ?? 0));
+    if (naira > 0) return Math.round(naira * 100);
+  }
+  const product = findExamProduct((await ckExamCatalogue(action)).products, examType);
+  return product ? Math.round(Number(product.amount) * 100) : 0;
+}
+/** A Bigisub data plan ("bg:…"): our cost — the customer always pays at least that (the app shows ClubKonnect's price). */
+async function bgDataCostKobo(network: string, planId: string): Promise<number> {
+  const bgNet = bgNetwork(network);
+  if (!bgNet || !bgUsable()) return 0;
+  const prices = await cachedPrices(`bgdata:${bgNet}`, async () => new Map(
+    parseBgPlans(await bgCall(bgFetch, BG, "GET", `/vtu/data/plans/?network=${bgNet}`, undefined, 15_000), bgNet).map((p) => [p.plan_id, p.plan_amount])));
+  return Math.round((prices.get(planId) ?? 0) * 100);
 }
 
 // ── What this order cost US (logic + tests live in _shared/billCost.ts) ───────────────────────────────────────────
@@ -1370,9 +1453,15 @@ serve(async (req) => {
   }
 
   // A logged-in user asking to BUY something: the server must be able to see that it is paid for (see _shared/billGate.ts).
-  // Server-to-server calls (the payment webhooks) run their own checks and are not gated here.
-  if (callerUser && PURCHASE_ACTIONS.has(action)) {
-    const gate = await checkBillGate(makeGateDeps(), callerUser, action, body);
+  // A payment webhook delivering a customer's card-paid bill (service key) names that customer in `gateUserId`, so the
+  // order passes the same gate — Paystack's own record of what was paid against the server's price (2026-10-25 audit: the
+  // webhooks bought whatever the app had stored in pending_bills, whatever the card actually paid).
+  const gateUserId = (body as Record<string, unknown>).gateUserId;
+  delete (body as Record<string, unknown>).gateUserId;
+  const gateUser = callerUser
+    ?? (typeof gateUserId === "string" && /^[0-9a-f-]{36}$/i.test(gateUserId) ? { id: gateUserId } : null);
+  if (gateUser && PURCHASE_ACTIONS.has(action)) {
+    const gate = await checkBillGate(makeGateDeps(), gateUser, action, body);
     if (!gate.ok) return json({ error: gate.message, _gate: gate.reason });
   }
 
@@ -2106,6 +2195,49 @@ serve(async (req) => {
     //   admins are alerted once if a charge is still unclear after 48 hours.
     // Electricity charges are only ever SETTLED here — the electricity sweep owns electricity refunds.
     // Body: { dryRun?: true → report only, change nothing; sinceDays?: 1..90 (default 60) }. Counts only, never a reference.
+    // What became of everything ONE wallet charge paid for. An airtime bundle is bought as sub-orders "<ref>-MTN", "-AIR",
+    // "-9MB", "-GLO" (recorded on bill_gate_claims), so asking about <ref> alone said "no order" for a delivered bundle and
+    // the charge was refunded (2026-10-25 audit). SUCCESS = all delivered; NOT_FOUND / FAILED = none of them exists or all
+    // were refused; anything mixed or unclear = UNKNOWN (left alone: never refund what may have gone through).
+    async function chargeVerdict(svc: string, ref: string): Promise<string> {
+      const dbc = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+      const { data: subs } = await dbc.from("bill_gate_claims").select("request_id").eq("base_ref", ref).limit(10);
+      const ids = [...new Set([...((subs ?? []) as { request_id: string }[]).map((x) => x.request_id).filter((x) => x !== ref)])];
+      if (!ids.length) return String((await verifyOrder(svc, "", ref)).status ?? "UNKNOWN");
+      const sts = [];
+      for (const id of ids) sts.push(String((await verifyOrder(svc, "", id)).status ?? "UNKNOWN"));
+      if (sts.every((x) => x === "SUCCESS")) return "SUCCESS";
+      if (sts.every((x) => x === "NOT_FOUND" || x === "FAILED")) return sts.includes("FAILED") ? "FAILED" : "NOT_FOUND";
+      return "UNKNOWN";
+    }
+
+    // ── A failed bill's wallet charge back to the wallet (the app asks right after a failure) ───────────────────────────
+    // wallet_reverse_bill used to be callable by any logged-in user on their own charge — including the charge for a bill
+    // that was DELIVERED, i.e. free bills (2026-10-25 audit). Only the server refunds now, and only when the provider confirms
+    // there is no order or it refused it. Anything unclear is left to the bill-charge sweep below (30 min); the app then tells
+    // the customer the refund is on its way. Electricity refunds stay with the electricity sweep.
+    if (action === "bill-refund-wallet") {
+      if (!callerUser) return json({ refunded: false, error: "Please sign in again." });
+      const ledgerId = String((body as { ledgerId?: unknown }).ledgerId ?? "");
+      if (!/^[0-9a-f-]{36}$/i.test(ledgerId)) return json({ refunded: false, error: "ledgerId required" });
+      const dbr = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+      const { data: row } = await dbr.from("wallet_ledger").select("id, user_id, status, source, reference, narration")
+        .eq("id", ledgerId).maybeSingle();
+      const lr = row as { id: string; user_id: string; status: string; source: string; reference: string | null; narration: string | null } | null;
+      if (!lr || lr.user_id !== callerUser.id || lr.source !== "bill_spend") return json({ refunded: false, error: "Payment not found" });
+      if (lr.status === "reversed") return json({ refunded: true, already: true });
+      if (lr.status !== "pending") return json({ refunded: false, error: "This payment went through, so it can't be refunded." });
+      const svc = billSvcOf(String(lr.narration ?? ""));
+      const ref = String(lr.reference ?? "").trim();
+      if (svc === "electricity" || !ref) return json({ refunded: false, pending: true });
+      let st = "UNKNOWN";
+      try { st = await chargeVerdict(svc, ref); } catch { /* unclear → the sweep decides */ }
+      if (st !== "NOT_FOUND" && st !== "FAILED") return json({ refunded: false, pending: true });
+      const { error } = await dbr.rpc("wallet_reverse_bill", { p_ledger_id: lr.id, p_reason: "Bill delivery failed — refunded to wallet" });
+      if (error) return json({ refunded: false, pending: true });
+      return json({ refunded: true });
+    }
+
     if (action === "bill-charge-sweep") {
       const b2 = body as { dryRun?: unknown; sinceDays?: unknown };
       const dryRun = b2.dryRun === true;
@@ -2120,9 +2252,7 @@ serve(async (req) => {
       if (selErr) return json({ error: selErr.message });
       const sum = { dryRun, checked: 0, settled: 0, refunded: 0, waiting: 0, alerted: 0, errors: 0 };
       const items: Record<string, unknown>[] = [];
-      const svcOf = (n: string) => /data/i.test(n) ? "data" : /electric|prepaid|postpaid|meter/i.test(n) ? "electricity"
-        : /dstv|gotv|startimes|cable/i.test(n) ? "cable" : /bet/i.test(n) ? "betting" : /waec|neco|nabteb|result checker|exam/i.test(n) ? "waec"
-        : /jamb/i.test(n) ? "jamb" : /smile/i.test(n) ? "smile" : /spectranet/i.test(n) ? "spectranet" : "airtime";
+      const svcOf = billSvcOf;
       for (const r of (rows ?? []) as { id: string; user_id: string | null; amount_kobo: number; reference: string | null; narration: string | null; created_at: string }[]) {
         sum.checked++;
         const ageMin = Math.round((Date.now() - Date.parse(r.created_at)) / 60000);
@@ -2131,10 +2261,9 @@ serve(async (req) => {
         items.push(item);
         const ref = String(r.reference ?? "").trim();
         if (!ref) { item.result = "no reference"; sum.waiting++; continue; }
-        let v: Record<string, unknown>;
-        try { v = await verifyOrder(svc, "", ref); }
+        let st: string;
+        try { st = await chargeVerdict(svc, ref); }   // every sub-order of the charge, not only its base reference
         catch (e) { item.result = `lookup failed: ${(e as Error).message.slice(0, 80)}`; sum.errors++; continue; }
-        const st = String(v.status ?? "UNKNOWN");
         item.provider = st;
         if (st === "SUCCESS") {
           item.result = "delivered — settle"; sum.settled++;
