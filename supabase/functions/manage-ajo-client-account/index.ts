@@ -145,7 +145,7 @@ serve(async (req) => {
       crypto.getRandomValues(vals);
       return Array.from(vals, (n: number) => chars[n % chars.length]).join("");
     }
-    const password = (typeof providedPassword === "string" && providedPassword.length >= 8)
+    const requestedPassword = (typeof providedPassword === "string" && providedPassword.length >= 8)
       ? providedPassword
       : genTempPwd();
 
@@ -170,6 +170,22 @@ serve(async (req) => {
       if (!staffRow) return json({ error: "Ajo client not found" }, 404);
     }
     if (!client.email) return json({ error: "Client email is required to create a login account" }, 400);
+
+    // An existing login is only ever reset when it is the one made FOR this client and the client hasn't chosen their own
+    // password yet — never anyone else's account, and never a client who holds their own password (and wallet money).
+    // (2026-10-25 audit: a business could point client_user_id at any account and reset that person's password.)
+    if (client.client_user_id) {
+      const { data: existing } = await adminClient.auth.admin.getUserById(client.client_user_id);
+      const meta = (existing?.user?.user_metadata ?? {}) as Record<string, unknown>;
+      if (!existing?.user || meta.account_type !== "ajo_client" || String(meta.aso_client_id ?? "") !== client.id) {
+        return json({ error: "This client's login can't be changed from here. Please contact KudiAI support." }, 409);
+      }
+      if (meta.must_change_password !== true) {
+        return json({ error: "This client has already set their own password. They can reset it themselves with \"Forgot password\" on the login screen." }, 409);
+      }
+    }
+    // a password chosen by the business only for a brand-new login; a reset always gets a fresh generated one
+    const password = client.client_user_id ? genTempPwd() : requestedPassword;
 
     const userMetadata = {
       full_name:               client.full_name,

@@ -151,6 +151,14 @@ serve(async (req) => {
     let created    = false;
 
     if (authUserId) {
+      // only the login made FOR this staff member (2026-10-25 audit: staff.user_id was writable by the business, so this
+      // could reset any account's password)
+      const { data: existing } = await adminClient.auth.admin.getUserById(authUserId);
+      const meta = (existing?.user?.user_metadata ?? {}) as Record<string, unknown>;
+      const sameEmail = String(existing?.user?.email ?? "").toLowerCase() === String(staff.email ?? "").toLowerCase();
+      if (!existing?.user || !sameEmail || (meta.account_type !== "staff" && meta.account_type !== "branch_manager") || String(meta.staff_id ?? "") !== staff.id) {
+        return json({ error: "This staff member's login can't be changed from here. Please contact KudiAI support." }, 409);
+      }
       const { error } = await adminClient.auth.admin.updateUserById(
         authUserId,
         { password, email_confirm: true, user_metadata: userMetadata },

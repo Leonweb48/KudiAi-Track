@@ -339,41 +339,9 @@ export default function StaffManagement({ session, plan = "starter", onBack, onU
 
     if (!notDeployed) throw new Error(functionError.message || t("business.staff.errEdgeFunction"));
 
-    if (staffRecord.user_id) {
-      throw new Error(
-        t("business.staff.errResetNotDeployed", { cmd: "npx supabase functions deploy manage-staff-account --project-ref eztohcuzbxxxvnondxfz" }),
-      );
-    }
-
-    // New staff only — create via signUp (email confirmation handled at login via OTP)
-    const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
-      email: staffRecord.email,
-      password,
-      options: {
-        data: {
-          full_name:           staffRecord.full_name,
-          account_type:        "staff",
-          staff_id:            staffRecord.id,
-          owner_id:            staffRecord.owner_id || userId,
-          must_change_password: true,
-        },
-      },
-    });
-
-    if (signUpErr) {
-      if (signUpErr.message.toLowerCase().includes("already registered")) {
-        throw new Error(
-          t("business.staff.errEmailRegistered", { cmd: "npx supabase functions deploy manage-staff-account --project-ref eztohcuzbxxxvnondxfz" }),
-        );
-      }
-      throw signUpErr;
-    }
-
-    if (signUpData.user?.id) {
-      await supabase.from("staff").update({ user_id: signUpData.user.id }).eq("id", staffRecord.id);
-    }
-
-    return { success: true, created: true, userId: signUpData.user?.id };
+    // (the old phone-side fallback — signUp and link the new account here — is gone: only the server may link a login,
+    // 2026-10-25 security fix)
+    throw new Error(t("business.staff.errEdgeFunction"));
   };
 
   const handlePhoto = (e) => {

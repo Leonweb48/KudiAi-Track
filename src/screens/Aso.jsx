@@ -1734,13 +1734,6 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
     setPhotoPreview(URL.createObjectURL(file));
   };
 
-  const genClientPwd = () => {
-    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$";
-    const vals  = new Uint32Array(12);
-    crypto.getRandomValues(vals);
-    return Array.from(vals, n => chars[n % chars.length]).join("");
-  };
-
   const provisionClientLogin = async (clientRecord, password = null) => {
     // Only include password when explicitly provided (password resets)
     // For new accounts, edge function generates the password internally
@@ -1769,27 +1762,9 @@ export default function Aso({ store, plan = "starter", autoOpen, onAutoOpened, o
       } catch (_) {}
       throw new Error(msg);
     }
-    // Fallback: signUp if edge function not yet deployed
-    const fallbackPwd = password || genClientPwd();
-    const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
-      email: clientRecord.email,
-      password: fallbackPwd,
-      options: {
-        data: {
-          full_name:            clientRecord.full_name,
-          account_type:         "ajo_client",
-          aso_client_id:        clientRecord.id,
-          owner_id:             clientRecord.user_id,
-          must_change_password: true,
-          email_verified:       false,
-        },
-      },
-    });
-    if (signUpErr) throw signUpErr;
-    if (signUpData.user?.id) {
-      await supabase.from("aso_clients").update({ client_user_id: signUpData.user.id }).eq("id", clientRecord.id);
-    }
-    return { success: true, created: true };
+    // (the old phone-side fallback — signUp and link the new account here — is gone: only the server may link a login,
+    // 2026-10-25 security fix)
+    throw new Error(t("common.offline"));
   };
 
   const closeClientCredentials = () => {

@@ -213,6 +213,32 @@ serve(async (req: Request) => {
       if (updateError) throw new Error(`DB update failed: ${updateError.message}`);
     }
 
+    // Every PIN check goes through an atomic per-user counter in the database first (12 per 15 minutes per PIN), so
+    // parallel guesses can't all slip past the read-then-write attempt count below. Fails closed. (2026-10-25 audit)
+    async function pinCheckAllowed(kind: "app" | "txn"): Promise<boolean> {
+      try {
+        const { data, error } = await adminClient.rpc("rate_limit_hit", { p_key: `pin:${kind}:${user!.id}`, p_window_seconds: 900, p_max: 12 });
+        return !error && data !== false;
+      } catch { return false; }
+    }
+    // A wrong PIN: count it, and lock after MAX_ATTEMPTS — the same rule for verify and for change (change used to give
+    // unlimited guesses at the current PIN).
+    async function wrongPin(kind: "app" | "txn"): Promise<Response> {
+      const attempts = Number(profile![`${kind}_pin_attempts`] ?? 0) + 1;
+      if (attempts >= MAX_ATTEMPTS) {
+        const lockedUntil = new Date(Date.now() + LOCKOUT_MINUTES * 60 * 1000).toISOString();
+        const lockouts = Number(profile![`${kind}_pin_lockout_count`] ?? 0) + 1;
+        await updateProfile({ [`${kind}_pin_attempts`]: 0, [`${kind}_pin_locked_until`]: lockedUntil, [`${kind}_pin_lockout_count`]: lockouts });
+        return jsonResponse({ success: false, locked: true, lockedUntil, attemptsLeft: 0, requiresReauth: lockouts >= MAX_LOCKOUTS, error: "Too many wrong PINs" });
+      }
+      await updateProfile({ [`${kind}_pin_attempts`]: attempts });
+      return jsonResponse({ success: false, locked: false, attemptsLeft: MAX_ATTEMPTS - attempts, requiresReauth: false, error: "Current PIN is incorrect" });
+    }
+    const lockedResponse = (kind: "app" | "txn") => jsonResponse({
+      success: false, locked: true, lockedUntil: profile![`${kind}_pin_locked_until`], attemptsLeft: 0,
+      requiresReauth: Number(profile![`${kind}_pin_lockout_count`] ?? 0) >= MAX_LOCKOUTS,
+    });
+
     // An Ajo/Esusu client also has a savings PIN on their client record (ajo-portal: contributions, withdrawals).
     // When their transaction PIN is changed or reset here, set that one too so they only ever have one PIN —
     // and a reset PIN can't leave the old savings PIN still working.
@@ -268,6 +294,9 @@ serve(async (req: Request) => {
 
     // ── setup_txn_pin ─────────────────────────────────────────────────────────
     if (action === "setup_txn_pin") {
+      // first-time only: an existing PIN changes with the current PIN (change_txn_pin) or the email-code reset — before,
+      // anyone holding a logged-in session could set a new one here and move money with it (2026-10-25 audit)
+      if (profile.txn_pin_hash) return errorResponse("A transaction PIN is already set. Use Change PIN, or Forgot PIN to reset it with an email code.");
       const err = validatePin(params.pin, 4);
       if (err) return errorResponse(err);
       const hash = await hashPin(params.pin as string);
@@ -284,6 +313,7 @@ serve(async (req: Request) => {
     if (action === "verify_app_pin") {
       if (!profile.app_pin_hash) return errorResponse("App PIN not set");
       if (typeof params.pin !== "string") return errorResponse("PIN required");
+      if (!(await pinCheckAllowed("app"))) return lockedResponse("app");
 
       if (isLocked(profile.app_pin_locked_until)) {
         return jsonResponse({
@@ -333,6 +363,7 @@ serve(async (req: Request) => {
     if (action === "verify_txn_pin") {
       if (!profile.txn_pin_hash) return errorResponse("Transaction PIN not set");
       if (typeof params.pin !== "string") return errorResponse("PIN required");
+      if (!(await pinCheckAllowed("txn"))) return lockedResponse("txn");
 
       if (isLocked(profile.txn_pin_locked_until)) {
         return jsonResponse({
@@ -385,8 +416,9 @@ serve(async (req: Request) => {
       const err = validatePin(params.new_pin, 6);
       if (err) return errorResponse(err);
 
+      if (isLocked(profile.app_pin_locked_until as string | null) || !(await pinCheckAllowed("app"))) return lockedResponse("app");
       const correct = await verifyPinHash(params.current_pin, profile.app_pin_hash);
-      if (!correct) return jsonResponse({ success: false, error: "Current PIN is incorrect" });
+      if (!correct) return wrongPin("app");
 
       const hash = await hashPin(params.new_pin as string);
       await updateProfile({
@@ -405,8 +437,9 @@ serve(async (req: Request) => {
       const err = validatePin(params.new_pin, 4);
       if (err) return errorResponse(err);
 
+      if (isLocked(profile.txn_pin_locked_until as string | null) || !(await pinCheckAllowed("txn"))) return lockedResponse("txn");
       const correct = await verifyPinHash(params.current_pin, profile.txn_pin_hash);
-      if (!correct) return jsonResponse({ success: false, error: "Current PIN is incorrect" });
+      if (!correct) return wrongPin("txn");
 
       const hash = await hashPin(params.new_pin as string);
       await updateProfile({
