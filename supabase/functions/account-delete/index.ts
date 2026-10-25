@@ -132,7 +132,11 @@ Deno.serve(async (req: Request) => {
 
     // uploaded photos / documents (their URLs are already erased from the database; this removes the files themselves)
     const targets = storageTargets((res?.files as unknown[]) || [], supabaseUrl);
-    for (const [bucket, paths] of Object.entries(targets)) {
+    for (const [bucket, allPaths] of Object.entries(targets)) {
+      // only this account's own files: the URLs come from columns the user can edit, so another user's file named there
+      // must never be deleted (2026-10-25 audit). Every upload path the app makes carries the uploader's id.
+      const paths = allPaths.filter((x) => x.includes(uid));
+      if (!paths.length) continue;
       try {
         const { error } = await admin.storage.from(bucket).remove(paths);
         if (error) console.warn(`[account-delete] storage cleanup (${bucket}):`, error.message);

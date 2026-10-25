@@ -215,17 +215,32 @@ serve(async (req) => {
         return Number.isFinite(naira) && naira > 0 ? Math.round(naira * 100) : 0;
       };
       let flwFeeKobo = feeKobo(data);
+      // Value is given only for what Flutterwave itself confirms for THIS charge (2026-10-25 audit: when the check failed —
+      // including a 404 for a made-up charge id — the amount and status in the event were trusted, so anyone holding the
+      // webhook hash could mint wallet credit). Can't confirm now → forget this event and ask Flutterwave to send it again
+      // (non-2xx), and tell the admins so a deposit is never silently lost.
+      let confirmed = false;
       try {
         // verify with the credentials of the account that SIGNED the event — a charge id only exists on its own account
         const token = await flwToken(srcAcct);
-        const vr = await fetch(`${srcAcct.base}/charges/${chargeId}`, { headers: { Authorization: `Bearer ${token}` } });
+        const vr = await fetch(`${srcAcct.base}/charges/${encodeURIComponent(chargeId)}`, { headers: { Authorization: `Bearer ${token}` } });
         const vj = await vr.json().catch(() => ({}));
-        if (vr.ok && vj?.data) {
-          amountNaira = Number(vj.data.amount || amountNaira);
+        if (vr.ok && vj?.data && String(vj.data.id ?? "") === chargeId) {
+          amountNaira = Number(vj.data.amount || 0);
           flwFeeKobo = feeKobo(vj.data) || flwFeeKobo;
-          status = String(vj.data.status || status);
+          status = String(vj.data.status || "");
+          confirmed = true;
         }
-      } catch (e) { console.warn("[flw-webhook] verify failed, using payload:", (e as Error).message); }
+      } catch (e) { console.warn("[flw-webhook] verify failed:", (e as Error).message); }
+      if (!confirmed) {
+        await sb.from("wallet_webhook_log").delete().eq("flw_webhook_id", webhookId);
+        await sb.from("admin_notifications").insert({
+          type: "warning", category: "finance", title: "Deposit not credited yet — Flutterwave couldn't confirm it",
+          message: `A deposit event (charge ${chargeId || "?"}) couldn't be confirmed with Flutterwave, so nothing was credited. Flutterwave is asked to send it again; if the customer reports a missing deposit, check this charge in the Flutterwave dashboard.`,
+          metadata: { charge_id: chargeId || null, webhook_id: webhookId },
+        }).then(() => {}, () => {});
+        return new Response(JSON.stringify({ ok: false, error: "charge not confirmed yet" }), { status: 503, headers: { "Content-Type": "application/json" } });
+      }
 
       if (status !== "succeeded" && status !== "successful") return ok("ignored (not succeeded)");
 
@@ -473,6 +488,23 @@ serve(async (req) => {
       const st = type === "transfer.reversal"
         ? "reversed"
         : ["SUCCESSFUL", "successful", "COMPLETED"].includes(String(data.status || "")) ? "successful" : "failed";
+      // A failed / reversed transfer refunds the wallet, so it is refunded only when Flutterwave itself says so for THIS
+      // transfer (2026-10-25 audit: the event alone was trusted — a forged "reversal" of a paid transfer refunded it).
+      // Not confirmed → nothing changes now; the 30-minute transfer recheck settles it from Flutterwave's own record.
+      if (st !== "successful") {
+        let real = "";
+        try {
+          const token = await flwToken(srcAcct);
+          const tr = await fetch(`${srcAcct.base}/transfers/${encodeURIComponent(transferId)}`, { headers: { Authorization: `Bearer ${token}` } });
+          const tj = await tr.json().catch(() => ({}));
+          const t = (tj?.data ?? tj) as Record<string, unknown>;
+          if (tr.ok && t && String(t.id ?? "") === transferId) real = String(t.status || "").toUpperCase();
+        } catch (e) { console.warn("[flw-webhook] transfer check failed:", (e as Error).message); }
+        if (real !== "FAILED" && real !== "REVERSED") {
+          console.warn(`[flw-webhook] ${type} for ${transferId || "?"} not confirmed by Flutterwave (status ${real || "unknown"}) — left for the recheck`);
+          return ok("transfer outcome not confirmed — left for the recheck");
+        }
+      }
       const { error } = await sb.rpc("wallet_mark_withdrawal", { p_flw_transfer_id: transferId, p_status: st, p_reference: ref });
       if (error) console.error("[flw-webhook] wallet_mark_withdrawal:", error.message);
 

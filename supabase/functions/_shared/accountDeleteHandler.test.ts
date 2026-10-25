@@ -28,7 +28,7 @@ interface World {
 const world = (over: Partial<World> = {}): World => ({
   goodToken: "user-jwt", user: { id: "11111111-1111-1111-1111-111111111111", email: "ada@example.com" }, password: "correct-horse",
   check: { already_deleted: false, kinds: ["owner"], blockers: [], can_delete: true },
-  erase: { data: { ok: true, already_deleted: false, kinds: ["owner"], files: ["https://abcd.supabase.co/storage/v1/object/public/avatars/u/me.png", "https://evil.example/x.png"] } },
+  erase: { data: { ok: true, already_deleted: false, kinds: ["owner"], files: ["https://abcd.supabase.co/storage/v1/object/public/avatars/11111111-1111-1111-1111-111111111111/me.png", "https://abcd.supabase.co/storage/v1/object/public/avatars/22222222-2222-2222-2222-222222222222/victim.png", "https://evil.example/x.png"] } },
   limiter: true, calls: [], removed: {}, inserted: [], smtp: false, ...over,
 });
 
@@ -130,7 +130,7 @@ Deno.test("delete: success erases, removes only OUR project's files, and answers
   const r = await post(w, { action: "delete", confirm: true, password: "correct-horse" }, authed(w));
   eq(r.status, 200, "status"); eq((await r.json()).ok, true, "ok");
   eq(w.calls.includes("POST /rest/v1/rpc/account_erase"), true, "erase called");
-  eq(w.removed, { avatars: ["u/me.png"] }, "storage cleanup (foreign host ignored)");
+  eq(w.removed, { avatars: ["11111111-1111-1111-1111-111111111111/me.png"] }, "storage cleanup: only this account's own files (another user's file named in a profile column and a foreign host are left alone)");
 });
 
 Deno.test("delete: an unexpected database error is a clean 500 that says nothing was changed", async () => {

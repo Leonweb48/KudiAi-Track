@@ -948,10 +948,14 @@ serve(async (req: Request) => {
       const rpcErr = (rpcWd?.error as string) || "Withdrawal failed";
       // Auto-reject the request so it does not remain pending — the client must
       // re-submit once their balance is sufficient.
-      if (request_id) {
-        await sb.from("ajo_withdrawal_requests")
-          .update({ status: "rejected", approved_at: new Date().toISOString() })
-          .eq("id", request_id);
+      // Only a request that is still pending is auto-rejected: a second tap on an approved request (now refused by
+      // ajo_record_withdrawal, 2026-10-25) must not flip it to "rejected" or e-mail the client that it was.
+      const { data: rejectedRows } = request_id
+        ? await sb.from("ajo_withdrawal_requests")
+            .update({ status: "rejected", approved_at: new Date().toISOString() })
+            .eq("id", request_id).eq("owner_id", ownerId).eq("status", "pending").select("id")
+        : { data: [] };
+      if (request_id && rejectedRows && rejectedRows.length) {
         const rCtx = await fetchEmailContext(sb, client_id, ownerId, user.id);
         await fireAjoEmail("ajo_withdrawal_rejected", {
           client_email:  rCtx.clientEmail,
@@ -1202,7 +1206,7 @@ serve(async (req: Request) => {
     const { error: rwpUpdErr } = await sb
       .from("ajo_wallet_payouts")
       .update({ status: "pending", scheduled_date: todayStr, failure_reason: null })
-      .eq("id", payoutId);
+      .eq("id", payoutId).not("status", "in", "(paid,cancelled)");   // never re-open a payout paid in the meantime (2026-10-25)
     if (rwpUpdErr) return json({ ok: false, error: rwpUpdErr.message }, 500);
 
     const { error: rwpSettleErr } = await sb.rpc("ajo_settle_due_wallet_payouts", {
