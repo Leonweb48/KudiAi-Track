@@ -351,6 +351,7 @@ function PlanPicker({ session, onComplete, onClose, isUpgrade = false, currentPl
   // Current subscription details
   const [currentBillingCycle, setCurrentBillingCycle] = useState(null);
   const [subExpiry,            setSubExpiry]            = useState(null);
+  const [subIsTrial,           setSubIsTrial]           = useState(false);   // a free trial the admin gave
 
   // Highlight a card (scroll-to + pulse ring)
   const cardRefs        = useRef({});
@@ -377,7 +378,7 @@ function PlanPicker({ session, onComplete, onClose, isUpgrade = false, currentPl
     if (!session?.user?.id || !isUpgrade) return;
     supabase
       .from("subscriptions")
-      .select("billing_cycle, expires_at")
+      .select("billing_cycle, expires_at, is_trial")
       .eq("user_id", session.user.id)
       .eq("status", "active")
       .maybeSingle()
@@ -385,6 +386,7 @@ function PlanPicker({ session, onComplete, onClose, isUpgrade = false, currentPl
         if (data) {
           setCurrentBillingCycle(data.billing_cycle || "monthly");
           setSubExpiry(data.expires_at || null);
+          setSubIsTrial(!!data.is_trial);
         }
       });
   }, [session?.user?.id, isUpgrade]);
@@ -898,7 +900,7 @@ function PlanPicker({ session, onComplete, onClose, isUpgrade = false, currentPl
                       </div>
                       {subExpiry && (
                         <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1.5">
-                          {t("account.plan.renews", { date: new Date(subExpiry).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) })}
+                          {t(subIsTrial ? "account.plan.trialEnds" : "account.plan.renews", { date: new Date(subExpiry).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) })}
                         </p>
                       )}
                     </div>
