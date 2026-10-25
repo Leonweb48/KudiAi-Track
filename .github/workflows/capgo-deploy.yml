@@ -50,6 +50,7 @@ jobs:
         run: npm run build
         env:
           CI: false
+          GENERATE_SOURCEMAP: "false"   # no readable source maps in the shipped app (2026-10-25 audit)
           REACT_APP_SUPABASE_URL: ${{ secrets.REACT_APP_SUPABASE_URL }}
           REACT_APP_SUPABASE_ANON_KEY: ${{ secrets.REACT_APP_SUPABASE_ANON_KEY }}
           REACT_APP_PAYSTACK_PUBLIC_KEY: ${{ secrets.REACT_APP_PAYSTACK_PUBLIC_KEY }}
