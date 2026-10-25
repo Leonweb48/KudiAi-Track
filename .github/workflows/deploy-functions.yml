@@ -71,6 +71,8 @@ jobs:
           deploy flutterwave           --no-verify-jwt
           deploy flutterwave-webhook   --no-verify-jwt
           deploy security-selfie       --no-verify-jwt
+          deploy admin-portal
+          deploy manage-staff-profile  --no-verify-jwt   # authenticates every call itself (getUser)
 
           if [ -n "$FAILED" ]; then
             echo ""

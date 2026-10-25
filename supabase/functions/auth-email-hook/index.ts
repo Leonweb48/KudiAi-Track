@@ -33,7 +33,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 const ADMIN_URL      = "https://admin.kudiai.app";
 const SUPABASE_URL   = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY    = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-const TRIGGER_SECRET = Deno.env.get("EMAIL_TRIGGER_SECRET") || SERVICE_KEY;
+const TRIGGER_SECRET = Deno.env.get("EMAIL_TRIGGER_SECRET") ?? "";   // never the service key (2026-10-25 audit: it was sent to the e-mail endpoint when this was unset)
 
 // Always answer 200 {} — never surface an error into the auth flow.
 const ok = () => new Response(JSON.stringify({}), {

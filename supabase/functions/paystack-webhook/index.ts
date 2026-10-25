@@ -17,7 +17,7 @@ import { createHmac }   from "https://deno.land/std@0.168.0/node/crypto.ts";
 import { faceKobo }      from "../_shared/billGate.ts";
 
 const CORS = { "Access-Control-Allow-Origin": "*" };
-const EMAIL_TRIGGER_SECRET = Deno.env.get("EMAIL_TRIGGER_SECRET") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+const EMAIL_TRIGGER_SECRET = Deno.env.get("EMAIL_TRIGGER_SECRET") ?? "";   // never the service key (2026-10-25 audit: it was sent to the e-mail endpoint when this was unset)
 
 function ok(msg = "ok") {
   return new Response(msg, { status: 200, headers: CORS });

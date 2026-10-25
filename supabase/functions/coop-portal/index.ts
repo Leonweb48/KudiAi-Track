@@ -6,7 +6,7 @@ const CORS = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const EMAIL_TRIGGER_SECRET = Deno.env.get("EMAIL_TRIGGER_SECRET") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+const EMAIL_TRIGGER_SECRET = Deno.env.get("EMAIL_TRIGGER_SECRET") ?? "";   // never the service key (2026-10-25 audit: it was sent to the e-mail endpoint when this was unset)
 const _COOP_NOTIFY_URL = `${Deno.env.get("SUPABASE_URL")}/functions/v1/notify-send`;
 const _COOP_NOTIFY_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 

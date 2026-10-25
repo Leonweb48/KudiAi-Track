@@ -22,7 +22,7 @@ import {
 const SUPABASE_URL   = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY    = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const CRON_SECRET    = Deno.env.get("CRON_SECRET") ?? "";
-const TRIGGER_SECRET = Deno.env.get("EMAIL_TRIGGER_SECRET") || SERVICE_KEY;
+const TRIGGER_SECRET = Deno.env.get("EMAIL_TRIGGER_SECRET") ?? "";   // never the service key (2026-10-25 audit: it was sent to the e-mail endpoint when this was unset)
 const EMAIL_URL      = "https://admin.kudiai.app/api/public/email-trigger";
 const LOGO_URL       = "https://kudiai.app/icon-192.png";
 // The app's own PDF font (it has the ₦ sign) — served with the web app; the built-in font is the fallback.

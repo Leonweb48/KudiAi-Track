@@ -35,7 +35,7 @@ async function pbkdf2Verify(pin: string, stored: string | null | undefined): Pro
   return diff === 0;
 }
 
-const EMAIL_TRIGGER_SECRET = Deno.env.get("EMAIL_TRIGGER_SECRET") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+const EMAIL_TRIGGER_SECRET = Deno.env.get("EMAIL_TRIGGER_SECRET") ?? "";   // never the service key (2026-10-25 audit: it was sent to the e-mail endpoint when this was unset)
 const _NOTIFY_URL = `${Deno.env.get("SUPABASE_URL")}/functions/v1/notify-send`;
 const _NOTIFY_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 

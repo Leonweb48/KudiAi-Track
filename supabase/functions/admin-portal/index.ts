@@ -198,6 +198,9 @@ serve(async (req) => {
 
     // ── USER ACTION (suspend / activate / delete) ─────────────────────────
     if (action === "user-action") {
+      // Suspending, re-activating or removing a customer's login is a super-admin decision (2026-10-25 audit: any active
+      // admin — support included — could do it).
+      if (adminRow.role !== "super_admin") return json({ error: "Only a Super Admin can do this" }, 403);
       const { target_id, user_action } = body as Record<string, string>;
       if (!target_id || !user_action) return json({ error: "target_id and user_action required" }, 400);
 
@@ -206,7 +209,9 @@ serve(async (req) => {
       } else if (user_action === "activate") {
         await sb.auth.admin.updateUserById(target_id, { ban_duration: "none" });
       } else if (user_action === "delete") {
-        await sb.auth.admin.deleteUser(target_id);
+        // never a hard delete: it cascades through the customer's money records. The account is blocked instead — the
+        // same as the app's own account deletion (a person erases a customer's data with account_erase).
+        await sb.auth.admin.updateUserById(target_id, { ban_duration: "876600h" });
       } else {
         return json({ error: "Unknown user_action" }, 400);
       }
@@ -241,6 +246,7 @@ serve(async (req) => {
 
     // ── SEND BROADCAST ────────────────────────────────────────────────────
     if (action === "send-broadcast") {
+      if (adminRow.role !== "super_admin") return json({ error: "Only a Super Admin can send broadcasts" }, 403);
       const b = body as Record<string, string>;
       if (!b.title || !b.message) return json({ error: "title and message required" }, 400);
       const { data } = await sb.from("admin_broadcasts").insert({
@@ -269,6 +275,10 @@ serve(async (req) => {
       if (!adminRow.can_create_admins) return json({ error: "Insufficient permissions" }, 403);
       const b = body as Record<string, string>;
       if (!b.username || !b.password) return json({ error: "username and password required" }, 400);
+      // only a Super Admin may create another Super Admin (2026-10-25 audit: the caller could pick any role)
+      if ((b.role || "support_admin") === "super_admin" && adminRow.role !== "super_admin") {
+        return json({ error: "Only a Super Admin can create a Super Admin" }, 403);
+      }
 
       // Create Supabase Auth account
       const { data: newAuth, error: authErr } = await sb.auth.admin.createUser({
@@ -307,6 +317,12 @@ serve(async (req) => {
       if (!adminRow.can_create_admins) return json({ error: "Insufficient permissions" }, 403);
       const { target_admin_id, is_active } = body as Record<string, unknown>;
       if (!target_admin_id) return json({ error: "target_admin_id required" }, 400);
+      // a Super Admin can only be switched off by a Super Admin, and nobody switches themselves off (2026-10-25 audit)
+      if (target_admin_id === adminRow.id) return json({ error: "You can't deactivate your own account" }, 400);
+      const { data: target } = await sb.from("admin_users").select("role").eq("id", target_admin_id).maybeSingle();
+      if ((target as { role?: string } | null)?.role === "super_admin" && adminRow.role !== "super_admin") {
+        return json({ error: "Only a Super Admin can deactivate a Super Admin" }, 403);
+      }
       await sb.from("admin_users").update({ is_active: Boolean(is_active) }).eq("id", target_admin_id);
       return json({ ok: true });
     }

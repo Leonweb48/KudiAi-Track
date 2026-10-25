@@ -29,7 +29,7 @@ const CORS = {
 };
 
 const EMAIL_TRIGGER_URL    = "https://admin.kudiai.app/api/public/email-trigger";
-const EMAIL_TRIGGER_SECRET = Deno.env.get("EMAIL_TRIGGER_SECRET") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+const EMAIL_TRIGGER_SECRET = Deno.env.get("EMAIL_TRIGGER_SECRET") ?? "";   // never the service key (2026-10-25 audit: it was sent to the e-mail endpoint when this was unset)
 
 async function fireAjoEmail(event: string, data: Record<string, unknown>): Promise<void> {
   const ctrl  = new AbortController();
