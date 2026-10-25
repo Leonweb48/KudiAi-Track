@@ -1,6 +1,6 @@
-# Which edge functions are deployed, and which function secrets are SET (names only — never values or digests).
-# Security audit 2026-10-25: confirms whether EMAIL_TRIGGER_SECRET is set (some functions fall back to the service key
-# without it) and whether functions CI doesn't deploy (admin-portal, notify-admin, manage-staff-profile) are live.
+# Which edge functions are deployed, which function secrets are SET (names only — never values or digests), and for the
+# functions CI doesn't deploy: does the live code match the repo (sha256 only), and what the unknown ones do (counts of
+# a few markers — never their code). Security audit 2026-10-25.
 name: Function inventory
 
 on:
@@ -12,8 +12,11 @@ permissions:
 jobs:
   inventory:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
       - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb   # v1 (pinned)
         with:
           version: 2.107.0
@@ -26,4 +29,19 @@ jobs:
           echo "== deployed functions"
           supabase functions list --project-ref "$REF" -o json 2>/dev/null | jq -r '.[] | "\(.slug) | \(.status) | verify_jwt=\(.verify_jwt)"' | sort
           echo "== secrets that are set (names only)"
-          supabase secrets list --project-ref "$REF" -o json 2>/dev/null | jq -r '.[].name' | sort | tr '\n' ' '; echo
+          supabase secrets list --project-ref "$REF" 2>/dev/null | awk -F'|' 'NR>2 && NF>1 {gsub(/ /,"",$1); if ($1!="") print $1}' | sort | tr '\n' ' '; echo
+          mkdir -p /tmp/live && cd /tmp/live
+          for f in admin-portal manage-staff-profile notify-admin initialize-payment bright-responder dynamic-worker; do
+            rm -rf supabase; mkdir -p supabase/functions
+            supabase functions download "$f" --project-ref "$REF" >/dev/null 2>&1 || { echo "$f: download failed"; continue; }
+            live=$(find supabase/functions/"$f" -name 'index.ts' | head -1)
+            [ -z "$live" ] && live=$(find supabase/functions/"$f" -type f -name '*.ts' | head -1)
+            [ -z "$live" ] && { echo "$f: no source"; continue; }
+            repo="$GITHUB_WORKSPACE/supabase/functions/$f/index.ts"
+            if [ -f "$repo" ]; then
+              prev=$(git -C "$GITHUB_WORKSPACE" show "HEAD~1:supabase/functions/$f/index.ts" 2>/dev/null | sha256sum | cut -c1-12)
+              echo "$f: live=$(sha256sum < "$live" | cut -c1-12) repo-before-this-commit=$prev repo-now=$(sha256sum < "$repo" | cut -c1-12)"
+            else
+              echo "$f: NOT IN REPO | $(wc -l < "$live") lines | files $(find supabase/functions/"$f" -type f | wc -l) | uses service role: $(grep -c 'SERVICE_ROLE' "$live") | checks a login (getUser/auth): $(grep -c 'getUser\|Authorization' "$live") | calls paystack: $(grep -ci 'paystack' "$live") | writes (insert/update/delete): $(grep -c '\.insert(\|\.update(\|\.delete(' "$live")"
+            fi
+          done
