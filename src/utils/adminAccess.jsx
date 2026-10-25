@@ -42,7 +42,16 @@ export async function consumeAdminAccessLink() {
     // Don't carry over whoever was signed in on this browser before.
     await supabase.auth.signOut({ scope: "local" }).catch(() => {});
     const { error } = await supabase.auth.verifyOtp({ token_hash: login, type: loginType });
-    if (error) { dropToken(); console.warn("[adminAccess] sign-in link rejected:", error.message); }
+    if (error) { dropToken(); console.warn("[adminAccess] sign-in link rejected:", error.message); return; }
+    // The link must carry a real admin grant for the account it signed into — otherwise anyone could send a link with
+    // their OWN sign-in token and leave the victim logged into the sender's account (then fund it, or upload KYC into it).
+    // Claim it now; anything but an active grant signs straight back out (2026-10-25 audit).
+    const { data: claim } = await supabase.rpc("admin_access_claim", { p_token: grant });
+    if (!claim?.active) {
+      dropToken();
+      await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+      console.warn("[adminAccess] access link without a valid grant — signed out");
+    }
   } catch (e) {
     dropToken();
     console.warn("[adminAccess] sign-in failed:", e?.message || e);
