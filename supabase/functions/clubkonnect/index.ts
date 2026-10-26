@@ -4298,7 +4298,7 @@ serve(async (req) => {
     //    (cost) and what customers pay (price — the admin's price when one is set), plus the services switched off.
     //    Electricity, betting and airtime are amount-based: the customer pays the amount they choose (airtime: face value).
     if (action === "price-catalogue") {
-      priceCfgCache = null;   // the admin may have just saved: show the stored values, not a minute-old copy
+      priceCfgCache = null; provCfgCache = null;   // the admin may have just saved: show the stored values, not a minute-old copy
       const cfg = await priceConfig();
       const disc = await costDiscounts();
       const NETS = ["MTN", "Glo", "Airtel", "9mobile"];
@@ -4357,6 +4357,31 @@ serve(async (req) => {
         return { exam: e.exam, type: e.type, name: e.name, provider: viaBg ? "bigisub" : "clubkonnect", available: cost > 0,
           cost, default_price: base, price: sp.price, priced: sp.priced };
       });
+      // VTpass's own plans (2026-10-26): ids tagged "vt:", priced the same way — data by plan name, cable / Smile by id. Its
+      // list price is what VTpass charges before the commission it pays us back. Listed whenever keys are saved (Sandbox
+      // too, so prices can be set before going live); `serving` says whether customers see VTpass's plans right now.
+      const vtpass = vtConfigured(VT) ? await safe(async () => {
+        const [vData, vCable, vSmile] = await Promise.all([
+          Promise.all(NETS.map(async (network) => {
+            const sid = dataServiceId(network);
+            const plans = sid ? await vtCatalogue(sid) : [];
+            const byName = cfg.selling[network.toLowerCase()] ?? {};
+            return { network, error: plans.length ? null : "VTpass sent no plans", plans: plans.map((p) => {
+              const sp = byName[normName(p.plan_name)];
+              return { id: p.plan_id, name: p.plan_name, cost: p.plan_amount, price: typeof sp === "number" ? sp : p.plan_amount, priced: typeof sp === "number", refused: false };
+            }) };
+          })),
+          Promise.all([["dstv", "DStv"], ["gotv", "GOtv"], ["startimes", "StarTimes"]].map(async ([provider, label]) => {
+            const items = await vtCatalogue(provider);
+            return { provider, label, error: items.length ? null : "VTpass sent no packages",
+              items: items.map((p) => ({ id: p.plan_id, name: p.plan_name, ...cell("cable", cableKey(provider, p.plan_id), p.plan_amount) })) };
+          })),
+          vtCatalogue(VT_SMILE).then((items) => ({ error: items.length ? null : "VTpass sent no plans",
+            items: items.map((p) => ({ id: p.plan_id, name: p.plan_name, ...cell("smile", p.plan_id, p.plan_amount) })) })),
+        ]);
+        const [sd, sc, ss] = await Promise.all([catalogueProvider("data"), catalogueProvider("cable"), catalogueProvider("smile")]);
+        return { env: VT.env, live: vtUsable(), serving: { data: sd === "vtpass", cable: sc === "vtpass", smile: ss === "vtpass" }, data: vData, cable: vCable, smile: vSmile };
+      }, null) : null;
       const printAirtime = NETS.flatMap((network) => ["100", "200", "300", "500", "1000"].map((face) => {
         const cost = Math.round(Number(face) * (1 - (disc.epin[network] ?? 0)) * 100) / 100;
         const netCfg = Object.entries(printCfg).find(([k]) => k.toLowerCase() === network.toLowerCase())?.[1] ?? {};
@@ -4366,7 +4391,7 @@ serve(async (req) => {
       return json({
         fetched_at: new Date().toISOString(),
         services: BILL_SERVICES, services_off: [...cfg.off],
-        data, cable, smile, spectranet, exams,
+        data, cable, smile, spectranet, exams, vtpass,
         print_data_pct: cfg.printPct,
         print_airtime: printAirtime,
         airtime: NETS.map((network) => ({ network, discount_pct: Math.round((disc.airtime[network] ?? 0) * 1000) / 10, epin_discount_pct: Math.round((disc.epin[network] ?? 0) * 1000) / 10 })),

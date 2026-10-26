@@ -304,10 +304,13 @@ Tokens, PINs, meter/phone/account numbers, names and our ClubKonnect balance mus
 - **₦50 live test** (`vtpass-live-test`, service only): one real airtime order. Its result is kept in
   `platform_config.vtpass_last_live_test` (last 4 digits of the number only).
 - **Bills Account:** VTpass gets wallet snapshots and top-ups like the other providers.
-- **Not covered yet:** the Bill Prices page lists ClubKonnect's catalogue. With VTpass as main, data, cable and Smile show
-  VTpass's own plans at VTpass's listed price (our margin = VTpass's commission), unless a data plan's name matches a
-  saved selling price.
-- **Tests:** `tests/bills/vtpass-setup.e2e.mjs` (22), `tests/bills/vtpass-keys.pglite.mjs` (21), and the relay suite (VTpass
+- **Prices for VTpass plans:**
+  - The Bill Prices page has a "Plans from: ClubKonnect / VTpass" switch on Data, Cable TV and Smile, fed by the
+    catalogue's `vtpass` section. It is listed whenever keys are saved, Sandbox included, and marks which plans customers
+    see now.
+  - Data is priced by VTpass's plan name; cable and Smile by their `vt:` ids.
+  - VTpass's list price stands in for the cost. It pays its commission back on top.
+- **Tests:** `tests/bills/vtpass-setup.e2e.mjs` (28), `tests/bills/vtpass-keys.pglite.mjs` (21), and the relay suite (VTpass
   route).
 
 ## Tools (GitHub → Actions; all free unless stated)

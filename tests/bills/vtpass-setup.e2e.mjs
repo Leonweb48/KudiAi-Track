@@ -38,6 +38,13 @@ const vtSrv = http.createServer((req, res) => {
     if (!who) return send({ code: "087", response_description: "INVALID CREDENTIALS" });
     if (u.pathname === "/api/balance") return req.headers["public-key"] === KEYS.admin.pub ? send({ code: 1, contents: { balance: 4321.5 } }) : send({ code: "087", response_description: "INVALID CREDENTIALS" });
     if (u.pathname === "/api/requery") return send({ code: "015", response_description: "INVALID REQUEST ID" });
+    if (u.pathname === "/api/service-variations") {
+      const sid = u.searchParams.get("serviceID");
+      const list = sid === "mtn-data" ? [{ variation_code: "mtn-1gb-1000", name: "N1000 1GB - 30 days", variation_amount: "1000.00" }]
+        : sid === "dstv" ? [{ variation_code: "dstv-compact", name: "DStv Compact N15,700", variation_amount: "15700.00" }]
+        : sid === "smile-direct" ? [{ variation_code: "624", name: "1GB FlexiDaily", variation_amount: "300.00" }] : [];
+      return send({ response_description: "000", content: { serviceID: sid, varations: list } });
+    }
     if (u.pathname === "/api/pay") {
       const body = JSON.parse(b || "{}");
       return send({ code: "000", response_description: "TRANSACTION SUCCESSFUL", requestId: body.request_id,
@@ -147,6 +154,25 @@ try {
   // ── wallet snapshot includes VTpass ──
   r = await post({ action: "provider-balance-snapshot" });
   ok(J(r.body?.saved) === J(["clubkonnect", "vtpass"]) && balances.find((b) => b.provider === "vtpass")?.balance_kobo === 432_150, "wallet snapshot: VTpass's balance saved too", J([r.body, balances]));
+
+  // ── Bill Prices: VTpass's own plans, with the admin's prices (2026-10-26) ──
+  config.data_selling_prices = JSON.stringify({ MTN: { "N1000 1GB - 30 days": 1050 } });
+  config.bill_price_overrides = JSON.stringify({ cable: { "dstv|vt:dstv-compact": 16000 } });
+  const cat = (await post({ action: "price-catalogue" })).body;
+  const vt = cat?.vtpass;
+  ok(vt && vt.env === "live" && vt.live === true && vt.serving?.data === false, "price catalogue: VTpass section (live; customers still see ClubKonnect's plans)", J(vt).slice(0, 300));
+  const mtn = vt?.data?.find((d) => d.network === "MTN")?.plans?.[0];
+  ok(mtn?.id === "vt:mtn-1gb-1000" && mtn.cost === 1000 && mtn.price === 1050 && mtn.priced, "VTpass data plan with its list price and the admin's price (matched by name)", J(mtn));
+  const compact = vt?.cable?.find((c) => c.provider === "dstv")?.items?.[0];
+  ok(compact?.id === "vt:dstv-compact" && compact.cost === 15700 && compact.price === 16000 && compact.priced, "VTpass DStv package with the admin's price", J(compact));
+  ok(vt?.smile?.items?.[0]?.id === "vt:624" && vt.smile.items[0].price === 300 && !vt.smile.items[0].priced, "VTpass Smile plan at its list price (none set)", J(vt?.smile));
+  config.bill_provider = "vtpass";
+  const cat2 = (await post({ action: "price-catalogue" })).body;
+  ok(cat2?.vtpass?.serving?.data === true && cat2?.vtpass?.serving?.cable === true, "VTpass made main → the catalogue says customers see VTpass's plans now", J(cat2?.vtpass?.serving));
+  r = await post({ action: "cable-packages", provider: "dstv" }, USER_TOKEN);
+  ok(r.body?._provider === "vtpass" && r.body?.packages?.[0]?.package_id === "vt:dstv-compact" && r.body.packages[0].package_amount === 16000,
+    "…and a customer gets VTpass's DStv Compact at the admin's ₦16,000", J(r.body));
+  delete config.bill_provider;
 
   // ── kill switch: the admin sets Sandbox ──
   saved = { ...saved, env: "sandbox" };
