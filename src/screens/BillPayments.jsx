@@ -1680,7 +1680,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
   // ── ClubKonnect wholesale pricing ────────────────────────────────────────
   // Enterprise owners buy airtime/data/print at CK cost + a small platform fee
   // so they can resell below face. Everyone else keeps retail pricing.
-  const { ckDiscounts, enterpriseFeePct, walletEnabled, loansEnabled, bettingVisible, printAirtimePrices, bundleSetEnabled } = usePlatformConfig();
+  const { ckDiscounts, enterpriseFeePct, walletEnabled, loansEnabled, bettingVisible, printAirtimePrices, bundleSetEnabled, billServicesOff } = usePlatformConfig();
 
   // ── Digital wallet — funding source; the only one when walletOnly (Ajo client portal).
   // When a parent screen already has a live useWallet() instance for this same user
@@ -1839,6 +1839,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     if (catMeta?.enterprise && !isEnterprise) return;
     if (catMeta?.wholesale && !isWholesale) return;
     if (catId === "airtime-bundle" && !bundleSetEnabled) return;       // Bundle Set is paused
+    if (billServicesOff.has(catId)) return;                             // switched off by the admin
     if (catId === "business-loan") { if (loansEnabled) setShowLoanModal(true); return; }
     setSelectedCat(catId);
     setForm({ network: "MTN", phone: "", amount: "", planId: "", planName: "",
@@ -1851,7 +1852,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
     if (catId === "spectranet") loadPlans("spectranet-plans", {});
     if (catId === "smile") loadPlans("smile-plans", {});
     if (catId === "print-data") loadPlans("data-plans", { network: "MTN", print: true });     // print: the server takes the Print Data discount off
-  }, [isEnterprise, isWholesale, excludeCats]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isEnterprise, isWholesale, excludeCats, bundleSetEnabled, [...billServicesOff].join()]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (autoService) { openSheet(autoService); onAutoOpened?.(); }
@@ -3314,7 +3315,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
               const lockedEnterprise = c.enterprise && !isEnterprise;
               const lockedWholesale  = c.wholesale  && !isWholesale;
               const lockedLoan       = c.loan && (!loansEnabled || !isEnterprise || !isLoanEligible);
-              const pausedBundle     = c.id === "airtime-bundle" && !bundleSetEnabled;
+              const pausedBundle     = (c.id === "airtime-bundle" && !bundleSetEnabled) || billServicesOff.has(c.id);   // Bundle Set / switched off by the admin
               const locked = lockedEnterprise || lockedWholesale || lockedLoan || pausedBundle;
               const count  = bills.filter(b => b.category === c.id).length;
               const reqPlanLabel = (getLowestPlanWithFeature("apiAccess")?.name ?? "Pro").slice(0, 4).toUpperCase();

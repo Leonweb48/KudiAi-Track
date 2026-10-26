@@ -137,6 +137,26 @@ export function findPlanPrice(resp: unknown, network: string, planId: unknown): 
 }
 
 /** The plan entry (id, name, provider price) for one plan id — the shape applyDataPrices takes; null unless exactly one. */
+/** Every plan ClubKonnect lists for one network ({ id, name, provider price }), for the admin's price list. Unpriced or nameless entries are skipped. */
+export function listPlans(resp: unknown, network: string): { plan_id: string; plan_name: string; plan_amount: number }[] {
+  const mn = (resp as { MOBILE_NETWORK?: Record<string, unknown> } | null)?.MOBILE_NETWORK;
+  if (!mn || typeof mn !== "object") return [];
+  const squash = (s: string) => s.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+  const want = squash(network);
+  const aliases = want === "9MOBILE" ? ["9MOBILE", "M9MOBILE", "ETISALAT", "EMTS", "T2MOBILE"] : [want];
+  const key = Object.keys(mn).find((k) => aliases.includes(squash(k)));
+  if (!key) return [];
+  const out: { plan_id: string; plan_name: string; plan_amount: number }[] = [];
+  for (const g of (Array.isArray(mn[key]) ? mn[key] : []) as Record<string, unknown>[]) {
+    for (const p of (Array.isArray(g?.PRODUCT) ? g.PRODUCT : []) as Record<string, unknown>[]) {
+      const id = String(p?.PRODUCT_ID ?? p?.DataPlan ?? "").trim();
+      const amount = parseCkAmount(p?.PRODUCT_AMOUNT ?? p?.Price);
+      if (id && amount !== null && amount > 0) out.push({ plan_id: id, plan_name: String(p.PRODUCT_NAME ?? p.DataPlanName ?? "").trim(), plan_amount: amount });
+    }
+  }
+  return out;
+}
+
 export function findPlan(resp: unknown, network: string, planId: unknown): { plan_id: string; plan_name: string; plan_amount: number } | null {
   const price = findPlanPrice(resp, network, planId);
   if (price === null) return null;

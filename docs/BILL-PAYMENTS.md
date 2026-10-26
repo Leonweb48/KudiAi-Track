@@ -237,6 +237,31 @@ Tokens, PINs, meter/phone/account numbers, names and our ClubKonnect balance mus
   find it through the claim row and ask Bigisub's requery, which carries the token. Only Bigisub saying the order failed
   cancels and refunds it; being missing from its history never does.
 
+### 16. Prices and on/off switches are set in the admin portal (2026-10-26)
+
+- **Where:** admin portal → FINANCE → **Bill Prices** (`/settings/bill-prices`). It shows each item's provider cost next
+  to the customer price, and has an on/off switch per bill service. Finance Admin and Super Admin can use it.
+- **What customers pay** (no admin price = the provider's price, as before):
+  - Data: `platform_config.data_selling_prices` (network → provider plan name → ₦). Print Data takes
+    `print_data_discount_pct` off that.
+  - Cable, Smile, Spectranet, exam PINs: `bill_price_overrides`
+    (`{cable:{"dstv|<package id>":₦}, smile:{id:₦}, spectranet:{id:₦}, exam:{"waec|waecdirect":₦}}`), applied in
+    `cable-packages`, `smile-plans`, `spectranet-plans` and `exam-price`.
+  - Print Airtime: `print_airtime_prices` (priced in the app).
+  - Airtime, electricity, betting: the amount the customer types. Airtime is always face value.
+- **The gate uses the same prices.** `planFace` applies the admin's price, so a price above the provider's must be
+  paid in full, and a promo price below it passes. Logic: `_shared/billPricing.ts`.
+- **Below cost:** only a Super Admin can save a price below the provider's cost, and must tick "allow below cost".
+  A list with any bad line saves nothing. Every change goes to `admin_audit_log` with before → after.
+- **Switched off:** `bill_services_off` (comma list). Effects:
+  - The app greys the tile out ("PAUSED").
+  - `bill-preflight` refuses before anyone is charged.
+  - A customer's direct purchase call is refused before the gate.
+  - A card-paid order the payment webhook delivers (paid before the switch) still goes through.
+  - Bundle Set keeps its own switch, `bundle_set_enabled`.
+- **Timing:** the bill server re-reads these rows once a minute (`priceConfig()`). The `price-catalogue` action
+  (service-only, feeds the admin page) re-reads them at once.
+
 ## Tools (GitHub → Actions; all free unless stated)
 
 | Workflow | What it does |
@@ -264,5 +289,6 @@ Production data is read through read-only `RAISE NOTICE` migrations (`supabase/m
 | `electricity` | Rules 1, 2, 3 and 11: refunds, the ~23 s wait, the sweep, lookups refused for our key, no secrets in logs |
 | `route-fallback`, `provider-switch` | Rules 5, 6, 7 and 10: V1/V3 routing, ClubKonnect ⇄ VTpass, wrong-network refusals |
 | `bigisub` | Rule 13: Bigisub backs up airtime and data only when ClubKonnect placed nothing; lost replies are found in its history or held; its plans buy only there |
+| `bill-prices` | Rule 16: admin prices shown and checked by the gate, switched-off services refused before charging, bad settings fall back to provider prices |
 | `fixed-ip-relay`, `relay-server` | Rule 8 |
 | `supabase/functions/_shared/*.test.ts` | Rule 4 and the pure logic behind the rest |

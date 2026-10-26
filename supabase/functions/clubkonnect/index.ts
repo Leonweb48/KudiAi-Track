@@ -4,10 +4,11 @@ import nodemailer from "npm:nodemailer@6";
 import { bankEmail, esc, cleanSubject, naira, appLink, htmlToText, type EmailRow } from "../_shared/bankEmail.ts";
 import { parseCkAmount } from "../_shared/ckAmount.ts";
 import { detectNetwork, networkMismatch, networkMismatchMessage } from "../_shared/app/phoneNetwork.js";
-import { applyDataPrices, parseDiscountPct, parseSellingPrices, type SellingPrices } from "../_shared/dataPricing.ts";
+import { applyDataPrices, normName, parseDiscountPct, parseSellingPrices, type SellingPrices } from "../_shared/dataPricing.ts";
+import { BILL_SERVICES, cableKey, examKey, parsePriceOverrides, parseServicesOff, pausedMessage, sellingPrice, serviceOfAction, serviceOfCategory, type BillService, type PriceOverrides } from "../_shared/billPricing.ts";
 import { findExamProduct, parseCkExamCatalogue, providerExamCode, type ExamProduct } from "../_shared/examCatalogue.ts";
 import { checkBillGate, DEFAULT_CONFIG, parseRequestRef, PURCHASE_ACTIONS, type CouponRow, type GateConfig, type GateDeps, type GateMode } from "../_shared/billGate.ts";
-import { airtimeCost, dataCost, findPlan, findPlanPrice, networkName, parseDiscounts, printAirtimeCost, type Cost, type Discounts } from "../_shared/billCost.ts";
+import { airtimeCost, dataCost, findPlan, findPlanPrice, listPlans, networkName, parseDiscounts, printAirtimeCost, type Cost, type Discounts } from "../_shared/billCost.ts";
 import { buyWithFallback, parseServiceList, PENDING_STATUS, probeVerdict, purchaseServiceState, V3_PATH, type CkResult, type Health, type Lookup, type RouteConfig, type RouteEvent } from "../_shared/ckRoute.ts";
 import {
   airtimeServiceId, dataServiceId, isVtPlan, parseVariations, VT_CABLE, VT_ELECTRIC, VT_SMILE, VT_WAEC, vtAirtimeBody, vtCableBody, vtCall, vtCardDetails, vtCode,
@@ -219,19 +220,26 @@ const ANON_KEY      = Deno.env.get("SUPABASE_ANON_KEY")         ?? "";
 // ── Selling prices (logic + tests live in _shared/dataPricing.ts) ─────────────────────────────────────────
 // The owner sets what customers pay for data in platform_config (data_selling_prices, print_data_discount_pct); the data-plans action swaps them in for
 // the provider price. Cached for a minute so a plan-list request is not a database round trip every time.
-let priceCfgCache: { at: number; selling: SellingPrices; printPct: number } | null = null;
-async function priceConfig(): Promise<{ selling: SellingPrices; printPct: number }> {
+// The admin's prices (Data selling prices, Print Data %, cable / Smile / Spectranet / exam prices — _shared/billPricing.ts) and the
+// bill services switched off. Read once a minute; the admin portal says changes take effect "within a minute".
+type PriceCfg = { selling: SellingPrices; printPct: number; overrides: PriceOverrides; off: Set<BillService> };
+let priceCfgCache: ({ at: number } & PriceCfg) | null = null;
+async function priceConfig(): Promise<PriceCfg> {
   if (priceCfgCache && Date.now() - priceCfgCache.at < 60_000) return priceCfgCache;
   try {
     const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
-    const { data } = await db.from("platform_config").select("key, value").in("key", ["data_selling_prices", "print_data_discount_pct"]);
+    const { data, error } = await db.from("platform_config").select("key, value")
+      .in("key", ["data_selling_prices", "print_data_discount_pct", "bill_price_overrides", "bill_services_off"]);
+    if (error) throw new Error(error.message);
     const m: Record<string, string> = {};
     for (const r of (data ?? []) as { key: string; value: string }[]) m[r.key] = r.value;
-    priceCfgCache = { at: Date.now(), selling: parseSellingPrices(m.data_selling_prices), printPct: parseDiscountPct(m.print_data_discount_pct) };
+    priceCfgCache = { at: Date.now(), selling: parseSellingPrices(m.data_selling_prices), printPct: parseDiscountPct(m.print_data_discount_pct),
+      overrides: parsePriceOverrides(m.bill_price_overrides), off: parseServicesOff(m.bill_services_off) };
     return priceCfgCache;
   } catch (e) {
     console.warn("[data-plans] price config unavailable, using provider prices:", (e as Error).message);
-    return { selling: {}, printPct: 0 };
+    // the last good settings beat none: a switched-off service must not reopen because one read failed
+    return priceCfgCache ?? { selling: {}, printPct: 0, overrides: parsePriceOverrides(null), off: new Set() };
   }
 }
 
@@ -279,9 +287,16 @@ function makeGateDeps(): GateDeps {
     // from the same cached provider plan list the cost records use. 0 = unknown (VTpass plans, lookup failure).
     async planFace(action, body) {
       // the other plan-priced bills (2026-10-25 audit: without a price the gate only checked that SOME payment existed)
-      if (action === "cable") return cablePriceKobo(String(body.provider ?? ""), String(body.packageId ?? ""));
-      if (action === "waec" || action === "jamb") return examPriceKobo(action, String(body.examType ?? ""));
-      if (action === "smile" || action === "spectranet") return netPlanPriceKobo(action, String(body.planId ?? ""));
+      // the admin's price when one is set (Bill Prices & Services), else the provider's
+      const ov = (await priceConfig()).overrides;
+      const sell = (kind: "cable" | "smile" | "spectranet" | "exam", key: string, kobo: number) =>
+        kobo > 0 || sellingPrice(ov, kind, key, 0).priced ? Math.round(sellingPrice(ov, kind, key, kobo / 100).price * 100) : 0;
+      if (action === "cable") return sell("cable", cableKey(String(body.provider ?? ""), String(body.packageId ?? "")),
+        await cablePriceKobo(String(body.provider ?? ""), String(body.packageId ?? "")));
+      if (action === "waec" || action === "jamb") return sell("exam", examKey(action, String(body.examType ?? "")),
+        await examPriceKobo(action, String(body.examType ?? "")));
+      if (action === "smile" || action === "spectranet") return sell(action, String(body.planId ?? ""),
+        await netPlanPriceKobo(action, String(body.planId ?? "")));
       if (action !== "data" && action !== "print-data") return 0;
       const network = String(body.network ?? ""), planId = String(body.planId ?? "");
       const netId = NET_ID[network];
@@ -336,20 +351,25 @@ async function cachedPrices(key: string, load: () => Promise<Map<string, number>
   if (prices.size) gatePriceCache.set(key, { at: Date.now(), prices });   // a failed load is tried again next time
   return prices;
 }
-/** id → naira from a ClubKonnect list: { <ROOT>: { <group>: [{ PRODUCT: [...] }] } } (or a flat array). */
-function ckListPrices(data: Record<string, unknown> | null, root: string, idKeys: string[], amountKeys: string[], groupKey?: string): Map<string, number> {
-  const out = new Map<string, number>();
+/** The products of a ClubKonnect list: { <ROOT>: { <group>: [{ PRODUCT: [...] }] } } (or a flat array) → { id, name, naira }. */
+function ckListItems(data: Record<string, unknown> | null, root: string, idKeys: string[], amountKeys: string[], groupKey?: string,
+  nameKeys = ["PACKAGE_NAME", "PRODUCT_NAME", "PackageName", "DataPlanName", "name"]): { id: string; name: string; amount: number }[] {
+  const out: { id: string; name: string; amount: number }[] = [];
   const rootObj = data?.[root] as Record<string, Record<string, unknown>[]> | undefined;
   const pick = (p: Record<string, unknown>, keys: string[]) => keys.map((k) => p[k]).find((v) => v != null && v !== "");
   const add = (p: Record<string, unknown>) => {
     const id = String(pick(p, idKeys) ?? ""), amt = Number(pick(p, amountKeys) ?? 0);
-    if (id && amt > 0) out.set(id, amt);
+    if (id && amt > 0) out.push({ id, name: String(pick(p, nameKeys) ?? "").trim(), amount: amt });
   };
   if (rootObj) {
     const groups = (groupKey && rootObj[groupKey]) || Object.values(rootObj).flat();
     for (const g of groups ?? []) for (const p of ((g?.PRODUCT ?? []) as Record<string, unknown>[])) add(p);
   } else if (Array.isArray(data)) (data as Record<string, unknown>[]).forEach(add);
   return out;
+}
+/** id → naira from a ClubKonnect list. */
+function ckListPrices(data: Record<string, unknown> | null, root: string, idKeys: string[], amountKeys: string[], groupKey?: string): Map<string, number> {
+  return new Map(ckListItems(data, root, idKeys, amountKeys, groupKey).map((p) => [p.id, p.amount]));
 }
 async function cablePriceKobo(provider: string, packageId: string): Promise<number> {
   if (!provider || !packageId) return 0;
@@ -1448,7 +1468,7 @@ serve(async (req) => {
   // service-role key. This function is deployed --no-verify-jwt, so the gateway does NOT check anything for us:
   // these MUST be gated here (they used to be reachable by anyone on the internet with no credentials at all).
   let callerUser: { id: string } | null = null;   // set for ordinary logged-in callers; stays null for server (service-role) calls
-  const SERVICE_ONLY = new Set(["wallet-balance", "connectivity-check", "wallet-balance-alert", "health-check", "data-probe", "refresh-ck-prices", "price-list", "route-check", "vtpass-probe", "provider-status", "vtpass-sandbox-proof", "vtpass-explore", "ck-variants", "bigisub-check", "bigisub-backup-check", "bigisub-live-test", "price-compare"]);
+  const SERVICE_ONLY = new Set(["wallet-balance", "connectivity-check", "wallet-balance-alert", "health-check", "data-probe", "refresh-ck-prices", "price-list", "route-check", "vtpass-probe", "provider-status", "vtpass-sandbox-proof", "vtpass-explore", "ck-variants", "bigisub-check", "bigisub-backup-check", "bigisub-live-test", "price-compare", "price-catalogue"]);
   // Public catalogue lookups (plan lists) stay open; purchase / write actions require the service key OR a user JWT.
   const READ_ONLY = new Set(["data-plans", "cabletv-plans", "waec-packages", "jamb-packages", "exam-price"]);
   if (CRON_ACTIONS.has(action)) {
@@ -1479,6 +1499,12 @@ serve(async (req) => {
   delete (body as Record<string, unknown>).gateUserId;
   const gateUser = callerUser
     ?? (typeof gateUserId === "string" && /^[0-9a-f-]{36}$/i.test(gateUserId) ? { id: gateUserId } : null);
+  // A bill service the admin switched off (Bill Prices & Services). Only a customer's own call is refused: a card-paid order the
+  // payment webhook delivers was paid before the switch and still goes through.
+  if (callerUser && PURCHASE_ACTIONS.has(action)) {
+    const svc = serviceOfAction(action);
+    if (svc && (await priceConfig()).off.has(svc)) return json({ error: pausedMessage(svc), _paused: svc });
+  }
   if (gateUser && PURCHASE_ACTIONS.has(action)) {
     const gate = await checkBillGate(makeGateDeps(), gateUser, action, body);
     if (!gate.ok) return json({ error: gate.message, _gate: gate.reason });
@@ -1706,7 +1732,9 @@ serve(async (req) => {
       // A VTpass bouquet's id is tagged "vt:", so the purchase goes back to VTpass.
       if (VT_CABLE.has(provider) && (await catalogueProvider("cable")) === "vtpass") {
         const vtPkgs = await vtCatalogue(provider);
-        if (vtPkgs.length) return json({ packages: vtPkgs.map((p) => ({ package_id: p.plan_id, package_name: p.plan_name, package_amount: p.plan_amount })), _provider: "vtpass" });
+        const ov = (await priceConfig()).overrides;
+        if (vtPkgs.length) return json({ packages: vtPkgs.map((p) => ({ package_id: p.plan_id, package_name: p.plan_name,
+          package_amount: sellingPrice(ov, "cable", cableKey(provider, p.plan_id), p.plan_amount).price })), _provider: "vtpass" });
         console.warn(`[cable-packages] VTpass catalogue empty for ${provider} — showing ClubKonnect's`);
       }
       const data = await ck("APICableTVPackagesV2.asp", { APIKey: CABLETV_K, CableTV: provider });
@@ -1741,7 +1769,9 @@ serve(async (req) => {
       }
 
       if (!packages.length) return json({ packages: [], error: `No packages returned: ${JSON.stringify(data).slice(0, 200)}` });
-      return json({ packages });
+      // what customers pay: the admin's price when one is set (Bill Prices & Services), else ClubKonnect's
+      const cableOv = (await priceConfig()).overrides;
+      return json({ packages: packages.map((p) => ({ ...p, package_amount: sellingPrice(cableOv, "cable", cableKey(provider, p.package_id), p.package_amount).price })) });
     }
 
     // ── Cable TV verify smartcard ─────────────────────────────────────────────
@@ -2533,6 +2563,10 @@ serve(async (req) => {
       const exam = String((body as { exam?: unknown }).exam ?? "").toLowerCase().trim();
       const examType = String((body as { examType?: unknown }).examType ?? "").trim();
       if ((exam !== "waec" && exam !== "jamb") || !examType) return json({ error: "exam (waec or jamb) and examType required" });
+      // the admin's price for this PIN when one is set (Bill Prices & Services), else the provider's
+      const exOv = (await priceConfig()).overrides;
+      const examJson = (b: { amount: number } & Record<string, unknown>) =>
+        json({ ...b, amount: sellingPrice(exOv, "exam", examKey(exam, examType), b.amount).price });
       // WAEC result checker, NECO and NABTEB through Bigisub (owner, 2026-10-21): WAEC keeps the price we already charge
       // (ClubKonnect's), so Bigisub's lower cost is our margin; NECO / NABTEB sell at Bigisub's public price.
       if (exam === "waec" && BG_EXAMS[examType] && (await bgReady())) {
@@ -2540,9 +2574,9 @@ serve(async (req) => {
         if (bp) {
           if (examType === "waecdirect") {
             const ckp = findExamProduct((await ckExamCatalogue("waec")).products, examType);
-            return json({ amount: Math.max(ckp?.amount ?? bp.regular, bp.regular), name: ckp?.name ?? bp.name, provider: "bigisub" });
+            return examJson({ amount: Math.max(ckp?.amount ?? bp.regular, bp.regular), name: ckp?.name ?? bp.name, provider: "bigisub" });
           }
-          return json({ amount: bp.regular, name: bp.name, provider: "bigisub" });
+          return examJson({ amount: bp.regular, name: bp.name, provider: "bigisub" });
         }
       }
       if (exam === "waec" && (examType === "neco" || examType === "nabteb")) {
@@ -2551,7 +2585,7 @@ serve(async (req) => {
       if (exam === "waec" && VT_WAEC[examType] && (await catalogueProvider("waec")) === "vtpass") {
         const w = VT_WAEC[examType];
         const hit = (await vtCatalogue(w.serviceID)).find((p) => vtPlanCode(p.plan_id) === w.variation);
-        if (hit) return json({ amount: hit.plan_amount, name: hit.plan_name, provider: "vtpass" });
+        if (hit) return examJson({ amount: hit.plan_amount, name: hit.plan_name, provider: "vtpass" });
       }
       const cat = await ckExamCatalogue(exam);
       if (!cat.ok) return json({ error: "We couldn't get the price right now. Please try again shortly." });
@@ -2559,7 +2593,7 @@ serve(async (req) => {
       if (!product) {
         return json({ error: exam === "jamb" ? "JAMB PINs aren't on sale right now. Please check back later." : "This WAEC PIN isn't on sale right now. Please check back later." });
       }
-      return json({ amount: product.amount, name: product.name, provider: "clubkonnect" });
+      return examJson({ amount: product.amount, name: product.name, provider: "clubkonnect" });
     }
 
     // ── WAEC packages ─────────────────────────────────────────────────────────
@@ -2655,7 +2689,8 @@ serve(async (req) => {
         })).filter(p => p.plan_id && p.plan_id !== "undefined");
       }
       if (!plans.length) return json({ plans: [], error: `No Spectranet plans returned: ${JSON.stringify(data).slice(0, 200)}` });
-      return json({ plans });
+      const spOv = (await priceConfig()).overrides;
+      return json({ plans: plans.map((p) => ({ ...p, plan_amount: sellingPrice(spOv, "spectranet", p.plan_id, p.plan_amount).price })) });
     }
 
     // ── Spectranet purchase ───────────────────────────────────────────────────
@@ -2675,7 +2710,8 @@ serve(async (req) => {
       // From the provider Smile orders go to right now; a VTpass plan's id is tagged "vt:" so the purchase goes back there.
       if ((await catalogueProvider("smile")) === "vtpass") {
         const vtPlans = await vtCatalogue(VT_SMILE);
-        if (vtPlans.length) return json({ plans: vtPlans, _provider: "vtpass" });
+        const smOv = (await priceConfig()).overrides;
+        if (vtPlans.length) return json({ plans: vtPlans.map((p) => ({ ...p, plan_amount: sellingPrice(smOv, "smile", p.plan_id, p.plan_amount).price })), _provider: "vtpass" });
         console.warn("[smile-plans] VTpass catalogue empty — showing ClubKonnect's");
       }
       const data = await ck("APISmilePackagesV2.asp", { APIKey: SMILE_K });
@@ -2699,7 +2735,8 @@ serve(async (req) => {
         })).filter(p => p.plan_id && p.plan_id !== "undefined");
       }
       if (!plans.length) return json({ plans: [], error: `No Smile plans returned: ${JSON.stringify(data).slice(0, 200)}` });
-      return json({ plans });
+      const smOv = (await priceConfig()).overrides;
+      return json({ plans: plans.map((p) => ({ ...p, plan_amount: sellingPrice(smOv, "smile", p.plan_id, p.plan_amount).price })) });
     }
 
     // ── Smile verify account ──────────────────────────────────────────────────
@@ -3329,6 +3366,8 @@ serve(async (req) => {
       };
       const cost = Number(amount) || 0;
       if (!cat || cost <= 0) return json({ ok: false, reason: "bad_request", message: "Invalid request." });
+      const pfSvc = serviceOfCategory(cat);   // switched off by the admin → stop before anyone is charged
+      if (pfSvc && (await priceConfig()).off.has(pfSvc)) return json({ ok: false, reason: "service_off", message: pausedMessage(pfSvc) });
       // A Bigisub data plan, NECO / NABTEB, or WAEC while Bigisub sells it: Bigisub's wallet decides, not ClubKonnect's.
       const pfPlan = String((body as { planId?: unknown }).planId ?? "");
       const pfExam = String((body as { examType?: unknown }).examType ?? "");
@@ -4105,6 +4144,86 @@ serve(async (req) => {
     // ── Price lists exactly as ClubKonnect returns them (operator export, read-only) ─────────────────
     // Data and Print Data each use their OWN api key, so each product's list is fetched with its own key; Print Airtime
     // and normal airtime only expose a per-network discount. Nothing is calculated or normalised here.
+    // ── Price catalogue (service-only, read-only — nothing is bought) ─────────────────────────────────────────────
+    //    For the admin portal's Bill Prices & Services page: for every priced bill item, what the provider charges us
+    //    (cost) and what customers pay (price — the admin's price when one is set), plus the services switched off.
+    //    Electricity, betting and airtime are amount-based: the customer pays the amount they choose (airtime: face value).
+    if (action === "price-catalogue") {
+      priceCfgCache = null;   // the admin may have just saved: show the stored values, not a minute-old copy
+      const cfg = await priceConfig();
+      const disc = await costDiscounts();
+      const NETS = ["MTN", "Glo", "Airtel", "9mobile"];
+      const safe = async <T,>(f: () => Promise<T>, fallback: T): Promise<T> => { try { return await f(); } catch { return fallback; } };
+      const cell = (kind: "cable" | "smile" | "spectranet", key: string, cost: number) => {
+        const sp = sellingPrice(cfg.overrides, kind, key, cost);
+        return { cost, price: sp.price, priced: sp.priced };
+      };
+      const netPlans = async (svc: "smile" | "spectranet") => {
+        const raw = await safe(() => ck(svc === "smile" ? "APISmilePackagesV2.asp" : "APISpectranetPackagesV2.asp", { APIKey: svc === "smile" ? SMILE_K : SPECTRANET_K }, { retries: 1, timeoutMs: 15000 }), null);
+        const items = ckListItems(raw, "MOBILE_NETWORK", ["PRODUCT_CODE", "PRODUCT_ID", "DataPlan", "PackageCode"], ["PRODUCT_AMOUNT", "Price"]);
+        return { error: items.length ? null : "ClubKonnect sent no plans", items: items.map((p) => ({ id: p.id, name: p.name, ...cell(svc, p.id, p.amount) })) };
+      };
+      const [data, cable, smile, spectranet, waecCat, jambCat, bgExams, printCfg, bgOn] = await Promise.all([
+        Promise.all(NETS.map(async (network) => {
+          const resp = await safe(() => ck("APIDatabundlePlansV2.asp", { APIKey: DATA_K, MobileNetwork: NET_ID[network] }, { retries: 1, timeoutMs: 15000 }), null);
+          const plans = listPlans(resp, network);
+          const refused = await refusedDataPlans(network);
+          const byName = cfg.selling[network.toLowerCase()] ?? {};
+          return { network, error: plans.length ? null : "ClubKonnect sent no plans", plans: plans.map((p) => {
+            const sp = byName[normName(p.plan_name)];
+            return { id: p.plan_id, name: p.plan_name, cost: p.plan_amount, price: typeof sp === "number" ? sp : p.plan_amount, priced: typeof sp === "number", refused: refused.has(p.plan_id) };
+          }) };
+        })),
+        Promise.all([["dstv", "DStv"], ["gotv", "GOtv"], ["startimes", "StarTimes"], ["showmax", "Showmax"]].map(async ([provider, label]) => {
+          const raw = await safe(() => ck("APICableTVPackagesV2.asp", { APIKey: CABLETV_K, CableTV: provider }, { retries: 1, timeoutMs: 15000 }), null);
+          const items = ckListItems(raw, "TV_ID", ["PACKAGE_ID", "PRODUCT_CODE", "id"], ["PACKAGE_AMOUNT", "PRODUCT_AMOUNT"], label);
+          return { provider, label, error: items.length ? null : "ClubKonnect sent no packages",
+            items: items.map((p) => ({ id: p.id, name: p.name, ...cell("cable", cableKey(provider, p.id), p.amount) })) };
+        })),
+        netPlans("smile"),
+        netPlans("spectranet"),
+        safe(() => ckExamCatalogue("waec"), { ok: false, products: [] as ExamProduct[] }),
+        safe(() => ckExamCatalogue("jamb"), { ok: false, products: [] as ExamProduct[] }),
+        safe(async () => (bgUsable() ? await bgExamPriceList() : {}) as Record<string, { regular: number; corporate: number; name: string }>, {} as Record<string, { regular: number; corporate: number; name: string }>),
+        safe(async () => {
+          const { data: r } = await createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } }).from("platform_config").select("value").eq("key", "print_airtime_prices").maybeSingle();
+          return JSON.parse(String((r as { value?: string } | null)?.value ?? "{}")) as Record<string, Record<string, unknown>>;
+        }, {} as Record<string, Record<string, unknown>>),
+        safe(() => bgReady(), false),
+      ]);
+      const EXAMS: { exam: "waec" | "jamb"; type: string; name: string }[] = [
+        { exam: "waec", type: "waecdirect", name: "WAEC result checker" }, { exam: "waec", type: "waec-registration", name: "WAEC registration" },
+        { exam: "waec", type: "neco", name: "NECO result checker" }, { exam: "waec", type: "nabteb", name: "NABTEB result checker" },
+        { exam: "jamb", type: "utme-no-mock", name: "JAMB UTME (no mock)" }, { exam: "jamb", type: "utme-mock", name: "JAMB UTME with mock" },
+        { exam: "jamb", type: "de", name: "JAMB Direct Entry" },
+      ];
+      const exams = EXAMS.map((e) => {
+        const ckp = findExamProduct((e.exam === "waec" ? waecCat : jambCat).products, e.type);
+        const bg = BG_EXAMS[e.type] ? bgExams[BG_EXAMS[e.type]] : undefined;
+        // the same choice exam-price makes: Bigisub for the WAEC checker / NECO / NABTEB while it's on, else ClubKonnect
+        const viaBg = !!bg && bgOn;
+        const cost = viaBg ? bg!.corporate : Number(ckp?.amount ?? 0);
+        const base = viaBg ? (e.type === "waecdirect" ? Math.max(Number(ckp?.amount ?? 0), bg!.regular) : bg!.regular) : Number(ckp?.amount ?? 0);
+        const sp = sellingPrice(cfg.overrides, "exam", examKey(e.exam, e.type), base);
+        return { exam: e.exam, type: e.type, name: e.name, provider: viaBg ? "bigisub" : "clubkonnect", available: cost > 0,
+          cost, default_price: base, price: sp.price, priced: sp.priced };
+      });
+      const printAirtime = NETS.flatMap((network) => ["100", "200", "300", "500", "1000"].map((face) => {
+        const cost = Math.round(Number(face) * (1 - (disc.epin[network] ?? 0)) * 100) / 100;
+        const netCfg = Object.entries(printCfg).find(([k]) => k.toLowerCase() === network.toLowerCase())?.[1] ?? {};
+        const set = Number((netCfg as Record<string, unknown>)[face]);
+        return { network, face: Number(face), cost, price: set > 0 ? set : null };
+      }));
+      return json({
+        fetched_at: new Date().toISOString(),
+        services: BILL_SERVICES, services_off: [...cfg.off],
+        data, cable, smile, spectranet, exams,
+        print_data_pct: cfg.printPct,
+        print_airtime: printAirtime,
+        airtime: NETS.map((network) => ({ network, discount_pct: Math.round((disc.airtime[network] ?? 0) * 1000) / 10, epin_discount_pct: Math.round((disc.epin[network] ?? 0) * 1000) / 10 })),
+      });
+    }
+
     if (action === "price-list") {
       const NETS: Record<string, string> = { MTN: "01", Glo: "02", "9mobile": "03", Airtel: "04" };
       const plansFor = async (key: string) => {

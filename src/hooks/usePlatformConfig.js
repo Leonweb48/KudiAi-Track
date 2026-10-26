@@ -74,6 +74,9 @@ export function usePlatformConfig() {
     // Print Airtime price per PIN (network -> face value -> naira) and the Bundle Set switch — both set in platform_config (see migration 20270216000000).
     printAirtimePrices: (() => { try { const o = config?.print_airtime_prices ? JSON.parse(config.print_airtime_prices) : null; return o && typeof o === "object" ? o : null; } catch { return null; } })(),
     bundleSetEnabled: config?.bundle_set_enabled === "true",         // paused until the owner turns it back on
+    // Bill services the admin switched off (admin portal → Bill Prices & Services): their tiles show PAUSED. The server refuses
+    // them too (before anyone is charged), so an old build can't sell one either.
+    billServicesOff: new Set(String(config?.bill_services_off ?? "").split(",").map((x) => x.trim().toLowerCase()).filter(Boolean)),
     // Betting Wallet tile: on for the web, off in the Android app (Google Play gambling rules) until platform_config.android_betting_enabled = "true".
     bettingVisible: bettingVisible(config),
     walletTestMode: config?.wallet_test_mode !== "false",   // default on until explicitly disabled

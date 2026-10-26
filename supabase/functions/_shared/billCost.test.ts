@@ -1,5 +1,5 @@
 // Run: deno test --config '{"nodeModulesDir":"none"}' supabase/functions/_shared/billCost.test.ts
-import { airtimeCost, dataCost, findPlan, findPlanPrice, networkName, parseDiscounts, printAirtimeCost, reportedChargeKobo } from "./billCost.ts";
+import { airtimeCost, dataCost, findPlan, findPlanPrice, listPlans, networkName, parseDiscounts, printAirtimeCost, reportedChargeKobo } from "./billCost.ts";
 
 function eq(actual: unknown, expected: unknown, msg: string) {
   const a = JSON.stringify(actual), e = JSON.stringify(expected);
@@ -92,4 +92,15 @@ Deno.test("findPlan returns the whole plan entry (id, name, provider price) for 
   if (findPlan(resp, "9mobile", "999") !== null) throw new Error("unknown id should be null");
   if (findPlan(resp, "MTN", "1000") !== null) throw new Error("other network should be null");
   if (findPlan(null, "MTN", "1") !== null) throw new Error("no list should be null");
+});
+
+Deno.test("listPlans lists every priced plan of one network (aliases for 9mobile), skipping unpriced ones", () => {
+  const resp = { MOBILE_NETWORK: {
+    MTN: [{ ID: "MTN", PRODUCT: [{ PRODUCT_ID: "500", PRODUCT_NAME: "500 MB - 30 days ", PRODUCT_AMOUNT: "385.00" }, { PRODUCT_ID: "x", PRODUCT_AMOUNT: "0" }] }],
+    m_9mobile: [{ PRODUCT: [{ PRODUCT_ID: "1000", PRODUCT_NAME: "1GB", PRODUCT_AMOUNT: "1,100.50" }] }],
+  } };
+  eq(listPlans(resp, "MTN"), [{ plan_id: "500", plan_name: "500 MB - 30 days", plan_amount: 385 }], "listPlans");
+  eq(listPlans(resp, "9mobile"), [{ plan_id: "1000", plan_name: "1GB", plan_amount: 1100.5 }], "listPlans");
+  eq(listPlans(resp, "Glo"), [], "listPlans");
+  eq(listPlans(null, "MTN"), [], "listPlans");
 });
