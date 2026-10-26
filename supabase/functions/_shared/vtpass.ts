@@ -193,3 +193,47 @@ export const vtCode = (d: VtResult | null | undefined) => String(d?.code ?? "").
 export const vtTxn = (d: VtResult | null | undefined) =>
   (((d?.content ?? {}) as Record<string, unknown>).transactions ?? {}) as Record<string, unknown>;
 export const vtTxnStatus = (d: VtResult | null | undefined) => String(vtTxn(d).status ?? "").trim().toLowerCase();
+
+// ── Setting VTpass up from the admin portal (2026-10-26) ──────────────────────────────────────────────────────────
+// The admin enters the keys (kept in Supabase Vault) and presses "Test connection": a lookup of an order that can't exist
+// (POST, proves the api + secret keys) and a balance read (GET, proves the public key). These turn VTpass's answer codes
+// into what the admin has to do. Codes from VTpass's documentation.
+
+const SETUP_PROBLEM: Readonly<Record<string, string>> = {
+  "087": "VTpass doesn't recognise these keys. Copy them again from vtpass.com → Settings → API Keys (live keys for Live, sandbox keys for Sandbox).",
+  "021": "VTpass has locked this account. Contact VTpass support.",
+  "022": "VTpass has suspended this account. Contact VTpass support.",
+  "023": "API access isn't switched on for this VTpass account yet. Ask VTpass to enable API access (live go-live approval).",
+  "024": "This VTpass account isn't active yet. Finish VTpass's account activation (KYC / go-live approval).",
+  "027": "VTpass refused our server's IP address. Turn on \"Send VTpass calls from our fixed IP\" below and whitelist 209.71.82.233 on vtpass.com → Settings → API.",
+  "028": "This product isn't enabled on the VTpass account. Ask VTpass to enable it for API use.",
+  "034": "VTpass has suspended this service right now.",
+  "035": "This service is inactive on VTpass.",
+};
+
+/** A setup check's answer → { ok, problem }. The POST check sends a request id that can't exist, so "no such order" (015) = keys accepted. */
+export function vtSetupVerdict(d: VtResult | null | undefined, kind: "post" | "get"): { ok: boolean; code: string; problem: string | null } {
+  if (!d || d._unreachable) return { ok: false, code: "", problem: `VTpass couldn't be reached${d?._error ? ` (${String(d._error).slice(0, 80)})` : ""}. Try again in a minute.` };
+  const code = vtCode(d);
+  if (SETUP_PROBLEM[code]) return { ok: false, code, problem: SETUP_PROBLEM[code] };
+  const desc = String(d.response_description ?? d.message ?? d.error ?? "").trim();
+  if (/ip/i.test(desc) && /whitelist|not allowed|unauthori[sz]ed ip/i.test(desc)) return { ok: false, code, problem: SETUP_PROBLEM["027"] };
+  if (kind === "post") {
+    if (code === "015" || code === "000" || code === "016") return { ok: true, code, problem: null };
+  } else if (vtBalance(d) !== null) return { ok: true, code, problem: null };
+  const http = Number(d._http ?? 0);
+  if (http === 401 || http === 403 || /invalid credentials|unauthori[sz]ed|invalid api|invalid key/i.test(desc)) return { ok: false, code, problem: SETUP_PROBLEM["087"] };
+  if (kind === "get" && !code && !desc) return { ok: false, code, problem: "VTpass didn't return the wallet balance — check the PUBLIC key (it's needed for balance and price lists)." };
+  return { ok: false, code, problem: `VTpass answered ${code ? `code ${code}` : `HTTP ${http || "?"}`}${desc ? `: ${desc.slice(0, 120)}` : ""}.` };
+}
+
+/** The wallet balance from GET /balance ({ code: 1, contents: { balance } }), in naira; null when absent. */
+export function vtBalance(d: VtResult | null | undefined): number | null {
+  const c = (d?.contents ?? d?.content ?? null) as Record<string, unknown> | null;
+  const v = c && typeof c === "object" ? c.balance : undefined;
+  const n = typeof v === "string" ? Number(v.replace(/,/g, "")) : Number(v);
+  return v !== undefined && v !== null && v !== "" && Number.isFinite(n) ? n : null;
+}
+
+/** Keys as VTpass issues them: letters, digits, "_" and "-", 8–200 characters. */
+export const vtKeyLooksValid = (k: unknown) => typeof k === "string" && /^[A-Za-z0-9_-]{8,200}$/.test(k.trim());

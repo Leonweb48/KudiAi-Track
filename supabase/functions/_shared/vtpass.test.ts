@@ -2,7 +2,7 @@ import { assert, assertEquals, assertStrictEquals } from "https://deno.land/std@
 import {
   airtimeServiceId, dataServiceId, isVtPlan, lagosStamp, parseVariations, VT_CABLE, VT_ELECTRIC, vtCableBody, vtCall, vtCardDetails,
   vtConfigured, vtCustomer, vtElectricBody, vtElectricToken, vtElectricUnits, vtEnv, vtMeterType, vtPlanCode, vtRequestId, vtSmileBody,
-  vtWaecBody, NAMELESS_CUSTOMER, type VtCreds,
+  vtWaecBody, NAMELESS_CUSTOMER, type VtCreds, vtBalance, vtKeyLooksValid, vtSetupVerdict,
 } from "./vtpass.ts";
 
 Deno.test("vtEnv: only an explicit 'live' is live — anything else is the sandbox (play money)", () => {
@@ -204,4 +204,37 @@ Deno.test("vtCustomer: a matched meter with no name on record is verified (Jos);
   assertEquals(vtCustomer({ code: "000", content: { Customer_Name: "", MeterNumber: "1111111111111", WrongBillersCode: "true" } }).kind, "invalid");
   const smile = { code: "000", content: { Customer_Name: "THE TESTER ITSELF", AccountList: { Account: [{ AccountId: "08011111111" }], NumberOfAccounts: 1 } } };
   assertEquals(vtCustomer(smile).kind, "ok");
+});
+
+
+Deno.test("setup check (POST): 'no such order' = keys accepted; each refusal says what to do", () => {
+  assertEquals(vtSetupVerdict({ code: "015", response_description: "INVALID REQUEST ID" }, "post").ok, true);
+  const ip = vtSetupVerdict({ code: "027", response_description: "IP NOT WHITELISTED" }, "post");
+  assert(!ip.ok && /209\.71\.82\.233/.test(ip.problem!) && /fixed IP/.test(ip.problem!));
+  assert(/Settings → API Keys/.test(vtSetupVerdict({ code: "087" }, "post").problem!));
+  assert(/API access/.test(vtSetupVerdict({ code: "023" }, "post").problem!));
+  assert(/couldn't be reached/.test(vtSetupVerdict({ _unreachable: true, _error: "timeout" }, "post").problem!));
+  assert(/whitelist/.test(vtSetupVerdict({ response_description: "Your IP is not whitelisted" }, "post").problem!));
+  assert(/Settings → API Keys/.test(vtSetupVerdict({ _http: 401, _raw: "Unauthorized" }, "post").problem!));
+  const odd = vtSetupVerdict({ code: "099", response_description: "TRANSACTION IS PROCESSING" }, "post");
+  assert(!odd.ok && /code 099/.test(odd.problem!));
+});
+
+Deno.test("setup check (GET): a balance = public key accepted; none = check the public key", () => {
+  assertEquals(vtSetupVerdict({ code: 1, contents: { balance: 1250.5 } }, "get").ok, true);
+  assert(/PUBLIC key/.test(vtSetupVerdict({ _http: 200 }, "get").problem!));
+});
+
+Deno.test("vtBalance reads contents.balance (number or string), else null", () => {
+  assertEquals(vtBalance({ code: 1, contents: { balance: 1250.5 } }), 1250.5);
+  assertEquals(vtBalance({ content: { balance: "2,000.25" } }), 2000.25);
+  assertEquals(vtBalance({ contents: { balance: 0 } }), 0);
+  assertEquals(vtBalance({ contents: {} }), null);
+  assertEquals(vtBalance({ contents: { balance: "abc" } }), null);
+  assertEquals(vtBalance(null), null);
+});
+
+Deno.test("vtKeyLooksValid: VTpass-style keys only", () => {
+  assert(vtKeyLooksValid("PK_1234abcd5678efgh") && vtKeyLooksValid("a1b2c3d4e5f6a7b8c9d0"));
+  for (const k of ["", "short", "has space inside!!", "x".repeat(201), null, 12345678]) assertEquals(vtKeyLooksValid(k), false);
 });

@@ -25,9 +25,20 @@ const fakeFlw = createServer(async (req, res) => {
   res.writeHead(200, { "Content-Type": "application/json" }); res.end('{"status":"success"}');
 }).listen(18802);
 
+// fake VTpass (live and sandbox hosts): records what reached it, headers included
+const vtSeen = [];
+const fakeVt = (env, port) => createServer(async (req, res) => {
+  let b = ""; for await (const c of req) b += c;
+  vtSeen.push({ env, method: req.method, url: req.url, body: b, api: req.headers["api-key"], secret: req.headers["secret-key"], pub: req.headers["public-key"] });
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify(req.url.startsWith("/api/balance") ? { code: 1, contents: { balance: 5000 } } : { code: "015", response_description: "INVALID REQUEST ID" }));
+}).listen(port);
+const vtLive = fakeVt("live", 18803), vtSandbox = fakeVt("sandbox", 18804);
+
 const relayLog = [];
 const relay = spawn(process.execPath, [RELAY_JS], {
-  env: { ...process.env, RELAY_KEY: "test-relay-key", PORT: "18800", CK_BASE_URL: "http://127.0.0.1:18801", FLW_BASE_URL: "http://127.0.0.1:18802" },
+  env: { ...process.env, RELAY_KEY: "test-relay-key", PORT: "18800", CK_BASE_URL: "http://127.0.0.1:18801", FLW_BASE_URL: "http://127.0.0.1:18802",
+    VT_LIVE_BASE: "http://127.0.0.1:18803/api", VT_SANDBOX_BASE: "http://127.0.0.1:18804/api" },
 });
 relay.stdout.on("data", (d) => relayLog.push(String(d))); relay.stderr.on("data", (d) => relayLog.push(String(d)));
 await sleep(800);
@@ -74,13 +85,34 @@ try {
   ok(r.status === 200 && flwSeen.at(-1)?.url === "/direct-transfers" && flwSeen.at(-1)?.body === '{"amount":100}' && flwSeen.at(-1)?.auth === "Bearer flw", "Flutterwave POST /direct-transfers still forwarded unchanged");
   r = await fetch(`${R}/health`); ok(r.status === 200 && (await r.text()) === "ok", "/health still ok");
 
+  // 6b. VTpass (2026-10-26): POST /pay|/requery and GET /balance|/service-variations forwarded to the right host with its key headers
+  const VK = { ...K, "api-key": "VT-API-SECRETKEY1", "secret-key": "VT-SK-SECRET2", "public-key": "VT-PK-PUBLIC3" };
+  r = await fetch(`${R}/vt/live/requery`, { method: "POST", headers: { ...VK, "Content-Type": "application/json" }, body: '{"request_id":"202610261200KDTBILL1"}' });
+  t = await r.text();
+  ok(r.status === 200 && !r.headers.get("x-relay-error") && JSON.parse(t).code === "015", "VTpass POST /requery forwarded, VTpass's answer comes back", t);
+  ok(vtSeen.at(-1)?.env === "live" && vtSeen.at(-1)?.url === "/api/requery" && vtSeen.at(-1)?.body === '{"request_id":"202610261200KDTBILL1"}'
+     && vtSeen.at(-1)?.api === "VT-API-SECRETKEY1" && vtSeen.at(-1)?.secret === "VT-SK-SECRET2" && vtSeen.at(-1)?.pub === "VT-PK-PUBLIC3",
+    "…to the LIVE host, body and api/secret/public key headers intact", JSON.stringify(vtSeen.at(-1)));
+  r = await fetch(`${R}/vt/sandbox/service-variations?serviceID=mtn-data`, { headers: VK });
+  ok(r.status === 200 && vtSeen.at(-1)?.env === "sandbox" && vtSeen.at(-1)?.url === "/api/service-variations?serviceID=mtn-data" && vtSeen.at(-1)?.method === "GET",
+    "GET with its query goes to the SANDBOX host when asked", JSON.stringify(vtSeen.at(-1)));
+  r = await fetch(`${R}/vt/live/balance`, { headers: VK }); t = await r.text();
+  ok(JSON.parse(t).contents?.balance === 5000, "balance read through the relay", t);
+  const vtBefore = vtSeen.length;
+  for (const p of ["/vt/live/../balance", "/vt/prod/pay", "/vt/live/admin", "/vt/live/pay/x", "/vt/live"]) {
+    r = await fetch(`${R}${p}`, { method: "POST", headers: VK, body: "{}" });
+    ok(r.status >= 400 && r.headers.get("x-relay-error") === "1", `VTpass blocked path ${p} → ${r.status}`);
+  }
+  r = await fetch(`${R}/vt/live/pay`, { method: "POST", headers: { ...VK, "x-relay-key": "wrong" }, body: "{}" });
+  ok(r.status === 401 && r.headers.get("x-relay-error") === "1" && vtSeen.length === vtBefore, "VTpass: wrong relay key refused; nothing blocked reached VTpass");
+
   // 7. the relay never logs the query (it holds our UserID and API key)
   await sleep(200);
   const log = relayLog.join("");
-  ok(!/SECRET|CK100|APIKey|08134807312/.test(log), "relay log has no API key, UserID or phone number", log.slice(0, 300));
+  ok(!/SECRET|CK100|APIKey|08134807312|VT-API|VT-SK|VT-PK|KDTBILL1/.test(log), "relay log has no API key, UserID, phone number, VTpass keys or request ids", log.slice(0, 300));
   ok(/relay GET \/ck\/APIAirtimeV1\.asp -> 200/.test(log), "relay log names only the script and status");
 } finally {
-  relay.kill(); fakeFlw.close(); try { fakeCk.close(); } catch {}
+  relay.kill(); fakeFlw.close(); vtLive.close(); vtSandbox.close(); try { fakeCk.close(); } catch {}
 }
 console.log(fails ? `\n${fails} of ${checks} checks FAILED` : `\nall ${checks} checks passed`);
 process.exit(fails ? 1 : 0);

@@ -13,6 +13,7 @@ import { buyWithFallback, parseServiceList, PENDING_STATUS, probeVerdict, purcha
 import {
   airtimeServiceId, dataServiceId, isVtPlan, parseVariations, VT_CABLE, VT_ELECTRIC, VT_SMILE, VT_WAEC, vtAirtimeBody, vtCableBody, vtCall, vtCardDetails, vtCode,
   vtConfigured, vtCustomer, vtDataBody, vtElectricBody, vtElectricToken, vtElectricUnits, vtEnv, vtMeterType, vtPlanCode, vtRequestId, vtSmileBody, vtTxn,
+  vtBalance, vtSetupVerdict, VT_BASE,
   vtTxnStatus, vtWaecBody, type VtCreds, type VtFetch, type VtResult,
 } from "../_shared/vtpass.ts";
 import {
@@ -48,13 +49,37 @@ const SMILE_K        = Deno.env.get("CK_SMILE_KEY")         ?? "";
 const PRINT_AIRTIME_K = Deno.env.get("CK_PRINT_AIRTIME_KEY") ?? "";
 const PRINT_DATA_K   = Deno.env.get("CK_PRINT_DATA_KEY")    ?? "";
 
-// VTpass — the second provider (see _shared/vtpass.ts). VTPASS_ENV is set together with the keys, so the environment always
-// matches them; anything but "live" is the sandbox (play money), which must never serve a real customer.
-const VT: VtCreds = {
+// VTpass — the second provider (see _shared/vtpass.ts). The keys and their environment are saved in the admin portal →
+// VTpass setup (Supabase Vault, read through vtpass_get_config — migration 20270430); with nothing saved there, the
+// function's own VTPASS_* secrets (GitHub workflow "VTpass live keys") are used, as before. The environment always comes
+// with its keys; anything but "live" is the sandbox (play money), which must never serve a real customer.
+const VT_BASE_OVERRIDE = Deno.env.get("VTPASS_BASE") || undefined;   // overridable for testing only — never set in prod
+const vtFromSecrets = (): VtCreds => ({
   apiKey: Deno.env.get("VTPASS_API_KEY") ?? "", secretKey: Deno.env.get("VTPASS_SECRET_KEY") ?? "",
-  publicKey: Deno.env.get("VTPASS_PUBLIC_KEY") ?? "", env: vtEnv(Deno.env.get("VTPASS_ENV")),
-  base: Deno.env.get("VTPASS_BASE") || undefined,   // overridable for testing only — never set in prod
-};
+  publicKey: Deno.env.get("VTPASS_PUBLIC_KEY") ?? "", env: vtEnv(Deno.env.get("VTPASS_ENV")), base: VT_BASE_OVERRIDE,
+});
+let VT: VtCreds = vtFromSecrets();
+let vtSource: "admin" | "secrets" = "secrets";
+let vtCfgAt = 0;
+/** Re-read the saved VTpass keys (once a minute; `force` for the admin's check). A read failure keeps what we had. */
+async function refreshVt(force = false): Promise<void> {
+  if (!force && Date.now() - vtCfgAt < 60_000) return;
+  vtCfgAt = Date.now();
+  try {
+    const { data, error } = await createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } }).rpc("vtpass_get_config");
+    if (error) throw new Error(error.message);
+    const c = (data ?? {}) as { saved?: boolean; env?: string; api_key?: string; secret_key?: string; public_key?: string | null };
+    const next: VtCreds = c.saved && c.api_key && c.secret_key
+      ? { apiKey: c.api_key, secretKey: c.secret_key, publicKey: c.public_key ?? "", env: vtEnv(c.env), base: VT_BASE_OVERRIDE }
+      : vtFromSecrets();
+    const changed = next.apiKey !== VT.apiKey || next.secretKey !== VT.secretKey || next.publicKey !== VT.publicKey || next.env !== VT.env;
+    VT = next;
+    vtSource = c.saved && c.api_key && c.secret_key ? "admin" : "secrets";
+    if (changed) vtHealthCache = null;   // new keys or environment: health is asked again
+  } catch (e) {
+    console.warn("[vtpass] saved keys unreadable — keeping the current ones:", (e as Error).message);
+  }
+}
 
 // Bigisub — the airtime / data BACKUP (see _shared/bigisub.ts, owner 2026-10-21). Token + the account's 4-digit transaction
 // PIN (workflow "Bigisub keys"); it serves orders only while platform_config.bill_provider_bigisub = "true".
@@ -860,7 +885,32 @@ const PREFLIGHT_ROUTE: Record<string, [string, string]> = {
 
 /** VTpass may serve customers only with LIVE keys — the sandbox is play money. */
 const vtUsable = () => vtConfigured(VT) && VT.env === "live";
-const vtFetch: VtFetch = (u, i) => fetch(u, i);
+/**
+ * VTpass calls go out directly, or — platform_config.vtpass_via_relay = "true" (admin portal → VTpass setup) — through
+ * the payout relay's fixed IP (209.71.82.233), for when VTpass accepts only whitelisted addresses (its code 027).
+ */
+const vtFetch: VtFetch = async (u, i) => {
+  const base = VT.base || VT_BASE[VT.env];
+  if (u.startsWith(base) && (await vtViaRelay())) {
+    return fetch(`${RELAY_URL}/vt/${VT.env}${u.slice(base.length)}`, { ...i, headers: { ...(i.headers as Record<string, string>), "x-relay-key": RELAY_KEY } });
+  }
+  return fetch(u, i);
+};
+let vtRelayCfg: { at: number; on: boolean } | null = null;
+async function vtViaRelay(): Promise<boolean> {
+  if (!RELAY_URL || !RELAY_KEY) return false;
+  if (vtRelayCfg && Date.now() - vtRelayCfg.at < 60_000) return vtRelayCfg.on;
+  try {
+    const { data, error } = await createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } })
+      .from("platform_config").select("value").eq("key", "vtpass_via_relay").maybeSingle();
+    if (error) throw error;
+    vtRelayCfg = { at: Date.now(), on: String((data as { value?: unknown } | null)?.value ?? "") === "true" };
+    return vtRelayCfg.on;
+  } catch (e) {
+    console.warn("[vtpass relay] setting unavailable — keeping the last known:", (e as Error).message);
+    return vtRelayCfg?.on ?? false;
+  }
+}
 /** Bigisub can serve an order once its token and PIN are set (the admin switch decides whether it does). */
 const bgUsable = () => bgConfigured(BG);
 const bgFetch: BgFetch = (u, i) => fetch(u, i);
@@ -1504,6 +1554,7 @@ serve(async (req) => {
   try { body = await req.json(); }
   catch { return json({ error: "Invalid JSON body" }); }
   const { action } = body as { action: string };
+  await refreshVt();   // the VTpass keys saved in the admin portal (cached a minute)
 
   // Caller-stable idempotency key. The client/webhook pass the pending_bills
   // reference (KDT-BILL-…) so a retry — from ck() below, from the client after a
@@ -1516,7 +1567,7 @@ serve(async (req) => {
   // service-role key. This function is deployed --no-verify-jwt, so the gateway does NOT check anything for us:
   // these MUST be gated here (they used to be reachable by anyone on the internet with no credentials at all).
   let callerUser: { id: string } | null = null;   // set for ordinary logged-in callers; stays null for server (service-role) calls
-  const SERVICE_ONLY = new Set(["wallet-balance", "connectivity-check", "wallet-balance-alert", "health-check", "data-probe", "refresh-ck-prices", "price-list", "route-check", "vtpass-probe", "provider-status", "vtpass-sandbox-proof", "vtpass-explore", "ck-variants", "bigisub-check", "bigisub-backup-check", "bigisub-live-test", "price-compare", "price-catalogue"]);
+  const SERVICE_ONLY = new Set(["wallet-balance", "connectivity-check", "wallet-balance-alert", "health-check", "data-probe", "refresh-ck-prices", "price-list", "route-check", "vtpass-probe", "provider-status", "vtpass-sandbox-proof", "vtpass-explore", "ck-variants", "bigisub-check", "bigisub-backup-check", "bigisub-live-test", "price-compare", "price-catalogue", "vtpass-check", "vtpass-live-test"]);
   // Public catalogue lookups (plan lists) stay open; purchase / write actions require the service key OR a user JWT.
   const READ_ONLY = new Set(["data-plans", "cabletv-plans", "waec-packages", "jamb-packages", "exam-price"]);
   if (CRON_ACTIONS.has(action)) {
@@ -3816,6 +3867,45 @@ serve(async (req) => {
       });
     }
 
+    // ── VTpass setup check (service-only — admin portal → VTpass setup → Test connection). Nothing is bought: a lookup of
+    //    an order that can't exist proves the api + secret keys, a balance read proves the public key. Answers the
+    //    wallet balance and, for each check, what to do when it fails.
+    if (action === "vtpass-check") {
+      await refreshVt(true);
+      vtRelayCfg = null;
+      const viaRelay = await vtViaRelay();
+      if (!vtConfigured(VT)) return json({ configured: false, source: vtSource, env: VT.env, viaRelay, relayConfigured: !!(RELAY_URL && RELAY_KEY) });
+      const now = Date.now();
+      const [post, get] = await Promise.all([
+        vtCall(vtFetch, VT, "POST", "/requery", { request_id: vtRequestId(`KUDIAI-SETUP-${now}`, now) }, 20_000),
+        VT.publicKey ? vtCall(vtFetch, VT, "GET", "/balance", undefined, 20_000) : Promise.resolve(null),
+      ]);
+      const p = vtSetupVerdict(post, "post");
+      const g = get ? vtSetupVerdict(get, "get") : { ok: false, code: "", problem: "No public key saved — VTpass needs it for the wallet balance and price lists." };
+      vtHealthCache = null;
+      return json({ configured: true, source: vtSource, env: VT.env, live: vtUsable(), viaRelay, relayConfigured: !!(RELAY_URL && RELAY_KEY),
+        keys: p, publicKey: g, balance: get ? vtBalance(get) : null, checkedAt: new Date().toISOString() });
+    }
+
+    // ── VTpass live test (service-only, admin portal → VTpass setup): ONE real ₦50 airtime order on VTpass to a number the
+    //    admin types — the only proof that live purchases work end to end. Costs ₦50 from the VTpass wallet; nobody is charged.
+    if (action === "vtpass-live-test") {
+      const phone = String((body as { phone?: unknown }).phone ?? "").replace(/\D/g, "");
+      const network = String((body as { network?: unknown }).network ?? "");
+      const sid = airtimeServiceId(network);
+      if (!/^0[789][01]\d{8}$/.test(phone) || !sid) return json({ ok: false, error: "Enter an 11-digit Nigerian number and its network" });
+      const own = networkMismatch(phone, network);
+      if (own) return json({ ok: false, error: networkMismatchMessage(own, network) });
+      if (!vtUsable()) return json({ ok: false, error: "VTpass isn't live: save the LIVE keys and set the environment to Live first" });
+      const now = Date.now();
+      const rid = vtRequestId(`KDT-VTTEST-${now}`, now);
+      const d = await vtCall(vtFetch, VT, "POST", "/pay", { request_id: rid, ...vtAirtimeBody(sid, 50, phone) }, 60_000);
+      const st = vtTxnStatus(d);
+      return json({ ok: vtCode(d) === "000" && (st === "delivered" || st === "pending" || st === "initiated"), code: vtCode(d), status: st || null,
+        description: String(d.response_description ?? "").slice(0, 120) || null, requestId: rid,
+        problem: vtCode(d) === "000" ? null : vtSetupVerdict(d, "post").problem });
+    }
+
     if (action === "provider-status") {
       healthCache.clear(); svcHealth = null; vtHealthCache = null; provCfgCache = null; bgHealthCache = null; ckBalCache = null;
       const cfg = await providerConfig();
@@ -4346,10 +4436,12 @@ serve(async (req) => {
     //    what was spent from these balances (finance_bills_report). Answers which providers were recorded, never the amounts.
     if (action === "provider-balance-snapshot") {
       ckBalCache = null; bgHealthCache = null;   // fresh readings, not a minute-old copy
-      const [ckN, bg] = await Promise.all([ckWalletNaira(), bgHealthState()]);
+      const [ckN, bg, vt] = await Promise.all([ckWalletNaira(), bgHealthState(),
+        vtUsable() && VT.publicKey ? vtCall(vtFetch, VT, "GET", "/balance", undefined, 15_000).then(vtBalance) : Promise.resolve(null)]);
       const rows = [
         ...(ckN !== null ? [{ provider: "clubkonnect", balance_kobo: Math.round(ckN * 100) }] : []),
         ...(bgUsable() && bg.balance !== null ? [{ provider: "bigisub", balance_kobo: Math.round(bg.balance * 100) }] : []),
+        ...(vt !== null ? [{ provider: "vtpass", balance_kobo: Math.round(vt * 100) }] : []),
       ];
       if (rows.length) {
         const { error } = await createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } }).from("bill_provider_balances").insert(rows);

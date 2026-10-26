@@ -284,6 +284,32 @@ Tokens, PINs, meter/phone/account numbers, names and our ClubKonnect balance mus
 - **Tests:** `tests/finance/bills-account.pglite.mjs` (35 checks; all 7 mutants of the new rules caught) and
   `tests/bills/bill-prices.e2e.mjs` (costs, snapshot).
 
+### 18. VTpass is set up from the admin portal (2026-10-26)
+
+- **Where:** admin portal → FINANCE → **VTpass Setup** (`/settings/vtpass`). Finance Admin can look and test; only a
+  Super Admin can change anything. VTpass becomes the main provider on the Bill Provider page.
+- **Keys:** all three (API, Secret, Public) go into Supabase Vault through `vtpass_save_keys` (migration 20270430,
+  service role only).
+  - The page and the audit log only ever see the last 4 characters.
+  - The function reads them through `vtpass_get_config` once a minute (`refreshVt`). With nothing saved, it uses its own
+    `VTPASS_*` secrets (GitHub workflow "VTpass live keys"). Keys saved in the admin win.
+- **Live / Sandbox** is stored with the keys. Sandbox is the kill switch: VTpass then serves no one (`vtUsable`) and
+  orders go to ClubKonnect. The keys stay saved.
+- **Fixed IP:** `platform_config.vtpass_via_relay` sends every VTpass call through the relay's `/vt/<env>/…` route
+  (209.71.82.233). VTpass's code 027 means "IP not whitelisted".
+- **Test connection** (`vtpass-check`, service only) buys nothing:
+  - a lookup of an order that can't exist checks the API + secret keys;
+  - `/balance` checks the public key;
+  - each failure says what to do (`vtSetupVerdict`).
+- **₦50 live test** (`vtpass-live-test`, service only): one real airtime order. Its result is kept in
+  `platform_config.vtpass_last_live_test` (last 4 digits of the number only).
+- **Bills Account:** VTpass gets wallet snapshots and top-ups like the other providers.
+- **Not covered yet:** the Bill Prices page lists ClubKonnect's catalogue. With VTpass as main, data, cable and Smile show
+  VTpass's own plans at VTpass's listed price (our margin = VTpass's commission), unless a data plan's name matches a
+  saved selling price.
+- **Tests:** `tests/bills/vtpass-setup.e2e.mjs` (22), `tests/bills/vtpass-keys.pglite.mjs` (21), and the relay suite (VTpass
+  route).
+
 ## Tools (GitHub → Actions; all free unless stated)
 
 | Workflow | What it does |

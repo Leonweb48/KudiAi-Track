@@ -2,6 +2,11 @@ name: VTpass live keys
 
 # Turns VTpass (the second bill provider) on for real customers, or off again.
 #
+# SINCE 2026-10-26 THE ADMIN PORTAL IS THE PLACE FOR THIS: Admin → Finance → VTpass Setup saves the keys (Supabase Vault),
+# tests them, turns on the fixed IP and has the kill switch. Keys saved there WIN over the function secrets this workflow
+# writes — so with keys saved in the admin, "disable-live" here changes nothing: use the admin's kill switch instead.
+# This workflow stays as a fallback for when nothing is saved in the admin.
+#
 #   install-live-keys — copies the LIVE keys from the repository secrets VTPASS_LIVE_API_KEY, VTPASS_LIVE_SECRET_KEY
 #                       (and VTPASS_LIVE_PUBLIC_KEY if set) into the clubkonnect function's VTPASS_* secrets, sets
 #                       VTPASS_ENV=live, redeploys the function, then checks VTpass accepts the keys (a free lookup of

@@ -11,6 +11,9 @@
 //   POST /transfers/:id/retry     → forwarded likewise
 //   GET  /ck/API<name>.asp?<query> → forwarded to <CK_BASE_URL>/API<name>.asp?<query>  (ClubKonnect: it also only
 //                                    accepts our account's calls from whitelisted IPs)
+//   GET|POST /vt/<live|sandbox>/<pay|requery|service-variations|merchant-verify|balance|services>[?query]
+//                                  → forwarded to VTpass (live or sandbox base) with its api-key / secret-key / public-key
+//                                    headers (VTpass, like the others, may accept our calls only from a whitelisted IP)
 //   GET  /health                  → 200 "ok"
 //
 // Auth: every forwarded request must carry  x-relay-key: <RELAY_KEY>.
@@ -32,6 +35,12 @@ const PORT      = Number(process.env.PORT || 8080);
 // only these upstream paths may be proxied
 const ALLOW = [/^\/direct-transfers$/, /^\/transfers\/[A-Za-z0-9_-]+\/retry$/, /^\/transfers$/];
 const CK_PATH = /^\/ck\/(API[A-Za-z0-9]+\.asp)$/;   // ClubKonnect's API scripts, nothing else on that host
+// VTpass: only its bill API paths, on its two hosts
+const VT_BASE = {
+  live:    (process.env.VT_LIVE_BASE    || "https://vtpass.com/api").replace(/\/$/, ""),
+  sandbox: (process.env.VT_SANDBOX_BASE || "https://sandbox.vtpass.com/api").replace(/\/$/, ""),
+};
+const VT_PATH = /^\/vt\/(live|sandbox)(\/(?:pay|requery|service-variations|merchant-verify|balance|services|service-categories))$/;
 
 const send = (res, status, body, type = "application/json") => {
   res.writeHead(status, { "Content-Type": type });
@@ -74,6 +83,38 @@ const server = createServer(async (req, res) => {
       const text = await upstream.text();
       console.log(`relay GET /ck/${ckm[1]} -> ${upstream.status}`);
       return send(res, upstream.status, text, upstream.headers.get("content-type") || "text/plain");
+    }
+
+    // VTpass: GET (price lists, balance) or POST (pay, requery, verify). Its keys travel in headers — never logged.
+    const vtm = VT_PATH.exec(url);
+    if (vtm) {
+      if (!RELAY_KEY || req.headers["x-relay-key"] !== RELAY_KEY) return fail(res, 401, { error: "unauthorized" });
+      if (req.method !== "GET" && req.method !== "POST") return fail(res, 405, { error: "method not allowed" });
+      const headers = { Accept: "application/json" };
+      for (const h of ["api-key", "secret-key", "public-key", "content-type"]) if (req.headers[h]) headers[h] = req.headers[h];
+      let body;
+      if (req.method === "POST") {
+        body = "";
+        for await (const chunk of req) {
+          body += chunk;
+          if (body.length > 100_000) return fail(res, 413, { error: "too large" });
+        }
+      }
+      const query = (req.url || "").slice(url.length);
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 70_000);
+      let upstream;
+      try {
+        upstream = await fetch(`${VT_BASE[vtm[1]]}${vtm[2]}${query}`, { method: req.method, headers, body, signal: ctrl.signal });
+      } catch (e) {
+        console.error(`relay ${req.method} /vt/${vtm[1]}${vtm[2]} upstream error:`, e?.message || e);
+        return fail(res, 502, { error: "relay upstream error" });
+      } finally {
+        clearTimeout(timer);
+      }
+      const text = await upstream.text();
+      console.log(`relay ${req.method} /vt/${vtm[1]}${vtm[2]} -> ${upstream.status}`);
+      return send(res, upstream.status, text, upstream.headers.get("content-type") || "application/json");
     }
 
     if (req.method !== "POST") return fail(res, 405, { error: "method not allowed" });
