@@ -1224,6 +1224,34 @@ async function refusedDataPlans(network: string): Promise<Set<string>> {
   }
 }
 
+/**
+ * What a data purchase sends ClubKonnect as DataPlan: the plan's PRODUCT_CODE. ClubKonnect support, 2026-10-26: "use the data
+ * plan's product code for API integration" — since 23 Oct its purchase refuses every PRODUCT_ID (INVALID_DATAPLAN, like a
+ * made-up plan). The app keeps PRODUCT_ID as the plan's id (prices, cost records, the auto-hide are keyed by it); the code is
+ * looked up in the same cached plan list here. Not listed / list unreadable → the id as before (a refusal then hides the plan).
+ * (Tried 23 Oct as 0b603717 and reverted: two real orders came back INVALID_MOBILE_NUMBER — the code was accepted, the
+ * number refused — which I misread as the code being wrong.)
+ */
+async function ckDataPlanCode(network: string, planId: string): Promise<string> {
+  const netId = NET_ID[network];
+  if (!netId || !planId) return planId;
+  const resp = await providerPlanList("data", DATA_K, netId).catch(() => null);
+  const mn = (resp as { MOBILE_NETWORK?: Record<string, Record<string, unknown>[]> } | null)?.MOBILE_NETWORK;
+  if (!mn) return planId;
+  const squash = (k: string) => k.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+  const want = squash(networkName(network, netId) ?? network);
+  const aliases = want === "9MOBILE" ? ["9MOBILE", "M9MOBILE", "ETISALAT", "EMTS", "T2MOBILE"] : [want];
+  const key = Object.keys(mn).find((k) => aliases.includes(squash(k)));
+  for (const g of (key ? mn[key] : []) ?? []) {
+    for (const p of ((g?.PRODUCT ?? []) as Record<string, unknown>[])) {
+      if (String(p.PRODUCT_ID ?? p.DataPlan ?? "").trim() !== planId) continue;
+      const code = String(p.PRODUCT_CODE ?? "").trim();
+      return code || planId;
+    }
+  }
+  return planId;
+}
+
 /** ClubKonnect refused a plan it lists: hide it for PLAN_HIDE_HOURS; admins hear it once per hiding. */
 async function hideRefusedPlan(network: string, planId: string, planName: string): Promise<void> {
   try {
@@ -1675,11 +1703,15 @@ serve(async (req) => {
       const bgNet = bgNetwork(network);
       if (vtPlan && (!vtUsable() || !sid)) return json({ error: "This data plan is no longer available. Please reload the plans and try again." });
       if (bgPlan && (!bgUsable() || !bgNet || !Number.isFinite(bgPlanId(planId)))) return json({ error: "This data plan is no longer available. Please reload the plans and try again." });
+      let sentAs = planId;   // what ClubKonnect was sent as DataPlan (its PRODUCT_CODE — see ckDataPlanCode)
       const pd = providerDeps("data", rid, DATA_K,
-        () => ckBuy("data", "APIDatabundleV1.asp", {
-          APIKey: DATA_K, MobileNetwork: netId, DataPlan: planId,
-          MobileNumber: digits, RequestID: rid, CallBackURL: "https://kudiai.app/",
-        }),
+        async () => {
+          sentAs = await ckDataPlanCode(network, planId);
+          return ckBuy("data", "APIDatabundleV1.asp", {
+            APIKey: DATA_K, MobileNetwork: netId, DataPlan: sentAs,
+            MobileNumber: digits, RequestID: rid, CallBackURL: "https://kudiai.app/",
+          });
+        },
         vtPlan && sid ? vtDataBody(sid, vtPlanCode(planId), digits) : null,
         bgPlan && bgNet ? { path: "/vtu/data/purchase/", body: bgDataBody(bgNet, bgPlanId(planId), digits, BG.pin), phone: digits, service: "data" } : null);
       const out = await buyAcrossProviders("data", bgPlan ? ["bigisub"] : vtPlan ? ["vtpass"] : ["clubkonnect"], pd);
@@ -1693,7 +1725,7 @@ serve(async (req) => {
         const moved = await dataPlanToBigisub(network, refused, digits, rid, callerUser?.id ?? null);
         if (moved) return moved;
       }
-      if (!isOk(data)) return json({ error: (await ckFailedOrHeld(data, DATA_K, rid)) === "hold" ? PENDING_STATUS : `${errMsg(data, "Data purchase failed")} [net:${netId} plan:${planId}]`, _raw: data });
+      if (!isOk(data)) return json({ error: (await ckFailedOrHeld(data, DATA_K, rid)) === "hold" ? PENDING_STATUS : `${errMsg(data, "Data purchase failed")} [net:${netId} plan:${planId}${sentAs !== planId ? ` code:${sentAs}` : ""}]`, _raw: data });
       afterResponse(recordBillCost("data", rid, callerUser?.id ?? null, data, async () =>
         dataCost(await providerPlanPrice("data", DATA_K, netId, networkName(network, netId) ?? network, planId).catch(() => null), 1, data)));
       if (!vtPlan && !bgPlan) afterResponse(unhidePlan(network, planId));
@@ -1710,10 +1742,11 @@ serve(async (req) => {
       for (const pr of probes) {
         const netId = NET_ID[pr.network];
         if (!netId || !/^[0-9A-Za-z.]{1,20}$/.test(String(pr.planId ?? ""))) { out.push({ ...pr, status: "bad input" }); continue; }
-        const d = await ck("APIDatabundleV1.asp", { APIKey: DATA_K, MobileNetwork: netId, DataPlan: String(pr.planId), MobileNumber: "0",
+        const sent = await ckDataPlanCode(pr.network, String(pr.planId));   // as a real order sends it
+        const d = await ck("APIDatabundleV1.asp", { APIKey: DATA_K, MobileNetwork: netId, DataPlan: sent, MobileNumber: "0",
           RequestID: `KUDIAI-PROBE-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` }, { retries: 0, timeoutMs: 15000 }).catch(() => null);
         const st = d ? (d.status ?? d.Status ?? ("_raw" in d ? `HTTP ${d._http} non-JSON` : "no status")) : "no answer";
-        out.push({ network: pr.network, planId: String(pr.planId), status: String(st).slice(0, 40) });
+        out.push({ network: pr.network, planId: sent === String(pr.planId) ? String(pr.planId) : `${pr.planId} (code ${sent})`, status: String(st).slice(0, 40) });
       }
       return json({ probes: out });
     }
