@@ -5,6 +5,12 @@ name: Provider price compare
 # information: never printed in the clear. Download it with:  gh run download <run id> -n price-compare
 on:
   workflow_dispatch:
+    inputs:
+      action:
+        description: "price-compare = ClubKonnect + Bigisub lists; price-catalogue = ClubKonnect + VTpass plans with our selling prices"
+        type: choice
+        options: [price-compare, price-catalogue]
+        default: price-compare
 
 permissions:
   contents: read
@@ -18,15 +24,34 @@ jobs:
         env:
           URL: ${{ secrets.REACT_APP_SUPABASE_URL }}
           KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ACTION: ${{ inputs.action || 'price-compare' }}
+          # PUBLIC key only (safe to publish): the lists are encrypted to it; the private key never leaves the owner's machine
+          PRICE_PUBKEY: |
+            -----BEGIN PUBLIC KEY-----
+            MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAysXsuV7NNsE9oGr9CzdI
+            q0M1ReiwqeMiRDsdZTItfAnES8v2v3LaSXM5V7cjMR6fl+yLq6Szo2rebqzOwzTM
+            7G+HFwHewxESza8Z9qUk94zsum1K2NMMJ0LKkNMGV09n4197vpcfxcVuzNZ7x+z8
+            qjRNcVeR/4tNOM3KRvoaoU5GVsxXgEngyIxZ+hfOMi8yOC5819UQt3x9ZgcXH4WD
+            GXds2HcNORxnRawnW8e4R6rmEQiqUL7reXl1GW3schDmEkIc23cc7l5GnR4/TJM7
+            AoOLXSq9CCGWuJa45plC7FyeR4O+wnq6qcquIay3eklKoZmff74cvX/RaRnARXUL
+            LHFDDxdav+NHy+b1Chas7Qgixg7mUauuy0NWHjJ1a0eg2Kvqgz0CnNWn3/xeW+7/
+            HvjfZKqFKHaSFAJSuLJ/vyYAxBUQWCQdyeKUAu2srKEyNcBmuinUlesLusG7Jpk9
+            /j9d9SY4sM2hJ1gFtcGgojSN3tx3RyeWR/t/QGWYSeO9AgMBAAE=
+            -----END PUBLIC KEY-----
         run: |
           set -euo pipefail
           code=$(curl -sS -m 200 -o price-compare.json -w '%{http_code}' -X POST "$URL/functions/v1/clubkonnect" \
-            -H "Authorization: Bearer $KEY" -H "apikey: $KEY" -H "Content-Type: application/json" -d '{"action":"price-compare"}')
+            -H "Authorization: Bearer $KEY" -H "apikey: $KEY" -H "Content-Type: application/json" -d "{\"action\":\"$ACTION\"}")
           echo "HTTP $code, $(wc -c < price-compare.json) bytes"
-          node -e 'const j=JSON.parse(require("fs").readFileSync("price-compare.json","utf8")); const sec=(o)=>Object.entries(o||{}).map(([k,v])=>k+"="+(v&&v.error?"error":"ok")).join(" "); console.log("clubkonnect:", sec(j.clubkonnect)); console.log("bigisub:", sec(j.bigisub));'
-          # The repo is private and artifact storage can be full: the lists also go into this run's log, compressed — read it
-          # with:  gh run view <id> --log | grep -o 'PRICEBLOB.*' | cut -c10- | base64 -d | gunzip  — then delete the run.
-          echo "PRICEBLOB$(gzip -9c price-compare.json | base64 -w0)"
+          node -e 'const j=JSON.parse(require("fs").readFileSync("price-compare.json","utf8")); console.log("sections:", Object.keys(j).join(" "));'
+          # Artifact storage can be full, so the lists also go into this run's log — ENCRYPTED (the repo is public; wholesale
+          # prices are business information): a one-off AES key encrypts the lists, and that key is encrypted to the public
+          # key above (RSA-OAEP). Only the matching private key can read them. Delete the run after reading.
+          printf '%s\n' "$PRICE_PUBKEY" > pub.pem
+          K=$(openssl rand -hex 32)
+          echo "PRICEKEY$(printf '%s' "$K" | openssl pkeyutl -encrypt -pubin -inkey pub.pem -pkeyopt rsa_padding_mode:oaep | base64 -w0)"
+          echo "PRICEBLOB$(gzip -9c price-compare.json | openssl enc -aes-256-cbc -pbkdf2 -salt -pass "pass:$K" | base64 -w0)"
+          unset K; rm -f pub.pem
       - uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
