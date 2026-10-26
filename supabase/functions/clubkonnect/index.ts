@@ -454,6 +454,18 @@ async function recordBillCost(cat: string, rid: string, userId: string | null, r
     if (error) console.warn(`[finance] cost not recorded for ${rid}: ${error.message}`);
   } catch (e) { console.warn(`[finance] cost not recorded for ${rid}: ${(e as Error).message}`); }
 }
+/**
+ * A plan-priced bill ClubKonnect delivered (cable, Smile, Spectranet, exam PINs): its cost is ClubKonnect's own list price for
+ * it — not what the customer paid, which the admin may set higher or lower (Bill Prices & Services). Flagged an estimate:
+ * ClubKonnect doesn't report a commission. Without this, these bills' cost was a share of the SALE (finance_provider_cost_pct).
+ */
+function recordListCost(cat: string, rid: string, userId: string | null, data: Record<string, unknown>, listKobo: () => Promise<number>) {
+  afterResponse(recordBillCost(cat, rid, userId, data, async () => {
+    const k = await listKobo().catch(() => 0);
+    return k > 0 ? { costKobo: k, faceKobo: k, basis: "provider_plan_price", estimated: true } : null;
+  }));
+}
+
 // Let the runtime finish the work after the customer already has their answer; where that is not available, it simply runs alongside.
 function afterResponse(p: Promise<unknown>) {
   const er = (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime;
@@ -629,7 +641,7 @@ async function notifyCustomer(userId: string | null | undefined, n: { type: stri
 
 // Cron-driven actions: pg_cron → pg_net sends the Vault's cron_secret in x-cron-secret (checked by the service-only
 // verify_cron_secret RPC, which never returns the secret — same pattern as flutterwave / notify-send). The service key works too.
-const CRON_ACTIONS = new Set(["electricity-sweep", "bill-charge-sweep"]);
+const CRON_ACTIONS = new Set(["electricity-sweep", "bill-charge-sweep", "provider-balance-snapshot"]);
 async function cronAuthorized(req: Request): Promise<boolean> {
   const provided = req.headers.get("x-cron-secret") ?? "";
   if (!provided || !SUPABASE_URL || !SERVICE_KEY) return false;
@@ -1435,6 +1447,17 @@ async function ckExamCatalogue(exam: "waec" | "jamb"): Promise<{ ok: boolean; pr
 const VT_REF = /^\d{12}KDT[A-Za-z0-9]*$/;
 
 /** A Bigisub outcome as the purchase answer the app and webhooks already understand (pending = PENDING_STATUS → held). */
+/**
+ * What a delivered Bigisub order cost us: the amount its reply says it took (data: verified to be its own price — the rest
+ * flagged estimates, as the field isn't verified for them), plus its fixed ₦100 charge on cable (bgCableBody's note).
+ */
+function bgRecordCost(cat: string, out: Extract<BuyOutcome, { via: "bigisub" }>, rid: string, userId: string | null) {
+  const charged = Number((out.data.data as Record<string, unknown> | undefined)?.amount);
+  if (!Number.isFinite(charged) || charged <= 0 || charged >= 1_000_000) return;
+  const naira = charged + (cat === "cable" ? 100 : 0);
+  afterResponse(recordBillCost(cat, rid, userId, out.data, async () => ({ costKobo: Math.round(naira * 100), faceKobo: Math.round(charged * 100),
+    basis: "provider_reported", estimated: cat !== "data" }), { provider: "bigisub" }));
+}
 function bgAnswer(cat: string, out: Extract<BuyOutcome, { via: "bigisub" }>, rid: string, userId: string | null) {
   if (out.state === "delivered" && cat === "waec") {
     const cardDetails = bgExamPins(out.data);
@@ -1445,14 +1468,11 @@ function bgAnswer(cat: string, out: Extract<BuyOutcome, { via: "bigisub" }>, rid
         hint: "Bigisub dashboard → History.", emailHint: "Bigisub dashboard → History." }, { svc: "waec", outcome: "pins-missing", detail: out.tranxId || rid }));
       return json({ error: PENDING_STATUS, _provider: "bigisub" });
     }
+    bgRecordCost(cat, out, rid, userId);
     return json({ status: "SUCCESS", reference: out.tranxId || rid, cardDetails, message: "ORDER_COMPLETED", provider: "bigisub" });
   }
   if (out.state === "delivered") {
-    // Data: Bigisub reports what it charged us; airtime cost is left to the finance estimate.
-    const charged = Number((out.data.data as Record<string, unknown> | undefined)?.amount);
-    if (cat === "data" && Number.isFinite(charged) && charged > 0 && charged < 50_000) {
-      afterResponse(recordBillCost("data", rid, userId, out.data, async () => ({ costKobo: Math.round(charged * 100), faceKobo: Math.round(charged * 100), basis: "provider_reported", estimated: false }), { provider: "bigisub" }));
-    }
+    bgRecordCost(cat, out, rid, userId);
     return json({ status: "SUCCESS", reference: out.tranxId || rid, message: "ORDER_COMPLETED", provider: "bigisub" });
   }
   return json({ error: out.message, _provider: "bigisub" });
@@ -1852,6 +1872,7 @@ serve(async (req) => {
         data = out.data;
       } else data = await ckCable();
       if (!isOk(data)) return json({ error: (await ckFailedOrHeld(data, CABLETV_K, rid)) === "hold" ? PENDING_STATUS : errMsg(data, "Cable TV subscription failed"), _raw: data });
+      recordListCost("cable", rid, callerUser?.id ?? null, data, () => cablePriceKobo(provider, packageId));
       return json({ status: "SUCCESS", reference: String(data.orderid ?? data.requestid ?? ""), message: String(data.status ?? "ORDER_RECEIVED") });
     }
 
@@ -2663,6 +2684,8 @@ serve(async (req) => {
       if (out.via !== "clubkonnect") return vtAnswer("waec", out, rid, callerUser?.id ?? null, pd.vtRid());
       const data = out.data;
       if (!isOk(data)) return json({ error: (await ckFailedOrHeld(data, WAEC_K, rid)) === "hold" ? PENDING_STATUS : errMsg(data, "WAEC ePin purchase failed"), _raw: data });
+      // accepted = bought (PINs may follow via verify; a later failure refunds and reverses this cost)
+      recordListCost("waec", rid, callerUser?.id ?? null, data, async () => Math.round(Number(findExamProduct((await ckExamCatalogue("waec")).products, examType)?.amount ?? 0) * 100));
       const waecDetails = String(data.carddetails ?? data.CardDetails ?? "") || await cardDetailsLater(WAEC_K, rid);
       if (!waecDetails) return json({ error: PENDING_STATUS, _raw: data });   // accepted, card details not out yet → hold, verify fetches them
       return json({ status: "SUCCESS", reference: String(data.orderid ?? data.requestid ?? ""), cardDetails: waecDetails, message: String(data.status ?? "ORDER_RECEIVED") });
@@ -2694,6 +2717,7 @@ serve(async (req) => {
         PhoneNo: phone.replace(/\D/g, ""), RequestID: rid, CallBackURL: "https://kudiai.app/",
       });
       if (!isOk(data)) return json({ error: (await ckFailedOrHeld(data, JAMB_K, rid)) === "hold" ? PENDING_STATUS : errMsg(data, "JAMB ePin purchase failed"), _raw: data });
+      recordListCost("jamb", rid, callerUser?.id ?? null, data, async () => Math.round(Number(findExamProduct((await ckExamCatalogue("jamb")).products, examType)?.amount ?? 0) * 100));
       const jambDetails = String(data.carddetails ?? data.CardDetails ?? "") || await cardDetailsLater(JAMB_K, rid);
       if (!jambDetails) return json({ error: PENDING_STATUS, _raw: data });   // accepted, card details not out yet → hold, verify fetches them
       return json({ status: "SUCCESS", reference: String(data.orderid ?? data.requestid ?? ""), cardDetails: jambDetails, message: String(data.status ?? "ORDER_RECEIVED") });
@@ -2735,6 +2759,7 @@ serve(async (req) => {
         MobileNumber: accountNo, RequestID: rid, CallBackURL: "https://kudiai.app/",
       });
       if (!isOk(data)) return json({ error: (await ckFailedOrHeld(data, SPECTRANET_K, rid)) === "hold" ? PENDING_STATUS : errMsg(data, "Spectranet purchase failed"), _raw: data });
+      recordListCost("spectranet", rid, callerUser?.id ?? null, data, () => netPlanPriceKobo("spectranet", planId));
       return json({ status: "SUCCESS", reference: String(data.orderid ?? data.requestid ?? ""), message: String(data.status ?? "ORDER_RECEIVED") });
     }
 
@@ -2813,6 +2838,7 @@ serve(async (req) => {
         data = out.data;
       } else data = await ckSmile();
       if (!isOk(data)) return json({ error: (await ckFailedOrHeld(data, SMILE_K, rid)) === "hold" ? PENDING_STATUS : errMsg(data, "Smile purchase failed"), _raw: data });
+      recordListCost("smile", rid, callerUser?.id ?? null, data, () => netPlanPriceKobo("smile", planId));
       return json({ status: "SUCCESS", reference: String(data.orderid ?? data.requestid ?? ""), message: String(data.status ?? "ORDER_RECEIVED") });
     }
 
@@ -4316,6 +4342,22 @@ serve(async (req) => {
     }
 
     // ── Wallet balance + commission (admin dashboard) ──────────────────────────
+    // ── Provider wallet snapshot (cron, every 30 min) — the Bills account checks your ClubKonnect / Bigisub top-ups against
+    //    what was spent from these balances (finance_bills_report). Answers which providers were recorded, never the amounts.
+    if (action === "provider-balance-snapshot") {
+      ckBalCache = null; bgHealthCache = null;   // fresh readings, not a minute-old copy
+      const [ckN, bg] = await Promise.all([ckWalletNaira(), bgHealthState()]);
+      const rows = [
+        ...(ckN !== null ? [{ provider: "clubkonnect", balance_kobo: Math.round(ckN * 100) }] : []),
+        ...(bgUsable() && bg.balance !== null ? [{ provider: "bigisub", balance_kobo: Math.round(bg.balance * 100) }] : []),
+      ];
+      if (rows.length) {
+        const { error } = await createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } }).from("bill_provider_balances").insert(rows);
+        if (error) return json({ error: `not saved: ${error.message}` });
+      }
+      return json({ saved: rows.map((r) => r.provider) });
+    }
+
     if (action === "wallet-balance") {
       const useKey = AIRTIME_K || DATA_K || ELECTRICITY_K || CABLETV_K;
       if (!USER_ID || !useKey)

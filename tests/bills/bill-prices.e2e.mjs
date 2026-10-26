@@ -43,7 +43,7 @@ const ckSrv = http.createServer((req, res) => {
 // ── fake Supabase: platform_config (filterable), a logged-in user, the payment gate ──
 let config = {};
 let walletPaidKobo = 0;
-const claims = [];
+const claims = [], costs = [], balances = [];
 const pick = (u) => {
   const rows = Object.entries(config).map(([key, value]) => ({ key, value }));
   const f = u.searchParams.get("key");
@@ -71,6 +71,8 @@ const sbSrv = http.createServer((req, res) => {
       if (/vnd\.pgrst\.object/.test(req.headers.accept ?? "")) return rows.length ? send(200, rows[0]) : send(406, { message: "no rows" });
       return send(200, rows);
     }
+    if (u.pathname === "/rest/v1/rpc/finance_record_bill_cost") { costs.push(JSON.parse(b || "{}")); return send(200, true); }
+    if (t === "bill_provider_balances" && req.method === "POST") { balances.push(...[].concat(JSON.parse(b || "[]"))); return send(201, null); }
     if (u.pathname.includes("/rpc/")) return send(200, null);
     if (req.method === "GET") return send(200, []);
     send(201, null);
@@ -152,6 +154,9 @@ try {
   r = await asUser({ action: "cable", provider: "dstv", packageId: "dstv-79", smartcard: "1234567890", phone: "08031234567", requestId: nextRef() });
   ok(claims[0]?.p_face_kobo === 1_600_000, "gate: Compact's price is the admin's ₦16,000", JSON.stringify(claims[0]));
   ok(r?.status === "SUCCESS" && ckCalls.includes("APICableTVV1.asp"), "paid ₦16,000 → bought", JSON.stringify(r));
+  await sleep(800);
+  ok(costs.at(-1)?.p_cat === "cable" && costs.at(-1)?.p_cost_kobo === 1_570_000 && costs.at(-1)?.p_basis === "provider_plan_price" && costs.at(-1)?.p_estimated === true,
+    "Bills account: the order's cost is ClubKonnect's list price ₦15,700 (not the ₦16,000 the customer paid)", JSON.stringify(costs.at(-1)));
   walletPaidKobo = 1_570_000; claims.length = 0; ckCalls = [];
   r = await asUser({ action: "cable", provider: "dstv", packageId: "dstv-79", smartcard: "1234567890", phone: "08031234567", requestId: nextRef() });
   ok(!!r?.error && !ckCalls.includes("APICableTVV1.asp"), "paid only the provider's ₦15,700 → refused as underpaid, nothing bought", JSON.stringify([r, ckCalls]));
@@ -181,6 +186,13 @@ try {
   await save({ ...config, bill_services_off: "" });
   r = await asUser({ action: "bill-preflight", cat: "cable", amount: 15000 });
   ok(r?.reason !== "service_off", "switched back on → preflight no longer stops it", JSON.stringify(r));
+
+  // ── provider wallet snapshot (cron) ──
+  r = await post({ action: "provider-balance-snapshot" }, USER_TOKEN);
+  ok(r.status === 401 && balances.length === 0, "wallet snapshot: a customer's login is refused", JSON.stringify(r));
+  r = await post({ action: "provider-balance-snapshot" }, SERVICE_KEY);
+  ok(JSON.stringify(r.body) === JSON.stringify({ saved: ["clubkonnect"] }) && balances.length === 1 && balances[0].provider === "clubkonnect" && balances[0].balance_kobo === 90_000_000,
+    "wallet snapshot: ClubKonnect's balance saved; the answer names the provider, never the amount", JSON.stringify([r.body, balances]));
 
   // ── malformed settings never break selling ──
   await save({ bill_price_overrides: "{oops", bill_services_off: "nonsense,,", data_selling_prices: "[]" });

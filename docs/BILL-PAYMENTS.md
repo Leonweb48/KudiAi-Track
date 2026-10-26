@@ -262,6 +262,28 @@ Tokens, PINs, meter/phone/account numbers, names and our ClubKonnect balance mus
 - **Timing:** the bill server re-reads these rows once a minute (`priceConfig()`). The `price-catalogue` action
   (service-only, feeds the admin page) re-reads them at once.
 
+### 17. The Bills account: bills kept apart in the books (2026-10-26)
+
+- **Where:** admin portal → FINANCE → **Bills Account** (`/bills-account`; Finance Admin and Super Admin). No money
+  moves. It shows customers' bill payments, refunds, provider cost, card fees and profit, by service, provider and day.
+  Source: `finance_bills_report` (migration 20270428). The same entries feed Platform Profit.
+- **Every order records its own provider cost** at purchase (`recordBillCost`):
+  - Airtime, data and print: as before.
+  - Cable, Smile, Spectranet and exam PINs: ClubKonnect's **list** price (`recordListCost`), not what the customer
+    paid, so admin prices (rule 16) show their real margin.
+  - Bigisub: its reported charge (`bgRecordCost`; cable + ₦100).
+  - ClubKonnect electricity and betting: still a share of the sale (`finance_provider_cost_pct`).
+- **That share is never booked for an order that has its own cost.** It is booked only after the sale is 30 minutes
+  old, and is cancelled by an opposite entry if the real cost arrives later. Before this, a Bigisub electricity order was
+  counted twice. A refund reverses only the cost that still counts.
+- **Provider wallets:**
+  - `provider-balance-snapshot` (cron at :07 and :37) saves the ClubKonnect and Bigisub balances in
+    `bill_provider_balances`.
+  - Finance records top-ups in `bill_provider_topups`. A top-up can only be voided, never edited or deleted.
+  - The report checks: opening + top-ups − closing = spent, against the cost our records show.
+- **Tests:** `tests/finance/bills-account.pglite.mjs` (35 checks; all 7 mutants of the new rules caught) and
+  `tests/bills/bill-prices.e2e.mjs` (costs, snapshot).
+
 ## Tools (GitHub → Actions; all free unless stated)
 
 | Workflow | What it does |
