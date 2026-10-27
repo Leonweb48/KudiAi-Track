@@ -1,5 +1,7 @@
 /**
  * Platform-wide transaction detail + shareable receipt.
+ * While the admin has a festive theme switched on (utils/receiptThemes.js), a successful receipt also offers the festive
+ * card (FestiveReceipt.jsx) from a strip of themes; sharing then sends that card (image, or a one-page PDF of it).
  * Shows the full ReceiptCard in-modal (what you see = what you get).
  * "Share Receipt" captures it via html2canvas as an image, or builds a real
  * vector PDF (selectable text) from the same receipt data. Either way the
@@ -22,6 +24,10 @@ import { ReceiptCard } from "./ReceiptCard";
 import SupportTicketModal from "./SupportTicketModal";
 import { shareVoucherPDF } from "../../utils/printVouchers";
 import { useT } from "../../contexts/LanguageContext";
+import { jsPDF } from "jspdf";
+import { savePdf } from "../../utils/pdfSave";
+import { useReceiptThemes } from "../../utils/receiptThemes";
+import { FestiveReceiptCard, ThemeStrip } from "./FestiveReceipt";
 
 const GREEN = '#3da829';
 
@@ -146,6 +152,16 @@ function LoadingOverlay({ label }) {
 export default function TransactionDetailModal({ data, onClose, onReportIssue, onRetrieveToken }) {
   const t = useT();
   const receiptRef = useRef(null);
+  const festiveRef = useRef(null);
+  const themes = useReceiptThemes();
+  const canTheme = themes.length > 0 && data.status === 'success';
+  const [theme,   setTheme]   = useState('default');   // 'default' (the plain receipt) or a festive theme id
+  const [message, setMessage] = useState('');
+  const festive = canTheme && theme !== 'default';
+  const pickTheme = (id) => {
+    setTheme(id);
+    if (id !== 'default') setMessage(themes.find(x => x.id === id)?.message || t(`festive.msg.${id}`));
+  };
   const [shareOpen,  setShareOpen]  = useState(false);
   const [loading,    setLoading]    = useState(null);
   const [ticketData, setTicketData] = useState(null);
@@ -159,7 +175,21 @@ export default function TransactionDetailModal({ data, onClose, onReportIssue, o
     setLoading(type);
     try {
       let result;
-      if (type === 'image') {
+      if (festive) {
+        // the festive card as seen (the edit pencil is data-private, so it stays out of the file)
+        const canvas = await captureReceiptCanvas(festiveRef.current);
+        const base = String(filenames?.image || 'receipt.png').replace(/\.png$/i, '');
+        if (type === 'image') {
+          const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
+          result = await shareFile(new File([blob], `${base}_${theme}.png`, { type: 'image/png' }), { text: receiptShareText(data) });
+        } else {
+          const w = 100, h = Math.round(w * canvas.height / canvas.width);
+          const doc = new jsPDF({ unit: 'mm', format: [w, h], orientation: 'portrait' });
+          doc.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, w, h);
+          await savePdf(doc, `${base}_${theme}.pdf`, { shareText: receiptShareText(data) });
+          result = Capacitor.isNativePlatform() ? 'shared' : 'downloaded';
+        }
+      } else if (type === 'image') {
         const canvas = await captureReceiptCanvas(receiptRef.current);
         const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
         const file = new File([blob], filenames?.image || 'receipt.png', { type: 'image/png' });
@@ -364,9 +394,13 @@ export default function TransactionDetailModal({ data, onClose, onReportIssue, o
 
             {/* Full receipt card — exactly what will be shared / exported */}
             <div className="px-4 py-4">
-              <ReceiptCard data={data} innerRef={receiptRef} />
+              {festive
+                ? <FestiveReceiptCard data={data} themeId={theme} message={message} onMessage={setMessage} innerRef={festiveRef} />
+                : <ReceiptCard data={data} innerRef={receiptRef} />}
             </div>
           </div>
+
+          {canTheme && <ThemeStrip themes={themes} value={theme} onChange={pickTheme} />}
 
           {/* Pinned bottom actions */}
           <div
