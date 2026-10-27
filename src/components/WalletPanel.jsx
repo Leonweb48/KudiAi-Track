@@ -5,7 +5,7 @@ import TransactionPinModal from "./TransactionPinModal";
 import BankSelect from "./shared/BankSelect";
 import BankLogo from "./shared/BankLogo";
 import NetworkBars from "./shared/NetworkBars";
-import { displayBankName } from "../utils/bankLogos";
+import { displayBankName, cleanBankName } from "../utils/bankLogos";
 import { parseCopiedAccount } from "../utils/accountDetect";
 import { readClipboardText } from "../utils/clipboard";
 import TransactionDetailModal from "./shared/TransactionDetailModal";
@@ -41,9 +41,8 @@ function findSaleRow(api, requestId) {
   return api.ledger.find((l) => l.id === rq.ledger_id) || null;
 }
 
-// Flutterwave returns e.g. "Flutterwave MFB (Formerly OK MFB)" — drop the aside.
-export const cleanBankName = (n) =>
-  String(n || "").replace(/\s*\((?:formerly|former|prev\.?|previously)[^)]*\)/i, "").trim() || "Flutterwave MFB";
+// Flutterwave returns e.g. "Flutterwave MFB (Formerly OK MFB)" — the aside is dropped (utils/bankLogos.js).
+export { cleanBankName };
 
 // ── ledger row meta ────────────────────────────────────────────────────────
 // The label / icon table lives in utils/walletSources.js (the history logic uses it too); re-exported for existing importers.
@@ -298,6 +297,8 @@ export function BankPickerSheet({ open, onClose, banks, onPick }) {
 }
 
 // ── Fund wallet ────────────────────────────────────────────────────────────
+// A poster on a wall: the icon for the business-poster maker (Home, Finance Tools and here)
+export const POSTER_ICON = "M5 3h14a1 1 0 011 1v16a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1z|M8 7h8|M8 11h8|M8 15h4|M15 15h1";
 // The business deposit fee (Terms 4.10(a), every business plan since 19 Oct 2026): shown where a business shares its account number. Nothing for
 // Ajo clients or personal wallets (their deposits are free) — the server decides (wallet_deposit_fee_quote).
 const longDate = (d) => { try { return new Date(`${d}T12:00:00`).toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" }); } catch { return d; } };
@@ -322,7 +323,8 @@ export function DepositFeeNote({ open }) {
   );
 }
 
-export function FundWalletSheet({ open, onClose, wallet, testMode, api, businessName, ownerName }) {
+// onPoster (business owners only): a button under the account card that opens the payment-poster maker (PosterStudio).
+export function FundWalletSheet({ open, onClose, wallet, testMode, api, businessName, ownerName, onPoster }) {
   const t = useT();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
@@ -339,6 +341,17 @@ export function FundWalletSheet({ open, onClose, wallet, testMode, api, business
         </p>
       )}
       <AccountCard wallet={wallet} displayName={businessName || ownerName} />
+      {onPoster && wallet?.account_state !== "retired" && wallet?.flw_account_number && (
+        <button onClick={onPoster}
+          className="w-full mt-3 flex items-center gap-3 rounded-2xl border border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-900/20 px-4 py-3 text-left active:scale-[0.99] transition-transform">
+          <GlassIcon d={POSTER_ICON} colors={GLASS.brand} size={36} iconSize={16} />
+          <span className="flex-1 min-w-0">
+            <span className="block text-[13.5px] font-extrabold text-brand-800 dark:text-brand-200">{t("posters.fundBtn")}</span>
+            <span className="block text-[11.5px] text-brand-700/80 dark:text-brand-300/80">{t("posters.homeSub")}</span>
+          </span>
+          <Icon name="chevron-right" size={16} className="text-brand-600" />
+        </button>
+      )}
       {wallet?.account_state !== "retired" && <DepositFeeNote open={open} />}
       {testMode && wallet?.account_state !== "retired" && (
         <button onClick={simulate} disabled={busy}

@@ -100,6 +100,10 @@ export function bankFor({ code, name } = {}) {
   return (n && BANKS.find((b) => b.match.test(n))) || null;
 }
 
+// Flutterwave returns e.g. "Flutterwave MFB (Formerly OK MFB)" — drop the aside.
+export const cleanBankName = (n) =>
+  String(n || "").replace(/\s*\((?:formerly|former|prev\.?|previously)[^)]*\)/i, "").trim() || "Flutterwave MFB";
+
 /** URL of the bank's logo, or null when the collection has none for it. */
 export function bankLogoUrl(args) {
   const bank = bankFor(args);

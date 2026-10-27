@@ -28,7 +28,8 @@ import { buildTransactionReceipt, bizFromProfile } from "../utils/receiptConfig"
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
 import { useWallet } from "../hooks/useWallet";
 import { mergeWithWalletHistory } from "../utils/walletTxAdapter";
-import { FundWalletSheet, TransferSheet, ReceivePaymentSheet, WalletTxRow, cleanBankName, WalletMiniAction } from "../components/WalletPanel";
+import { FundWalletSheet, TransferSheet, ReceivePaymentSheet, WalletTxRow, cleanBankName, WalletMiniAction, POSTER_ICON } from "../components/WalletPanel";
+import PosterStudio from "../components/PosterStudio";
 
 const AJO_INCOME_TYPES = ["commission", "registration_fee", "withdrawal_fee"];
 
@@ -149,6 +150,7 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
   const [heroView, setHeroView] = useState(() =>
     localStorage.getItem("kt_home_hero") === "wallet" ? "wallet" : "sales");
   const [walletSheet, setWalletSheet] = useState(null);   // "fund" | "transfer" | "receive" | null
+  const [poster, setPoster] = useState(null);             // business-poster maker: "pay" | "ajo" | null
   const showWallet = walletEnabled && heroView === "wallet";
   const pickHero = (v) => { try { localStorage.setItem("kt_home_hero", v); } catch {} setHeroView(v); };
 
@@ -633,6 +635,19 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
         </button>
       </div>
 
+      {/* ── Business posters (pay by transfer / Ajo & Esusu) ─────── */}
+      <button onClick={() => setPoster("pay")}
+        className="relative w-full overflow-hidden flex items-center gap-3 rounded-3xl p-4 shadow-card text-left active:scale-[0.98] transition-transform duration-150"
+        style={{ background: "linear-gradient(135deg,#0E4A2F,#05241A)" }}>
+        <span className="pointer-events-none absolute -right-8 -top-10 w-32 h-32 rounded-full border-[10px] border-[#A6F08A]/10" />
+        <GlassIcon d={POSTER_ICON} colors={GLASS.brand} size={48} iconSize={21} />
+        <div className="relative flex-1 min-w-0">
+          <p className="text-[15px] font-black text-white leading-tight">{t("posters.homeTitle")}</p>
+          <p className="text-[11.5px] text-green-50/80 mt-0.5">{t("posters.homeSub")}</p>
+        </div>
+        <svg className="relative flex-shrink-0 text-[#A6F08A]" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round"><path d="M9 18l6-6-6-6" /></svg>
+      </button>
+
       {/* ── Tab card slot ────────────────────────────────────────── */}
       {tabCard && tabCard.slot === "tab_card_quad" && (
         <TabCardQuadSlot campaign={tabCard} pageKey="business.home" recordEvent={recordEvent} />
@@ -757,6 +772,8 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
 
       {receipt && <TransactionDetailModal data={receipt} onClose={() => setReceipt(null)} />}
 
+      <PosterStudio open={!!poster} onClose={() => setPoster(null)} profile={profile} initialType={poster || "pay"} />
+
       {showCompleteFlow && (
         <ProfileCompleteFlow store={store} onClose={() => setShowCompleteFlow(false)} />
       )}
@@ -765,7 +782,8 @@ export default function Home({ store, inventory, invoiceHook, plan, setTab, onQu
         <>
           <FundWalletSheet open={walletSheet === "fund"} onClose={() => setWalletSheet(null)}
             wallet={wallet.wallet} testMode={walletTestMode} api={wallet}
-            businessName={profile?.business_name} ownerName={profile?.owner_name} />
+            businessName={profile?.business_name} ownerName={profile?.owner_name}
+            onPoster={() => { setWalletSheet(null); setPoster("pay"); }} />
           <ReceivePaymentSheet open={walletSheet === "receive"} onClose={() => setWalletSheet(null)}
             wallet={wallet.wallet} payRequest={wallet.payRequest} testMode={walletTestMode} api={wallet}
             businessName={profile?.business_name} ownerName={profile?.owner_name} />

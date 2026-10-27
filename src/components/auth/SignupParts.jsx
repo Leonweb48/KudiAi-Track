@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../utils/supabase";
 import { registrationFeeNotice } from "../../utils/registrationFee";
+import { getPendingJoin } from "../../utils/posterJoin";
 
 // Amaya & Co. Technologies — pre-selected in the "business you're saving with" picker.
 export const DEFAULT_CLIENT_BUSINESS_ID = "fef18c36-867b-4740-926d-7399e6aa6596";
@@ -20,7 +21,10 @@ export function useSavingBusinesses(enabled) {
       .then(({ data }) => {
         const list = data?.businesses || [];
         setBusinesses(list);
-        setBusinessId(prev => prev || (list.find(b => b.id === DEFAULT_CLIENT_BUSINESS_ID)?.id) || list[0]?.id || "");
+        // a business scanned from its "Ajo & Esusu" poster (kudiai.app/join/<code>) comes first
+        const joined = getPendingJoin();
+        setBusinessId(prev => prev || (joined && list.find(b => b.id === joined.id)?.id)
+          || (list.find(b => b.id === DEFAULT_CLIENT_BUSINESS_ID)?.id) || list[0]?.id || "");
       })
       .catch(() => {})
       .finally(() => setLoading(false));

@@ -81,6 +81,7 @@ const Profile        = lazyWithRetry(() => import("./screens/Profile"));
 const Loyalty        = lazyWithRetry(() => import("./screens/Loyalty"));
 const Branches       = lazyWithRetry(() => import("./screens/Branches"));
 const FounderPage    = lazyWithRetry(() => import("./screens/FounderPage"));
+const BusinessPosterPage = lazyWithRetry(() => import("./screens/BusinessPosterPage"));
 // The public website (src/site) — one lazy chunk per page, rendered before the auth gate
 const LegalSitePage  = lazyWithRetry(() => import("./site/LegalPage"));
 const BlogPostPage   = lazyWithRetry(() => import("./site/BlogPostPage"));
@@ -571,6 +572,8 @@ export default function App() {
   if (location.pathname === "/bvn-return") return <BvnVerificationReturn />;
   // Anyone holding a receipt can check it — no session needed.
   if (location.pathname === "/verify") return <VerifyReceipt />;
+  // Business-poster QR codes: check a business's live payment account (/pay/<code>) or join its savings (/join/<code>).
+  if (/^\/(pay|join)\/[^/]+\/?$/i.test(location.pathname)) return <Suspense fallback={<div style={{ minHeight: "100dvh", background: "#05241A" }} />}><BusinessPosterPage /></Suspense>;
   // Account-deletion URL for Google Play (Data safety) — explains deletion and takes requests from people who cannot sign in.
   if (location.pathname === "/delete-account") return <DeleteAccountPage />;
   // The public website (kudiai.app/home, /features, /about, /faq, /contact, /blog, /terms, /privacy) and the founder's note.

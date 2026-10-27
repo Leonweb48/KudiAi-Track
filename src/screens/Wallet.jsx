@@ -9,6 +9,7 @@ import {
   ActionButton, AccountCard, WalletTxRow,
   FundWalletSheet, TransferSheet, ReceivePaymentSheet,
 } from "../components/WalletPanel";
+import PosterStudio from "../components/PosterStudio";
 import WalletMigrationCard from "../components/WalletMigrationCard";
 import WalletIdFields, { walletIdErrorText } from "../components/WalletIdFields";
 import { walletIdError } from "../utils/walletId";
@@ -38,7 +39,7 @@ export default function Wallet({ session, store }) {
   const w = useWallet(userId, walletEnabled);
   const bvnVerify = useBvnVerification(w);
   const [hidden, setHidden] = useState(() => sessionStorage.getItem("kt_balance_hidden") === "1");
-  const [sheet, setSheet] = useState(null);   // fund | transfer | receive
+  const [sheet, setSheet] = useState(null);   // fund | transfer | receive | poster
   const [receipt, setReceipt] = useState(null);
   const [err, setErr] = useState("");
   const [bvn, setBvn] = useState("");
@@ -307,7 +308,9 @@ export default function Wallet({ session, store }) {
 
       <FundWalletSheet open={sheet === "fund"} onClose={() => setSheet(null)}
         wallet={w.wallet} testMode={walletTestMode} api={w}
-        businessName={store?.profile?.business_name} ownerName={store?.profile?.owner_name} />
+        businessName={store?.profile?.business_name} ownerName={store?.profile?.owner_name}
+        onPoster={() => setSheet("poster")} />
+      <PosterStudio open={sheet === "poster"} onClose={() => setSheet(null)} profile={store?.profile} initialType="pay" />
       <TransferSheet open={sheet === "transfer"} onClose={() => setSheet(null)}
         balanceKobo={w.balanceKobo} maxKobo={w.limits.perTransferKobo}
         dailyCapKobo={w.limits.dailyKobo} dailyUsedKobo={w.dailyUsedKobo}

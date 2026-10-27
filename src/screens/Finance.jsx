@@ -16,6 +16,8 @@ import { supabase } from "../utils/supabase";
 import { usePlatformConfig } from "../hooks/usePlatformConfig";
 import { useT } from "../contexts/LanguageContext";
 import GlassIcon, { GLASS } from "../components/GlassIcon";
+import PosterStudio from "../components/PosterStudio";
+import { POSTER_ICON } from "../components/WalletPanel";
 
 /* ── Period config ───────────────────────────────────────────────────────────── */
 // label = translation key
@@ -961,6 +963,7 @@ export default function Finance({
 }) {
   const t = useT();
   const [section,   setSection]   = useState(autoOpenTab || null);
+  const [poster,    setPoster]    = useState(false);   // business-poster maker (Finance Tools)
   const [showLoan,  setShowLoan]  = useState(false);
   const { loansEnabled, coopEnabled } = usePlatformConfig();   // co-operatives: hidden until coop_module_enabled (was reachable here, incl. its Paystack registration fee)          // business loans: off ("coming soon", no tile, no application) until the lender is live
   const [period,    setPeriod]    = useState("month");
@@ -1388,7 +1391,19 @@ export default function Finance({
             </button>
           ))}
         </div>
+
+        {/* Business posters — "Pay with transfer" and "Ajo & Esusu available", to print or share */}
+        <button onClick={() => setPoster(true)}
+          className="w-full mt-3 flex items-center gap-3 rounded-2xl bg-slate-50 dark:bg-slate-700/50 border border-slate-100 dark:border-slate-700/30 px-3.5 py-3 text-left active:scale-[0.98] transition min-h-[44px]">
+          <GlassIcon d={POSTER_ICON} colors={GLASS.brand} size={34} iconSize={15} />
+          <span className="flex-1 min-w-0">
+            <span className="block text-[12.5px] font-bold text-slate-700 dark:text-slate-200">{t("posters.title")}</span>
+            <span className="block text-[10.5px] text-slate-400 dark:text-slate-500 truncate">{t("posters.homeSub")}</span>
+          </span>
+          <svg className="flex-shrink-0 text-slate-400" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M9 18l6-6-6-6" /></svg>
+        </button>
       </div>
+      <PosterStudio open={poster} onClose={() => setPoster(false)} profile={store.profile} initialType="ajo" />
 
       {/* ── Pending credits preview ── */}
       {hasCreditAccess && urgentCredits.length > 0 && (
