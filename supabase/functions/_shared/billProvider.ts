@@ -39,7 +39,12 @@ export const BG_BACKUP_DEFAULT: ReadonlySet<string> = new Set(["airtime", "data"
 export const VT_SERVICES: ReadonlySet<string> = new Set(["airtime", "data", "cable", "electricity", "waec", "smile"]);
 
 /** `bigisubFirst`: services where Bigisub is the MAIN provider and the usual main one becomes its backup. */
-export interface ProviderConfig { primary: Provider; failover: boolean; bigisub?: boolean; bigisubFirst?: ReadonlySet<string>; bigisubServices?: ReadonlySet<string> }
+export interface ProviderConfig {
+  primary: Provider; failover: boolean; bigisub?: boolean; bigisubFirst?: ReadonlySet<string>; bigisubServices?: ReadonlySet<string>;
+  /** The bills VTpass is the MAIN provider for (platform_config.bill_provider_vtpass_services, 2026-10-27 — chosen per bill on
+   *  the Bill Provider page). Set = it decides per bill and `primary` is ignored; unset = the single `primary` switch, as before. */
+  vtpassServices?: ReadonlySet<string>;
+}
 export const DEFAULT_PROVIDER_CONFIG: ProviderConfig = { primary: "clubkonnect", failover: true, bigisub: false, bigisubFirst: new Set() };
 
 /** platform_config rows → config. Anything unrecognised keeps the default (ClubKonnect, failover on, Bigisub off). */
@@ -54,6 +59,9 @@ export function parseProviderConfig(m: Record<string, string | null | undefined>
     // services Bigisub may take at all (a new one is added only after its live test) — unset = the default three
     bigisubServices: m.bill_bigisub_services == null ? BG_BACKUP_DEFAULT
       : new Set(String(m.bill_bigisub_services).split(",").map((x) => x.trim().toLowerCase()).filter((x) => BG_SERVICES.has(x))),
+    ...(m.bill_provider_vtpass_services == null ? {} : {
+      vtpassServices: new Set(String(m.bill_provider_vtpass_services).split(",").map((x) => x.trim().toLowerCase()).filter((x) => VT_SERVICES.has(x))),
+    }),
   };
 }
 
@@ -71,7 +79,8 @@ export interface ProviderState {
 export function providerOrder(svc: string, cfg: ProviderConfig, st: ProviderState): Provider[] {
   const vtOk = st.vtUsable && VT_SERVICES.has(svc);
   const bgOk = !!st.bgUsable && !!cfg.bigisub && BG_SERVICES.has(svc) && (cfg.bigisubServices ?? BG_BACKUP_DEFAULT).has(svc);
-  const primary: Provider = cfg.primary === "vtpass" && vtOk ? "vtpass" : "clubkonnect";
+  const wantVt = cfg.vtpassServices ? cfg.vtpassServices.has(svc) : cfg.primary === "vtpass";   // per bill when chosen per bill
+  const primary: Provider = wantVt && vtOk ? "vtpass" : "clubkonnect";
   const others: Provider[] = [];
   if (primary === "vtpass") others.push("clubkonnect"); else if (vtOk) others.push("vtpass");
   if (bgOk && cfg.bigisubFirst?.has(svc)) {

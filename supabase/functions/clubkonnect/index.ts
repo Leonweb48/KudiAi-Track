@@ -920,7 +920,7 @@ async function providerConfig(): Promise<ProviderConfig> {
   if (provCfgCache && Date.now() - provCfgCache.at < 60_000) return provCfgCache.cfg;
   try {
     const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
-    const { data, error } = await db.from("platform_config").select("key, value").in("key", ["bill_provider", "bill_provider_failover", "bill_provider_bigisub", "bill_bigisub_first", "bill_bigisub_services"]);
+    const { data, error } = await db.from("platform_config").select("key, value").in("key", ["bill_provider", "bill_provider_failover", "bill_provider_bigisub", "bill_bigisub_first", "bill_bigisub_services", "bill_provider_vtpass_services"]);
     if (error) throw error;
     const m: Record<string, string> = {};
     for (const r of (data ?? []) as { key: string; value: string }[]) m[r.key] = r.value;
@@ -3914,7 +3914,7 @@ serve(async (req) => {
       const orders = await Promise.all(services.map((s) => providerOrderFor(s)));
       const rc = await routeConfig();
       return json({
-        config: cfg,
+        config: { ...cfg, vtpassServices: cfg.vtpassServices ? [...cfg.vtpassServices] : null },
         services,
         vtpass: { configured: vtConfigured(VT), env: VT.env, live: vtUsable(), health: vtConfigured(VT) ? vt : "unknown" },
         bigisub: { configured: bgUsable(), on: !!cfg.bigisub, services: [...(cfg.bigisubServices ?? BG_SERVICES)], health: bgH.state, walletOk: bgH.balance === null ? null : bgH.balance >= 500 },

@@ -471,3 +471,22 @@ Deno.test("vtProbeVerdict: 'no such order' = up; our account refused or an error
   assertEquals(vtProbeVerdict(VT.dead), "unknown");
   assertEquals(vtProbeVerdict({ _raw: "hmm", _http: 200 }), "unknown");
 });
+
+Deno.test("main provider per bill (2026-10-27): VTpass main only for the bills listed; the single switch is ignored once a list is set", () => {
+  const st = { vtUsable: true, health: {} };
+  const per = parseProviderConfig({ bill_provider: "vtpass", bill_provider_vtpass_services: " cable, Electricity ,smile,betting,nonsense" });
+  assertEquals([...(per.vtpassServices ?? [])].sort(), ["cable", "electricity", "smile"]);
+  assertEquals(providerOrder("cable", per, st), ["vtpass", "clubkonnect"]);
+  assertEquals(providerOrder("electricity", per, st), ["vtpass", "clubkonnect"]);
+  assertEquals(providerOrder("airtime", per, st), ["clubkonnect", "vtpass"]);   // not listed → ClubKonnect main though bill_provider says vtpass
+  assertEquals(providerOrder("data", per, st), ["clubkonnect", "vtpass"]);
+  // an empty list = ClubKonnect main for everything
+  assertEquals(providerOrder("cable", parseProviderConfig({ bill_provider: "vtpass", bill_provider_vtpass_services: "" }), st), ["clubkonnect", "vtpass"]);
+  // no list = the old single switch
+  assertEquals(parseProviderConfig({ bill_provider: "vtpass" }).vtpassServices, undefined);
+  assertEquals(providerOrder("airtime", parseProviderConfig({ bill_provider: "vtpass" }), st), ["vtpass", "clubkonnect"]);
+  // VTpass not live → ClubKonnect alone, list or not
+  assertEquals(providerOrder("cable", per, { vtUsable: false, health: {} }), ["clubkonnect"]);
+  // VTpass main but down → straight to ClubKonnect
+  assertEquals(providerOrder("cable", per, { vtUsable: true, health: { vtpass: "down" } }), ["clubkonnect"]);
+});
