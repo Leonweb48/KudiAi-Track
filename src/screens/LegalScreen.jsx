@@ -219,6 +219,7 @@ function TermsContent() {
 
       <H2>13. Intellectual Property</H2>
       <P>All intellectual property rights in the platform — including software, design, trademarks, logos, content, and features — are owned by AMAYA & Co. Technologies or its licensors. We grant you a limited, non-exclusive, non-transferable, revocable licence to use the platform solely for your personal or internal business purposes. You may not copy, modify, distribute, sell, sublicense, or reverse-engineer any part of the platform.</P>
+      <P>Credits: the holiday animations shown on the app logo are Noto Emoji Animation by Google, used under the Creative Commons Attribution 4.0 licence (CC BY 4.0, creativecommons.org/licenses/by/4.0).</P>
 
       <H2>14. Suspension & Termination</H2>
       <P>You may terminate your account by deleting it in the app (Settings → Delete my account), at kudiai.app/delete-account, or by contacting support@kudiai.app. We may suspend or terminate your account, with or without notice, for breach of these Terms, suspected fraud or illegal activity, requirement of applicable law, non-payment of subscription fees, or prolonged inactivity (12 consecutive months for free accounts). Upon termination, your access ceases immediately and your data is retained per our Privacy Policy before deletion.</P>

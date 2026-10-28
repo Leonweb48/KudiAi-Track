@@ -1,7 +1,9 @@
 import React, { act } from "react";
+import fs from "fs";
+import path from "path";
 import { createRoot } from "react-dom/client";
 import { normalizeCap, activeCap, msUntilNextChange, loadCaps, cachedCaps, _resetHolidayCapCache } from "../utils/holidayCaps";
-import { HOLIDAY_CAP_PRESETS, HOLIDAY_CAP_IDS } from "../utils/holidayCapPresets";
+import { HOLIDAY_CAP_PRESETS, HOLIDAY_CAP_IDS, badgePlacement } from "../utils/holidayCapPresets";
 import AppLogo from "../components/AppLogo";
 
 let mockResult;           // what the "server" answers
@@ -96,16 +98,28 @@ describe("loadCaps — the schedule from the server, with a copy kept on the pho
   });
 });
 
-describe("the drawings", () => {
-  it("every preset is a self-contained SVG with motion that stops for reduced-motion users", () => {
-    expect(HOLIDAY_CAP_IDS).toEqual(["nigeria", "christmas", "new_year", "eid", "easter", "workers", "valentine", "celebration"]);
+describe("the animations", () => {
+  it("every preset is a self-hosted Lottie animation (Noto Emoji Animation) that the table's CHECK allows", () => {
+    expect(HOLIDAY_CAP_IDS.slice(0, 8)).toEqual(["nigeria", "christmas", "new_year", "eid", "easter", "workers", "valentine", "celebration"]);
+    // the newest CHECK on holiday_caps.preset (migration 20270438 replaced the original list)
+    const sql = fs.readFileSync(path.join(__dirname, "../../supabase/migrations/20270438000000_holiday_caps_more_presets.sql"), "utf8");
+    const allowed = /CHECK \(preset IN \(([^)]+)\)\)/.exec(sql)[1].match(/'(\w+)'/g).map((x) => x.slice(1, -1));
+    expect([...allowed].sort()).toEqual([...HOLIDAY_CAP_IDS].sort());
     for (const [id, p] of Object.entries(HOLIDAY_CAP_PRESETS)) {
-      expect(p.svg.startsWith("<svg ")).toBe(true);
-      expect(p.svg).toMatch(/prefers-reduced-motion: reduce/);
-      expect(p.svg).not.toMatch(/<script|on[a-z]+=|href=["']?http/i);
-      expect(p.label && p.place && typeof p.place.left === "number").toBeTruthy();
       expect(id).toMatch(/^[a-z_]+$/);
+      expect(p.label).toBeTruthy();
+      expect(p.anim).toBe(`/holiday-caps/${id}.json`);
+      const j = JSON.parse(fs.readFileSync(path.join(__dirname, "../../public", p.anim), "utf8"));
+      expect(Array.isArray(j.layers) && j.layers.length > 0 && j.op > j.ip && j.fr > 0).toBe(true);
+      expect((j.assets || []).some((a) => a.p)).toBe(false);   // no external image files to fetch
+      if (p.still != null) expect(p.still >= 0 && p.still < 1).toBe(true);
     }
+    expect(fs.existsSync(path.join(__dirname, "../../public/holiday-caps/CREDITS.txt"))).toBe(true);
+  });
+
+  it("the badge sits over the logo's top-right corner and scales with the logo", () => {
+    expect(badgePlacement(32)).toEqual({ width: 20, height: 20, left: 21, top: -9 });
+    expect(badgePlacement(48)).toEqual({ width: 30, height: 30, left: 32, top: -13 });
   });
 });
 
@@ -127,7 +141,7 @@ describe("AppLogo — the cap on the real logo", () => {
     expect(caps.length).toBe(1);
     expect(caps[0].dataset.preset).toBe("nigeria");
     expect(caps[0].getAttribute("aria-hidden")).toBe("true");
-    expect(caps[0].querySelector("svg")).not.toBeNull();
+    expect([caps[0].style.width, caps[0].style.left, caps[0].style.top]).toEqual(["20px", "21px", "-9px"]);   // the animation itself loads afterwards
   });
 
   it("appears exactly at the start time and goes away exactly at the end time", async () => {
