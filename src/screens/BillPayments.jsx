@@ -1693,6 +1693,8 @@ export default function BillPayments({ store, plan, session = null, staffName = 
   const ownWallet = useWallet(externalWallet ? null : (session?.user?.id || null), walletEnabled);
   const wallet = externalWallet || ownWallet;
   const [payMethod, setPayMethod] = useState(walletOnly ? "wallet" : "paystack");   // "paystack" | "wallet"
+  // how a bill was paid — for its record, its receipt and the failure alert (the server double-checks the wallet ledger)
+  const billPaidViaOf = (p) => (p?.walletPaid ? "wallet" : p?.isFree ? "cashback" : walletOnly ? "wallet" : "paystack");
 
   const bundleFacePerSet   = (denom) => (parseInt(denom || "1000", 10) || 0) * BUNDLE_NETWORKS.length;
   const bundleChargePerSet = (denom) => {
@@ -2773,8 +2775,10 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         : paidAmount || amount;
 
       // Who actually took the money — recorded so the receipt names the right
-      // processor later (wallet-paid bills used to be labelled "Paystack").
-      const paidVia = pending.walletPaid ? "wallet" : pending.isFree ? "cashback" : "paystack";
+      // processor later (wallet-paid bills used to be labelled "Paystack"). A wallet-only screen (owners, staff,
+      // managers, Ajo clients) has no Paystack route at all, so a non-free bill there was paid from the wallet even if
+      // the walletPaid flag was lost on the way (app closed mid-payment and resumed).
+      const paidVia = billPaidViaOf(pending);
       const bill_details = {
         ...(pinsArr?.length > 0                    ? { pins: pinsArr }
           : cat === "electricity" && elecToken     ? { token: elecToken, orderId: elecOrderId || apiRef || "", units: elecUnits }
@@ -2958,7 +2962,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
         } catch (_) {}
         try {
           await supabase.functions.invoke("clubkonnect", { body: {
-            action: "bill-failure-alert", hold: true,
+            action: "bill-failure-alert", hold: true, paid_via: billPaidViaOf(pending),
             user_id: profile?.id || null, user_email: profile?.email || null,
             user_name: profile?.owner_name || profile?.business_name || null,
             service: hSvc, amount: hAmt, ps_ref: ref, ck_error: ckError,
@@ -3034,7 +3038,7 @@ export default function BillPayments({ store, plan, session = null, staffName = 
           // Payment was confirmed by Paystack but service delivery failed —
           // alert admin/finance so they can manually fulfill or refund.
           await supabase.functions.invoke("clubkonnect", {
-            body: { action: "bill-failure-alert", user_id: profile?.id || null, user_email: profile?.email || null, user_name: profile?.owner_name || profile?.business_name || null, service: fSvc, amount: fAmt, ps_ref: ref, ck_error: ckError },
+            body: { action: "bill-failure-alert", paid_via: billPaidViaOf(pending), user_id: profile?.id || null, user_email: profile?.email || null, user_name: profile?.owner_name || profile?.business_name || null, service: fSvc, amount: fAmt, ps_ref: ref, ck_error: ckError },
           });
           if (staffEmail && staffEmail !== profile?.email) {
             supabase.functions.invoke("clubkonnect", { body: { action: "bill-staff-email", staff_email: staffEmail, staff_name: staffName, business_name: businessName || profile?.business_name, service: fSvc, amount: fAmt, reference: ref, outcome: "failed" } });

@@ -2937,9 +2937,10 @@ serve(async (req) => {
 
     // ── Bill failure alert — create critical support ticket + email admins & user ─
     if (action === "bill-failure-alert") {
-      const { user_id, user_email, user_name, service, amount, ps_ref, ck_error, hold } = body as {
+      const { user_id, user_email, user_name, service, amount, ps_ref, ck_error, hold, paid_via } = body as {
         user_id?: string; user_email?: string; user_name?: string;
         service?: string; amount?: number; ps_ref?: string; ck_error?: string;
+        paid_via?: string;   // the app's hint ("wallet" | "cashback" | "paystack"); the wallet ledger decides below
         // hold = we could NOT confirm the outcome (network disruption). Raise a
         // ticket for a human to reconcile, but do NOT auto-refund — the order may
         // have been delivered.
@@ -2971,25 +2972,53 @@ serve(async (req) => {
           }
         }
 
+        // How the customer really paid — decided here, not taken on trust: a wallet debit for this reference means the KudiAI
+        // Wallet (owners, staff, managers and Ajo clients pay bills only from the wallet since 2026-09-13). This alert used
+        // to say "Paystack paid … Paystack Reference" for every failed bill, wallet ones included, and tried a Paystack
+        // refund of a wallet reference.
+        let paidVia: "wallet" | "cashback" | "paystack" | "unknown" = "unknown";
+        if (ps_ref) {
+          const { data: wl } = await sb.from("wallet_ledger").select("id").eq("reference", ps_ref).eq("direction", "debit").limit(1).maybeSingle();
+          if (wl) paidVia = "wallet";
+        }
+        if (paidVia === "unknown") {
+          const hint = String(paid_via ?? "").toLowerCase();
+          if (hint === "cashback") paidVia = "cashback";
+          else if (hint === "paystack") paidVia = "paystack";
+          else if (ps_ref) {
+            const { data: pb } = await sb.from("pending_bills").select("reference").eq("reference", ps_ref).maybeSingle();
+            if (pb) paidVia = "paystack";   // a card / transfer checkout (cooperative portals)
+          }
+        }
+        const viaLabel = { wallet: "KudiAI Wallet", cashback: "KudiAI cashback", paystack: "Paystack (card / transfer)", unknown: "Not recorded" }[paidVia];
+        const paidPhrase = { wallet: "paid from their KudiAI Wallet", cashback: "paid with KudiAI cashback", paystack: "paid via Paystack", unknown: "paid" }[paidVia];
+        const failAction = paidVia === "wallet"
+          ? `The wallet is refunded automatically once the provider confirms the order failed (straight away, or by the bill-charge sweep within the hour). Check the refund landed; fulfil manually only if the customer still wants the service.`
+          : paidVia === "paystack"
+            ? `Verify provider wallet balance and manually fulfil or refund (an automatic Paystack refund is attempted when the provider confirms the failure).`
+            : `Verify provider wallet balance and manually fulfil or refund.`;
+
         // Create a support ticket so admin/finance see it immediately
         const ticketSubject = hold
           ? `BILLING UNCONFIRMED: ${service} — paid, delivery not verified (network)`
-          : `BILLING FAILURE: ${service} — Paystack paid, service delivery failed`;
+          : `BILLING FAILURE: ${service} — paid (${viaLabel}), service delivery failed`;
         const description = hold
-          ? `A customer paid via Paystack. The provider call was disrupted by a network fault and we could NOT confirm whether the order was delivered.\n\n` +
+          ? `A customer ${paidPhrase}. The provider call was disrupted by a network fault and we could NOT confirm whether the order was delivered.\n\n` +
             `User: ${user_name || "Unknown"} (${user_email || "N/A"})\n` +
             `Service: ${service}\n` +
             `Amount: ₦${amount?.toLocaleString() || "?"}\n` +
-            `Paystack Reference: ${ps_ref}\n` +
+            `Paid with: ${viaLabel}\n` +
+            `Payment reference: ${ps_ref}\n` +
             `Detail: ${ck_error}\n\n` +
             `ACTION REQUIRED: Requery ClubKonnect for RequestID ${ps_ref}. If delivered — mark the transaction success. If not — refund. DO NOT assume failure.`
-          : `A customer paid successfully via Paystack but bill delivery failed.\n\n` +
+          : `A customer ${paidPhrase} but bill delivery failed.\n\n` +
             `User: ${user_name || "Unknown"} (${user_email || "N/A"})\n` +
             `Service: ${service}\n` +
             `Amount: ₦${amount?.toLocaleString() || "?"}\n` +
-            `Paystack Reference: ${ps_ref}\n` +
+            `Paid with: ${viaLabel}\n` +
+            `Payment reference: ${ps_ref}\n` +
             `Provider Error: ${ck_error}\n\n` +
-            `ACTION REQUIRED: Verify provider wallet balance and manually fulfill or refund.`;
+            `ACTION REQUIRED: ${failAction}`;
 
         await sb.from("support_tickets").insert({
           subject:    ticketSubject,
@@ -3005,8 +3034,8 @@ serve(async (req) => {
         await sb.from("admin_tasks").insert({
           title:       hold ? `Bill unconfirmed — ${service}` : `Service wallet failure — ${service}`,
           description: hold
-            ? `Paystack ref ${ps_ref} was charged ₦${amount?.toLocaleString() || "?"}. Provider call disrupted (${ck_error}) — outcome UNKNOWN. Requery CK RequestID ${ps_ref} and settle (mark success or refund).`
-            : `Paystack ref ${ps_ref} was charged ₦${amount?.toLocaleString() || "?"} but provider returned: "${ck_error}". Check wallet balance and fulfill manually.`,
+            ? `${viaLabel} payment ${ps_ref} of ₦${amount?.toLocaleString() || "?"}. Provider call disrupted (${ck_error}) — outcome UNKNOWN. Requery CK RequestID ${ps_ref} and settle (mark success or refund).`
+            : `${viaLabel} payment ${ps_ref} of ₦${amount?.toLocaleString() || "?"} but provider returned: "${ck_error}". ${failAction}`,
           priority: hold ? "high" : "critical",
           status:   "pending",
         });
@@ -3023,18 +3052,19 @@ serve(async (req) => {
           accentColor: "linear-gradient(135deg,#dc2626,#b91c1c)",
           icon: "⚠",
           title: "Bill Payment Failure Alert",
-          subtitle: "Action Required — Paystack paid, delivery failed",
-          body: `<p style="margin:0 0 16px;color:#374151;font-size:14px;">A customer paid successfully via Paystack but <strong>the provider failed to deliver</strong> the service. Immediate action is required.</p>
+          subtitle: "Action Required — paid, delivery failed",
+          body: `<p style="margin:0 0 16px;color:#374151;font-size:14px;">A customer ${esc(paidPhrase)} but <strong>the provider failed to deliver</strong> the service.</p>
             <table style="width:100%;border-collapse:collapse;font-size:14px;margin:0 0 16px;">
               <tr><td style="padding:7px 0;color:#6b7280;width:140px;font-weight:600;">User</td><td style="padding:7px 0;font-weight:700;color:#111827;">${esc(user_name || "Unknown")} (${esc(user_email || "N/A")})</td></tr>
               <tr style="background:#fef2f2;"><td style="padding:7px 8px;color:#6b7280;font-weight:600;">Service</td><td style="padding:7px 8px;font-weight:700;color:#111827;">${esc(service)}</td></tr>
               <tr><td style="padding:7px 0;color:#6b7280;font-weight:600;">Amount Paid</td><td style="padding:7px 0;font-weight:700;color:#111827;">₦${esc(amount?.toLocaleString() || "?")}</td></tr>
-              <tr style="background:#fef2f2;"><td style="padding:7px 8px;color:#6b7280;font-weight:600;">Paystack Ref</td><td style="padding:7px 8px;font-family:monospace;color:#111827;">${esc(ps_ref)}</td></tr>
+              <tr style="background:#fef2f2;"><td style="padding:7px 8px;color:#6b7280;font-weight:600;">Paid with</td><td style="padding:7px 8px;font-weight:700;color:#111827;">${esc(viaLabel)}</td></tr>
+              <tr><td style="padding:7px 0;color:#6b7280;font-weight:600;">Payment ref</td><td style="padding:7px 0;font-family:monospace;color:#111827;">${esc(ps_ref)}</td></tr>
               <tr><td style="padding:7px 0;color:#6b7280;font-weight:600;">Error</td><td style="padding:7px 0;font-weight:700;color:#dc2626;">${esc(ck_error)}</td></tr>
             </table>
             <div style="padding:14px 16px;background:#fef9c3;border:1px solid #fde68a;border-radius:8px;">
               <p style="margin:0;font-weight:700;color:#92400e;font-size:14px;">ACTION REQUIRED</p>
-              <p style="margin:8px 0 0;color:#92400e;font-size:13px;">Check provider wallet balance and manually fulfill or refund this customer immediately.</p>
+              <p style="margin:8px 0 0;color:#92400e;font-size:13px;">${esc(failAction)}</p>
             </div>`,
         });
 
@@ -3060,7 +3090,9 @@ serve(async (req) => {
               ["Issue", ck_error ? esc(ck_error) : ""],
               ["Status", hold ? "Under review" : "Being resolved"],
             ],
-            note: "<strong>Your money is safe.</strong> Our team has been automatically alerted and will resolve this immediately. If you do not receive your service within 2 hours, please contact our support team with the payment reference above.",
+            note: paidVia === "wallet"
+              ? "<strong>Your money is safe.</strong> If the order didn't go through, the amount goes back to your KudiAI Wallet automatically. Our team has been alerted; if you don't get the service or the refund within 2 hours, contact support with the payment reference above."
+              : "<strong>Your money is safe.</strong> Our team has been automatically alerted and will resolve this immediately. If you do not receive your service within 2 hours, please contact our support team with the payment reference above.",
             button: { label: "Open KudiAI Track →", url: appLink({ tab: "bills" }) },
           });
           try { await sendEmail(sb, { to: callerUser ? (reporterEmail ?? "") : user_email, subject: `KudiAI Track: Action needed on your ${service} payment`, html: userEmailHtml }); }
@@ -3075,7 +3107,8 @@ serve(async (req) => {
         // and the order may have been delivered — a human reconciles instead.
         let refundInitiated = false;
         let refundId: string | null = null;
-        if (!hold && mayRefund && ps_ref && amount && Number(amount) > 0) {
+        // only a payment that actually went through Paystack can be refunded there; wallet bills go back to the wallet
+        if (!hold && mayRefund && paidVia === "paystack" && ps_ref && amount && Number(amount) > 0) {
           try {
             const rfRes = await fetch(`${SUPABASE_URL}/functions/v1/paystack`, {
               method: "POST",
@@ -3104,12 +3137,12 @@ serve(async (req) => {
         // Update the admin task description with refund status
         if (refundInitiated && refundId) {
           await sb.from("admin_tasks").update({
-            description: `Paystack ref ${ps_ref} was charged ₦${amount?.toLocaleString() || "?"} but provider returned: "${ck_error}". ✅ Auto-refund initiated (ID: ${refundId}). Verify delivery within 24h.`,
+            description: `Paystack payment ${ps_ref} of ₦${amount?.toLocaleString() || "?"} but provider returned: "${ck_error}". ✅ Paystack refund initiated (ID: ${refundId}). Verify within 24h.`,
           }).eq("title", `Service wallet failure — ${service}`);
         }
 
-        console.log(`Bill failure alert: ${ps_ref} — ${ck_error} | refund_initiated=${refundInitiated}`);
-        return json({ ok: true, refund_initiated: refundInitiated, refund_id: refundId });
+        console.log(`Bill failure alert: ${ps_ref} — ${ck_error} | paid_via=${paidVia} | refund_initiated=${refundInitiated}`);
+        return json({ ok: true, paid_via: paidVia, refund_initiated: refundInitiated, refund_id: refundId });
       } catch (e) {
         console.error("bill-failure-alert error:", e);
         return json({ ok: false, error: (e as Error).message });
