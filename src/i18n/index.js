@@ -25,9 +25,10 @@ import visual from "./visual";
 import planend from "./planend";
 import posters from "./posters";
 import festive from "./festive";
+import update from "./update";
 
 export const ALL_TRANSLATIONS = Object.assign({}, BASE, common, home, sales, credit, ajo, stock, finance, bills, wallet,
-  invoices, settings, business, account, client, circles, walletpanel, auth2, messages, invite, visual, planend, posters, festive);
+  invoices, settings, business, account, client, circles, walletpanel, auth2, messages, invite, visual, planend, posters, festive, update);
 
 const fill = (text, vars) => (vars && typeof text === "string")
   ? text.replace(/\{(\w+)\}/g, (m, k) => (vars[k] !== undefined && vars[k] !== null ? String(vars[k]) : m))

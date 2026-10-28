@@ -9,6 +9,7 @@ import { Capacitor } from "@capacitor/core";
 import { consumeAdminAccessLink, AdminAccessBannerHost } from "./utils/adminAccess";
 import NewDeviceSelfiePrompt from "./components/NewDeviceSelfiePrompt";
 import IosInstallPrompt from "./components/IosInstallPrompt";
+import UpdateGate from "./components/UpdateGate";
 import AppErrorBoundary from "./components/AppErrorBoundary";
 import { captureInviteFromUrl } from "./utils/invite";
 
@@ -75,6 +76,7 @@ async function boot() {
             <AdminAccessBannerHost />
             <NewDeviceSelfiePrompt />
             <IosInstallPrompt />
+            <UpdateGate />
           </ToastProvider>
         </LanguageProvider>
       </BrowserRouter>
