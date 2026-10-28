@@ -27,8 +27,8 @@ jobs:
           [ -n "$TOKEN" ] || { echo "sign-in failed"; exit 1; }
           echo "::add-mask::$TOKEN"
           for q in '{"cat":"airtime","network":"MTN","amount":100}' '{"cat":"data","network":"MTN","amount":500}' '{"cat":"cable","amount":4000}' \
-                   '{"cat":"electricity","amount":1000}' '{"cat":"betting","amount":500}' '{"cat":"waec","amount":5350}'; do
+                   '{"cat":"electricity","amount":1000}' '{"cat":"betting","amount":500}' '{"cat":"waec","amount":5350}'                    '{"cat":"print-airtime","network":"MTN","amount":1000}' '{"cat":"print-airtime","network":"Glo","amount":1000}'                    '{"cat":"print-airtime","network":"Airtel","amount":1000}' '{"cat":"print-airtime","network":"9mobile","amount":1000}'                    '{"cat":"print-data","network":"MTN","amount":500}' '{"cat":"print-data","network":"Airtel","amount":500}'; do
             body=$(jq -c --argjson q "$q" -n '{action:"bill-preflight"} + $q')
             out=$(curl -sS -m 60 -X POST "$SB_URL/functions/v1/clubkonnect" -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d "$body")
-            echo "$(echo "$q" | jq -r .cat): $(echo "$out" | jq -c '{ok, reason, provider, message}' 2>/dev/null || echo "$out" | head -c 200)"
+            echo "$(echo "$q" | jq -r '.cat + (if .network then " " + .network else "" end)'): $(echo "$out" | jq -c '{ok, reason, provider, message}' 2>/dev/null || echo "$out" | head -c 200)"
           done
